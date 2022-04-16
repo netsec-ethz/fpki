@@ -1,0 +1,40 @@
+{
+ "SerialNumber": 1729381,
+ "Subject": "bad domain",
+ "Version": 1729381,
+ "PublicKeyAlgorithm": 0,
+ "PublicKey": "yv3l/bQtGHrNh1WW0YiaFvnu7eDUcOh1nxwBbKAGv+wYdC/pr+nfXg==",
+ "NotBefore": "2022-04-14T15:51:18.534474+02:00",
+ "NotAfter": "2022-04-14T15:51:18.534474+02:00",
+ "CAName": "bad domain",
+ "SignatureAlgorithm": 0,
+ "TimeStamp": "2022-04-14T15:51:18.534474+02:00",
+ "PRCSignature": "yU5AG9GER1FfyOp2uCUbADYDGmd/BflUFi5ZSbZy+kXHd2GLNQe39A==",
+ "CASignature": "wDBe89LB6Uw2mxYBi7wwOBukby/v4uXLLga50cj1g+vkruCylm5HSA==",
+ "SPT": [
+  {
+   "Version": 12313,
+   "Subject": "hihihihihhi",
+   "CAName": "I'm honest CA, nice to meet you",
+   "LogID": 1231323,
+   "CertType": 17,
+   "AddedTS": "2022-04-14T15:51:18.534453+02:00",
+   "STH": "MzmegSn/M/xx5CpEU0xLb+8PgqqvYmbraGn0kj5gbdraV1T+txAaLA==",
+   "PoI": "a9Hwd/gfNPrDp9ve/rxgQ1sth/H9P277e10ytu+at76gjWe2jJCs3g==",
+   "STHSerialNumber": 131678,
+   "Signature": "tdzV2yUWGZkCRkZ/E3ziziGE7RC1WdNWecHIFE6pNbghDQ1xjrVWWw=="
+  },
+  {
+   "Version": 12368713,
+   "Subject": "hohohoho",
+   "CAName": "I'm malicious CA, nice to meet you",
+   "LogID": 1324123,
+   "CertType": 33,
+   "AddedTS": "2022-04-14T15:51:18.534471+02:00",
+   "STH": "NbVoe4/ddwJO1yAnJJ5lgUkaVD7KCcv9b7ps7PqYPvO+X1SqvCL7jA==",
+   "PoI": "vzVS/IAr6KS4Ry1F4c0lwy2LSC2xv1o/HVIEWtc4kpfVxSJLQBOUZA==",
+   "STHSerialNumber": 114378,
+   "Signature": "E987tKRhNzj7s4nA4HlDZxlanlV1uWLOCGENN2Usfh3+H7jfcAR9pQ=="
+  }
+ ]
+}
