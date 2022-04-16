@@ -1,0 +1,5 @@
+{
+ "TreeId": 55555555555,
+ "RPCAddress": "localhost:8090",
+ "MaxReceiveMessageSize": 10000
+}

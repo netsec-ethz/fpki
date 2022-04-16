@@ -102,6 +102,69 @@ func Test_Equal(t *testing.T) {
 
 }
 
+func Test_Json_Read_Write(t *testing.T) {
+	spt1 := &common.SPT{
+		Version:         12313,
+		Subject:         "hihihihihhi",
+		CAName:          "I'm honest CA, nice to meet you",
+		LogID:           1231323,
+		CertType:        0x11,
+		AddedTS:         time.Now(),
+		STH:             generateRandomBytes(),
+		PoI:             generateRandomBytes(),
+		STHSerialNumber: 131678,
+		Signature:       generateRandomBytes(),
+	}
+
+	spt2 := &common.SPT{
+		Version:         12368713,
+		Subject:         "hohohoho",
+		CAName:          "I'm malicious CA, nice to meet you",
+		LogID:           1324123,
+		CertType:        0x21,
+		AddedTS:         time.Now(),
+		STH:             generateRandomBytes(),
+		PoI:             generateRandomBytes(),
+		STHSerialNumber: 114378,
+		Signature:       generateRandomBytes(),
+	}
+
+	rpc := &common.RPC{
+		SerialNumber:       1729381,
+		Subject:            "bad domain",
+		Version:            1729381,
+		PublicKeyAlgorithm: common.RSA,
+		PublicKey:          generateRandomBytes(),
+		NotBefore:          time.Now(),
+		NotAfter:           time.Now(),
+		CAName:             "bad domain",
+		SignatureAlgorithm: common.SHA256,
+		TimeStamp:          time.Now(),
+		PRCSignature:       generateRandomBytes(),
+		CASignature:        generateRandomBytes(),
+		SPTs:               []common.SPT{*spt1, *spt2},
+	}
+
+	err := common.Json_WriteStrucToFile(rpc, "/Users/yongzhe/Desktop/fpki/output/rpc_test")
+	if err != nil {
+		t.Errorf(err.Error())
+		return
+	}
+
+	rpc1 := &common.RPC{}
+	err = common.Json_ReadRPCFromFile(rpc1, "/Users/yongzhe/Desktop/fpki/output/rpc_test")
+	if err != nil {
+		t.Errorf(err.Error())
+		return
+	}
+
+	if !rpc.Equal(rpc1) {
+		t.Errorf("Json error")
+		return
+	}
+
+}
+
 //------------------------------------------------------
 //           tests for crypto.go
 //------------------------------------------------------

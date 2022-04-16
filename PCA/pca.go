@@ -21,14 +21,18 @@ type PCA struct {
 
 	// suspicious SPTs
 	SuspeciousSPTs []*common.SPT
+
+	OutputPath string
 }
 
-func (pca *PCA) InitPCA(name, keyPath string) error {
+func (pca *PCA) InitPCA(name, keyPath, outputPath string) error {
 	pca.CAName = name
 	pca.ValidRPCsByDomains = make(map[string]*common.RPC)
 	pca.PresignedRPCByDomains = make(map[string]*common.RPC)
 	pca.NewRPCByDomains = make(map[string]*common.RPC)
 	pca.SuspeciousSPTs = []*common.SPT{}
+
+	pca.OutputPath = outputPath
 
 	keyPair, err := common.LoadRSAKeyPairFromFile(keyPath)
 	if err != nil {
@@ -64,6 +68,11 @@ func (pca *PCA) SignAndLogRCSR(rcsr *common.RCSR) error {
 
 	// send RPC to policy log; not implemented yet
 	pca.SendRPCToPolicyLog()
+
+	err = common.WriteStrucToFile(rpc, pca.OutputPath+"/rpc_test")
+	if err != nil {
+		return fmt.Errorf("LogRCSR | StoreStrucToFile | %s", err.Error())
+	}
 
 	return nil
 }

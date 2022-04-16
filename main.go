@@ -21,7 +21,7 @@ func main() {
 
 	// init PCA
 	pca := PCA.PCA{}
-	err = pca.InitPCA("testPCA", "/Users/yongzhe/Desktop/FPKI/cert/PCACert/server_key.pem")
+	err = pca.InitPCA("testPCA", "/Users/yongzhe/Desktop/FPKI/cert/PCACert/server_key.pem", "/Users/yongzhe/Desktop/fpki/output")
 	if err != nil {
 		fmt.Println(err)
 		return
