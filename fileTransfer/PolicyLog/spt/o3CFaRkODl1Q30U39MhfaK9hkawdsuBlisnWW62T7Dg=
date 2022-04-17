@@ -1,0 +1,14 @@
+{
+ "Version": 0,
+ "Subject": "",
+ "CAName": "",
+ "LogID": 0,
+ "CertType": 0,
+ "AddedTS": "0001-01-01T00:00:00Z",
+ "STH": "ewogIlRyZWVTaXplIjogMiwKICJSb290SGFzaCI6ICJuMWJTbzBmaW50T1FaSWxqQnluTy9ZR0UweG1NUmxvV0w4elNOSks4TmY0PSIsCiAiVGltZXN0YW1wTmFub3MiOiAxNjUwMjI5NDU2NTY5NTUzMDAwLAogIlJldmlzaW9uIjogMCwKICJNZXRhZGF0YSI6ICIiCn0=",
+ "PoI": [
+  "ewogImxlYWZfaW5kZXgiOiAxLAogImhhc2hlcyI6IFsKICAiN3ViWjNaQzB4ZnNvWU5wSmNXQ1JkVWpFNEhVQ0hBMGZ5dG5pZVE5ZVRDOD0iCiBdCn0="
+ ],
+ "STHSerialNumber": 0,
+ "Signature": null
+}

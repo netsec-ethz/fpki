@@ -6,5 +6,5 @@
  "maxRootDuration": 10,
  "maxReceiveMessageSize": 10000,
  "logAddress": "localhost:8090",
- "OutPutPath": "/Users/yongzhe/Desktop/fpki/output/trees"
+ "OutPutPath": "/Users/yongzhe/Desktop/fpki/fileTransfer/PolicyLog"
 }

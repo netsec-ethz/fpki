@@ -38,7 +38,7 @@ func Test_Equal(t *testing.T) {
 		CertType:        0x11,
 		AddedTS:         time.Now(),
 		STH:             generateRandomBytes(),
-		PoI:             generateRandomBytes(),
+		PoI:             generateRandomBytesArray(),
 		STHSerialNumber: 131678,
 		Signature:       generateRandomBytes(),
 	}
@@ -51,7 +51,7 @@ func Test_Equal(t *testing.T) {
 		CertType:        0x21,
 		AddedTS:         time.Now(),
 		STH:             generateRandomBytes(),
-		PoI:             generateRandomBytes(),
+		PoI:             generateRandomBytesArray(),
 		STHSerialNumber: 114378,
 		Signature:       generateRandomBytes(),
 	}
@@ -69,7 +69,7 @@ func Test_Equal(t *testing.T) {
 		CertType:        0x21,
 		AddedTS:         time.Now(),
 		STH:             generateRandomBytes(),
-		PoI:             generateRandomBytes(),
+		PoI:             generateRandomBytesArray(),
 		STHSerialNumber: 1729381,
 		Reason:          1729381,
 		Signature:       generateRandomBytes(),
@@ -111,7 +111,7 @@ func Test_Json_Read_Write(t *testing.T) {
 		CertType:        0x11,
 		AddedTS:         time.Now(),
 		STH:             generateRandomBytes(),
-		PoI:             generateRandomBytes(),
+		PoI:             generateRandomBytesArray(),
 		STHSerialNumber: 131678,
 		Signature:       generateRandomBytes(),
 	}
@@ -124,7 +124,7 @@ func Test_Json_Read_Write(t *testing.T) {
 		CertType:        0x21,
 		AddedTS:         time.Now(),
 		STH:             generateRandomBytes(),
-		PoI:             generateRandomBytes(),
+		PoI:             generateRandomBytesArray(),
 		STHSerialNumber: 114378,
 		Signature:       generateRandomBytes(),
 	}
@@ -318,4 +318,8 @@ func generateRandomBytes() []byte {
 	token := make([]byte, 40)
 	rand.Read(token)
 	return token
+}
+
+func generateRandomBytesArray() [][]byte {
+	return [][]byte{generateRandomBytes()}
 }

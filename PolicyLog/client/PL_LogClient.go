@@ -4,12 +4,15 @@ import (
 	"context"
 	"fmt"
 
+	common "common.FPKI.github.com"
+	base64 "encoding/base64"
 	"github.com/google/trillian"
 	"github.com/google/trillian/types"
 	"github.com/transparency-dev/merkle"
 	"github.com/transparency-dev/merkle/rfc6962"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"io/ioutil"
 	"time"
 )
 
@@ -26,6 +29,7 @@ type PL_LogClient struct {
 	config          *PL_LogClientConfig
 	treeId          int64
 	currentTreeSize int64
+	logRoot         *types.LogRootV1
 	//leafBatch       [][]byte
 	//batchLock       sync.Mutex
 }
@@ -109,6 +113,7 @@ func (c *PL_LogClient) UpdateTreeSize(ctx context.Context) error {
 	fmt.Println(logRoot.TreeSize)
 
 	c.currentTreeSize = int64(logRoot.TreeSize)
+	c.logRoot = logRoot
 	return nil
 }
 
@@ -212,6 +217,70 @@ func (c *PL_LogClient) AddLeaves(ctx context.Context, data [][]byte, withProof b
 
 	}
 	return nil, nil
+}
+
+func (c *PL_LogClient) QueueRPCs(ctx context.Context, fileNames []string) error {
+	data := [][]byte{}
+	for _, filaName := range fileNames {
+		filaPath := c.config.RPCPath + "/" + filaName
+		rpc := &common.RPC{}
+		err := common.Json_ReadRPCFromFile(rpc, filaPath)
+		if err != nil {
+			return fmt.Errorf("QueueRPCs(): %v", err)
+		}
+
+		bytes, err := common.Json_RPCBytesToBytes(rpc)
+		if err != nil {
+			return fmt.Errorf("QueueRPCs(): %v", err)
+		}
+
+		data = append(data, bytes)
+
+	}
+
+	proofMap, err := c.AddLeaves(ctx, data, true)
+	if err != nil {
+		return fmt.Errorf("QueueRPCs(): %v", err)
+	}
+
+	for k, v := range proofMap {
+
+		proofBytes := [][]byte{}
+		for _, proof := range v {
+			bytes, err := common.Json_ProofToBytes(proof)
+			if err != nil {
+				return fmt.Errorf("Json_WriteStrucToFile(): %v", err)
+			}
+			proofBytes = append(proofBytes, bytes)
+		}
+
+		sth, err := common.Json_LogRootToBytes(c.logRoot)
+		if err != nil {
+			return fmt.Errorf("Json_WriteStrucToFile(): %v", err)
+		}
+
+		spt := &common.SPT{
+			PoI: proofBytes,
+			STH: sth,
+		}
+
+		sptBytes, err := common.Json_SPTToBytes(spt)
+		if err != nil {
+			return fmt.Errorf("Json_WriteStrucToFile(): %v", err)
+		}
+
+		rpcHash := c.hasher.HashLeaf([]byte(k))
+		fileName := base64.URLEncoding.EncodeToString(rpcHash)
+
+		err = ioutil.WriteFile(c.config.OutPutPath+"/"+fileName, sptBytes, 0644)
+		if err != nil {
+			return err
+		}
+	}
+
+	err = common.Json_WriteStrucToFile(c.logRoot, c.config.OutPutPath+"/logRoot/logRoot")
+	return nil
+
 }
 
 // ------------------------------------------------------------------------------------------

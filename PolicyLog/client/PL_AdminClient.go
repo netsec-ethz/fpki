@@ -96,7 +96,7 @@ func (client PL_AdminClient) writeTreeToFile(tree *trillian.Tree) error {
 		return err
 	}
 
-	err = ioutil.WriteFile(client.config.OutPutPath+"/"+strconv.FormatInt(tree.TreeId, 10), file, 0644)
+	err = ioutil.WriteFile(client.config.OutPutPath+"/treesConfig/"+strconv.FormatInt(tree.TreeId, 10), file, 0644)
 	if err != nil {
 		return err
 	}
@@ -105,7 +105,7 @@ func (client PL_AdminClient) writeTreeToFile(tree *trillian.Tree) error {
 
 func (client PL_AdminClient) loadTreeFromFile(treeID int64) (*trillian.Tree, error) {
 	tree := &trillian.Tree{}
-	treeFilePath := client.config.OutPutPath + "/" + strconv.FormatInt(treeID, 10)
+	treeFilePath := client.config.OutPutPath + "/treesConfig/" + strconv.FormatInt(treeID, 10)
 
 	file, err := ioutil.ReadFile(treeFilePath)
 	if err != nil {
