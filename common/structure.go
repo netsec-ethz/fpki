@@ -2,6 +2,7 @@ package common
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/gob"
 	"fmt"
 	"time"
@@ -48,7 +49,7 @@ type SPT struct {
 	CertType        uint8     `json:"CertType",omitempty`
 	AddedTS         time.Time `json:"AddedTS",omitempty`
 	STH             []byte    `json:"STH",omitempty`
-	PoI             []byte    `json:"PoI",omitempty`
+	PoI             [][]byte  `json:"PoI",omitempty`
 	STHSerialNumber int       `json:"STHSerialNumber",omitempty`
 	Signature       []byte    `json:"Signature",omitempty`
 }
@@ -62,7 +63,7 @@ type SPRT struct {
 	CertType        uint8     `json:"CertType",omitempty`
 	AddedTS         time.Time `json:"AddedTS",omitempty`
 	STH             []byte    `json:"STH",omitempty`
-	PoI             []byte    `json:"PoI",omitempty`
+	PoI             [][]byte  `json:"PoI",omitempty`
 	STHSerialNumber int       `json:"STHSerialNumber",omitempty`
 	Reason          int       `json:"STHSeriReasonalNumber",omitempty`
 	Signature       []byte    `json:"Signature",omitempty`
@@ -119,9 +120,17 @@ func (spt *SPT) Equal(spt_ *SPT) bool {
 		spt.CertType == spt_.CertType &&
 		spt.AddedTS.Equal(spt_.AddedTS) &&
 		bytes.Compare(spt.STH, spt_.STH) == 0 &&
-		bytes.Compare(spt.PoI, spt_.PoI) == 0 &&
 		spt.STHSerialNumber == spt_.STHSerialNumber &&
 		bytes.Compare(spt.Signature, spt_.Signature) == 0 {
+
+		if len(spt.PoI) != len(spt_.PoI) {
+			return false
+		}
+		for i, poi := range spt.PoI {
+			if bytes.Compare(poi, spt_.PoI[i]) != 0 {
+				return false
+			}
+		}
 
 		return true
 	}
@@ -136,10 +145,17 @@ func (sprt *SPRT) Equal(sprt_ *SPRT) bool {
 		sprt.CertType == sprt_.CertType &&
 		sprt.AddedTS.Equal(sprt_.AddedTS) &&
 		bytes.Compare(sprt.STH, sprt_.STH) == 0 &&
-		bytes.Compare(sprt.PoI, sprt_.PoI) == 0 &&
 		sprt.STHSerialNumber == sprt_.STHSerialNumber &&
 		sprt.Reason == sprt_.Reason &&
 		bytes.Compare(sprt.Signature, sprt_.Signature) == 0 {
+		if len(sprt.PoI) != len(sprt_.PoI) {
+			return false
+		}
+		for i, poi := range sprt.PoI {
+			if bytes.Compare(poi, sprt_.PoI[i]) != 0 {
+				return false
+			}
+		}
 
 		return true
 	}
@@ -159,6 +175,14 @@ func SerialiseStruc(struc interface{}) ([]byte, error) {
 	}
 
 	return bytesBuffer.Bytes(), nil
+}
+
+func HashStruc(struc interface{}) ([32]byte, error) {
+	serialisedBytes, err := SerialiseStruc(struc)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	return sha256.Sum256(serialisedBytes), nil
 }
 
 func DeserialiseRCSR(input []byte) (*RCSR, error) {

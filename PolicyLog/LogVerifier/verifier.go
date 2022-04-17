@@ -1,6 +1,7 @@
 package PL_LogVerifier
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -24,6 +25,20 @@ func NewLogVerifier(hasher merkle.LogHasher) *LogVerifier {
 		hasher: hasher,
 		v:      merkle.NewLogVerifier(hasher),
 	}
+}
+
+func (logVerifier *LogVerifier) HashLeaf(input []byte) []byte {
+	return logVerifier.hasher.HashLeaf(input)
+}
+
+func (logVerifier *LogVerifier) DeserialiseLogRoot(input []byte) (*types.LogRootV1, error) {
+	logRoot := &types.LogRootV1{}
+	err := json.Unmarshal(input, logRoot)
+	if err != nil {
+		return nil, err
+	}
+
+	return logRoot, nil
 }
 
 // This function verify the leaf using an old log root(tree head)

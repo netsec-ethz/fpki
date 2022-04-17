@@ -1,0 +1,18 @@
+{
+ "tree_id": 4659002889395584545,
+ "tree_state": 1,
+ "tree_type": 1,
+ "display_name": "policy_log",
+ "description": "tree for policy log",
+ "max_root_duration": {
+  "seconds": 10
+ },
+ "create_time": {
+  "seconds": 1650226202,
+  "nanos": 438000000
+ },
+ "update_time": {
+  "seconds": 1650226202,
+  "nanos": 438000000
+ }
+}

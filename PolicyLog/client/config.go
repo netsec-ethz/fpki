@@ -61,12 +61,16 @@ type PL_LogClientConfig struct {
 	TreeId                int64  `json:"TreeId",omitempty`
 	RPCAddress            string `json:"RPCAddress",omitempty`
 	MaxReceiveMessageSize int    `json:"MaxReceiveMessageSize",omitempty`
+	OutPutPath            string `json:"OutPutPath",omitempty`
+	RPCPath               string `json:"RPCPath",omitempty`
 }
 
 func (config *PL_LogClientConfig) Equal(config_ *PL_LogClientConfig) bool {
 	if config.RPCAddress == config_.RPCAddress &&
 		config.TreeId == config_.TreeId &&
-		config.MaxReceiveMessageSize == config_.MaxReceiveMessageSize {
+		config.MaxReceiveMessageSize == config_.MaxReceiveMessageSize &&
+		config.OutPutPath == config_.OutPutPath &&
+		config.RPCPath == config_.RPCPath {
 		return true
 	}
 	return false
