@@ -1,4 +1,4 @@
-package common
+package types
 
 import (
 	"encoding/json"
@@ -7,7 +7,8 @@ import (
 	"io/ioutil"
 )
 
-func Json_WriteStrucToFile(struc interface{}, filePath string) error {
+// Not sure whether reflection is needed
+func Json_StrucToFile(struc interface{}, filePath string) error {
 	file, err := json.MarshalIndent(struc, "", " ")
 	if err != nil {
 		return err
@@ -20,18 +21,8 @@ func Json_WriteStrucToFile(struc interface{}, filePath string) error {
 	return nil
 }
 
-func Json_RPCBytesToBytes(rpc *RPC) ([]byte, error) {
-	bytes, err := json.MarshalIndent(rpc, "", " ")
-	return bytes, err
-}
-
-func Json_ProofToBytes(proof *trillian.Proof) ([]byte, error) {
-	bytes, err := json.MarshalIndent(proof, "", " ")
-	return bytes, err
-}
-
-func Json_SPTToBytes(spt *SPT) ([]byte, error) {
-	bytes, err := json.MarshalIndent(spt, "", " ")
+func Json_StrucToBytes(struc interface{}) ([]byte, error) {
+	bytes, err := json.MarshalIndent(rcsr, "", " ")
 	return bytes, err
 }
 
@@ -56,12 +47,11 @@ func Json_BytesToSPT(sptBytes []byte) (*SPT, error) {
 	return result, nil
 }
 
-func Json_LogRootToBytes(sth *types.LogRootV1) ([]byte, error) {
-	bytes, err := json.MarshalIndent(sth, "", " ")
-	return bytes, err
-}
+//------------------------------------------------------------------------
+//                             read from file
+//------------------------------------------------------------------------
 
-func Json_ReadRPCFromFile(struc *RPC, filePath string) error {
+func Json_FileToRPC(struc *RPC, filePath string) error {
 	file, err := ioutil.ReadFile(filePath)
 	if err != nil {
 		return err
@@ -75,7 +65,7 @@ func Json_ReadRPCFromFile(struc *RPC, filePath string) error {
 	return nil
 }
 
-func Json_ReadSPTFromFile(struc *SPT, filePath string) error {
+func Json_FileToSPT(struc *SPT, filePath string) error {
 	file, err := ioutil.ReadFile(filePath)
 	if err != nil {
 		return err
