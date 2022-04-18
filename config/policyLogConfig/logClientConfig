@@ -1,7 +1,0 @@
-{
- "TreeId": 55555555555,
- "RPCAddress": "localhost:8090",
- "MaxReceiveMessageSize": 10000,
- "OutPutPath": "/Users/yongzhe/Desktop/fpki/fileTransfer/PolicyLog/spt",
- "RPCPath": "/Users/yongzhe/Desktop/fpki/fileTransfer/PCA/RPC"
-}
