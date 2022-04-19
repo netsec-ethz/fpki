@@ -1,0 +1,16 @@
+For 1000 leaves
+
+queue leaves succeed!
+927.945505ms
+fetch proofs succeed!
+1.064704998s
+
+AVG: 0.9 ms for adding, 1 ms for querying the proof
+
+
+Every second 500          leaves
+Every minute 30000        leaves
+Every hour   1.8 million  leaves
+
+
+There are 367 millions domains in total.

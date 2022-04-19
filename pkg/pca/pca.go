@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/google/trillian"
-	"io/ioutil"
 	"log"
 	logverifier "logverifier.FPKI.github.com"
 	"strconv"
@@ -18,14 +17,17 @@ import (
 //       SuspeciousSPTs
 //       Let domain owner sends the previous RPC (PCA needs to store the RPC anyway, right? If domain owner loses the RPC, PCA can return the missing RPC)
 //       More complete logic
+
 type PCA struct {
-	caName     string
+	caName string
+
+	// pca's signing rsa key pair; used to sign rcsr -> rpc
 	rsaKeyPair *rsa.PrivateKey
 
 	// store valid RPC (with SPT) in memory; Later replaced by data base
 	validRPCsByDomains map[string]*common.RPC
 
-	// RPC whitout SPT
+	// RPC whitout SPT; pre-certificate
 	preRPCByDomains map[string]*common.RPC
 
 	// PCA's output path; sends RPC
@@ -43,6 +45,7 @@ type PCA struct {
 
 func NewPCA(configPath string) (*PCA, error) {
 	pca := &PCA{}
+
 	// read config file
 	config := &PCAConfig{}
 	err := ReadConfigFromFile(config, configPath)
@@ -59,6 +62,7 @@ func NewPCA(configPath string) (*PCA, error) {
 	if err != nil {
 		return nil, fmt.Errorf("NewPCA | LoadRSAKeyPairFromFile | %s", err.Error())
 	}
+	pca.rsaKeyPair = keyPair
 
 	pca.validRPCsByDomains = make(map[string]*common.RPC)
 	pca.preRPCByDomains = make(map[string]*common.RPC)
@@ -66,13 +70,12 @@ func NewPCA(configPath string) (*PCA, error) {
 	pca.serialNumber = 0
 	pca.logVerifier = logverifier.NewLogVerifier(nil)
 
-	pca.rsaKeyPair = keyPair
-
 	return pca, nil
 }
 
+// sign the rcsr and generate a rpc -> store the rpc to the "fileExchange" folder; policy log will fetch rpc from the folder
 func (pca *PCA) SignAndLogRCSR(rcsr *common.RCSR) error {
-	// verify the signature in the rcsr; check if the pub key is correct
+	// verify the signature in the rcsr; check if the domain's pub key is correct
 	err := common.RCSR_VerifySignature(rcsr)
 	if err != nil {
 		return fmt.Errorf("SignAndLogRCSR | RCSR_VerifySignature | %s", err.Error())
@@ -101,22 +104,17 @@ func (pca *PCA) SignAndLogRCSR(rcsr *common.RCSR) error {
 	pca.preRPCByDomains[rpc.Subject] = rpc
 
 	// send RPC to policy log
-	err = pca.SendRPCToPolicyLog(rpc, strconv.Itoa(pca.getSerialNumber()))
+	err = pca.sendRPCToPolicyLog(rpc, strconv.Itoa(pca.getSerialNumber()))
 
 	if err != nil {
-		return fmt.Errorf("SignAndLogRCSR | SendRPCToPolicyLog | %s", err.Error())
+		return fmt.Errorf("SignAndLogRCSR | sendRPCToPolicyLog | %s", err.Error())
 	}
 
 	return nil
 }
 
-// save file to output dir
-func (pca *PCA) SendRPCToPolicyLog(rpc *common.RPC, fileName string) error {
-	return common.Json_StrucToFile(rpc, pca.outputPath+"/RPC/"+fileName)
-}
-
 // When policy log returns SPT, this func will be called
-// this func will read the SPTs from the file, and precess them
+// this func will read the SPTs from the file, and process them
 func (pca *PCA) ReceiveSPTFromPolicyLog() error {
 	for k, v := range pca.preRPCByDomains {
 		rpcBytes, err := common.Json_StrucToBytes(v)
@@ -127,19 +125,14 @@ func (pca *PCA) ReceiveSPTFromPolicyLog() error {
 		// hash the rpc
 		rpcHash := pca.logVerifier.HashLeaf([]byte(rpcBytes))
 
-		// base64 url encode the hashed value, and this will be the file name
+		// base64 url encode the hashed value, and this will be the file name of SPT
 		fileName := base64.URLEncoding.EncodeToString(rpcHash)
 
 		// read the corresponding spt
-		sptBytes, err := ioutil.ReadFile(pca.policyLogOutputPath + "/spt/" + fileName)
+		spt := &common.SPT{}
+		err = common.Json_FileToSPT(spt, pca.policyLogOutputPath+"/spt/"+fileName)
 		if err != nil {
-			log.Printf("No SPT for domain: %s\n yet", k)
-			continue
-		}
-
-		spt, err := common.Json_BytesToSPT(sptBytes)
-		if err != nil {
-			return fmt.Errorf("ReceiveSPTFromPolicyLog | Json_BytesToSPT | %s", err.Error())
+			return fmt.Errorf("ReceiveSPTFromPolicyLog | Json_FileToRPC | %s", err.Error())
 		}
 
 		// verify the PoI, STH
@@ -147,16 +140,27 @@ func (pca *PCA) ReceiveSPTFromPolicyLog() error {
 		if err == nil {
 			log.Printf("Get a new SPT for domain: %s\n", k)
 			v.SPTs = []common.SPT{*spt}
+
+			// move the rpc from pre-rpc to valid-rpc
 			delete(pca.preRPCByDomains, k)
 			pca.validRPCsByDomains[k] = v
+
 		} else {
 			log.Printf("fail to verify")
-			// TODO: change this to soft-fail; for testing, we use hard-fail here
+			// TODO: change this to soft-fail, or add it the spicious SPT; for testing, we use hard-fail here
 			return fmt.Errorf("Fail to verify one SPT")
 		}
 	}
-
 	return nil
+}
+
+// return the new RPC with SPT
+func (pca *PCA) GetValidRPCByDomain(domainName string) (*common.RPC, error) {
+	if rpc, found := pca.validRPCsByDomains[domainName]; found {
+		return rpc, nil
+	} else {
+		return nil, errors.New("no valid RPC")
+	}
 }
 
 // verify the SPT of the RPC.
@@ -179,26 +183,12 @@ func (pca *PCA) verifySPT(spt *common.SPT, rpc *common.RPC) error {
 	leafHash := pca.logVerifier.HashLeaf(rpcBytes)
 
 	// get LogRootV1
-	logRoot, err := pca.logVerifier.DeserialiseLogRoot(spt.STH)
+	logRoot, err := common.Json_BytesToLogRoot(spt.STH)
 
+	// verify the PoI
 	err = pca.logVerifier.VerifyInclusionByHash(logRoot, leafHash, proofs)
 	return err
 }
-
-// return the new RPC with SPT
-func (pca *PCA) GetValidRPCByDomain(domainName string) (*common.RPC, error) {
-	if rpc, found := pca.validRPCsByDomains[domainName]; found {
-		return rpc, nil
-	} else {
-		return nil, errors.New("no valid RPC")
-	}
-}
-
-/*
-func (pca *PCA) RecordSuspectSPT(spt *common.SPT) {
-	pca.SuspeciousSPTs = append(pca.SuspeciousSPTs, spt)
-}
-*/
 
 // TODO: modify this to make sure unique SN
 func (pca *PCA) getSerialNumber() int {
@@ -228,4 +218,9 @@ func (pca *PCA) checkRPCSignature(rcsr *common.RCSR) bool {
 	} else {
 		return false
 	}
+}
+
+// save file to output dir
+func (pca *PCA) sendRPCToPolicyLog(rpc *common.RPC, fileName string) error {
+	return common.Json_StrucToFile(rpc, pca.outputPath+"/RPC/"+fileName)
 }

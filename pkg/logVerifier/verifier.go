@@ -1,7 +1,6 @@
 package logVerifier
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/google/trillian"
@@ -10,6 +9,7 @@ import (
 	"github.com/transparency-dev/merkle/rfc6962"
 )
 
+// verifier is used to verify the proof from log
 type LogVerifier struct {
 	hasher merkle.LogHasher
 	v      merkle.LogVerifier
@@ -26,24 +26,21 @@ func NewLogVerifier(hasher merkle.LogHasher) *LogVerifier {
 	}
 }
 
+// hash the input
 func (logVerifier *LogVerifier) HashLeaf(input []byte) []byte {
 	return logVerifier.hasher.HashLeaf(input)
 }
 
-func (logVerifier *LogVerifier) DeserialiseLogRoot(input []byte) (*types.LogRootV1, error) {
-	logRoot := &types.LogRootV1{}
-	err := json.Unmarshal(input, logRoot)
-	if err != nil {
-		return nil, err
-	}
-
-	return logRoot, nil
-}
-
 // This function verify the leaf using an old log root(tree head)
 // Logic: Verify the leaf using old log root -> verify the old root using the newest root
+func (c *LogVerifier) VerifyInclusion_WithPrevLogRoot(trusted *types.LogRootV1, newRoot *types.LogRootV1, consistency [][]byte, leafHash []byte, proof []*trillian.Proof) error {
+	if trusted == nil {
+		return fmt.Errorf("VerifyInclusion_WithPrevLogRoot() error: trusted == nil")
+	}
+	if newRoot == nil {
+		return fmt.Errorf("VerifyInclusion_WithPrevLogRoot() error: newRoot == nil")
+	}
 
-func (c *LogVerifier) VerifyInclusionByBatch_WithPrevLogRoot(trusted *types.LogRootV1, newRoot *types.LogRootV1, consistency [][]byte, leafHash []byte, proof []*trillian.Proof) error {
 	err := c.VerifyInclusionByHash(trusted, leafHash, proof)
 	if err != nil {
 		return err
@@ -55,7 +52,7 @@ func (c *LogVerifier) VerifyInclusionByBatch_WithPrevLogRoot(trusted *types.LogR
 }
 
 // VerifyRoot verifies that newRoot is a valid append-only operation from
-// trusted. If trusted.TreeSize is zero, a consistency proof is not needed.
+// trusted root. If trusted.TreeSize is zero, a consistency proof is not needed.
 func (c *LogVerifier) VerifyRoot(trusted *types.LogRootV1, newRoot *types.LogRootV1, consistency [][]byte) (*types.LogRootV1, error) {
 	if trusted == nil {
 		return nil, fmt.Errorf("VerifyRoot() error: trusted == nil")

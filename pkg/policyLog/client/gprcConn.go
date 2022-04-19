@@ -24,6 +24,5 @@ func GetGRPCConn(maxReceiveMessageSize int, logAddress string) (*grpc.ClientConn
 	if err != nil {
 		return nil, fmt.Errorf("GetGRPCConn | Dial | %s", err.Error())
 	}
-
 	return conn, nil
 }

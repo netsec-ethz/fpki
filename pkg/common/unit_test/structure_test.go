@@ -2,6 +2,7 @@ package main
 
 import (
 	common "common.FPKI.github.com"
+	"crypto/rand"
 	"testing"
 	"time"
 )
@@ -9,6 +10,8 @@ import (
 //------------------------------------------------------
 //           tests for structure.go
 //------------------------------------------------------
+
+// Equal funcs for every structure
 func Test_Equal(t *testing.T) {
 
 	rcsr := &common.RCSR{
@@ -96,9 +99,9 @@ func Test_Equal(t *testing.T) {
 		t.Errorf("RPC Equal() error")
 		return
 	}
-
 }
 
+// RPC -> file -> RPC
 func Test_Json_Read_Write(t *testing.T) {
 	spt1 := &common.SPT{
 		Version:         12313,
@@ -159,5 +162,17 @@ func Test_Json_Read_Write(t *testing.T) {
 		t.Errorf("Json error")
 		return
 	}
+}
 
+//-------------------------------------------------------------
+//                    funcs for testing
+//-------------------------------------------------------------
+func generateRandomBytes() []byte {
+	token := make([]byte, 40)
+	rand.Read(token)
+	return token
+}
+
+func generateRandomBytesArray() [][]byte {
+	return [][]byte{generateRandomBytes()}
 }

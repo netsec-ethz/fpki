@@ -2,9 +2,6 @@ package common
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/gob"
-	"fmt"
 	"time"
 )
 
@@ -160,60 +157,4 @@ func (sprt *SPRT) Equal(sprt_ *SPRT) bool {
 		return true
 	}
 	return false
-}
-
-//----------------------------------------------------------------
-//          Serialisation and Deserialisation
-//----------------------------------------------------------------
-
-func SerialiseStruc(struc interface{}) ([]byte, error) {
-	var bytesBuffer bytes.Buffer
-	encoder := gob.NewEncoder(&bytesBuffer)
-	err := encoder.Encode(struc)
-	if err != nil {
-		return []byte{}, fmt.Errorf("SerialiseStruc | Encode | %s", err.Error())
-	}
-
-	return bytesBuffer.Bytes(), nil
-}
-
-func HashStruc(struc interface{}) ([32]byte, error) {
-	serialisedBytes, err := SerialiseStruc(struc)
-	if err != nil {
-		return [32]byte{}, err
-	}
-	return sha256.Sum256(serialisedBytes), nil
-}
-
-func DeserialiseRCSR(input []byte) (*RCSR, error) {
-	result := &RCSR{}
-	decoder := gob.NewDecoder(bytes.NewBuffer(input))
-	err := decoder.Decode(result)
-	if err != nil {
-		return result, fmt.Errorf("DeserialiseRCSR | Decode | %s", err.Error())
-	}
-
-	return result, nil
-}
-
-func DeserialiseRPC(input []byte) (*RPC, error) {
-	result := &RPC{}
-	decoder := gob.NewDecoder(bytes.NewBuffer(input))
-	err := decoder.Decode(result)
-	if err != nil {
-		return result, fmt.Errorf("DeserialiseRPC | Decode | %s", err.Error())
-	}
-
-	return result, nil
-}
-
-func DeserialiseSPT(input []byte) (*SPT, error) {
-	result := &SPT{}
-	decoder := gob.NewDecoder(bytes.NewBuffer(input))
-	err := decoder.Decode(result)
-	if err != nil {
-		return result, fmt.Errorf("DeserialiseSPT | Decode | %s", err.Error())
-	}
-
-	return result, nil
 }

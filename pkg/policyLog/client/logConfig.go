@@ -6,7 +6,11 @@ import (
 )
 
 type PL_LogClientConfig struct {
-	TreeId                int64  `json:"TreeId",omitempty`
+	// target tree ID
+	// for log client, normally there will only be one tree
+	TreeId int64 `json:"TreeId",omitempty`
+
+	// address of the rpc server
 	RPCAddress            string `json:"RPCAddress",omitempty`
 	MaxReceiveMessageSize int    `json:"MaxReceiveMessageSize",omitempty`
 
@@ -15,6 +19,9 @@ type PL_LogClientConfig struct {
 
 	// path to read pre-RPC from PCA
 	RPCPath string `json:"RPCPath",omitempty`
+
+	// number of workers
+	NumOfWorker int `json:"NumOfWorker",omitempty`
 }
 
 func (config *PL_LogClientConfig) Equal(config_ *PL_LogClientConfig) bool {
@@ -22,7 +29,8 @@ func (config *PL_LogClientConfig) Equal(config_ *PL_LogClientConfig) bool {
 		config.TreeId == config_.TreeId &&
 		config.MaxReceiveMessageSize == config_.MaxReceiveMessageSize &&
 		config.OutPutPath == config_.OutPutPath &&
-		config.RPCPath == config_.RPCPath {
+		config.RPCPath == config_.RPCPath &&
+		config.NumOfWorker == config_.NumOfWorker {
 		return true
 	}
 	return false

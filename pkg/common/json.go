@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 )
 
+// marshall structure to bytes, and store them in a file
 func Json_StrucToFile(struc interface{}, filePath string) error {
 	bytes, err := Json_StrucToBytes(struc)
 	if err != nil {
@@ -21,6 +22,7 @@ func Json_StrucToFile(struc interface{}, filePath string) error {
 	return nil
 }
 
+// check data type; type cast might not be necessary (?)
 func Json_StrucToBytes(struc interface{}) ([]byte, error) {
 	switch struc.(type) {
 	case *RCSR:
@@ -36,7 +38,7 @@ func Json_StrucToBytes(struc interface{}) ([]byte, error) {
 	case *types.LogRootV1:
 		break
 	default:
-		return nil, fmt.Errorf("Not supported")
+		return nil, fmt.Errorf("Structure not supported yet!")
 	}
 
 	bytes, err := json.MarshalIndent(struc, "", " ")
