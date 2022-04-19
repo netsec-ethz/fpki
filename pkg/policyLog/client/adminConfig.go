@@ -19,8 +19,10 @@ type AdminClientConfig struct {
 	// Interval after which a new signed root is produced despite no submissions; zero means never
 	MaxRootDuration int `json:"maxRootDuration",omitempty`
 
-	MaxReceiveMessageSize int    `json:"maxReceiveMessageSize",omitempty`
-	LogAddress            string `json:"logAddress",omitempty`
+	MaxReceiveMessageSize int `json:"maxReceiveMessageSize",omitempty`
+
+	// address of the log server
+	LogAddress string `json:"logAddress",omitempty`
 
 	// path to store the output from admin client (now support tree config)
 	OutPutPath string `json:"OutPutPath",omitempty`
@@ -59,6 +61,5 @@ func ReadAdminClientConfigFromFile(config *AdminClientConfig, filePath string) e
 	if err != nil {
 		return err
 	}
-
 	return nil
 }

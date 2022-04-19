@@ -11,6 +11,7 @@ import (
 //           tests for crypto.go
 //------------------------------------------------------
 
+// Generate RCSR -> generate signature for RCSR -> verify signature
 func Test_Signature_Of_RCSR(t *testing.T) {
 	privKey, err := common.LoadRSAKeyPairFromFile("/Users/yongzhe/Desktop/fpki/pkg/common/unit_test/unit_test_cert/client_key.pem")
 	if err != nil {
@@ -125,6 +126,9 @@ func Test_Issuance_Of_RPC(t *testing.T) {
 	}
 }
 
+//-------------------------------------------------------------
+//                    funcs for testing
+//-------------------------------------------------------------
 func generateRandomBytes() []byte {
 	token := make([]byte, 40)
 	rand.Read(token)

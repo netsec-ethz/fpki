@@ -23,10 +23,13 @@ const (
     RSA PublicKeyAlgorithm = iota
 )
 
+// Common: All serialisations use the json lib.
+
 // ----------------------------------------------------------------------------------
 //                                    common part
 // ----------------------------------------------------------------------------------
 
+// generate a signature using SHA256 and RSA
 func SignStruc_RSA_SHA256(struc interface{}, privKey *rsa.PrivateKey) ([]byte, error) {
     bytes, err := Json_StrucToBytes(struc)
     if err != nil {
@@ -47,7 +50,7 @@ func SignStruc_RSA_SHA256(struc interface{}, privKey *rsa.PrivateKey) ([]byte, e
 //                               functions on RCSR
 // ----------------------------------------------------------------------------------
 
-//called by domain owner
+// Generate a signature, and fill the signature in the RCSR
 func RCSR_CreateSignature(domainOwnerPrivKey *rsa.PrivateKey, rcsr *RCSR) error {
     // clear signature; normally should be
     rcsr.Signature = []byte{}
@@ -61,7 +64,9 @@ func RCSR_CreateSignature(domainOwnerPrivKey *rsa.PrivateKey, rcsr *RCSR) error 
     return nil
 }
 
+// Generate RPC signature and fill it in the RCSR; (in paper, if new rcsr has the signature from previous rpc, the cool-off can be bypassed)
 func RCSR_GenerateRPCSignature(rcsr *RCSR, prevPrivKeyOfPRC *rsa.PrivateKey) error {
+    // clear the co-responding fields
     rcsr.Signature = []byte{}
     rcsr.PRCSignature = []byte{}
 
@@ -93,6 +98,7 @@ func RCSR_VerifySignature(rcsr *RCSR) error {
         return fmt.Errorf("VerifyRCSR | SerialiseStruc | %s", err.Error())
     }
 
+    // get the pub key
     pubKey, err := PemBytesToRsaPublicKey(rcsr.PublicKey)
     if err != nil {
         return fmt.Errorf("VerifyRCSR | PemBytesToRsaPublicKey | %s", err.Error())
@@ -104,7 +110,7 @@ func RCSR_VerifySignature(rcsr *RCSR) error {
     return err
 }
 
-// verify the RCSR using RPC
+// verify the RCSR using RPC; verify the RPC signature
 func RCSR_VerifyRPCSIgnature(rcsr *RCSR, rpc *RPC) error {
     // deep copy
     rcsrCopy := &RCSR{
@@ -136,7 +142,7 @@ func RCSR_VerifyRPCSIgnature(rcsr *RCSR, rpc *RPC) error {
     return err
 }
 
-// called by PCA. Sign the RCSR and generate RPC; SPT field is empty
+// called by PCA. Sign the RCSR and generate RPC; SPT field is (should be) empty
 func RCSR_GenerateRPC(rcsr *RCSR, notBefore time.Time, serialNumber int, caPrivKey *rsa.PrivateKey, caName string) (*RPC, error) {
     rpc := &RPC{
         Subject:            rcsr.Subject,

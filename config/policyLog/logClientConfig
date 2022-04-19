@@ -3,5 +3,6 @@
  "RPCAddress": "localhost:8090",
  "MaxReceiveMessageSize": 10000,
  "OutPutPath": "/Users/yongzhe/Desktop/fpki/fileExchange/policylog",
- "RPCPath": "/Users/yongzhe/Desktop/fpki/fileExchange/pcaOutput/RPC"
+ "RPCPath": "/Users/yongzhe/Desktop/fpki/fileExchange/pcaOutput/RPC",
+ "NumOfWorker": 15
 }

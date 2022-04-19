@@ -81,12 +81,14 @@ func Test_PCA_PolocyLog(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*time.Duration(100))
 	defer cancel()
 
+	// queue RPC
 	err = logClient.QueueRPCs(ctx, []string{"1", "2"})
 	if err != nil {
 		t.Errorf(err.Error())
 		return
 	}
 
+	// read SPT and verify
 	err = pca.ReceiveSPTFromPolicyLog()
 	if err != nil {
 		t.Errorf(err.Error())

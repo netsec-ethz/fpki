@@ -11,6 +11,9 @@ import (
 //           tests for cert.go
 //------------------------------------------------------
 
+// TODO: more unit tests
+
+// public key -> bytes -> public key
 func Test_Enc_And_Dec_Of_PubKey(t *testing.T) {
 	privateKeyPair, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {

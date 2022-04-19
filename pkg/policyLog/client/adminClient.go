@@ -13,8 +13,10 @@ import (
 	"time"
 )
 
-// TODO: termination of conn
+// admin client is mainly used for managing trees;
+// For example, create tree, list trees or delete tree
 
+// TODO: termination of conn
 type PL_AdminClient struct {
 	client     trillian.TrillianAdminClient
 	config     *AdminClientConfig
@@ -22,7 +24,9 @@ type PL_AdminClient struct {
 	conn       *grpc.ClientConn
 }
 
+// get a new admin client
 func PL_GetAdminClient(configPath string) (*PL_AdminClient, error) {
+	// read the config file
 	config := &AdminClientConfig{}
 	err := ReadAdminClientConfigFromFile(config, configPath)
 	if err != nil {
@@ -68,15 +72,17 @@ func (client PL_AdminClient) CreateNewTree() (*trillian.Tree, error) {
 
 	req := client.generateCreateTreeReq()
 
+	// new log client, used to init the tree
 	logClient := trillian.NewTrillianLogClient(client.conn)
 
+	// init the tree
 	tree, err := trillianClient.CreateAndInitTree(ctx, req, client.client, logClient)
 	if err != nil {
 		return nil, fmt.Errorf("CreateNewTree | CreateAndInitTree | %s", err.Error())
 	}
 
+	// write tree info to files.
 	err = client.writeTreeToFile(tree)
-
 	return tree, nil
 }
 

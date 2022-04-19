@@ -7,9 +7,15 @@ import (
 
 // configuration of the pca
 type PCAConfig struct {
-	CAName              string `json:"CAName",omitempty`
-	KeyPath             string `json:"KeyPath",omitempty`
-	OutputPath          string `json:"OutputPath",omitempty`
+	CAName string `json:"CAName",omitempty`
+
+	// path to store the pca's key
+	KeyPath string `json:"KeyPath",omitempty`
+
+	// PCA's output path; sends RPC
+	OutputPath string `json:"OutputPath",omitempty`
+
+	// policy log's output path; receives SPT
 	PolicyLogOutputPath string `json:"PolicyLogOutputPath",omitempty`
 }
 
@@ -32,6 +38,5 @@ func ReadConfigFromFile(config *PCAConfig, configPath string) error {
 	if err != nil {
 		return err
 	}
-
 	return nil
 }

@@ -54,6 +54,9 @@ func PL_CreateLogSigner(configPath string) {
 		return
 	}
 
+	fmt.Println("Batch size: ", logConfig.BatchSizeFlag)
+	fmt.Println("Sequencer Interval In Mill Sec: ", logConfig.SequencerIntervalFlagInMillSec)
+
 	glog.CopyStandardLogTo("WARNING")
 	glog.Info("**** Log Signer Starting ****")
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	common "common.FPKI.github.com"
+	"crypto/rand"
 	"testing"
 	"time"
 )
@@ -10,6 +11,7 @@ import (
 //           tests for json.go
 //------------------------------------------------------
 
+// SPT -> bytes -> SPT
 func Test_Encode_And_Decode_Of_SPT(t *testing.T) {
 
 	test := &common.SPT{
@@ -38,11 +40,11 @@ func Test_Encode_And_Decode_Of_SPT(t *testing.T) {
 	}
 
 	if !deserlialisedSPT.Equal(test) {
-
 		t.Errorf("SPT serialise and deserialise error.")
 	}
 }
 
+// RPC -> bytes -> RPC
 func Test_Encode_And_Decode_Of_RPC(t *testing.T) {
 	spt1 := &common.SPT{
 		Version:         12313,
@@ -99,7 +101,19 @@ func Test_Encode_And_Decode_Of_RPC(t *testing.T) {
 	}
 
 	if !deserlialisedRPC.Equal(test) {
-
 		t.Errorf("RPC serialise and deserialise error.")
 	}
+}
+
+//-------------------------------------------------------------
+//                    funcs for testing
+//-------------------------------------------------------------
+func generateRandomBytes() []byte {
+	token := make([]byte, 40)
+	rand.Read(token)
+	return token
+}
+
+func generateRandomBytesArray() [][]byte {
+	return [][]byte{generateRandomBytes()}
 }
