@@ -3,12 +3,12 @@ package main
 import (
 	"context"
 	b64 "encoding/base64"
+	"fmt"
 	PL_LogClient "logClient.FPKI.github.com"
 	LogVerifier "logverifier.FPKI.github.com"
+	"math/rand"
 	"testing"
 	"time"
-
-	"math/rand"
 )
 
 // TODO: modify this later
@@ -45,9 +45,10 @@ func Test_Create_Tree_Add_Leaf_Then_Verify_With_Consistency_Proof(t *testing.T) 
 	defer cancel()
 
 	// add leaves
-	err = logClient.AddLeaves(ctx, leaves)
-	if err != nil {
-		t.Errorf(err.Error())
+	addLeavesResult := logClient.AddLeaves(ctx, leaves)
+	if len(addLeavesResult.Errs) != 0 {
+		t.Errorf("add leaves error")
+		fmt.Println(addLeavesResult.Errs)
 		return
 	}
 
@@ -58,7 +59,14 @@ func Test_Create_Tree_Add_Leaf_Then_Verify_With_Consistency_Proof(t *testing.T) 
 		return
 	}
 
-	proofs, err := logClient.FetchInclusions(ctx, leaves)
+	fetchResult := logClient.FetchInclusions(ctx, leaves)
+	if len(fetchResult.Errs) != 0 {
+		t.Errorf("retrive leaves error")
+		fmt.Println(fetchResult.Errs)
+		return
+	}
+
+	fmt.Println(fetchResult.FailedLeaves)
 
 	oldRoot, err := logClient.GetCurrentLogRoot(ctx)
 	if err != nil {
@@ -72,9 +80,10 @@ func Test_Create_Tree_Add_Leaf_Then_Verify_With_Consistency_Proof(t *testing.T) 
 		leaves = append(leaves, generateRandomBytes())
 	}
 
-	err = logClient.AddLeaves(ctx, leaves)
-	if err != nil {
-		t.Errorf(err.Error())
+	addLeavesResult = logClient.AddLeaves(ctx, leaves)
+	if len(addLeavesResult.Errs) != 0 {
+		t.Errorf("add leaves error")
+		fmt.Println(addLeavesResult.Errs)
 		return
 	}
 
@@ -91,7 +100,7 @@ func Test_Create_Tree_Add_Leaf_Then_Verify_With_Consistency_Proof(t *testing.T) 
 
 	verifier := LogVerifier.NewLogVerifier(nil)
 
-	for k, v := range proofs {
+	for k, v := range fetchResult.PoIs {
 		hashedValue, _ := b64.URLEncoding.DecodeString(k)
 		err = verifier.VerifyInclusion_WithPrevLogRoot(&v.STH, newRoot, consistencyProof, hashedValue, v.PoIs)
 		if err != nil {

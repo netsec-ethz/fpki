@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	DomainOwner "domainOwner.FPKI.github.com"
+	"fmt"
 	PL_LogClient "logClient.FPKI.github.com"
 	PCA "pca.FPKI.github.com"
 	"testing"
@@ -82,7 +83,14 @@ func Test_PCA_PolocyLog(t *testing.T) {
 	defer cancel()
 
 	// queue RPC
-	err = logClient.QueueRPCs(ctx, []string{"1", "2"})
+	result, err := logClient.QueueRPCs(ctx, []string{"1", "2"})
+	if len(result.AddLeavesErrs) != 0 || len(result.RetriveLeavesErrs) != 0 {
+		t.Errorf("queue error")
+		return
+	}
+
+	fmt.Println(result.NumOfSucceedAddedLeaves, result.NumOfRetrivedLeaves)
+
 	if err != nil {
 		t.Errorf(err.Error())
 		return

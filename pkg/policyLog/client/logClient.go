@@ -35,16 +35,22 @@ type PL_LogClient struct {
 	logRootLock sync.Mutex
 }
 
-type PoIAndSTH struct {
-	PoIs []*trillian.Proof
-	STH  types.LogRootV1
-}
-
-// result returned by worker
-type FetchInclusionResult struct {
-	leafName string
-	PoI      *PoIAndSTH
-	err      error
+// result returned to user
+type QueueRPCResult struct {
+	// how many leaves are appended successfully
+	NumOfSucceedAddedLeaves int
+	// the bytes of leaves which are not added
+	FailToAddLeaves [][]byte
+	// error list
+	AddLeavesErrs []error
+	// how many proofs are appended successfully
+	NumOfRetrivedLeaves int
+	// the bytes of leaves which are not retrived
+	FailToRetriveLeaves [][]byte
+	// name of the failed leaf; name is an identical name for every rpc; name = base64URLencode(hash(rpc))
+	FailToRetriveLeavesName []string
+	// error list
+	RetriveLeavesErrs []error
 }
 
 // NewFromTree creates a new LogClient given a tree ID.
@@ -134,17 +140,29 @@ func (c *PL_LogClient) GetConsistencyProof(ctx context.Context, trusted *types.L
 	return resp.Proof.Hashes, err
 }
 
-// read RPC -> queue RPC -> fetch PoI and STH -> write SPT
-func (c *PL_LogClient) QueueRPCs(ctx context.Context, fileNames []string) error {
+// queue rpcs and generate spts
+// steps:
+// 1. read rpc from "fileExchange" folder; TODO: replace the folder by http later
+// 2. add the rpc to the log
+// 3. update the tree size
+// 4. fetch proof for successfully added leaves
+// 5. generate spts using proofs, and write them to the "fileExchange" folder
+func (c *PL_LogClient) QueueRPCs(ctx context.Context, fileNames []string) (*QueueRPCResult, error) {
+	queueRPCResult := &QueueRPCResult{}
+
+	// one file will only contain one RPC
+	leafNum := len(fileNames)
+
 	// read RPC from files
 	data, err := c.readRPCFromFileToBytes(fileNames)
 	start := time.Now()
 
-	// add ;eaves
-	err = c.AddLeaves(ctx, data)
-	if err != nil {
-		return fmt.Errorf("QueueRPCs | addLeaves: %v", err)
-	}
+	// add leaves
+	addLeavesErrors := c.AddLeaves(ctx, data)
+
+	// process the errors from AddLeaves()
+	queueRPCResult.NumOfSucceedAddedLeaves = leafNum - len(addLeavesErrors.Errs)
+	queueRPCResult.FailToAddLeaves = addLeavesErrors.FailedLeaves
 
 	// calculate time
 	elapsed := time.Since(start)
@@ -158,10 +176,10 @@ func (c *PL_LogClient) QueueRPCs(ctx context.Context, fileNames []string) error 
 	for {
 		err = c.UpdateTreeSize(ctx)
 		if err != nil {
-			return fmt.Errorf("QueueRPCs | UpdateTreeSize: %v", err)
+			return queueRPCResult, fmt.Errorf("QueueRPCs | UpdateTreeSize: %v", err)
 		}
 
-		if c.currentTreeSize == prevTreeSize+int64(len(fileNames)) {
+		if c.currentTreeSize == prevTreeSize+int64(queueRPCResult.NumOfSucceedAddedLeaves) {
 			break
 		}
 
@@ -172,24 +190,27 @@ func (c *PL_LogClient) QueueRPCs(ctx context.Context, fileNames []string) error 
 	start = time.Now()
 
 	// fetch the inclusion
-	proofMap, err := c.FetchInclusions(ctx, data)
-	if err != nil {
-		return fmt.Errorf("QueueRPCs | FetchInclusions: %v", err)
-	}
+	fetchInclusionResult := c.FetchInclusions(ctx, data)
+
+	// precess fetch inclusion errors
+	queueRPCResult.NumOfRetrivedLeaves = len(fetchInclusionResult.PoIs)
+	queueRPCResult.FailToRetriveLeaves = fetchInclusionResult.FailedLeaves
+	queueRPCResult.FailToRetriveLeavesName = fetchInclusionResult.FailedLeavesName
+	queueRPCResult.RetriveLeavesErrs = fetchInclusionResult.Errs
 
 	elapsed = time.Since(start)
 	fmt.Println("fetch proofs succeed!")
 	fmt.Println(elapsed)
 
 	// store proof to SPT file
-	err = c.storeProofMapToSPT(proofMap)
+	err = c.storeProofMapToSPT(fetchInclusionResult.PoIs)
 	if err != nil {
-		return fmt.Errorf("QueueRPCs | storeProofMapToSPT: %v", err)
+		return queueRPCResult, fmt.Errorf("QueueRPCs | storeProofMapToSPT: %v", err)
 	}
 
 	// store the STH as well; not necessary
 	err = common.Json_StrucToFile(c.logRoot, c.config.OutPutPath+"/logRoot/logRoot")
-	return nil
+	return queueRPCResult, nil
 }
 
 // file -> RPC -> bytes
