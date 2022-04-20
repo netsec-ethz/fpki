@@ -44,9 +44,10 @@ func Test_Create_Tree_Add_Leaf_Then_Verify_With_Consistency_Proof(t *testing.T) 
 
 	start := time.Now()
 
-	err = logClient.AddLeaves(ctx, leaves)
-	if err != nil {
-		t.Errorf(err.Error())
+	addLeavesResult := logClient.AddLeaves(ctx, leaves)
+	if len(addLeavesResult.Errs) != 0 {
+		t.Errorf("add leaves error")
+		fmt.Println(addLeavesResult.Errs)
 		return
 	}
 
@@ -64,9 +65,11 @@ func Test_Create_Tree_Add_Leaf_Then_Verify_With_Consistency_Proof(t *testing.T) 
 
 	start = time.Now()
 
-	_, err = logClient.FetchInclusions(ctx, leaves)
-	if err != nil {
-		t.Errorf(err.Error())
+	incResult := logClient.FetchInclusions(ctx, leaves)
+
+	if len(incResult.Errs) != 0 {
+		t.Errorf("fetch inclusion error")
+		fmt.Println(incResult.Errs)
 		return
 	}
 
