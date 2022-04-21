@@ -2,7 +2,7 @@
  "TreeId": 55555555555,
  "RPCAddress": "localhost:8090",
  "MaxReceiveMessageSize": 10000,
- "OutPutPath": "/Users/yongzhe/Desktop/fpki/file_exchange/policylog",
- "RPCPath": "/Users/yongzhe/Desktop/fpki/file_exchange/pcaoutput/RPC",
+ "OutPutPath": "/Users/yongzhe/Desktop/hi/fpki/file_exchange/policylog",
+ "RPCPath": "/Users/yongzhe/Desktop/hi/fpki/file_exchange/pcaoutput/RPC",
  "NumOfWorker": 15
 }
