@@ -83,7 +83,7 @@ func (client PL_AdminClient) CreateNewTree() (*trillian.Tree, error) {
 
 	// write tree info to files.
 	err = client.writeTreeToFile(tree)
-	return tree, nil
+	return tree, err
 }
 
 func (client PL_AdminClient) generateCreateTreeReq() *trillian.CreateTreeRequest {
@@ -104,7 +104,7 @@ func (client PL_AdminClient) writeTreeToFile(tree *trillian.Tree) error {
 		return fmt.Errorf("writeTreeToFile | MarshalIndent | %s", err.Error())
 	}
 
-	err = ioutil.WriteFile(client.config.OutPutPath+"/treesConfig/"+strconv.FormatInt(tree.TreeId, 10), file, 0644)
+	err = ioutil.WriteFile(client.config.OutPutPath+"/trees_config/"+strconv.FormatInt(tree.TreeId, 10), file, 0644)
 	if err != nil {
 		return fmt.Errorf("writeTreeToFile | WriteFile | %s", err.Error())
 	}
