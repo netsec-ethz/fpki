@@ -6,7 +6,7 @@ import (
 
 func Test_Config(t *testing.T) {
 
-	config := &logServer.LogServerConfig{
+	config := &LogServerConfig{
 		RpcEndpoint:                    "localhost:8090",
 		HttpEndpoint:                   "localhost:8091",
 		HealthzTimeout:                 5,
@@ -28,14 +28,14 @@ func Test_Config(t *testing.T) {
 		MemProfile:                     "",
 	}
 
-	err := logServer.PL_SaveLogConfigToFile(config, "/Users/yongzhe/Desktop/fpki/config/policyLog/PL_logConfig")
+	err := PL_SaveLogConfigToFile(config, "/Users/yongzhe/Desktop/fpki/config/policylog/logserver_config")
 	if err != nil {
 		t.Errorf(err.Error())
 		return
 	}
 
-	config_ := &logServer.LogServerConfig{}
-	err = logServer.PL_ReadLogConfigFromFile(config_, "/Users/yongzhe/Desktop/fpki/config/policyLog/PL_logConfig")
+	config_ := &LogServerConfig{}
+	err = PL_ReadLogConfigFromFile(config_, "/Users/yongzhe/Desktop/fpki/config/policylog/logserver_config")
 	if err != nil {
 		t.Errorf(err.Error())
 		return

@@ -19,7 +19,7 @@ func Test_Config(t *testing.T) {
 		BatchSizeFlag:                  1000,
 		NumSeqFlag:                     10,
 		SequencerGuardWindowFlagInSec:  0,
-		ForceMaster:                    false,
+		ForceMaster:                    true,
 		EtcdHTTPService:                "trillian-logsigner-http",
 		LockDir:                        "/test/multimaster",
 		QuotaIncreaseFactor:            0,
@@ -30,14 +30,14 @@ func Test_Config(t *testing.T) {
 		MemProfile:                     "",
 	}
 
-	err := PL_logSigner.SaveLogSignerConfigToFile(config, "/Users/yongzhe/Desktop/fpki/config/policyLog/PL_logSignerConfig")
+	err := PL_logSigner.SaveLogSignerConfigToFile(config, "/Users/yongzhe/Desktop/fpki/config/policylog/logsigner_config")
 	if err != nil {
 		t.Errorf(err.Error())
 		return
 	}
 
 	config_ := &PL_logSigner.LogSignerConfig{}
-	err = PL_logSigner.ReadLogSignerConfigFromFile(config_, "/Users/yongzhe/Desktop/fpki/config/policyLog/PL_logSignerConfig")
+	err = PL_logSigner.ReadLogSignerConfigFromFile(config_, "/Users/yongzhe/Desktop/fpki/config/policylog/logsigner_config")
 	if err != nil {
 		t.Errorf(err.Error())
 		return

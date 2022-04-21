@@ -13,7 +13,7 @@ import (
 // TODO: modify this later
 func Test_Create_Tree_Add_Leaf_Then_Verify_With_Consistency_Proof(t *testing.T) {
 	// init admin client
-	client, err := PL_GetAdminClient("/Users/yongzhe/Desktop/fpki/config/policyLog/adminClientConfig")
+	client, err := PL_GetAdminClient("/Users/yongzhe/Desktop/fpki/config/policyLog/adminclient_config")
 
 	if err != nil {
 		t.Errorf(err.Error())
@@ -28,7 +28,7 @@ func Test_Create_Tree_Add_Leaf_Then_Verify_With_Consistency_Proof(t *testing.T) 
 	}
 
 	// init log client
-	logClient, err := PL_NewLogClient("/Users/yongzhe/Desktop/fpki/config/policyLog/logClientConfig", tree.TreeId)
+	logClient, err := PL_NewLogClient("/Users/yongzhe/Desktop/fpki/config/policyLog/logclient_config", tree.TreeId)
 	if err != nil {
 		t.Errorf(err.Error())
 		return
@@ -97,7 +97,7 @@ func Test_Create_Tree_Add_Leaf_Then_Verify_With_Consistency_Proof(t *testing.T) 
 
 	consistencyProof, err := logClient.GetConsistencyProof(ctx, oldRoot, newRoot)
 
-	verifier := LogVerifier.NewLogVerifier(nil)
+	verifier := Logverifier.NewLogVerifier(nil)
 
 	for k, v := range fetchResult.PoIs {
 		hashedValue, _ := b64.URLEncoding.DecodeString(k)
