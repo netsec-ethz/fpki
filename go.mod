@@ -2,21 +2,21 @@ module fpki
 
 go 1.17
 
-replace github.com/netsec-ethz/fpki/pkg/common => /Users/yongzhe/Desktop/fpki/pkg/common
+replace github.com/netsec-ethz/fpki/pkg/common => ./pkg/common
 
-replace github.com/netsec-ethz/fpki/pkg/domainowner => /Users/yongzhe/Desktop/fpki/pkg/domainowner
+replace github.com/netsec-ethz/fpki/pkg/domainowner => ./pkg/domainowner
 
-replace github.com/netsec-ethz/fpki/pkg/logverifier => /Users/yongzhe/Desktop/fpki/pkg/logverifier
+replace github.com/netsec-ethz/fpki/pkg/logverifier => ./pkg/logverifier
 
-replace github.com/netsec-ethz/fpki/pkg/pca => /Users/yongzhe/Desktop/fpki/pkg/pca
+replace github.com/netsec-ethz/fpki/pkg/pca => ./pkg/pca
 
-replace github.com/netsec-ethz/fpki/pkg/policylog/client => /Users/yongzhe/Desktop/fpki/pkg/policylog/client
+replace github.com/netsec-ethz/fpki/pkg/policylog/client => ./pkg/policylog/client
 
-replace github.com/netsec-ethz/fpki/pkg/policylog/server/logserver => /Users/yongzhe/Desktop/fpki/pkg/policylog/server/logserver
+replace github.com/netsec-ethz/fpki/pkg/policylog/server/logserver => ./pkg/policylog/server/logserver
 
-replace github.com/netsec-ethz/fpki/pkg/policylog/server/logsigner => /Users/yongzhe/Desktop/fpki/pkg/policylog/server/logsigner
+replace github.com/netsec-ethz/fpki/pkg/policylog/server/logsigner => ./pkg/policylog/server/logsigner
 
-replace github.com/netsec-ethz/fpki/pkg/policylog/server/util => /Users/yongzhe/Desktop/fpki/pkg/policylog/server/util
+replace github.com/netsec-ethz/fpki/pkg/policylog/server/util => ./pkg/policylog/server/util
 
 require (
 	github.com/netsec-ethz/fpki/pkg/domainowner v0.0.0-00010101000000-000000000000
