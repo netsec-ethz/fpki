@@ -13,7 +13,7 @@ import (
 // TODO: modify this later
 func Test_Create_Tree_Add_Leaf_Then_Verify_With_Consistency_Proof(t *testing.T) {
 	// init admin client
-	client, err := PL_GetAdminClient("/Users/yongzhe/Desktop/fpki/config/policyLog/adminclient_config")
+	client, err := PL_GetAdminClient("../../../config/policyLog/adminclient_config")
 
 	if err != nil {
 		t.Errorf(err.Error())
@@ -28,7 +28,7 @@ func Test_Create_Tree_Add_Leaf_Then_Verify_With_Consistency_Proof(t *testing.T) 
 	}
 
 	// init log client
-	logClient, err := PL_NewLogClient("/Users/yongzhe/Desktop/fpki/config/policyLog/logclient_config", tree.TreeId)
+	logClient, err := PL_NewLogClient("../../../config/policyLog/logclient_config", tree.TreeId)
 	if err != nil {
 		t.Errorf(err.Error())
 		return

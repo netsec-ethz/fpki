@@ -7,7 +7,7 @@ import (
 )
 
 func Test_Config(t *testing.T) {
-	_, err := pca.NewPCA("/Users/yongzhe/Desktop/fpki/config/pca/pca_config")
+	_, err := pca.NewPCA("../../config/pca/pca_config")
 	if err != nil {
 		t.Errorf(err.Error())
 		return
