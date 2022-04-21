@@ -1,9 +1,5 @@
-cd ../cmd/PL_logServer
+cd ../
 go mod tidy
-go build -o PL_logServerExec logServer.go
-mv PL_logServerExec ../PL_logServerExec
 
-cd ../PL_logSigner
-go mod tidy
-go build -o PL_logSignerExec logSigner.go
-mv PL_logSignerExec ../PL_logSignerExec
+go build -o ./cmd/logserver_exec ./cmd/logserver/logserver_exec.go
+go build -o ./cmd/logsigner_exec ./cmd/logsigner/logsigner_exec.go
