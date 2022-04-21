@@ -39,7 +39,7 @@
 Within the policy log, the log client and admin client only communicate with the log server via grpc. Log signer only communicates with the log server, and the communication is internal, so we don't have access to it. For other components outside the policy log, they can only have access to the log client to add leaves of fetch proof of inclusion. Admin client should only be accessed internally.
 
 ## How to run the project
-Download trillian (more information on https://github.com/google/trillian#mysql-setup)
+Download trillian and setup database (more information on https://github.com/google/trillian#mysql-setup)
 ```
 git clone https://github.com/google/trillian.git
 cd scripts
@@ -50,6 +50,7 @@ cd scripts
   git checkout pca
  ```
 Modify some config files (TODO: write a script to automate this): replace all paras which contains "/Users/yongzhe/Desktop/fpki/..." with your path of the "fpki" folder
+
 example: /Users/yongzhe/Desktop/fpki/file_exchange/pcaoutput => YourPathToFPKIFolder/file_exchange/pcaoutput 
 - config/pca/pcaConfig
 - config/policyLog/adminClientConfig
