@@ -52,9 +52,9 @@ cd scripts
 Modify some config files (TODO: write a script to automate this): replace all paras which contains "/Users/yongzhe/Desktop/fpki/..." with your path of the "fpki" folder
 
 example: /Users/yongzhe/Desktop/fpki/file_exchange/pcaoutput => YourPathToFPKIFolder/file_exchange/pcaoutput 
-- config/pca/pcaConfig
-- config/policyLog/adminClientConfig
-- config/policyLog/logClientConfig
+- config/pca/pca_config
+- config/policyLog/adminclient_config
+- config/policyLog/logclient_config
 
 Conpile the executable
  ```
