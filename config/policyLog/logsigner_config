@@ -11,7 +11,7 @@
  "batchSizeFlag": 1000,
  "numSeqFlag": 10,
  "sequencerGuardWindowFlag": 0,
- "forceMaster": false,
+ "forceMaster": true,
  "etcdHTTPService": "trillian-logsigner-http",
  "lockDir": "/test/multimaster",
  "quotaIncreaseFactor": 0,

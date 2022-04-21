@@ -19,7 +19,7 @@ func Test_PCA_PolocyLog(t *testing.T) {
 	domainOwner := DomainOwner.DomainOwner{}
 
 	// new PCA
-	pca, err := PCA.NewPCA("../../../config/pca/pcaConfig")
+	pca, err := PCA.NewPCA("../../../config/pca/pca_config")
 	if err != nil {
 		t.Errorf(err.Error())
 		return
@@ -58,7 +58,7 @@ func Test_PCA_PolocyLog(t *testing.T) {
 		return
 	}
 
-	client, err := PL_LogClient.PL_GetAdminClient("../../../config/policyLog/adminClientConfig")
+	client, err := PL_LogClient.PL_GetAdminClient("../../../config/policylog/adminclient_config")
 
 	if err != nil {
 		t.Errorf(err.Error())
@@ -73,7 +73,7 @@ func Test_PCA_PolocyLog(t *testing.T) {
 	}
 
 	// init log client
-	logClient, err := PL_LogClient.PL_NewLogClient("../../../config/policyLog/logClientConfig", tree.TreeId)
+	logClient, err := PL_LogClient.PL_NewLogClient("../../../config/policylog/logclient_config", tree.TreeId)
 	if err != nil {
 		t.Errorf(err.Error())
 		return
