@@ -30,14 +30,14 @@ func Test_Config(t *testing.T) {
 		MemProfile:                     "",
 	}
 
-	err := PL_logSigner.SaveLogSignerConfigToFile(config, "/Users/yongzhe/Desktop/fpki/config/policylog/logsigner_config")
+	err := PL_logSigner.SaveLogSignerConfigToFile(config, "../../../../config/policylog/logsigner_config")
 	if err != nil {
 		t.Errorf(err.Error())
 		return
 	}
 
 	config_ := &PL_logSigner.LogSignerConfig{}
-	err = PL_logSigner.ReadLogSignerConfigFromFile(config_, "/Users/yongzhe/Desktop/fpki/config/policylog/logsigner_config")
+	err = PL_logSigner.ReadLogSignerConfigFromFile(config_, "../../../../config/policylog/logsigner_config")
 	if err != nil {
 		t.Errorf(err.Error())
 		return
