@@ -1,4 +1,4 @@
-package logSigner
+package logsigner
 
 import (
 	"encoding/json"

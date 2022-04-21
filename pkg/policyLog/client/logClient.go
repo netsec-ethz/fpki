@@ -1,11 +1,11 @@
-package logClient
+package client
 
 import (
-	common "common.FPKI.github.com"
 	"context"
 	"fmt"
 	"github.com/google/trillian"
 	"github.com/google/trillian/types"
+	common "github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/transparency-dev/merkle/rfc6962"
 	"sync"
 	"time"

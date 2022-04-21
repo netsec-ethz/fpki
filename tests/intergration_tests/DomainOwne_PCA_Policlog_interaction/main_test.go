@@ -2,10 +2,10 @@ package main
 
 import (
 	"context"
-	DomainOwner "domainOwner.FPKI.github.com"
 	"fmt"
-	PL_LogClient "logClient.FPKI.github.com"
-	PCA "pca.FPKI.github.com"
+	DomainOwner "github.com/netsec-ethz/fpki/pkg/domainowner"
+	PCA "github.com/netsec-ethz/fpki/pkg/pca"
+	PL_LogClient "github.com/netsec-ethz/fpki/pkg/policylog/client"
 	"testing"
 	"time"
 )
@@ -19,7 +19,7 @@ func Test_PCA_PolocyLog(t *testing.T) {
 	domainOwner := DomainOwner.DomainOwner{}
 
 	// new PCA
-	pca, err := PCA.NewPCA("/Users/yongzhe/Desktop/fpki/config/pca/pcaConfig")
+	pca, err := PCA.NewPCA("../../../config/pca/pcaConfig")
 	if err != nil {
 		t.Errorf(err.Error())
 		return
@@ -58,7 +58,7 @@ func Test_PCA_PolocyLog(t *testing.T) {
 		return
 	}
 
-	client, err := PL_LogClient.PL_GetAdminClient("/Users/yongzhe/Desktop/fpki/config/policyLog/adminClientConfig")
+	client, err := PL_LogClient.PL_GetAdminClient("../../../config/policyLog/adminClientConfig")
 
 	if err != nil {
 		t.Errorf(err.Error())
@@ -73,7 +73,7 @@ func Test_PCA_PolocyLog(t *testing.T) {
 	}
 
 	// init log client
-	logClient, err := PL_LogClient.PL_NewLogClient("/Users/yongzhe/Desktop/fpki/config/policyLog/logClientConfig", tree.TreeId)
+	logClient, err := PL_LogClient.PL_NewLogClient("../../../config/policyLog/logClientConfig", tree.TreeId)
 	if err != nil {
 		t.Errorf(err.Error())
 		return

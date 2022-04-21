@@ -1,4 +1,4 @@
-package logServer
+package logserver
 
 // this file is copied from the trillian github, and I made some midifications on it.
 // Modification: instead of insert the paras as flag, I init the server using config file.
@@ -25,9 +25,9 @@ import (
 	"github.com/google/trillian/storage"
 	"github.com/google/trillian/util"
 	"github.com/google/trillian/util/clock"
+	serverUtil "github.com/netsec-ethz/fpki/pkg/policylog/server/util"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"google.golang.org/grpc"
-	serverUtil "serverUtil.fpki.com"
 
 	// Register supported storage providers.
 	_ "github.com/google/trillian/storage/cloudspanner"
