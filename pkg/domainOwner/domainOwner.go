@@ -1,9 +1,9 @@
-package domainOwner
+package domainowner
 
 import (
-	common "common.FPKI.github.com"
 	"crypto/rand"
 	"crypto/rsa"
+	common "github.com/netsec-ethz/fpki/pkg/common"
 	"time"
 )
 

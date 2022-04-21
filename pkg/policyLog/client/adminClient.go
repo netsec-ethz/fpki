@@ -1,4 +1,4 @@
-package logClient
+package client
 
 import (
 	"context"

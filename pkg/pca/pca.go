@@ -1,14 +1,14 @@
 package pca
 
 import (
-	common "common.FPKI.github.com"
 	"crypto/rsa"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"github.com/google/trillian"
+	common "github.com/netsec-ethz/fpki/pkg/common"
+	logverifier "github.com/netsec-ethz/fpki/pkg/logverifier"
 	"log"
-	logverifier "logverifier.FPKI.github.com"
 	"strconv"
 	"time"
 )

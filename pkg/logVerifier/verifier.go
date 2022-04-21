@@ -1,4 +1,4 @@
-package logVerifier
+package logverifier
 
 import (
 	"errors"
