@@ -3,14 +3,14 @@
  "Subject": "bad domain",
  "Version": 1729381,
  "PublicKeyAlgorithm": 0,
- "PublicKey": "T7yl7YdnW6T9Ira8iT4+e1QZWDgLXOfylf0+RDO4VUITzFNB+XDk/w==",
- "NotBefore": "2022-04-21T21:02:28.096716+02:00",
- "NotAfter": "2022-04-21T21:02:28.096716+02:00",
+ "PublicKey": "+7fcypj7seSyDcS3NMy89hkU7COiDEM8R5qi7fss9E7mIoIKbDHeuw==",
+ "NotBefore": "2022-04-21T21:09:16.068327+02:00",
+ "NotAfter": "2022-04-21T21:09:16.068327+02:00",
  "CAName": "bad domain",
  "SignatureAlgorithm": 0,
- "TimeStamp": "2022-04-21T21:02:28.096716+02:00",
- "PRCSignature": "TDFA8mD7M9j5XliceS1CsXF5XKCqqX1lbT/nMaG77vEdEzILEDbCpQ==",
- "CASignature": "+mb52cD2zdv5uVQhHyNhgI8bBKKgI6X2DMz/x7L5C7yfb1kNeuac6Q==",
+ "TimeStamp": "2022-04-21T21:09:16.068327+02:00",
+ "PRCSignature": "7vxZs4nts1E9WeVQuSVlu1Y6hS52Iqd2KtJrc3TNyrRNB76HoXo01A==",
+ "CASignature": "rnWzseYMUvQjCCw6ddJi43hXTzXuxfi3MlHrhmQo6Bjr9MuabBzH5g==",
  "SPT": [
   {
    "Version": 12313,
@@ -18,13 +18,13 @@
    "CAName": "I'm honest CA, nice to meet you",
    "LogID": 1231323,
    "CertType": 17,
-   "AddedTS": "2022-04-21T21:02:28.096699+02:00",
-   "STH": "lOgmvuEwwzePDFVXeo/qfdeJNCk625Hqt9mXKB5FTvb0vUWFtxt+HA==",
+   "AddedTS": "2022-04-21T21:09:16.068317+02:00",
+   "STH": "gELnmSc+tSTB/tdWZD4xJco13IkQFJtOSjcWUyVl6uOQ6bYjdHY0gA==",
    "PoI": [
-    "vvWen9lCFXMO4BAml87f7SLh9Icw/XHtiRP4vZKFs/5NHu7pqvpRKg=="
+    "ImQmTOGPMux4DmVF80rkMhrOLGyj700wvaM3bXgZVhHvov2bQ7feCg=="
    ],
    "STHSerialNumber": 131678,
-   "Signature": "I3lNV/PpSUoU5C+udoVAaWZbcojZGpVkhVuBdUc68Y2nWSnamdigqQ=="
+   "Signature": "LKn3OsbBrAwPaqx0ALEjpv8Jz1DjvdoPq7loH1O7zlZ/LNRbWY+Ymw=="
   },
   {
    "Version": 12368713,
@@ -32,13 +32,13 @@
    "CAName": "I'm malicious CA, nice to meet you",
    "LogID": 1324123,
    "CertType": 33,
-   "AddedTS": "2022-04-21T21:02:28.09671+02:00",
-   "STH": "2ZbRSxJwmmRcAGh/W4HwstCDo9i5AxVP9jau/54UsUaEN0OJteH9mA==",
+   "AddedTS": "2022-04-21T21:09:16.068323+02:00",
+   "STH": "fpY3NuB3Qp4A99+cVGEYdOrXY8JAEuAdtYrLdnzbQ8TpZ0pFhOStaQ==",
    "PoI": [
-    "HQ9TeoQApHMbr0dlmaC/djO3u1Eqk5inXgx3JGl1ErYL/eZXGTCxGA=="
+    "FFd9ncH6GpsDWeEr7Z+ozMU2G1eibDrSRLTJNEl6RRBjoZLUMteWKg=="
    ],
    "STHSerialNumber": 114378,
-   "Signature": "WaEtvGgr6pUTivo9EpdZXZ2XhxtxJbhvrLZZsm5QNe5r+dfwew7/Hw=="
+   "Signature": "QGb3gGsSkjLZ+XLexm7eNGS3cMl8Z5LYCU3zz5/JN0GhwC1ASgBpHQ=="
   }
  ]
 }
