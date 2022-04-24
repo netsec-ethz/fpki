@@ -5,6 +5,8 @@ go 1.17
 replace github.com/netsec-ethz/fpki => ./
 
 require (
+	github.com/celestiaorg/smt v0.2.1-0.20220414134126-dba215ccb884
+	github.com/go-sql-driver/mysql v1.6.0
 	github.com/golang/glog v1.0.0
 	github.com/google/trillian v1.4.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
@@ -29,7 +31,6 @@ require (
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/coreos/go-semver v0.3.0 // indirect
 	github.com/coreos/go-systemd/v22 v22.3.2 // indirect
-	github.com/go-sql-driver/mysql v1.6.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/mock v1.6.0 // indirect
