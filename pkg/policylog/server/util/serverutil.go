@@ -17,7 +17,6 @@ package util
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -30,27 +29,12 @@ import (
 	"github.com/google/trillian/server/admin"
 	"github.com/google/trillian/server/interceptor"
 	"github.com/google/trillian/util/clock"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"go.etcd.io/etcd/client/v3/naming/endpoints"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/reflection"
 
 	grpc_middleware "github.com/grpc-ecosystem/go-grpc-middleware"
-	clientv3 "go.etcd.io/etcd/client/v3"
-)
-
-const (
-	// DefaultTreeDeleteThreshold is the suggested threshold for tree deletion.
-	// It represents the minimum time a tree has to remain Deleted before being hard-deleted.
-	DefaultTreeDeleteThreshold = 7 * 24 * time.Hour
-
-	// DefaultTreeDeleteMinInterval is the suggested min interval between tree GC sweeps.
-	// A tree GC sweep consists of listing deleted trees older than the deletion threshold and
-	// hard-deleting them.
-	// Actual runs happen randomly between [minInterval,2*minInterval).
-	DefaultTreeDeleteMinInterval = 4 * time.Hour
 )
 
 // Main encapsulates the data and logic to start a Trillian server (Log or Map).
@@ -92,19 +76,6 @@ type Main struct {
 	ExtraOptions []grpc.ServerOption
 }
 
-func (m *Main) healthz(rw http.ResponseWriter, req *http.Request) {
-	if m.IsHealthy != nil {
-		ctx, cancel := context.WithTimeout(req.Context(), m.HealthyDeadline)
-		defer cancel()
-		if err := m.IsHealthy(ctx); err != nil {
-			rw.WriteHeader(http.StatusServiceUnavailable)
-			rw.Write([]byte(err.Error()))
-			return
-		}
-	}
-	rw.Write([]byte("ok"))
-}
-
 // Run starts the configured server. Blocks until the server exits.
 func (m *Main) Run(ctx context.Context) error {
 	glog.CopyStandardLogTo("WARNING")
@@ -128,54 +99,6 @@ func (m *Main) Run(ctx context.Context) error {
 	reflection.Register(srv)
 
 	g, ctx := errgroup.WithContext(ctx)
-
-	if endpoint := m.HTTPEndpoint; endpoint != "" {
-		http.Handle("/metrics", promhttp.Handler())
-		http.HandleFunc("/healthz", m.healthz)
-
-		s := &http.Server{
-			Addr: endpoint,
-		}
-
-		run := func() error {
-			glog.Infof("HTTP server starting on %v", endpoint)
-
-			var err error
-			// Let http.ListenAndServeTLS handle the error case when only one of the flags is set.
-			if m.TLSCertFile != "" || m.TLSKeyFile != "" {
-				err = s.ListenAndServeTLS(m.TLSCertFile, m.TLSKeyFile)
-			} else {
-				err = s.ListenAndServe()
-			}
-
-			if err != nil {
-				if errors.Is(err, http.ErrServerClosed) {
-					return nil
-				}
-
-				err = fmt.Errorf("HTTP server stopped: %v", err)
-			}
-
-			return err
-		}
-
-		shutdown := func() {
-			glog.Infof("Stopping HTTP server...")
-			glog.Flush()
-
-			// 15 second exit time limit
-			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-			defer cancel()
-
-			if err := s.Shutdown(ctx); err != nil {
-				glog.Errorf("Failed to http server shutdown: %v", err)
-			}
-		}
-
-		g.Go(func() error {
-			return srvRun(ctx, run, shutdown)
-		})
-	}
 
 	glog.Infof("RPC server starting on %v", m.RPCEndpoint)
 	lis, err := net.Listen("tcp", m.RPCEndpoint)
@@ -252,60 +175,17 @@ func (m *Main) newGRPCServer() (*grpc.Server, error) {
 	return s, nil
 }
 
-// AnnounceSelf announces this binary's presence to etcd. This calls the cancel
-// function if the keepalive lease with etcd expires.  Returns a function that
-// should be called on process exit.
-// AnnounceSelf does nothing if client is nil.
-func AnnounceSelf(ctx context.Context, client *clientv3.Client, etcdService, endpoint string, cancel func()) func() {
-	if client == nil {
-		return func() {}
-	}
-
-	// Get a lease so our entry self-destructs.
-	leaseRsp, err := client.Grant(ctx, 30)
-	if err != nil {
-		glog.Exitf("Failed to get lease from etcd: %v", err)
-	}
-
-	keepAliveRspCh, err := client.KeepAlive(ctx, leaseRsp.ID)
-	if err != nil {
-		glog.Exitf("Failed to keep lease alive from etcd: %v", err)
-	}
-	go listenKeepAliveRsp(ctx, keepAliveRspCh, cancel)
-
-	em, err := endpoints.NewManager(client, etcdService)
-	if err != nil {
-		glog.Exitf("Failed to create etcd manager: %v", err)
-	}
-	fullEndpoint := fmt.Sprintf("%s/%s", etcdService, endpoint)
-	em.AddEndpoint(ctx, fullEndpoint, endpoints.Endpoint{Addr: endpoint})
-	glog.Infof("Announcing our presence in %v", etcdService)
-
-	return func() {
-		// Use a background context because the original context may have been cancelled.
-		glog.Infof("Removing our presence in %v", etcdService)
-		ctx := context.Background()
-		em.DeleteEndpoint(ctx, fullEndpoint)
-		client.Revoke(ctx, leaseRsp.ID)
-	}
-}
-
-// listenKeepAliveRsp listens to `keepAliveRspCh` channel, and calls the cancel function
-// to notify the lease expired.
-func listenKeepAliveRsp(ctx context.Context, keepAliveRspCh <-chan *clientv3.LeaseKeepAliveResponse, cancel func()) {
-	for {
-		select {
-		case <-ctx.Done():
-			glog.Infof("listenKeepAliveRsp canceled: %v", ctx.Err())
+func (m *Main) healthz(rw http.ResponseWriter, req *http.Request) {
+	if m.IsHealthy != nil {
+		ctx, cancel := context.WithTimeout(req.Context(), m.HealthyDeadline)
+		defer cancel()
+		if err := m.IsHealthy(ctx); err != nil {
+			rw.WriteHeader(http.StatusServiceUnavailable)
+			rw.Write([]byte(err.Error()))
 			return
-		case _, ok := <-keepAliveRspCh:
-			if !ok {
-				glog.Errorf("listenKeepAliveRsp canceled: unexpected lease expired")
-				cancel()
-				return
-			}
 		}
 	}
+	rw.Write([]byte("ok"))
 }
 
 // srvRun run the server and call `shutdown` when the context has been cancelled

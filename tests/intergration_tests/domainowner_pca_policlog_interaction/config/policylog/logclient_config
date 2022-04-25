@@ -1,0 +1,8 @@
+{
+ "TreeId": 55555555555,
+ "RPCAddress": "localhost:8090",
+ "MaxReceiveMessageSize": 10000,
+ "OutPutPath": "./file_exchange/policylog",
+ "RPCPath": "./file_exchange/pcaoutput/rpc",
+ "NumOfWorker": 15
+}

@@ -143,14 +143,14 @@ func Test_Json_Read_Write(t *testing.T) {
 		SPTs:               []SPT{*spt1, *spt2},
 	}
 
-	err := Json_StrucToFile(rpc, "rpc_test")
+	err := JsonStrucToFile(rpc, "rpc_test")
 	if err != nil {
 		t.Errorf(err.Error())
 		return
 	}
 
 	rpc1 := &RPC{}
-	err = Json_FileToRPC(rpc1, "rpc_test")
+	err = JsonFileToRPC(rpc1, "rpc_test")
 	if err != nil {
 		t.Errorf(err.Error())
 		return

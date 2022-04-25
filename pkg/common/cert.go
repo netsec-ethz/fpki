@@ -13,7 +13,7 @@ import (
 //                     Key or certificate related functions
 // ----------------------------------------------------------------------------------
 
-// marshall public key to bytes
+// RsaPublicKeyToPemBytes() marshall public key to bytes
 func RsaPublicKeyToPemBytes(pubkey *rsa.PublicKey) ([]byte, error) {
     pubkey_bytes, err := x509.MarshalPKIXPublicKey(pubkey)
     if err != nil {
@@ -29,7 +29,7 @@ func RsaPublicKeyToPemBytes(pubkey *rsa.PublicKey) ([]byte, error) {
     return pubkey_pem, nil
 }
 
-// unmarshall bytes to public key
+// PemBytesToRsaPublicKey() unmarshall bytes to public key
 func PemBytesToRsaPublicKey(pubkey []byte) (*rsa.PublicKey, error) {
     block, _ := pem.Decode(pubkey)
     if block == nil {

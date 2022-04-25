@@ -1,19 +1,21 @@
-package client
+package main
 
 import (
 	"context"
 	b64 "encoding/base64"
 	"fmt"
-	Logverifier "github.com/netsec-ethz/fpki/pkg/logverifier"
 	"math/rand"
 	"testing"
 	"time"
+
+	PLClient "github.com/netsec-ethz/fpki/pkg/policylog/client"
+
+	Logverifier "github.com/netsec-ethz/fpki/pkg/logverifier"
 )
 
-// TODO: modify this later
 func Test_Create_Tree_Add_Leaf_Then_Verify_With_Consistency_Proof(t *testing.T) {
 	// init admin client
-	client, err := PL_GetAdminClient("../../../config/policyLog/adminclient_config")
+	client, err := PLClient.PLGetAdminClient("testdata/adminclient_config")
 
 	if err != nil {
 		t.Errorf(err.Error())
@@ -28,7 +30,7 @@ func Test_Create_Tree_Add_Leaf_Then_Verify_With_Consistency_Proof(t *testing.T) 
 	}
 
 	// init log client
-	logClient, err := PL_NewLogClient("../../../config/policyLog/logclient_config", tree.TreeId)
+	logClient, err := PLClient.PLNewLogClient("testdata/logclient_config", tree.TreeId)
 	if err != nil {
 		t.Errorf(err.Error())
 		return
@@ -101,7 +103,7 @@ func Test_Create_Tree_Add_Leaf_Then_Verify_With_Consistency_Proof(t *testing.T) 
 
 	for k, v := range fetchResult.PoIs {
 		hashedValue, _ := b64.URLEncoding.DecodeString(k)
-		err = verifier.VerifyInclusion_WithPrevLogRoot(&v.STH, newRoot, consistencyProof, hashedValue, v.PoIs)
+		err = verifier.VerifyInclusionWithPrevLogRoot(&v.STH, newRoot, consistencyProof, hashedValue, v.PoIs)
 		if err != nil {
 			t.Errorf(err.Error())
 			return

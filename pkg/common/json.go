@@ -3,14 +3,15 @@ package common
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+
 	"github.com/google/trillian"
 	"github.com/google/trillian/types"
-	"io/ioutil"
 )
 
 // marshall structure to bytes, and store them in a file
-func Json_StrucToFile(struc interface{}, filePath string) error {
-	bytes, err := Json_StrucToBytes(struc)
+func JsonStrucToFile(struc interface{}, filePath string) error {
+	bytes, err := JsonStrucToBytes(struc)
 	if err != nil {
 		return err
 	}
@@ -22,8 +23,8 @@ func Json_StrucToFile(struc interface{}, filePath string) error {
 	return nil
 }
 
-// check data type; type cast might not be necessary (?)
-func Json_StrucToBytes(struc interface{}) ([]byte, error) {
+// check data type;
+func JsonStrucToBytes(struc interface{}) ([]byte, error) {
 	switch struc.(type) {
 	case *RCSR:
 		break
@@ -49,7 +50,7 @@ func Json_StrucToBytes(struc interface{}) ([]byte, error) {
 //                    Bytes to strucs
 //--------------------------------------------------------------------------------
 
-func Json_BytesToSPT(sptBytes []byte) (*SPT, error) {
+func JsonBytesToSPT(sptBytes []byte) (*SPT, error) {
 	result := &SPT{}
 
 	err := json.Unmarshal(sptBytes, result)
@@ -59,20 +60,20 @@ func Json_BytesToSPT(sptBytes []byte) (*SPT, error) {
 	return result, nil
 }
 
-func Json_BytesToRPC(sptBytes []byte) (*RPC, error) {
+func JsonBytesToRPC(rpcBytes []byte) (*RPC, error) {
 	result := &RPC{}
 
-	err := json.Unmarshal(sptBytes, result)
+	err := json.Unmarshal(rpcBytes, result)
 	if err != nil {
 		return nil, err
 	}
 	return result, nil
 }
 
-func Json_BytesToPoI(poi []byte) (*trillian.Proof, error) {
+func JsonBytesToPoI(poiBytes []byte) (*trillian.Proof, error) {
 	result := &trillian.Proof{}
 
-	err := json.Unmarshal(poi, result)
+	err := json.Unmarshal(poiBytes, result)
 	if err != nil {
 		return nil, err
 	}
@@ -80,20 +81,20 @@ func Json_BytesToPoI(poi []byte) (*trillian.Proof, error) {
 	return result, nil
 }
 
-func Json_BytesToLogRoot(sptBytes []byte) (*types.LogRootV1, error) {
+func JsonBytesToLogRoot(logRootBytes []byte) (*types.LogRootV1, error) {
 	result := &types.LogRootV1{}
 
-	err := json.Unmarshal(sptBytes, result)
+	err := json.Unmarshal(logRootBytes, result)
 	if err != nil {
 		return nil, err
 	}
 	return result, nil
 }
 
-func Json_BytesToProof(sptBytes []byte) (*trillian.Proof, error) {
+func JsonBytesToProof(proofBytes []byte) (*trillian.Proof, error) {
 	result := &trillian.Proof{}
 
-	err := json.Unmarshal(sptBytes, result)
+	err := json.Unmarshal(proofBytes, result)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +105,7 @@ func Json_BytesToProof(sptBytes []byte) (*trillian.Proof, error) {
 //                               File to strucs
 //--------------------------------------------------------------------------------
 
-func Json_FileToRPC(struc *RPC, filePath string) error {
+func JsonFileToRPC(struc *RPC, filePath string) error {
 	file, err := ioutil.ReadFile(filePath)
 	if err != nil {
 		return err
@@ -118,7 +119,7 @@ func Json_FileToRPC(struc *RPC, filePath string) error {
 	return nil
 }
 
-func Json_FileToSPT(struc *SPT, filePath string) error {
+func JsonFileToSPT(struc *SPT, filePath string) error {
 	file, err := ioutil.ReadFile(filePath)
 	if err != nil {
 		return err

@@ -5,5 +5,5 @@ import (
 )
 
 func main() {
-	logSigner.PL_CreateLogSigner("../config/policyLog/logsigner_config")
+	logSigner.PLCreateLogSigner("config/logsigner_config")
 }

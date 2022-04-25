@@ -36,13 +36,13 @@ func Test_Signature_Of_RCSR(t *testing.T) {
 
 	test.PublicKey = pubKeyBytes
 
-	err = RCSR_CreateSignature(privKey, test)
+	err = RCSRCreateSignature(privKey, test)
 	if err != nil {
 		t.Errorf(err.Error())
 		return
 	}
 
-	err = RCSR_VerifySignature(test)
+	err = RCSRVerifySignature(test)
 	if err != nil {
 		t.Errorf(err.Error())
 		return
@@ -79,7 +79,7 @@ func Test_Issuance_Of_RPC(t *testing.T) {
 	rcsr.PublicKey = pubKeyBytes
 
 	// generate signature for rcsr
-	err = RCSR_CreateSignature(privKey, rcsr)
+	err = RCSRCreateSignature(privKey, rcsr)
 	if err != nil {
 		t.Errorf(err.Error())
 		return
@@ -89,14 +89,14 @@ func Test_Issuance_Of_RPC(t *testing.T) {
 	//  phase 2: pca issue rpc
 	// -------------------------------------
 	// validate the signature in rcsr
-	err = RCSR_VerifySignature(rcsr)
+	err = RCSRVerifySignature(rcsr)
 	if err != nil {
 		t.Errorf(err.Error())
 		return
 	}
 
 	pcaPrivKey, err := LoadRSAKeyPairFromFile("./testdata/server_key.pem")
-	rpc, err := RCSR_GenerateRPC(rcsr, time.Now(), 1, pcaPrivKey, "fpki")
+	rpc, err := RCSRGenerateRPC(rcsr, time.Now(), 1, pcaPrivKey, "fpki")
 	if err != nil {
 		t.Errorf(err.Error())
 		return
@@ -117,7 +117,7 @@ func Test_Issuance_Of_RPC(t *testing.T) {
 		return
 	}
 
-	err = RPC_VerifyCASignature(caCert, rpc)
+	err = RPCVerifyCASignature(caCert, rpc)
 
 	if err != nil {
 		t.Errorf(err.Error())

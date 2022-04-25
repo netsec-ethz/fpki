@@ -3,12 +3,13 @@ package client
 import (
 	"context"
 	base64 "encoding/base64"
+	"time"
+
 	"github.com/google/trillian"
 	"github.com/google/trillian/types"
 	"github.com/transparency-dev/merkle/rfc6962"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"time"
 )
 
 // TODO: is waitGroup necessagy? Will this cause any memory leak?
@@ -91,7 +92,7 @@ func worker_addLeaf(ctx context.Context, worker trillian.TrillianLogClient, work
 }
 
 // Queue a list of leaves
-func (c *PL_LogClient) AddLeaves(ctx context.Context, data [][]byte) *AddLeavesResult {
+func (c *PLLogClient) AddLeaves(ctx context.Context, data [][]byte) *AddLeavesResult {
 	// init result
 	result := &AddLeavesResult{
 		Errs:         []error{},
@@ -241,7 +242,7 @@ func worker_fetchInclusion(ctx context.Context, worker trillian.TrillianLogClien
 
 // fetch inclusion proof for leaves
 // similar to previous func
-func (c *PL_LogClient) FetchInclusions(ctx context.Context, leavesData [][]byte) *FetchInclusionResult {
+func (c *PLLogClient) FetchInclusions(ctx context.Context, leavesData [][]byte) *FetchInclusionResult {
 	// init result
 	fetchInclusionResult := new(FetchInclusionResult)
 	fetchInclusionResult.PoIs = make(map[string]*PoIAndSTH)

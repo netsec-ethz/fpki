@@ -1,10 +1,9 @@
 # FPKI
-## Yongzhe Xu
 
 ## Features
 
-- Issuance and logging of RPC
-- Issuance of SPT using RPC
+- Issuance and logging of RPC (Root Policy Certificate)
+- Issuance of SPT (Signed Policy Certificate) using RPC
 - Verification of RPC using SPT
 - Consistency verification of the log
 
@@ -25,11 +24,13 @@
     
     
  ## Overview
- ![Alt text](images/overview.png?raw=true"Overview")
+ ![Alt text](docs/images/overview.png?raw=true"Overview")
  
  The figure above illustrates the components so far. The domain owner sends RCSR to the PCA, and PCA signs the RCSR to generate an RPC. Then the PCA sends the RPC to the policy log to get an SPT. The log verifier will verify the SPT and the consistency between the old tree head and the newest tree head.
  
  ### Policy log
+ Trillian is used in the policy log.
+
  The policy log is the most complex component so far. It consists of four sub-components:
  - **(Log server)** Log server is responsible for receiving and sending responses. However, it does not generate proof of inclusion. It is similar to a user interface, which handles the RPC request and distributes the result.
  - **(Log signer)** Log signer is responsible for adding the new leaves, generating the new tree head, and the proof of inclusion for every added leaf. 
@@ -45,18 +46,7 @@ git clone https://github.com/google/trillian.git
 cd scripts
 ./resetdb.sh
 ```
- Download the FPKI, then 
- ```
-  git checkout pca
- ```
-Modify some config files (TODO: write a script to automate this): replace all paras which contains "/Users/yongzhe/Desktop/fpki/..." with your path of the "fpki" folder
-
-example: /Users/yongzhe/Desktop/fpki/file_exchange/pcaoutput => YourPathToFPKIFolder/file_exchange/pcaoutput 
-
-Files needs to be modified:
-- config/pca/pca_config
-- config/policyLog/adminclient_config
-- config/policyLog/logclient_config
+Download the FPKI
 
 Conpile the executable
  ```
