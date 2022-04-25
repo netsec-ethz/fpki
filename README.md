@@ -39,7 +39,9 @@
  
 Within the policy log, the log client and admin client only communicate with the log server via grpc. Log signer only communicates with the log server, and the communication is internal, so we don't have access to it. For other components outside the policy log, they can only have access to the log client to add leaves of fetch proof of inclusion. Admin client should only be accessed internally.
 
-## How to run the project
+## How to run the integration tests
+There are two integration tests which require the setup of Trillian server.
+
 Download trillian and setup database (more information on https://github.com/google/trillian#mysql-setup)
 ```
 git clone https://github.com/google/trillian.git
@@ -52,6 +54,7 @@ Conpile the executable
  ```
    cd scripts
    ./build_policyLog.sh
+   ./make_test_folders.sh
  ```
  
  Open two terminals, run "cmd/logserver_exec" and "cmd/logsigner_exec"
