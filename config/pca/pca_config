@@ -1,6 +1,0 @@
-{
- "CAName": "pca",
- "KeyPath": "/Users/yongzhe/Desktop/fpki/test_cert/server_key.pem",
- "OutputPath": "/Users/yongzhe/Desktop/fpki/file_exchange/pcaoutput",
- "PolicyLogOutputPath": "/Users/yongzhe/Desktop/fpki/file_exchange/policylog"
-}

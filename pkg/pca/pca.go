@@ -223,5 +223,5 @@ func (pca *PCA) checkRPCSignature(rcsr *common.RCSR) bool {
 
 // save file to output dir
 func (pca *PCA) sendRPCToPolicyLog(rpc *common.RPC, fileName string) error {
-	return common.JsonStrucToFile(rpc, pca.outputPath+"/RPC/"+fileName)
+	return common.JsonStrucToFile(rpc, pca.outputPath+"/rpc/"+fileName)
 }
