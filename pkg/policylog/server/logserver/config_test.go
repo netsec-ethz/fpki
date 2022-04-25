@@ -28,14 +28,14 @@ func Test_Config(t *testing.T) {
 		MemProfile:                     "",
 	}
 
-	err := PLSaveLogConfigToFile(config, "../../../../config/policylog/logserver_config")
+	err := PLSaveLogConfigToFile(config, "testdata/logserver_config")
 	if err != nil {
 		t.Errorf(err.Error())
 		return
 	}
 
 	config_ := &LogServerConfig{}
-	err = PLReadLogConfigFromFile(config_, "../../../../config/policylog/logserver_config")
+	err = PLReadLogConfigFromFile(config_, "testdata/logserver_config")
 	if err != nil {
 		t.Errorf(err.Error())
 		return

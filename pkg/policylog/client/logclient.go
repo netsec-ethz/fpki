@@ -211,7 +211,7 @@ func (c *PLLogClient) QueueRPCs(ctx context.Context, fileNames []string) (*Queue
 
 	// store the STH as well; not necessary
 	err = common.JsonStrucToFile(c.logRoot, c.config.OutPutPath+"/logRoot/logRoot")
-	return queueRPCResult, nil
+	return queueRPCResult, err
 }
 
 // file -> RPC -> bytes

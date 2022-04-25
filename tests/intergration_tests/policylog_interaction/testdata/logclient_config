@@ -3,6 +3,6 @@
  "RPCAddress": "localhost:8090",
  "MaxReceiveMessageSize": 10000,
  "OutPutPath": "testdata/output",
- "RPCPath": "testdata/output",
+ "RPCPath": "default",
  "NumOfWorker": 15
 }

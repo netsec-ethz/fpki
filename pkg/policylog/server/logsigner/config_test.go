@@ -1,8 +1,9 @@
 package logsigner
 
 import (
-	PL_logSigner "github.com/netsec-ethz/fpki/pkg/policylog/server/logsigner"
 	"testing"
+
+	PL_logSigner "github.com/netsec-ethz/fpki/pkg/policylog/server/logsigner"
 )
 
 func Test_Config(t *testing.T) {
@@ -30,14 +31,14 @@ func Test_Config(t *testing.T) {
 		MemProfile:                     "",
 	}
 
-	err := PL_logSigner.SaveLogSignerConfigToFile(config, "../../../../config/policylog/logsigner_config")
+	err := PL_logSigner.SaveLogSignerConfigToFile(config, "testdata/logsigner_config")
 	if err != nil {
 		t.Errorf(err.Error())
 		return
 	}
 
 	config_ := &PL_logSigner.LogSignerConfig{}
-	err = PL_logSigner.ReadLogSignerConfigFromFile(config_, "../../../../config/policylog/logsigner_config")
+	err = PL_logSigner.ReadLogSignerConfigFromFile(config_, "testdata/logsigner_config")
 	if err != nil {
 		t.Errorf(err.Error())
 		return
