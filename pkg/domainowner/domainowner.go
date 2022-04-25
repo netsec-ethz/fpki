@@ -3,8 +3,9 @@ package domainowner
 import (
 	"crypto/rand"
 	"crypto/rsa"
-	common "github.com/netsec-ethz/fpki/pkg/common"
 	"time"
+
+	common "github.com/netsec-ethz/fpki/pkg/common"
 )
 
 // Assume one domain owner only have one domain; Logic can be changed later
@@ -55,14 +56,14 @@ func (do *DomainOwner) GenerateRCSR(domainName string, version int) (*common.RCS
 
 	// if domain owner still have the private key of the previous RPC -> can avoid cool-off period
 	if do.previousPrivateKeyPair != nil {
-		err = common.RCSR_GenerateRPCSignature(rcsr, do.previousPrivateKeyPair)
+		err = common.RCSRGenerateRPCSignature(rcsr, do.previousPrivateKeyPair)
 		if err != nil {
 			return &common.RCSR{}, err
 		}
 	}
 
 	// generate signature for RCSR, using the new pub key
-	err = common.RCSR_CreateSignature(do.currentPrivateKeyPair, rcsr)
+	err = common.RCSRCreateSignature(do.currentPrivateKeyPair, rcsr)
 
 	if err != nil {
 		return &common.RCSR{}, err

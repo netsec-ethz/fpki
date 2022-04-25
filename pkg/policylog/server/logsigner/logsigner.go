@@ -7,7 +7,6 @@ import (
 	_ "net/http/pprof" // Register pprof HTTP handlers.
 	"os"
 	"runtime/pprof"
-	"strings"
 	"time"
 
 	"github.com/golang/glog"
@@ -15,17 +14,13 @@ import (
 	"github.com/google/trillian/log"
 	"github.com/google/trillian/monitoring"
 	"github.com/google/trillian/monitoring/opencensus"
-	"github.com/google/trillian/monitoring/prometheus"
 	"github.com/google/trillian/quota"
-	"github.com/google/trillian/quota/etcd"
 	"github.com/google/trillian/storage"
 	"github.com/google/trillian/util"
 	"github.com/google/trillian/util/clock"
 	"github.com/google/trillian/util/election"
 	"github.com/google/trillian/util/election2"
-	etcdelect "github.com/google/trillian/util/election2/etcd"
 	serverUtil "github.com/netsec-ethz/fpki/pkg/policylog/server/util"
-	clientv3 "go.etcd.io/etcd/client/v3"
 	"google.golang.org/grpc"
 
 	// Register supported storage providers.
@@ -40,7 +35,7 @@ type LogSigner struct {
 	config *LogSignerConfig
 }
 
-func PL_CreateLogSigner(configPath string) {
+func PLCreateLogSigner(configPath string) {
 	flag.Parse()
 
 	logConfig := &LogSignerConfig{}
@@ -60,39 +55,23 @@ func PL_CreateLogSigner(configPath string) {
 	glog.CopyStandardLogTo("WARNING")
 	glog.Info("**** Log Signer Starting ****")
 
-	mf := prometheus.MetricFactory{}
 	monitoring.SetStartSpan(opencensus.StartSpan)
 
-	sp, err := storage.NewProvider(pl_LogServer.config.StorageSystem, mf)
+	sp, err := storage.NewProvider(pl_LogServer.config.StorageSystem, nil)
 	if err != nil {
 		glog.Exitf("Failed to get storage provider: %v", err)
 	}
 	defer sp.Close()
 
-	var client *clientv3.Client
-	if servers := *etcd.Servers; servers != "" {
-		if client, err = clientv3.New(clientv3.Config{
-			Endpoints:   strings.Split(servers, ","),
-			DialTimeout: 5 * time.Second,
-		}); err != nil {
-			glog.Exitf("Failed to connect to etcd at %v: %v", servers, err)
-		}
-		defer client.Close()
-	}
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go util.AwaitSignal(ctx, cancel)
 
-	hostname, _ := os.Hostname()
-	instanceID := fmt.Sprintf("%s.%d", hostname, os.Getpid())
 	var electionFactory election2.Factory
 	switch {
 	case pl_LogServer.config.ForceMaster:
 		glog.Warning("**** Acting as master for all logs ****")
 		electionFactory = election2.NoopFactory{}
-	case client != nil:
-		electionFactory = etcdelect.NewFactory(instanceID, client, pl_LogServer.config.LockDir)
 	default:
 		glog.Exit("Either --force_master or --etcd_servers must be supplied")
 	}
@@ -107,14 +86,7 @@ func PL_CreateLogSigner(configPath string) {
 		LogStorage:      sp.LogStorage(),
 		ElectionFactory: electionFactory,
 		QuotaManager:    qm,
-		MetricFactory:   mf,
-	}
-
-	// Start HTTP server (optional)
-	if pl_LogServer.config.HttpEndpoint != "" {
-		// Announce our endpoint to etcd if so configured.
-		unannounceHTTP := serverUtil.AnnounceSelf(ctx, client, pl_LogServer.config.EtcdHTTPService, pl_LogServer.config.HttpEndpoint, cancel)
-		defer unannounceHTTP()
+		MetricFactory:   nil,
 	}
 
 	// Start the sequencing loop, which will run until we terminate the process. This controls

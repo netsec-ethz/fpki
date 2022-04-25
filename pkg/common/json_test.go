@@ -25,13 +25,13 @@ func Test_Encode_And_Decode_Of_SPT(t *testing.T) {
 		Signature:       generateRandomBytes(),
 	}
 
-	result, err := Json_StrucToBytes(test)
+	result, err := JsonStrucToBytes(test)
 	if err != nil {
 		t.Errorf(err.Error())
 		return
 	}
 
-	deserlialisedSPT, err := Json_BytesToSPT(result)
+	deserlialisedSPT, err := JsonBytesToSPT(result)
 	if err != nil {
 		t.Errorf(err.Error())
 		return
@@ -86,13 +86,13 @@ func Test_Encode_And_Decode_Of_RPC(t *testing.T) {
 		SPTs:               []SPT{*spt1, *spt2},
 	}
 
-	result, err := Json_StrucToBytes(test)
+	result, err := JsonStrucToBytes(test)
 	if err != nil {
 		t.Errorf(err.Error())
 		return
 	}
 
-	deserlialisedRPC, err := Json_BytesToRPC(result)
+	deserlialisedRPC, err := JsonBytesToRPC(result)
 	if err != nil {
 		t.Errorf(err.Error())
 		return

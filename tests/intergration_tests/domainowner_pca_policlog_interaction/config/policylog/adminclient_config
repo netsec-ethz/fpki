@@ -1,0 +1,10 @@
+{
+ "rpcMaxWaitingTimeInSec": 10,
+ "hashStrategy": "RFC6962_SHA256",
+ "displayName": "policy_log",
+ "description": "tree for policy log",
+ "maxRootDuration": 10,
+ "maxReceiveMessageSize": 10000,
+ "logAddress": "localhost:8090",
+ "OutPutPath": "./file_exchange/policylog"
+}

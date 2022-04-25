@@ -5,12 +5,13 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"github.com/google/trillian"
-	common "github.com/netsec-ethz/fpki/pkg/common"
-	logverifier "github.com/netsec-ethz/fpki/pkg/logverifier"
 	"log"
 	"strconv"
 	"time"
+
+	"github.com/google/trillian"
+	common "github.com/netsec-ethz/fpki/pkg/common"
+	logverifier "github.com/netsec-ethz/fpki/pkg/logverifier"
 )
 
 // TODO: How to handle Cool-off period?
@@ -76,7 +77,7 @@ func NewPCA(configPath string) (*PCA, error) {
 // sign the rcsr and generate a rpc -> store the rpc to the "fileExchange" folder; policy log will fetch rpc from the folder
 func (pca *PCA) SignAndLogRCSR(rcsr *common.RCSR) error {
 	// verify the signature in the rcsr; check if the domain's pub key is correct
-	err := common.RCSR_VerifySignature(rcsr)
+	err := common.RCSRVerifySignature(rcsr)
 	if err != nil {
 		return fmt.Errorf("SignAndLogRCSR | RCSR_VerifySignature | %s", err.Error())
 	}
@@ -95,7 +96,7 @@ func (pca *PCA) SignAndLogRCSR(rcsr *common.RCSR) error {
 	pca.increaseSerialNumber()
 
 	// generate pre-RPC (without SPT)
-	rpc, err := common.RCSR_GenerateRPC(rcsr, notBefore, pca.getSerialNumber(), pca.rsaKeyPair, pca.caName)
+	rpc, err := common.RCSRGenerateRPC(rcsr, notBefore, pca.getSerialNumber(), pca.rsaKeyPair, pca.caName)
 	if err != nil {
 		return fmt.Errorf("SignAndLogRCSR | RCSR_GenerateRPC | %s", err.Error())
 	}
@@ -117,7 +118,7 @@ func (pca *PCA) SignAndLogRCSR(rcsr *common.RCSR) error {
 // this func will read the SPTs from the file, and process them
 func (pca *PCA) ReceiveSPTFromPolicyLog() error {
 	for k, v := range pca.preRPCByDomains {
-		rpcBytes, err := common.Json_StrucToBytes(v)
+		rpcBytes, err := common.JsonStrucToBytes(v)
 		if err != nil {
 			return fmt.Errorf("ReceiveSPTFromPolicyLog | Json_StrucToBytes | %s", err.Error())
 		}
@@ -130,7 +131,7 @@ func (pca *PCA) ReceiveSPTFromPolicyLog() error {
 
 		// read the corresponding spt
 		spt := &common.SPT{}
-		err = common.Json_FileToSPT(spt, pca.policyLogOutputPath+"/spt/"+fileName)
+		err = common.JsonFileToSPT(spt, pca.policyLogOutputPath+"/spt/"+fileName)
 		if err != nil {
 			return fmt.Errorf("ReceiveSPTFromPolicyLog | Json_FileToRPC | %s", err.Error())
 		}
@@ -168,7 +169,7 @@ func (pca *PCA) verifySPT(spt *common.SPT, rpc *common.RPC) error {
 	// construct proofs
 	proofs := []*trillian.Proof{}
 	for _, poi := range spt.PoI {
-		poiStruc, err := common.Json_BytesToPoI(poi)
+		poiStruc, err := common.JsonBytesToPoI(poi)
 		if err != nil {
 			return fmt.Errorf("verifySPT | Json_BytesToPoI | %s", err.Error())
 		}
@@ -176,14 +177,14 @@ func (pca *PCA) verifySPT(spt *common.SPT, rpc *common.RPC) error {
 	}
 
 	// get leaf hash
-	rpcBytes, err := common.Json_StrucToBytes(rpc)
+	rpcBytes, err := common.JsonStrucToBytes(rpc)
 	if err != nil {
 		return fmt.Errorf("verifySPT | Json_StrucToBytes | %s", err.Error())
 	}
 	leafHash := pca.logVerifier.HashLeaf(rpcBytes)
 
 	// get LogRootV1
-	logRoot, err := common.Json_BytesToLogRoot(spt.STH)
+	logRoot, err := common.JsonBytesToLogRoot(spt.STH)
 
 	// verify the PoI
 	err = pca.logVerifier.VerifyInclusionByHash(logRoot, leafHash, proofs)
@@ -209,7 +210,7 @@ func (pca *PCA) checkRPCSignature(rcsr *common.RCSR) bool {
 
 	// check if there is any valid rpc
 	if rpc, found := pca.validRPCsByDomains[rcsr.Subject]; found {
-		err := common.RCSR_VerifyRPCSIgnature(rcsr, rpc)
+		err := common.RCSRVerifyRPCSIgnature(rcsr, rpc)
 		if err == nil {
 			return true
 		} else {
@@ -222,5 +223,5 @@ func (pca *PCA) checkRPCSignature(rcsr *common.RCSR) bool {
 
 // save file to output dir
 func (pca *PCA) sendRPCToPolicyLog(rpc *common.RPC, fileName string) error {
-	return common.Json_StrucToFile(rpc, pca.outputPath+"/RPC/"+fileName)
+	return common.JsonStrucToFile(rpc, pca.outputPath+"/RPC/"+fileName)
 }

@@ -5,7 +5,7 @@ import (
 	"io/ioutil"
 )
 
-type PL_LogClientConfig struct {
+type PLLogClientConfig struct {
 	// target tree ID
 	// for log client, normally there will only be one tree
 	TreeId int64 `json:"TreeId",omitempty`
@@ -24,7 +24,7 @@ type PL_LogClientConfig struct {
 	NumOfWorker int `json:"NumOfWorker",omitempty`
 }
 
-func (config *PL_LogClientConfig) Equal(config_ *PL_LogClientConfig) bool {
+func (config *PLLogClientConfig) Equal(config_ *PLLogClientConfig) bool {
 	if config.RPCAddress == config_.RPCAddress &&
 		config.TreeId == config_.TreeId &&
 		config.MaxReceiveMessageSize == config_.MaxReceiveMessageSize &&
@@ -36,7 +36,7 @@ func (config *PL_LogClientConfig) Equal(config_ *PL_LogClientConfig) bool {
 	return false
 }
 
-func SaveLogClientConfigToFile(config *PL_LogClientConfig, configPath string) error {
+func SaveLogClientConfigToFile(config *PLLogClientConfig, configPath string) error {
 	bytes, err := json.MarshalIndent(config, "", " ")
 	err = ioutil.WriteFile(configPath, bytes, 0644)
 	if err != nil {
@@ -45,7 +45,7 @@ func SaveLogClientConfigToFile(config *PL_LogClientConfig, configPath string) er
 	return nil
 }
 
-func ReadLogClientConfigFromFile(config *PL_LogClientConfig, filePath string) error {
+func ReadLogClientConfigFromFile(config *PLLogClientConfig, filePath string) error {
 	file, err := ioutil.ReadFile(filePath)
 	if err != nil {
 		return err

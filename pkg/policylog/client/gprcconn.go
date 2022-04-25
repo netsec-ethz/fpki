@@ -2,12 +2,13 @@ package client
 
 import (
 	"fmt"
+
 	"github.com/google/trillian/client/rpcflags"
 	"google.golang.org/grpc"
 )
 
 // get a GRPC connection to the log server; will be used later for log client
-func GetGRPCConn(maxReceiveMessageSize int, logAddress string) (*grpc.ClientConn, error) {
+func getGRPCConn(maxReceiveMessageSize int, logAddress string) (*grpc.ClientConn, error) {
 	// get security flag
 	dialOpts, err := rpcflags.NewClientDialOptionsFromFlags()
 	if err != nil {

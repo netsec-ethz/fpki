@@ -3,6 +3,7 @@ package logverifier
 import (
 	"errors"
 	"fmt"
+
 	"github.com/google/trillian"
 	"github.com/google/trillian/types"
 	"github.com/transparency-dev/merkle"
@@ -33,7 +34,7 @@ func (logVerifier *LogVerifier) HashLeaf(input []byte) []byte {
 
 // This function verify the leaf using an old log root(tree head)
 // Logic: Verify the leaf using old log root -> verify the old root using the newest root
-func (c *LogVerifier) VerifyInclusion_WithPrevLogRoot(trusted *types.LogRootV1, newRoot *types.LogRootV1, consistency [][]byte, leafHash []byte, proof []*trillian.Proof) error {
+func (c *LogVerifier) VerifyInclusionWithPrevLogRoot(trusted *types.LogRootV1, newRoot *types.LogRootV1, consistency [][]byte, leafHash []byte, proof []*trillian.Proof) error {
 	if trusted == nil {
 		return fmt.Errorf("VerifyInclusion_WithPrevLogRoot() error: trusted == nil")
 	}

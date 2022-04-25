@@ -8,7 +8,6 @@ import (
 	_ "net/http/pprof" // Register pprof HTTP handlers.
 	"os"
 	"runtime/pprof"
-	"strings"
 	"time"
 
 	"github.com/golang/glog"
@@ -16,17 +15,12 @@ import (
 	"github.com/google/trillian/extension"
 	"github.com/google/trillian/monitoring"
 	"github.com/google/trillian/monitoring/opencensus"
-	"github.com/google/trillian/monitoring/prometheus"
 	"github.com/google/trillian/quota"
-	"github.com/google/trillian/quota/etcd"
-	"github.com/google/trillian/quota/etcd/quotaapi"
-	"github.com/google/trillian/quota/etcd/quotapb"
 	"github.com/google/trillian/server"
 	"github.com/google/trillian/storage"
 	"github.com/google/trillian/util"
 	"github.com/google/trillian/util/clock"
 	serverUtil "github.com/netsec-ethz/fpki/pkg/policylog/server/util"
-	clientv3 "go.etcd.io/etcd/client/v3"
 	"google.golang.org/grpc"
 
 	// Register supported storage providers.
@@ -35,6 +29,7 @@ import (
 
 	// Load MySQL quota provider
 	"flag"
+
 	_ "github.com/google/trillian/quota/mysqlqm"
 )
 
@@ -42,7 +37,7 @@ type LogServer struct {
 	config *LogServerConfig
 }
 
-func PL_CreateLogServer(configPath string) {
+func PLCreateLogServer(configPath string) {
 	flag.Parse()
 
 	logConfig := &LogServerConfig{}
@@ -50,7 +45,7 @@ func PL_CreateLogServer(configPath string) {
 		config: logConfig,
 	}
 
-	err := PL_ReadLogConfigFromFile(logConfig, configPath)
+	err := PLReadLogConfigFromFile(logConfig, configPath)
 	if err != nil {
 		glog.Exitf("Failed to read config file: %v", err)
 		return
@@ -61,7 +56,6 @@ func PL_CreateLogServer(configPath string) {
 	go util.AwaitSignal(ctx, cancel)
 
 	var options []grpc.ServerOption
-	mf := prometheus.MetricFactory{}
 	monitoring.SetStartSpan(opencensus.StartSpan)
 
 	if pl_LogServer.config.Tracing {
@@ -73,31 +67,11 @@ func PL_CreateLogServer(configPath string) {
 		options = append(options, opts...)
 	}
 
-	sp, err := storage.NewProvider(pl_LogServer.config.StorageSystem, mf)
+	sp, err := storage.NewProvider(pl_LogServer.config.StorageSystem, nil)
 	if err != nil {
 		glog.Exitf("Failed to get storage provider: %v", err)
 	}
 	defer sp.Close()
-
-	var client *clientv3.Client
-	if servers := *etcd.Servers; servers != "" {
-		if client, err = clientv3.New(clientv3.Config{
-			Endpoints:   strings.Split(servers, ","),
-			DialTimeout: 5 * time.Second,
-		}); err != nil {
-			glog.Exitf("Failed to connect to etcd at %v: %v", servers, err)
-		}
-		defer client.Close()
-	}
-
-	// Announce our endpoints to etcd if so configured.
-	unannounce := serverUtil.AnnounceSelf(ctx, client, pl_LogServer.config.EtcdService, pl_LogServer.config.RpcEndpoint, cancel)
-	defer unannounce()
-
-	if pl_LogServer.config.HttpEndpoint != "" {
-		unannounceHTTP := serverUtil.AnnounceSelf(ctx, client, pl_LogServer.config.EtcdHTTPService, pl_LogServer.config.HttpEndpoint, cancel)
-		defer unannounceHTTP()
-	}
 
 	qm, err := quota.NewManager(pl_LogServer.config.QuotaSystem)
 	if err != nil {
@@ -108,7 +82,7 @@ func PL_CreateLogServer(configPath string) {
 		AdminStorage:  sp.AdminStorage(),
 		LogStorage:    sp.LogStorage(),
 		QuotaManager:  qm,
-		MetricFactory: mf,
+		MetricFactory: nil,
 	}
 
 	// Enable CPU profile if requested.
@@ -134,9 +108,6 @@ func PL_CreateLogServer(configPath string) {
 				return err
 			}
 			trillian.RegisterTrillianLogServer(s, logServer)
-			if pl_LogServer.config.QuotaSystem == etcd.QuotaManagerName {
-				quotapb.RegisterQuotaServer(s, quotaapi.NewServer(client))
-			}
 			return nil
 		},
 		IsHealthy: func(ctx context.Context) error {

@@ -5,5 +5,5 @@ import (
 )
 
 func main() {
-	logServer.PL_CreateLogServer("../config/policyLog/logserver_config")
+	logServer.PLCreateLogServer("config/logserver_config")
 }

@@ -90,7 +90,7 @@ func (config *LogServerConfig) Equal(config_ *LogServerConfig) bool {
 	return false
 }
 
-func PL_SaveLogConfigToFile(config *LogServerConfig, configPath string) error {
+func PLSaveLogConfigToFile(config *LogServerConfig, configPath string) error {
 	bytes, err := json.MarshalIndent(config, "", " ")
 	err = ioutil.WriteFile(configPath, bytes, 0644)
 	if err != nil {
@@ -100,7 +100,7 @@ func PL_SaveLogConfigToFile(config *LogServerConfig, configPath string) error {
 	return nil
 }
 
-func PL_ReadLogConfigFromFile(config *LogServerConfig, configPath string) error {
+func PLReadLogConfigFromFile(config *LogServerConfig, configPath string) error {
 	file, err := ioutil.ReadFile(configPath)
 	if err != nil {
 		return err
