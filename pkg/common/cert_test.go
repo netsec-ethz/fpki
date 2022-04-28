@@ -4,36 +4,22 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"testing"
-)
 
-//------------------------------------------------------
-//           tests for cert.go
-//------------------------------------------------------
+	"github.com/stretchr/testify/require"
+)
 
 // TODO: more unit tests
 
-// public key -> bytes -> public key
+// Test_Enc_And_Dec_Of_PubKey public key -> bytes -> public key
 func Test_Enc_And_Dec_Of_PubKey(t *testing.T) {
 	privateKeyPair, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Errorf("Keypair generation error")
-		return
-	}
+	require.NoError(t, err)
 
 	bytes, err := RsaPublicKeyToPemBytes(&privateKeyPair.PublicKey)
-	if err != nil {
-		t.Errorf("Encoding error")
-		return
-	}
+	require.NoError(t, err, "encoding error")
 
 	pubKey, err := PemBytesToRsaPublicKey(bytes)
-	if err != nil {
-		t.Errorf("Decoding error")
-		return
-	}
+	require.NoError(t, err, "decoding error")
 
-	if !privateKeyPair.PublicKey.Equal(pubKey) {
-		t.Errorf("Parsing error")
-		return
-	}
+	require.Equal(t, privateKeyPair.PublicKey, *pubKey, "parsing error")
 }
