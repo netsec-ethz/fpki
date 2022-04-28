@@ -28,7 +28,7 @@ func Test_Equal(t *testing.T) {
 		return
 	}
 
-	spt1 := &SPT{
+	spt1 := SPT{
 		Version:         12313,
 		Subject:         "hihihihihhi",
 		CAName:          "I'm honest CA, nice to meet you",
@@ -41,7 +41,7 @@ func Test_Equal(t *testing.T) {
 		Signature:       generateRandomBytes(),
 	}
 
-	spt2 := &SPT{
+	spt2 := SPT{
 		Version:         12368713,
 		Subject:         "hohohoho",
 		CAName:          "I'm malicious CA, nice to meet you",
@@ -90,7 +90,7 @@ func Test_Equal(t *testing.T) {
 		TimeStamp:          time.Now(),
 		PRCSignature:       generateRandomBytes(),
 		CASignature:        generateRandomBytes(),
-		SPTs:               []SPT{*spt1, *spt2},
+		SPTs:               []SPT{spt1, spt2},
 	}
 
 	if !rpc.Equal(rpc) {

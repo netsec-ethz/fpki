@@ -12,7 +12,7 @@ import (
 // SPT -> bytes -> SPT
 func Test_Encode_And_Decode_Of_SPT(t *testing.T) {
 
-	test := &SPT{
+	test := SPT{
 		Version:         12314,
 		Subject:         "you are funny",
 		CAName:          "hihihihihihi",
