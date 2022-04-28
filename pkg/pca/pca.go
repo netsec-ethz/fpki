@@ -45,33 +45,26 @@ type PCA struct {
 }
 
 func NewPCA(configPath string) (*PCA, error) {
-	pca := &PCA{}
-
 	// read config file
 	config := &PCAConfig{}
 	err := ReadConfigFromFile(config, configPath)
 	if err != nil {
 		return nil, fmt.Errorf("NewPCA | LoadRSAKeyPairFromFile | %s", err.Error())
 	}
-
-	pca.caName = config.CAName
-	pca.outputPath = config.OutputPath
-	pca.policyLogOutputPath = config.PolicyLogOutputPath
-
 	// load rsa key pair
 	keyPair, err := common.LoadRSAKeyPairFromFile(config.KeyPath)
 	if err != nil {
 		return nil, fmt.Errorf("NewPCA | LoadRSAKeyPairFromFile | %s", err.Error())
 	}
-	pca.rsaKeyPair = keyPair
-
-	pca.validRPCsByDomains = make(map[string]*common.RPC)
-	pca.preRPCByDomains = make(map[string]*common.RPC)
-
-	pca.serialNumber = 0
-	pca.logVerifier = logverifier.NewLogVerifier(nil)
-
-	return pca, nil
+	return &PCA{
+		validRPCsByDomains:  make(map[string]*common.RPC),
+		preRPCByDomains:     make(map[string]*common.RPC),
+		logVerifier:         logverifier.NewLogVerifier(nil),
+		caName:              config.CAName,
+		outputPath:          config.OutputPath,
+		policyLogOutputPath: config.PolicyLogOutputPath,
+		rsaKeyPair:          keyPair,
+	}, nil
 }
 
 // sign the rcsr and generate a rpc -> store the rpc to the "fileExchange" folder; policy log will fetch rpc from the folder
