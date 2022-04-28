@@ -72,41 +72,12 @@ type LogSignerConfig struct {
 	MemProfile string `json:"MemProfile",omitempty`
 }
 
-func (config *LogSignerConfig) Equal(config_ *LogSignerConfig) bool {
-	if config.RpcEndpoint == config_.RpcEndpoint &&
-		config.HttpEndpoint == config_.HttpEndpoint &&
-		config.TlsCertFile == config_.TlsCertFile &&
-		config.TlsKeyFile == config_.TlsKeyFile &&
-		config.HealthzTimeoutInSec == config_.HealthzTimeoutInSec &&
-		config.QuotaSystem == config_.QuotaSystem &&
-		config.StorageSystem == config_.StorageSystem &&
-		config.ConfigFile == config_.ConfigFile &&
-		config.SequencerIntervalFlagInMillSec == config_.SequencerIntervalFlagInMillSec &&
-		config.BatchSizeFlag == config_.BatchSizeFlag &&
-		config.NumSeqFlag == config_.NumSeqFlag &&
-		config.SequencerGuardWindowFlagInSec == config_.SequencerGuardWindowFlagInSec &&
-		config.ForceMaster == config_.ForceMaster &&
-		config.EtcdHTTPService == config_.EtcdHTTPService &&
-		config.LockDir == config_.LockDir &&
-		config.QuotaIncreaseFactor == config_.QuotaIncreaseFactor &&
-		config.PreElectionPauseInSec == config_.PreElectionPauseInSec &&
-		config.MasterHoldIntervalInSec == config_.MasterHoldIntervalInSec &&
-		config.MasterHoldJitterInSec == config_.MasterHoldJitterInSec &&
-		config.CpuProfile == config_.CpuProfile &&
-		config.MemProfile == config_.MemProfile {
-		return true
-	}
-	return false
-}
-
 func SaveLogSignerConfigToFile(config *LogSignerConfig, configPath string) error {
 	bytes, err := json.MarshalIndent(config, "", " ")
-	err = ioutil.WriteFile(configPath, bytes, 0644)
 	if err != nil {
 		return err
 	}
-
-	return nil
+	return ioutil.WriteFile(configPath, bytes, 0644)
 }
 
 func ReadLogSignerConfigFromFile(config *LogSignerConfig, configPath string) error {
@@ -114,11 +85,5 @@ func ReadLogSignerConfigFromFile(config *LogSignerConfig, configPath string) err
 	if err != nil {
 		return err
 	}
-
-	err = json.Unmarshal([]byte(file), config)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return json.Unmarshal([]byte(file), config)
 }
