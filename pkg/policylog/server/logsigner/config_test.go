@@ -1,13 +1,16 @@
 package logsigner
 
 import (
+	"os"
+	"path"
 	"testing"
 
-	PL_logSigner "github.com/netsec-ethz/fpki/pkg/policylog/server/logsigner"
+	"github.com/netsec-ethz/fpki/pkg/policylog/server/logsigner"
+	"github.com/stretchr/testify/require"
 )
 
-func Test_Config(t *testing.T) {
-	config := &PL_logSigner.LogSignerConfig{
+func TestConfig(t *testing.T) {
+	config := &logsigner.LogSignerConfig{
 		RpcEndpoint:                    "localhost:8092",
 		HttpEndpoint:                   "localhost:8093",
 		TlsCertFile:                    "",
@@ -31,22 +34,15 @@ func Test_Config(t *testing.T) {
 		MemProfile:                     "",
 	}
 
-	err := PL_logSigner.SaveLogSignerConfigToFile(config, "testdata/logsigner_config")
-	if err != nil {
-		t.Errorf(err.Error())
-		return
-	}
+	tempFile := path.Join(os.TempDir(), "logsigner_config.json")
+	defer os.Remove(tempFile)
 
-	config_ := &PL_logSigner.LogSignerConfig{}
-	err = PL_logSigner.ReadLogSignerConfigFromFile(config_, "testdata/logsigner_config")
-	if err != nil {
-		t.Errorf(err.Error())
-		return
-	}
+	err := logsigner.SaveLogSignerConfigToFile(config, tempFile)
+	require.NoError(t, err)
 
-	if !config.Equal(config_) {
-		t.Errorf("config Equal() error")
-		return
-	}
+	config_ := &logsigner.LogSignerConfig{}
+	err = logsigner.ReadLogSignerConfigFromFile(config_, tempFile)
+	require.NoError(t, err)
 
+	require.Equal(t, config, config_)
 }
