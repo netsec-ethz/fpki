@@ -13,7 +13,7 @@
     ├── cert                                  # certificates for testing. Eg. cert for PCA
     ├── cmd                                   # Executables. Log server and log signer
     ├── config                                # Config file for PCA and policy log
-    ├── docs                                  # FPKI design
+    ├── doc                                   # FPKI design
     ├── fileExchange                          # Folder for exchanging files between PCA and policy log. Contains RPCs and SPTs.
     ├── images
     ├── performance_test_output               # Some results of the policy log performance
@@ -24,7 +24,7 @@
     
     
  ## Overview
- ![Alt text](docs/images/overview.png?raw=true"Overview")
+ ![Alt text](doc/images/overview.png?raw=true"Overview")
  
  The figure above illustrates the components so far. The domain owner sends RCSR to the PCA, and PCA signs the RCSR to generate an RPC. Then the PCA sends the RPC to the policy log to get an SPT. The log verifier will verify the SPT and the consistency between the old tree head and the newest tree head.
  
