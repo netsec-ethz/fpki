@@ -52,9 +52,8 @@ Download the FPKI
 
 Conpile the executable
  ```
-   cd scripts
-   ./build_policyLog.sh
-   ./make_test_folders.sh
+   make
+   make test_folders
  ```
  
  Open two terminals, run "cmd/logserver_exec" and "cmd/logsigner_exec"

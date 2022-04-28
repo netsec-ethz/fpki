@@ -1,6 +1,8 @@
 package common
 
 import (
+	"os"
+	"path"
 	"testing"
 	"time"
 )
@@ -143,14 +145,16 @@ func Test_Json_Read_Write(t *testing.T) {
 		SPTs:               []SPT{*spt1, *spt2},
 	}
 
-	err := JsonStrucToFile(rpc, "rpc_test")
+	tempFile := path.Join(os.TempDir(), "rpc_test.json")
+	defer os.Remove(tempFile)
+	err := JsonStrucToFile(rpc, tempFile)
 	if err != nil {
 		t.Errorf(err.Error())
 		return
 	}
 
 	rpc1 := &RPC{}
-	err = JsonFileToRPC(rpc1, "rpc_test")
+	err = JsonFileToRPC(rpc1, tempFile)
 	if err != nil {
 		t.Errorf(err.Error())
 		return
