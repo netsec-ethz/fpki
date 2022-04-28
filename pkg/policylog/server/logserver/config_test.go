@@ -1,6 +1,8 @@
 package logserver
 
 import (
+	"os"
+	"path"
 	"testing"
 )
 
@@ -28,14 +30,17 @@ func Test_Config(t *testing.T) {
 		MemProfile:                     "",
 	}
 
-	err := PLSaveLogConfigToFile(config, "testdata/logserver_config")
+	tempFile := path.Join(os.TempDir(), "logserver_config.json")
+	defer os.Remove(tempFile)
+
+	err := PLSaveLogConfigToFile(config, tempFile)
 	if err != nil {
 		t.Errorf(err.Error())
 		return
 	}
 
 	config_ := &LogServerConfig{}
-	err = PLReadLogConfigFromFile(config_, "testdata/logserver_config")
+	err = PLReadLogConfigFromFile(config_, tempFile)
 	if err != nil {
 		t.Errorf(err.Error())
 		return
