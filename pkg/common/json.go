@@ -30,7 +30,7 @@ func JsonStrucToBytes(struc interface{}) ([]byte, error) {
 		break
 	case *RPC:
 		break
-	case *SPT:
+	case SPT:
 		break
 	case *SPRT:
 		break

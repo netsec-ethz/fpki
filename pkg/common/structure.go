@@ -39,16 +39,23 @@ type RPC struct {
 
 // signed policy timestamp
 type SPT struct {
-	Version         int       `json:"Version",omitempty`
-	Subject         string    `json:"Subject",omitempty`
-	CAName          string    `json:"CAName",omitempty`
-	LogID           int       `json:"LogID",omitempty`
-	CertType        uint8     `json:"CertType",omitempty`
-	AddedTS         time.Time `json:"AddedTS",omitempty`
-	STH             []byte    `json:"STH",omitempty`
-	PoI             [][]byte  `json:"PoI",omitempty`
-	STHSerialNumber int       `json:"STHSerialNumber",omitempty`
-	Signature       []byte    `json:"Signature",omitempty`
+	Version         int       `json:",omitempty"`
+	Subject         string    `json:",omitempty"`
+	CAName          string    `json:",omitempty"`
+	LogID           int       `json:",omitempty"`
+	CertType        uint8     `json:",omitempty"`
+	AddedTS         time.Time `json:",omitempty"`
+	STH             []byte    `json:",omitempty"`
+	PoI             [][]byte  `json:",omitempty"`
+	STHSerialNumber int       `json:",omitempty"`
+	Signature       []byte    `json:",omitempty"`
+}
+
+func (s SPT) Equal(o SPT) bool {
+	return s.Version == o.Version && s.Subject == o.Subject && s.CAName == o.CAName &&
+		s.LogID == o.LogID && s.CertType == o.CertType && s.AddedTS.Equal(o.AddedTS) &&
+		bytes.Equal(s.STH, o.STH) && equalSliceSlicesBytes(s.PoI, o.PoI) &&
+		s.STHSerialNumber == o.STHSerialNumber && bytes.Equal(s.Signature, o.Signature)
 }
 
 // signed policy revocation timestamp
@@ -100,35 +107,10 @@ func (rpc *RPC) Equal(rpc_ *RPC) bool {
 			return false
 		}
 		for i, v := range rpc.SPTs {
-			if !v.Equal(&rpc_.SPTs[i]) {
+			if !v.Equal(rpc_.SPTs[i]) {
 				return false
 			}
 		}
-		return true
-	}
-	return false
-}
-
-func (spt *SPT) Equal(spt_ *SPT) bool {
-	if spt.Version == spt_.Version &&
-		spt.Subject == spt_.Subject &&
-		spt.CAName == spt_.CAName &&
-		spt.LogID == spt_.LogID &&
-		spt.CertType == spt_.CertType &&
-		spt.AddedTS.Equal(spt_.AddedTS) &&
-		bytes.Compare(spt.STH, spt_.STH) == 0 &&
-		spt.STHSerialNumber == spt_.STHSerialNumber &&
-		bytes.Compare(spt.Signature, spt_.Signature) == 0 {
-
-		if len(spt.PoI) != len(spt_.PoI) {
-			return false
-		}
-		for i, poi := range spt.PoI {
-			if bytes.Compare(poi, spt_.PoI[i]) != 0 {
-				return false
-			}
-		}
-
 		return true
 	}
 	return false
@@ -157,4 +139,16 @@ func (sprt *SPRT) Equal(sprt_ *SPRT) bool {
 		return true
 	}
 	return false
+}
+
+func equalSliceSlicesBytes(a, b [][]byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !bytes.Equal(a[i], b[i]) {
+			return false
+		}
+	}
+	return true
 }
