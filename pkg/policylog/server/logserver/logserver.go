@@ -33,6 +33,8 @@ import (
 	_ "github.com/google/trillian/quota/mysqlqm"
 )
 
+// TODO(juagargi) this file is too complex really for what we need. Rethink it.
+
 type LogServer struct {
 	config *LogServerConfig
 }
