@@ -4,19 +4,19 @@ import (
 	"crypto/rand"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 //------------------------------------------------------
 //           tests for crypto.go
 //------------------------------------------------------
 
-// Generate RCSR -> generate signature for RCSR -> verify signature
-func Test_Signature_Of_RCSR(t *testing.T) {
-	privKey, err := LoadRSAKeyPairFromFile("./testdata/client_key.pem")
-	if err != nil {
-		t.Errorf(err.Error())
-		return
-	}
+// TestSignatureOfRCSR: Generate RCSR -> generate signature for RCSR -> verify signature
+func TestSignatureOfRCSR(t *testing.T) {
+	privKey, err := LoadRSAKeyPairFromFile("./testdata/clientkey.pem")
+	require.NoError(t, err, "load RSA key error")
 
 	test := &RCSR{
 		Subject:            "this is a test",
@@ -29,36 +29,24 @@ func Test_Signature_Of_RCSR(t *testing.T) {
 	}
 
 	pubKeyBytes, err := RsaPublicKeyToPemBytes(&privKey.PublicKey)
-	if err != nil {
-		t.Errorf(err.Error())
-		return
-	}
+	require.NoError(t, err, "RSA key to bytes error")
 
 	test.PublicKey = pubKeyBytes
 
 	err = RCSRCreateSignature(privKey, test)
-	if err != nil {
-		t.Errorf(err.Error())
-		return
-	}
+	require.NoError(t, err, "RCSR sign signature error")
 
 	err = RCSRVerifySignature(test)
-	if err != nil {
-		t.Errorf(err.Error())
-		return
-	}
+	require.NoError(t, err, "RCSR verify signature error")
 }
 
-// only check if the CA signature is correct
-func Test_Issuance_Of_RPC(t *testing.T) {
+// TestIssuanceOfRPC:  check if the CA signature is correct
+func TestIssuanceOfRPC(t *testing.T) {
 	// -------------------------------------
 	//  phase 1: domain owner generate rcsr
 	// -------------------------------------
-	privKey, err := LoadRSAKeyPairFromFile("./testdata/client_key.pem")
-	if err != nil {
-		t.Errorf(err.Error())
-		return
-	}
+	privKey, err := LoadRSAKeyPairFromFile("./testdata/clientkey.pem")
+	require.NoError(t, err, "Load RSA Key Pair From File error")
 
 	rcsr := &RCSR{
 		Subject:            "this is a test",
@@ -72,57 +60,36 @@ func Test_Issuance_Of_RPC(t *testing.T) {
 
 	// add public key
 	pubKeyBytes, err := RsaPublicKeyToPemBytes(&privKey.PublicKey)
-	if err != nil {
-		t.Errorf(err.Error())
-		return
-	}
+	require.NoError(t, err, "Rsa PublicKey To Pem Bytes error")
+
 	rcsr.PublicKey = pubKeyBytes
 
 	// generate signature for rcsr
 	err = RCSRCreateSignature(privKey, rcsr)
-	if err != nil {
-		t.Errorf(err.Error())
-		return
-	}
+	require.NoError(t, err, "RCSR Create Signature error")
 
 	// -------------------------------------
 	//  phase 2: pca issue rpc
 	// -------------------------------------
 	// validate the signature in rcsr
 	err = RCSRVerifySignature(rcsr)
-	if err != nil {
-		t.Errorf(err.Error())
-		return
-	}
+	require.NoError(t, err, "RCSR Verify Signature error")
 
-	pcaPrivKey, err := LoadRSAKeyPairFromFile("./testdata/server_key.pem")
+	pcaPrivKey, err := LoadRSAKeyPairFromFile("./testdata/serverkey.pem")
 	rpc, err := RCSRGenerateRPC(rcsr, time.Now(), 1, pcaPrivKey, "fpki")
-	if err != nil {
-		t.Errorf(err.Error())
-		return
-	}
+	require.NoError(t, err, "RCSR Generate RPC error")
 
-	if len(rpc.SPTs) != 0 {
-		t.Errorf("Has SPTs")
-		return
-	}
+	assert.Equal(t, len(rpc.SPTs), 0, "spt in the rpc should be empty")
 
 	// -------------------------------------
 	//  phase 3: domain owner check rpc
 	// -------------------------------------
 
-	caCert, err := X509CertFromFile("./testdata/server_cert.pem")
-	if err != nil {
-		t.Errorf(err.Error())
-		return
-	}
+	caCert, err := X509CertFromFile("./testdata/servercert.pem")
+	require.NoError(t, err, "X509 Cert From File error")
 
 	err = RPCVerifyCASignature(caCert, rpc)
-
-	if err != nil {
-		t.Errorf(err.Error())
-		return
-	}
+	require.NoError(t, err, "RPC Verify CA Signature error")
 }
 
 //-------------------------------------------------------------

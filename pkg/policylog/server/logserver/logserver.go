@@ -35,10 +35,12 @@ import (
 
 // TODO(juagargi) this file is too complex really for what we need. Rethink it.
 
+// LogServer: struc for a log server
 type LogServer struct {
 	config *LogServerConfig
 }
 
+// PLCreateLogServer: Create a log server
 func PLCreateLogServer(configPath string) {
 	flag.Parse()
 
@@ -47,7 +49,7 @@ func PLCreateLogServer(configPath string) {
 		config: logConfig,
 	}
 
-	err := PLReadLogConfigFromFile(logConfig, configPath)
+	err := ReadLogConfigFromFile(logConfig, configPath)
 	if err != nil {
 		glog.Exitf("Failed to read config file: %v", err)
 		return

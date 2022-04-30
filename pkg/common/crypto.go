@@ -11,12 +11,14 @@ import (
 )
 
 // currently only SHA256 and RSA is supported
+// SignatureAlgorithm: Enum of supported signature algorithm; Currently only SHA256
 type SignatureAlgorithm int
 
 const (
 	SHA256 SignatureAlgorithm = iota
 )
 
+// PublicKeyAlgorithm: Enum of supported public key algorithm; Currently only RSA
 type PublicKeyAlgorithm int
 
 const (
@@ -29,7 +31,7 @@ const (
 //                                    common part
 // ----------------------------------------------------------------------------------
 
-// generate a signature using SHA256 and RSA
+// SignStrucRSASHA256: generate a signature using SHA256 and RSA
 func SignStrucRSASHA256(struc interface{}, privKey *rsa.PrivateKey) ([]byte, error) {
 	bytes, err := JsonStrucToBytes(struc)
 	if err != nil {
@@ -50,9 +52,9 @@ func SignStrucRSASHA256(struc interface{}, privKey *rsa.PrivateKey) ([]byte, err
 //                               functions on RCSR
 // ----------------------------------------------------------------------------------
 
-// Generate a signature, and fill the signature in the RCSR
+// RCSRCreateSignature: Generate a signature, and fill the signature in the RCSR
 func RCSRCreateSignature(domainOwnerPrivKey *rsa.PrivateKey, rcsr *RCSR) error {
-	// clear signature; normally should be
+	// clear signature; normally should be empty
 	rcsr.Signature = []byte{}
 
 	signature, err := SignStrucRSASHA256(rcsr, domainOwnerPrivKey)
@@ -64,7 +66,8 @@ func RCSRCreateSignature(domainOwnerPrivKey *rsa.PrivateKey, rcsr *RCSR) error {
 	return nil
 }
 
-// Generate RPC signature and fill it in the RCSR; (in paper, if new rcsr has the signature from previous rpc, the cool-off can be bypassed)
+// RCSRGenerateRPCSignature: Generate RPC signature and fill it in the RCSR;
+//    (in paper, if new rcsr has the signature from previous rpc, the cool-off can be bypassed)
 func RCSRGenerateRPCSignature(rcsr *RCSR, prevPrivKeyOfPRC *rsa.PrivateKey) error {
 	// clear the co-responding fields
 	rcsr.Signature = []byte{}
@@ -79,9 +82,9 @@ func RCSRGenerateRPCSignature(rcsr *RCSR, prevPrivKeyOfPRC *rsa.PrivateKey) erro
 	return nil
 }
 
-// verify the signature using the public key in hash
+// RCSRVerifySignature: verify the signature using the public key in hash
 func RCSRVerifySignature(rcsr *RCSR) error {
-	// deep copy; Signature will be empty
+	// Signature will be empty
 	rcsrCopy := &RCSR{
 		Subject:            rcsr.Subject,
 		Version:            rcsr.Version,
@@ -106,13 +109,11 @@ func RCSRVerifySignature(rcsr *RCSR) error {
 
 	hashOutput := sha256.Sum256(serialisedStruc)
 
-	err = rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, hashOutput[:], rcsr.Signature)
-	return err
+	return rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, hashOutput[:], rcsr.Signature)
 }
 
-// verify the RCSR using RPC; verify the RPC signature
+// RCSRVerifyRPCSIgnature: verify the RCSR using RPC; verify the RPC signature
 func RCSRVerifyRPCSIgnature(rcsr *RCSR, rpc *RPC) error {
-	// deep copy
 	rcsrCopy := &RCSR{
 		Subject:            rcsr.Subject,
 		Version:            rcsr.Version,
@@ -136,13 +137,10 @@ func RCSRVerifyRPCSIgnature(rcsr *RCSR, rpc *RPC) error {
 
 	hashOutput := sha256.Sum256(serialisedStruc)
 
-	err = rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, hashOutput[:], rcsr.PRCSignature)
-
-	// if every thing is correct, the err will be nil
-	return err
+	return rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, hashOutput[:], rcsr.PRCSignature)
 }
 
-// called by PCA. Sign the RCSR and generate RPC; SPT field is (should be) empty
+// RCSRGenerateRPC: called by PCA. Sign the RCSR and generate RPC; SPT field is (should be) empty
 func RCSRGenerateRPC(rcsr *RCSR, notBefore time.Time, serialNumber int, caPrivKey *rsa.PrivateKey, caName string) (*RPC, error) {
 	rpc := &RPC{
 		Subject:            rcsr.Subject,
@@ -175,11 +173,10 @@ func RCSRGenerateRPC(rcsr *RCSR, notBefore time.Time, serialNumber int, caPrivKe
 //                               functions on RPC
 // ----------------------------------------------------------------------------------
 
-// used by domain owner, check whether CA signature is correct
+// RPCVerifyCASignature: used by domain owner, check whether CA signature is correct
 func RPCVerifyCASignature(caCert *x509.Certificate, rpc *RPC) error {
 	pubKey := caCert.PublicKey.(*rsa.PublicKey)
 
-	// deep copy
 	rpcCopy := &RPC{
 		SerialNumber:       rpc.SerialNumber,
 		Subject:            rpc.Subject,
@@ -203,8 +200,5 @@ func RPCVerifyCASignature(caCert *x509.Certificate, rpc *RPC) error {
 
 	hashOutput := sha256.Sum256(bytes)
 
-	err = rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, hashOutput[:], rpc.CASignature)
-
-	// if every thing is correct, the err will be nil
-	return err
+	return rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, hashOutput[:], rpc.CASignature)
 }

@@ -10,15 +10,20 @@ import (
 	"time"
 
 	"github.com/google/trillian"
-	common "github.com/netsec-ethz/fpki/pkg/common"
-	logverifier "github.com/netsec-ethz/fpki/pkg/logverifier"
+	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/logverifier"
 )
 
-// TODO: How to handle Cool-off period?
+// CRITICAL: The funcs are not thread-safe for now. DO NOT use them for multi-thread program.
+
+// TODO(yongzhe):
+//       How to handle Cool-off period?
 //       SuspeciousSPTs
-//       Let domain owner sends the previous RPC (PCA needs to store the RPC anyway, right? If domain owner loses the RPC, PCA can return the missing RPC)
+//       Let domain owner sends the previous RPC (PCA needs to store the RPC anyway, right?
+//           If domain owner loses the RPC, PCA can return the missing RPC)
 //       More complete logic
 
+// PCA: Structure which represent one PCA
 type PCA struct {
 	caName string
 
@@ -44,6 +49,7 @@ type PCA struct {
 	serialNumber int
 }
 
+// NewPCA: Return a new instance of PCa
 func NewPCA(configPath string) (*PCA, error) {
 	// read config file
 	config := &PCAConfig{}
@@ -67,7 +73,7 @@ func NewPCA(configPath string) (*PCA, error) {
 	}, nil
 }
 
-// sign the rcsr and generate a rpc -> store the rpc to the "fileExchange" folder; policy log will fetch rpc from the folder
+// SignAndLogRCSR: sign the rcsr and generate a rpc -> store the rpc to the "fileExchange" folder; policy log will fetch rpc from the folder
 func (pca *PCA) SignAndLogRCSR(rcsr *common.RCSR) error {
 	// verify the signature in the rcsr; check if the domain's pub key is correct
 	err := common.RCSRVerifySignature(rcsr)
@@ -89,7 +95,7 @@ func (pca *PCA) SignAndLogRCSR(rcsr *common.RCSR) error {
 	pca.increaseSerialNumber()
 
 	// generate pre-RPC (without SPT)
-	rpc, err := common.RCSRGenerateRPC(rcsr, notBefore, pca.getSerialNumber(), pca.rsaKeyPair, pca.caName)
+	rpc, err := common.RCSRGenerateRPC(rcsr, notBefore, pca.serialNumber, pca.rsaKeyPair, pca.caName)
 	if err != nil {
 		return fmt.Errorf("SignAndLogRCSR | RCSR_GenerateRPC | %s", err.Error())
 	}
@@ -98,16 +104,15 @@ func (pca *PCA) SignAndLogRCSR(rcsr *common.RCSR) error {
 	pca.preRPCByDomains[rpc.Subject] = rpc
 
 	// send RPC to policy log
-	err = pca.sendRPCToPolicyLog(rpc, strconv.Itoa(pca.getSerialNumber()))
+	err = pca.sendRPCToPolicyLog(rpc, strconv.Itoa(pca.serialNumber))
 
 	if err != nil {
 		return fmt.Errorf("SignAndLogRCSR | sendRPCToPolicyLog | %s", err.Error())
 	}
-
 	return nil
 }
 
-// When policy log returns SPT, this func will be called
+// ReceiveSPTFromPolicyLog: When policy log returns SPT, this func will be called
 // this func will read the SPTs from the file, and process them
 func (pca *PCA) ReceiveSPTFromPolicyLog() error {
 	for k, v := range pca.preRPCByDomains {
@@ -148,7 +153,7 @@ func (pca *PCA) ReceiveSPTFromPolicyLog() error {
 	return nil
 }
 
-// return the new RPC with SPT
+// GetValidRPCByDomain: return the new RPC with SPT
 func (pca *PCA) GetValidRPCByDomain(domainName string) (*common.RPC, error) {
 	if rpc, found := pca.validRPCsByDomains[domainName]; found {
 		return rpc, nil
@@ -178,23 +183,25 @@ func (pca *PCA) verifySPT(spt *common.SPT, rpc *common.RPC) error {
 
 	// get LogRootV1
 	logRoot, err := common.JsonBytesToLogRoot(spt.STH)
+	if err != nil {
+		return fmt.Errorf("verifySPT | JsonBytesToLogRoot | %s", err.Error())
+	}
 
 	// verify the PoI
 	err = pca.logVerifier.VerifyInclusionByHash(logRoot, leafHash, proofs)
-	return err
+	if err != nil {
+		return fmt.Errorf("verifySPT | VerifyInclusionByHash | %s", err.Error())
+	}
+
+	return nil
 }
 
-// TODO: modify this to make sure unique SN
-func (pca *PCA) getSerialNumber() int {
-	return pca.serialNumber
-}
-
-// TODO: modify this to make sure unique SN
+// TODO(yongzhe): modify this to make sure unique SN
 func (pca *PCA) increaseSerialNumber() {
 	pca.serialNumber = pca.serialNumber + 1
 }
 
-// check whether the
+// check whether the RPC signature is correct
 func (pca *PCA) checkRPCSignature(rcsr *common.RCSR) bool {
 	// if no rpc signature
 	if len(rcsr.PRCSignature) == 0 {

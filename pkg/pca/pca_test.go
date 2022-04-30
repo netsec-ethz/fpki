@@ -2,15 +2,11 @@ package pca
 
 // for future use
 import (
-	pca "github.com/netsec-ethz/fpki/pkg/pca"
+	"github.com/stretchr/testify/require"
 	"testing"
 )
 
 func Test_Config(t *testing.T) {
-	_, err := pca.NewPCA("testdata/pca_config")
-	if err != nil {
-		t.Errorf(err.Error())
-		return
-	}
-
+	_, err := NewPCA("testdata/pca_config.json")
+	require.NoError(t, err, "New PCA error")
 }

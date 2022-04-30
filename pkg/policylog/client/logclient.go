@@ -22,7 +22,7 @@ import (
 // PLLogClient represents a client for a given Trillian log instance.
 type PLLogClient struct {
 	worker []trillian.TrillianLogClient
-	config *PLLogClientConfig
+	config *LogClientConfig
 
 	// target tree ID
 	// for log client, normally there will only be one tree
@@ -36,7 +36,7 @@ type PLLogClient struct {
 	logRootLock sync.Mutex
 }
 
-// result returned to user
+// QueueRPCResult: result of queue a batch of RPC
 type QueueRPCResult struct {
 	// how many leaves are appended successfully
 	NumOfSucceedAddedLeaves int
@@ -54,13 +54,13 @@ type QueueRPCResult struct {
 	RetriveLeavesErrs []error
 }
 
-// NewFromTree creates a new LogClient given a tree ID.
-func PLNewLogClient(configPath string, treeId int64) (*PLLogClient, error) {
+// NewLogClient: creates a new LogClient given a tree ID.
+func NewLogClient(configPath string, treeId int64) (*PLLogClient, error) {
 	// read config from file
-	config := &PLLogClientConfig{}
+	config := &LogClientConfig{}
 	err := ReadLogClientConfigFromFile(config, configPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GenerateRCSR | RCSRGenerateRPCSignature | %w", err)
 	}
 
 	// init worker pool
@@ -85,7 +85,7 @@ func (c *PLLogClient) SetTreeId(treeID int64) {
 	c.treeId = treeID
 }
 
-// get current log root of the target tree
+// GetCurrentLogRoot:  get current log root of the target tree
 func (c *PLLogClient) GetCurrentLogRoot(ctx context.Context) (*types.LogRootV1, error) {
 	req := &trillian.GetLatestSignedLogRootRequest{
 		LogId:         c.treeId,
@@ -117,7 +117,7 @@ func (c *PLLogClient) updateLogRoot(ctx context.Context) error {
 	return nil
 }
 
-// update the tree size
+// UpdateTreeSize: update the tree size
 func (c *PLLogClient) UpdateTreeSize(ctx context.Context) error {
 	err := c.updateLogRoot(ctx)
 	if err != nil {
@@ -128,7 +128,7 @@ func (c *PLLogClient) UpdateTreeSize(ctx context.Context) error {
 	return nil
 }
 
-// get consistency proof between two log root
+// GetConsistencyProof: get consistency proof between two log root
 func (c *PLLogClient) GetConsistencyProof(ctx context.Context, trusted *types.LogRootV1, newRoot *types.LogRootV1) ([][]byte, error) {
 	req := &trillian.GetConsistencyProofRequest{
 		LogId:          c.treeId,
@@ -136,12 +136,16 @@ func (c *PLLogClient) GetConsistencyProof(ctx context.Context, trusted *types.Lo
 		SecondTreeSize: int64(newRoot.TreeSize),
 	}
 
+	// use one single thread to do this.
 	resp, err := c.worker[0].GetConsistencyProof(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("GetConsistencyProof | %w", err)
+	}
 
-	return resp.Proof.Hashes, err
+	return resp.Proof.Hashes, nil
 }
 
-// queue rpcs and generate spts
+// QueueRPCs: queue rpcs and generate spts
 // steps:
 // 1. read rpc from "fileExchange" folder; TODO: replace the folder by http later
 // 2. add the rpc to the log
@@ -179,11 +183,9 @@ func (c *PLLogClient) QueueRPCs(ctx context.Context, fileNames []string) (*Queue
 		if err != nil {
 			return queueRPCResult, fmt.Errorf("QueueRPCs | UpdateTreeSize: %v", err)
 		}
-
 		if c.currentTreeSize == prevTreeSize+int64(queueRPCResult.NumOfSucceedAddedLeaves) {
 			break
 		}
-
 		// wait 50 ms before next query
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -202,6 +204,8 @@ func (c *PLLogClient) QueueRPCs(ctx context.Context, fileNames []string) (*Queue
 	elapsed = time.Since(start)
 	fmt.Println("fetch proofs succeed!")
 	fmt.Println(elapsed)
+
+	// queueRPCResult will always be returned, even if error occurs in the future
 
 	// store proof to SPT file
 	err = c.storeProofMapToSPT(fetchInclusionResult.PoIs)
@@ -239,6 +243,7 @@ func (c *PLLogClient) readRPCFromFileToBytes(fileNames []string) ([][]byte, erro
 	return data, nil
 }
 
+// read elements in the proof map, and turn it into a SPT, then store them
 func (c *PLLogClient) storeProofMapToSPT(proofMap map[string]*PoIAndSTH) error {
 	// for every proof in the map
 	for k, v := range proofMap {
@@ -248,7 +253,7 @@ func (c *PLLogClient) storeProofMapToSPT(proofMap map[string]*PoIAndSTH) error {
 		for _, proof := range v.PoIs {
 			bytes, err := common.JsonStrucToBytes(proof)
 			if err != nil {
-				return fmt.Errorf("QueueRPCs | Json_StrucToBytes: %v", err)
+				return fmt.Errorf("storeProofMapToSPT | JsonStrucToBytes: %v", err)
 			}
 			proofBytes = append(proofBytes, bytes)
 		}
@@ -256,7 +261,7 @@ func (c *PLLogClient) storeProofMapToSPT(proofMap map[string]*PoIAndSTH) error {
 		// serialise log root (signed tree head) to bytes
 		sth, err := common.JsonStrucToBytes(&v.STH)
 		if err != nil {
-			return fmt.Errorf("QueueRPCs | Json_StrucToBytes: %v", err)
+			return fmt.Errorf("storeProofMapToSPT | JsonStrucToBytes: %v", err)
 		}
 
 		// attach PoI and STH to SPT
@@ -269,7 +274,7 @@ func (c *PLLogClient) storeProofMapToSPT(proofMap map[string]*PoIAndSTH) error {
 		// store SPT to file
 		err = common.JsonStrucToFile(spt, c.config.OutPutPath+"/spt/"+k)
 		if err != nil {
-			return fmt.Errorf("QueueRPCs | Json_StrucToFile: %v", err)
+			return fmt.Errorf("storeProofMapToSPT | JsonStrucToFile: %v", err)
 		}
 	}
 	return nil

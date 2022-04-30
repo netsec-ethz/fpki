@@ -8,10 +8,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TODO: more unit tests
+// TODO(Yongzhe): more unit tests
 
-// Test_Enc_And_Dec_Of_PubKey public key -> bytes -> public key
-func Test_Enc_And_Dec_Of_PubKey(t *testing.T) {
+// TestEncAndDecOfPubKey public key -> bytes -> public key
+func TestEncAndDecOfPubKey(t *testing.T) {
 	privateKeyPair, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 

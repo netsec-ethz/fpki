@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	DomainOwner "github.com/netsec-ethz/fpki/pkg/domainowner"
+	"github.com/netsec-ethz/fpki/pkg/domainowner"
 	PCA "github.com/netsec-ethz/fpki/pkg/pca"
-	PL_LogClient "github.com/netsec-ethz/fpki/pkg/policylog/client"
+	"github.com/netsec-ethz/fpki/pkg/policylog/client"
 )
 
 //------------------------------------------------------
@@ -17,7 +17,7 @@ import (
 func Test_PCA_PolocyLog(t *testing.T) {
 
 	// init domain owner
-	domainOwner := DomainOwner.DomainOwner{}
+	do := domainowner.DomainOwner{}
 
 	// new PCA
 	pca, err := PCA.NewPCA("./config/pca/pca_config")
@@ -27,7 +27,7 @@ func Test_PCA_PolocyLog(t *testing.T) {
 	}
 
 	// first rcsr
-	rcsr, err := domainOwner.GenerateRCSR("abc.com", 1)
+	rcsr, err := do.GenerateRCSR("abc.com", 1)
 	if err != nil {
 		t.Errorf(err.Error())
 		return
@@ -46,7 +46,7 @@ func Test_PCA_PolocyLog(t *testing.T) {
 	}
 
 	// second rcsr
-	rcsr, err = domainOwner.GenerateRCSR("fpki.com", 1)
+	rcsr, err = do.GenerateRCSR("fpki.com", 1)
 	if err != nil {
 		t.Errorf(err.Error())
 		return
@@ -59,7 +59,7 @@ func Test_PCA_PolocyLog(t *testing.T) {
 		return
 	}
 
-	client, err := PL_LogClient.PLGetAdminClient("./config/policylog/adminclient_config")
+	adminClient, err := client.PLGetAdminClient("./config/policylog/adminclient_config")
 
 	if err != nil {
 		t.Errorf(err.Error())
@@ -67,14 +67,14 @@ func Test_PCA_PolocyLog(t *testing.T) {
 	}
 
 	// create new tree
-	tree, err := client.CreateNewTree()
+	tree, err := adminClient.CreateNewTree()
 	if err != nil {
 		t.Errorf(err.Error())
 		return
 	}
 
 	// init log client
-	logClient, err := PL_LogClient.PLNewLogClient("./config/policylog/logclient_config", tree.TreeId)
+	logClient, err := client.NewLogClient("./config/policylog/logclient_config", tree.TreeId)
 	if err != nil {
 		t.Errorf(err.Error())
 		return

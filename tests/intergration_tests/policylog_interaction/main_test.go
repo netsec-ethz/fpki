@@ -8,14 +8,14 @@ import (
 	"testing"
 	"time"
 
-	PLClient "github.com/netsec-ethz/fpki/pkg/policylog/client"
-
-	Logverifier "github.com/netsec-ethz/fpki/pkg/logverifier"
+	"github.com/netsec-ethz/fpki/pkg/logverifier"
+	"github.com/netsec-ethz/fpki/pkg/policylog/client"
 )
 
-func Test_Create_Tree_Add_Leaf_Then_Verify_With_Consistency_Proof(t *testing.T) {
-	// init admin client
-	client, err := PLClient.PLGetAdminClient("testdata/adminclient_config")
+//TestCreateTreeAddLeafThenVerifyWithConsistencyProof: add leaves, then verify the return PoI and STH
+func TestCreateTreeAddLeafThenVerifyWithConsistencyProof(t *testing.T) {
+	// init admin adminClient
+	adminClient, err := client.PLGetAdminClient("testdata/adminclient_config")
 
 	if err != nil {
 		t.Errorf(err.Error())
@@ -23,14 +23,14 @@ func Test_Create_Tree_Add_Leaf_Then_Verify_With_Consistency_Proof(t *testing.T) 
 	}
 
 	// create new tree
-	tree, err := client.CreateNewTree()
+	tree, err := adminClient.CreateNewTree()
 	if err != nil {
 		t.Errorf(err.Error())
 		return
 	}
 
 	// init log client
-	logClient, err := PLClient.PLNewLogClient("testdata/logclient_config", tree.TreeId)
+	logClient, err := client.NewLogClient("testdata/logclient_config", tree.TreeId)
 	if err != nil {
 		t.Errorf(err.Error())
 		return
@@ -99,7 +99,7 @@ func Test_Create_Tree_Add_Leaf_Then_Verify_With_Consistency_Proof(t *testing.T) 
 
 	consistencyProof, err := logClient.GetConsistencyProof(ctx, oldRoot, newRoot)
 
-	verifier := Logverifier.NewLogVerifier(nil)
+	verifier := logverifier.NewLogVerifier(nil)
 
 	for k, v := range fetchResult.PoIs {
 		hashedValue, _ := b64.URLEncoding.DecodeString(k)
