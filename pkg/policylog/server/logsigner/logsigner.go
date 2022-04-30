@@ -33,11 +33,13 @@ import (
 
 // TODO(juagargi) this file is too complex really for what we need. Rethink it.
 
+// LogSigner: Struc represents a log signer
 type LogSigner struct {
 	config *LogSignerConfig
 }
 
-func PLCreateLogSigner(configPath string) {
+// CreateLogSigner: return a log signer
+func CreateLogSigner(configPath string) {
 	flag.Parse()
 
 	logConfig := &LogSignerConfig{}

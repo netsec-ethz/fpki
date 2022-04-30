@@ -1,6 +1,8 @@
 package common
 
 import (
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"os"
 	"path"
 	"testing"
@@ -11,9 +13,8 @@ import (
 //           tests for structure.go
 //------------------------------------------------------
 
-// Equal funcs for every structure
-func Test_Equal(t *testing.T) {
-
+// TestEqual: Equal funcs for every structure
+func TestEqual(t *testing.T) {
 	rcsr := &RCSR{
 		Subject:            "bandqhvdbdlwnd",
 		Version:            6789,
@@ -25,10 +26,7 @@ func Test_Equal(t *testing.T) {
 		Signature:          generateRandomBytes(),
 	}
 
-	if !rcsr.Equal(rcsr) {
-		t.Errorf("RCSR Equal() error")
-		return
-	}
+	assert.True(t, rcsr.Equal(rcsr), "RCSR Equal() error")
 
 	spt1 := SPT{
 		Version:         12313,
@@ -56,10 +54,7 @@ func Test_Equal(t *testing.T) {
 		Signature:       generateRandomBytes(),
 	}
 
-	if !spt1.Equal(spt1) || !spt2.Equal(spt2) || spt1.Equal(spt2) || spt2.Equal(spt1) {
-		t.Errorf("SPT Equal() error")
-		return
-	}
+	assert.True(t, spt1.Equal(spt1) && spt2.Equal(spt2) && !spt1.Equal(spt2) && !spt2.Equal(spt1), "SPT Equal() error")
 
 	sprt := &SPRT{
 		Version:         12314,
@@ -74,10 +69,8 @@ func Test_Equal(t *testing.T) {
 		Reason:          1729381,
 		Signature:       generateRandomBytes(),
 	}
-	if !sprt.Equal(sprt) {
-		t.Errorf("SPRT Equal() error")
-		return
-	}
+
+	assert.True(t, sprt.Equal(sprt), "SPRT Equal() error")
 
 	rpc := &RPC{
 		SerialNumber:       1729381,
@@ -95,14 +88,11 @@ func Test_Equal(t *testing.T) {
 		SPTs:               []SPT{spt1, spt2},
 	}
 
-	if !rpc.Equal(rpc) {
-		t.Errorf("RPC Equal() error")
-		return
-	}
+	assert.True(t, rpc.Equal(rpc), "RPC Equal() error")
 }
 
-// RPC -> file -> RPC
-func Test_Json_Read_Write(t *testing.T) {
+// TestJsonReadWrite: RPC -> file -> RPC, then RPC.Equal(RPC)
+func TestJsonReadWrite(t *testing.T) {
 	spt1 := &SPT{
 		Version:         12313,
 		Subject:         "hihihihihhi",
@@ -145,23 +135,14 @@ func Test_Json_Read_Write(t *testing.T) {
 		SPTs:               []SPT{*spt1, *spt2},
 	}
 
-	tempFile := path.Join(os.TempDir(), "rpc_test.json")
+	tempFile := path.Join(os.TempDir(), "rpctest.json")
 	defer os.Remove(tempFile)
 	err := JsonStrucToFile(rpc, tempFile)
-	if err != nil {
-		t.Errorf(err.Error())
-		return
-	}
+	require.NoError(t, err, "Json Struc To File error")
 
 	rpc1 := &RPC{}
 	err = JsonFileToRPC(rpc1, tempFile)
-	if err != nil {
-		t.Errorf(err.Error())
-		return
-	}
+	require.NoError(t, err, "Json File To RPC error")
 
-	if !rpc.Equal(rpc1) {
-		t.Errorf("Json error")
-		return
-	}
+	assert.True(t, rpc.Equal(rpc1), "Json error")
 }

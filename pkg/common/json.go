@@ -9,7 +9,7 @@ import (
 	"github.com/google/trillian/types"
 )
 
-// marshall structure to bytes, and store them in a file
+// JsonStrucToFile: marshall structure to bytes, and store them in a file
 func JsonStrucToFile(struc interface{}, filePath string) error {
 	bytes, err := JsonStrucToBytes(struc)
 	if err != nil {
@@ -23,14 +23,14 @@ func JsonStrucToFile(struc interface{}, filePath string) error {
 	return nil
 }
 
-// check data type;
+// JsonStrucToBytes: marshall json to bytes
 func JsonStrucToBytes(struc interface{}) ([]byte, error) {
 	switch struc.(type) {
 	case *RCSR:
 		break
 	case *RPC:
 		break
-	case SPT:
+	case *SPT:
 		break
 	case *SPRT:
 		break
@@ -47,29 +47,9 @@ func JsonStrucToBytes(struc interface{}) ([]byte, error) {
 }
 
 //--------------------------------------------------------------------------------
-//                    Bytes to strucs
+//                               Bytes to strucs
 //--------------------------------------------------------------------------------
-
-func JsonBytesToSPT(sptBytes []byte) (*SPT, error) {
-	result := &SPT{}
-
-	err := json.Unmarshal(sptBytes, result)
-	if err != nil {
-		return nil, err
-	}
-	return result, nil
-}
-
-func JsonBytesToRPC(rpcBytes []byte) (*RPC, error) {
-	result := &RPC{}
-
-	err := json.Unmarshal(rpcBytes, result)
-	if err != nil {
-		return nil, err
-	}
-	return result, nil
-}
-
+// JsonBytesToPoI: bytes -> PoI in json
 func JsonBytesToPoI(poiBytes []byte) (*trillian.Proof, error) {
 	result := &trillian.Proof{}
 
@@ -81,6 +61,7 @@ func JsonBytesToPoI(poiBytes []byte) (*trillian.Proof, error) {
 	return result, nil
 }
 
+// JsonBytesToLogRoot: Bytes -> log root in json
 func JsonBytesToLogRoot(logRootBytes []byte) (*types.LogRootV1, error) {
 	result := &types.LogRootV1{}
 
@@ -91,20 +72,11 @@ func JsonBytesToLogRoot(logRootBytes []byte) (*types.LogRootV1, error) {
 	return result, nil
 }
 
-func JsonBytesToProof(proofBytes []byte) (*trillian.Proof, error) {
-	result := &trillian.Proof{}
-
-	err := json.Unmarshal(proofBytes, result)
-	if err != nil {
-		return nil, err
-	}
-	return result, nil
-}
-
 //--------------------------------------------------------------------------------
 //                               File to strucs
 //--------------------------------------------------------------------------------
 
+// JsonFileToRPC: read json files and unmarshal it to Root Policy Certificate
 func JsonFileToRPC(struc *RPC, filePath string) error {
 	file, err := ioutil.ReadFile(filePath)
 	if err != nil {
@@ -119,6 +91,7 @@ func JsonFileToRPC(struc *RPC, filePath string) error {
 	return nil
 }
 
+// JsonFileToSPT: read json files and unmarshal it to Signed Policy Timestamp
 func JsonFileToSPT(struc *SPT, filePath string) error {
 	file, err := ioutil.ReadFile(filePath)
 	if err != nil {

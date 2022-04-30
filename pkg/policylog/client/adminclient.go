@@ -17,7 +17,7 @@ import (
 // admin client is mainly used for managing trees;
 // For example, create tree, list trees or delete tree
 
-// TODO: termination of conn
+// TODO(yongzhe): termination of conn
 type PLAdminClient struct {
 	client     trillian.TrillianAdminClient
 	config     *AdminClientConfig
@@ -25,7 +25,7 @@ type PLAdminClient struct {
 	conn       *grpc.ClientConn
 }
 
-// get a new admin client
+//PLGetAdminClient: get a new admin client
 func PLGetAdminClient(configPath string) (*PLAdminClient, error) {
 	// read the config file
 	config := &AdminClientConfig{}
@@ -52,7 +52,7 @@ func PLGetAdminClient(configPath string) (*PLAdminClient, error) {
 	return client, nil
 }
 
-// create a new tree (Merkle Tree)
+// CreateNewTree: CreateNewTree: create a new tree (Merkle Tree)
 func (client PLAdminClient) CreateNewTree() (*trillian.Tree, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*time.Duration(client.config.RpcMaxWaitingTimeInSec))
 	defer cancel()
@@ -70,9 +70,13 @@ func (client PLAdminClient) CreateNewTree() (*trillian.Tree, error) {
 
 	// write tree info to files.
 	err = client.writeTreeToFile(tree)
-	return tree, err
+	if err != nil {
+		return nil, fmt.Errorf("CreateNewTree | writeTreeToFile | %w", err)
+	}
+	return tree, nil
 }
 
+// return a request to create a tree
 func (client PLAdminClient) generateCreateTreeReq() *trillian.CreateTreeRequest {
 	createRequest := &trillian.CreateTreeRequest{Tree: &trillian.Tree{
 		TreeState:       trillian.TreeState_ACTIVE,
@@ -85,6 +89,7 @@ func (client PLAdminClient) generateCreateTreeReq() *trillian.CreateTreeRequest 
 	return createRequest
 }
 
+// write tree config to file
 func (client PLAdminClient) writeTreeToFile(tree *trillian.Tree) error {
 	file, err := json.MarshalIndent(tree, "", " ")
 	if err != nil {

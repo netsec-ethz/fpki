@@ -12,8 +12,6 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// TODO: is waitGroup necessagy? Will this cause any memory leak?
-
 // this file contains multi-thread versions of the "Add_leaf" and "Retrive_Proof"
 // the speed is 4-5 times faster than the single thread version (if number of worker > 5)
 
@@ -26,19 +24,19 @@ import (
 //                FetchInclusions() is not deterministic. If the tree size is changed (new leaves are added), STH and PoI will also change.
 
 // result from worker; only for internal use
-type AddLeavesResultFromWorker struct {
+type addLeavesResultFromWorker struct {
 	leafData []byte
 	err      error
 }
 
 // result returned by AddLeaf
-type AddLeavesResult struct {
+type addLeavesResult struct {
 	FailedLeaves [][]byte
 	Errs         []error
 }
 
 // result from worker; only for internal use
-type FetchInclusionResultFromWorker struct {
+type fetchInclusionResultFromWorker struct {
 	leafName       string
 	PoI            *PoIAndSTH
 	failedLeafData []byte
@@ -46,20 +44,21 @@ type FetchInclusionResultFromWorker struct {
 }
 
 // result returned by FetchInclusions()
-type FetchInclusionResult struct {
+type fetchInclusionResult struct {
 	PoIs             map[string]*PoIAndSTH
 	FailedLeaves     [][]byte
 	FailedLeavesName []string
 	Errs             []error
 }
 
+// PoIAndSTH: contains Sign Tree Head and Proof of Inclusion for one leaf
 type PoIAndSTH struct {
 	PoIs []*trillian.Proof
 	STH  types.LogRootV1
 }
 
 // func for single worker to add a leaf
-func worker_addLeaf(ctx context.Context, worker trillian.TrillianLogClient, workChan <-chan string, resultChan chan<- AddLeavesResultFromWorker, treeId int64) {
+func worker_addLeaf(ctx context.Context, worker trillian.TrillianLogClient, workChan <-chan string, resultChan chan<- addLeavesResultFromWorker, treeId int64) {
 	for {
 		// read leaf data from channel
 		leafData, ok := <-workChan
@@ -80,7 +79,7 @@ func worker_addLeaf(ctx context.Context, worker trillian.TrillianLogClient, work
 		})
 
 		// copy the failed leaf and err
-		result := AddLeavesResultFromWorker{}
+		result := addLeavesResultFromWorker{}
 		if err != nil {
 			result.leafData = []byte(leafData)
 			result.err = err
@@ -91,10 +90,10 @@ func worker_addLeaf(ctx context.Context, worker trillian.TrillianLogClient, work
 	}
 }
 
-// Queue a list of leaves
-func (c *PLLogClient) AddLeaves(ctx context.Context, data [][]byte) *AddLeavesResult {
+// AddLeaves: Queue a list of leaves
+func (c *PLLogClient) AddLeaves(ctx context.Context, data [][]byte) *addLeavesResult {
 	// init result
-	result := &AddLeavesResult{
+	result := &addLeavesResult{
 		Errs:         []error{},
 		FailedLeaves: [][]byte{[]byte{}},
 	}
@@ -103,7 +102,7 @@ func (c *PLLogClient) AddLeaves(ctx context.Context, data [][]byte) *AddLeavesRe
 	workChan := make(chan string)
 
 	// channels from worker, contains results
-	resultChan := make(chan AddLeavesResultFromWorker)
+	resultChan := make(chan addLeavesResultFromWorker)
 
 	// spawn child threads
 	for i := 0; i < len(c.worker); i++ {
@@ -162,7 +161,7 @@ send_receive_loop:
 }
 
 // func for a worker to fetch the inclusion
-func worker_fetchInclusion(ctx context.Context, worker trillian.TrillianLogClient, workChan <-chan string, resultChan chan<- FetchInclusionResultFromWorker, treeId int64, treeSize int64) {
+func worker_fetchInclusion(ctx context.Context, worker trillian.TrillianLogClient, workChan <-chan string, resultChan chan<- fetchInclusionResultFromWorker, treeId int64, treeSize int64) {
 	for {
 		// receive data from channel
 		leafData, ok := <-workChan
@@ -184,7 +183,7 @@ func worker_fetchInclusion(ctx context.Context, worker trillian.TrillianLogClien
 		rpcHash := rfc6962.DefaultHasher.HashLeaf([]byte(leafData))
 		leafName := base64.URLEncoding.EncodeToString(rpcHash)
 
-		workerResult := new(FetchInclusionResultFromWorker)
+		workerResult := new(fetchInclusionResultFromWorker)
 
 		workerResult.leafName = leafName
 
@@ -240,15 +239,15 @@ func worker_fetchInclusion(ctx context.Context, worker trillian.TrillianLogClien
 	}
 }
 
-// fetch inclusion proof for leaves
+// FetchInclusions: fetch inclusion proof for leaves
 // similar to previous func
-func (c *PLLogClient) FetchInclusions(ctx context.Context, leavesData [][]byte) *FetchInclusionResult {
+func (c *PLLogClient) FetchInclusions(ctx context.Context, leavesData [][]byte) *fetchInclusionResult {
 	// init result
-	fetchInclusionResult := new(FetchInclusionResult)
+	fetchInclusionResult := new(fetchInclusionResult)
 	fetchInclusionResult.PoIs = make(map[string]*PoIAndSTH)
 
 	workChan := make(chan string)
-	resultChan := make(chan FetchInclusionResultFromWorker)
+	resultChan := make(chan fetchInclusionResultFromWorker)
 
 	for i := 0; i < len(c.worker); i++ {
 		go worker_fetchInclusion(ctx, c.worker[i], workChan, resultChan, c.treeId, c.currentTreeSize)

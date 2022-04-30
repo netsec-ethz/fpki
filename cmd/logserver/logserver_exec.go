@@ -1,9 +1,9 @@
 package main
 
 import (
-	logServer "github.com/netsec-ethz/fpki/pkg/policylog/server/logserver"
+	"github.com/netsec-ethz/fpki/pkg/policylog/server/logserver"
 )
 
 func main() {
-	logServer.PLCreateLogServer("config/logserver_config")
+	logserver.PLCreateLogServer("logserver_config.json")
 }

@@ -3,16 +3,19 @@ package common
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 //------------------------------------------------------
 //           tests for json.go
 //------------------------------------------------------
 
-// SPT -> bytes -> SPT
-func Test_Encode_And_Decode_Of_SPT(t *testing.T) {
+// TestEncodeAndDecodeOfSPT: SPT -> files -> SPT
+func TestEncodeAndDecodeOfSPT(t *testing.T) {
 
-	test := SPT{
+	spt := &SPT{
 		Version:         12314,
 		Subject:         "you are funny",
 		CAName:          "hihihihihihi",
@@ -25,25 +28,19 @@ func Test_Encode_And_Decode_Of_SPT(t *testing.T) {
 		Signature:       generateRandomBytes(),
 	}
 
-	result, err := JsonStrucToBytes(test)
-	if err != nil {
-		t.Errorf(err.Error())
-		return
-	}
+	err := JsonStrucToFile(spt, "./testdata/spt.json")
+	require.NoError(t, err, "Json Struc To File error")
 
-	deserlialisedSPT, err := JsonBytesToSPT(result)
-	if err != nil {
-		t.Errorf(err.Error())
-		return
-	}
+	deserlialisedSPT := &SPT{}
 
-	if !deserlialisedSPT.Equal(test) {
-		t.Errorf("SPT serialise and deserialise error.")
-	}
+	err = JsonFileToSPT(deserlialisedSPT, "./testdata/spt.json")
+	require.NoError(t, err, "Json File To SPT error")
+
+	assert.True(t, deserlialisedSPT.Equal(*spt), "SPT serialise and deserialise error")
 }
 
-// RPC -> bytes -> RPC
-func Test_Encode_And_Decode_Of_RPC(t *testing.T) {
+// TestEncodeAndDecodeOfRPC: RPC -> files -> RPC
+func TestEncodeAndDecodeOfRPC(t *testing.T) {
 	spt1 := &SPT{
 		Version:         12313,
 		Subject:         "hihihihihhi",
@@ -70,7 +67,7 @@ func Test_Encode_And_Decode_Of_RPC(t *testing.T) {
 		Signature:       generateRandomBytes(),
 	}
 
-	test := &RPC{
+	rpc := &RPC{
 		SerialNumber:       1729381,
 		Subject:            "bad domain",
 		Version:            1729381,
@@ -86,19 +83,13 @@ func Test_Encode_And_Decode_Of_RPC(t *testing.T) {
 		SPTs:               []SPT{*spt1, *spt2},
 	}
 
-	result, err := JsonStrucToBytes(test)
-	if err != nil {
-		t.Errorf(err.Error())
-		return
-	}
+	err := JsonStrucToFile(rpc, "./testdata/rpc.json")
+	require.NoError(t, err, "Json Struc To File error")
 
-	deserlialisedRPC, err := JsonBytesToRPC(result)
-	if err != nil {
-		t.Errorf(err.Error())
-		return
-	}
+	deserlialisedSPT := &RPC{}
 
-	if !deserlialisedRPC.Equal(test) {
-		t.Errorf("RPC serialise and deserialise error.")
-	}
+	err = JsonFileToRPC(deserlialisedSPT, "./testdata/rpc.json")
+	require.NoError(t, err, "Json File To RPC error")
+
+	assert.True(t, deserlialisedSPT.Equal(rpc), "RPC serialise and deserialise error")
 }

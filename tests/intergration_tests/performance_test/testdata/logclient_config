@@ -1,0 +1,8 @@
+{
+ "TreeId": 55555555555,
+ "RPCAddress": "localhost:8090",
+ "MaxReceiveMessageSize": 10000,
+ "OutPutPath": "testdata",
+ "RPCPath": "default",
+ "NumOfWorker": 15
+}

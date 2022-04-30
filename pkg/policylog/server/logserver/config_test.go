@@ -1,12 +1,14 @@
 package logserver
 
 import (
-	"os"
 	"path"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
-func Test_Config(t *testing.T) {
+// TestConfig: Write config -> read config -> compare
+func TestConfig(t *testing.T) {
 
 	config := &LogServerConfig{
 		RpcEndpoint:                    "localhost:8090",
@@ -30,25 +32,16 @@ func Test_Config(t *testing.T) {
 		MemProfile:                     "",
 	}
 
-	tempFile := path.Join(os.TempDir(), "logserver_config.json")
-	defer os.Remove(tempFile)
+	tempFile := path.Join("./", "logserver_config.json")
+	//defer os.Remove(tempFile)
 
-	err := PLSaveLogConfigToFile(config, tempFile)
-	if err != nil {
-		t.Errorf(err.Error())
-		return
-	}
+	err := SaveLogConfigToFile(config, tempFile)
+	require.NoError(t, err)
 
 	config_ := &LogServerConfig{}
-	err = PLReadLogConfigFromFile(config_, tempFile)
-	if err != nil {
-		t.Errorf(err.Error())
-		return
-	}
+	err = ReadLogConfigFromFile(config_, tempFile)
+	require.NoError(t, err)
 
-	if !config.Equal(config_) {
-		t.Errorf("config Equal() error")
-		return
-	}
+	require.Equal(t, config, config_)
 
 }

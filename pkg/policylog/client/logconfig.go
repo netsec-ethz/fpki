@@ -2,58 +2,50 @@ package client
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 )
 
-type PLLogClientConfig struct {
+// LogClientConfig: config for a log client
+type LogClientConfig struct {
 	// target tree ID
 	// for log client, normally there will only be one tree
-	TreeId int64 `json:"TreeId",omitempty`
+	TreeId int64 `json:",omitempty"`
 
 	// address of the rpc server
-	RPCAddress            string `json:"RPCAddress",omitempty`
-	MaxReceiveMessageSize int    `json:"MaxReceiveMessageSize",omitempty`
+	RPCAddress            string `json:",omitempty"`
+	MaxReceiveMessageSize int    `json:",omitempty"`
 
 	// path to store the output from log client (now support SPT)
-	OutPutPath string `json:"OutPutPath",omitempty`
+	OutPutPath string `json:",omitempty"`
 
 	// path to read pre-RPC from PCA
-	RPCPath string `json:"RPCPath",omitempty`
+	RPCPath string `json:",omitempty"`
 
 	// number of workers
-	NumOfWorker int `json:"NumOfWorker",omitempty`
+	NumOfWorker int `json:",omitempty"`
 }
 
-func (config *PLLogClientConfig) Equal(config_ *PLLogClientConfig) bool {
-	if config.RPCAddress == config_.RPCAddress &&
-		config.TreeId == config_.TreeId &&
-		config.MaxReceiveMessageSize == config_.MaxReceiveMessageSize &&
-		config.OutPutPath == config_.OutPutPath &&
-		config.RPCPath == config_.RPCPath &&
-		config.NumOfWorker == config_.NumOfWorker {
-		return true
-	}
-	return false
-}
-
-func SaveLogClientConfigToFile(config *PLLogClientConfig, configPath string) error {
+// SaveLogClientConfigToFile: save log client config to file
+func SaveLogClientConfigToFile(config *LogClientConfig, configPath string) error {
 	bytes, err := json.MarshalIndent(config, "", " ")
 	err = ioutil.WriteFile(configPath, bytes, 0644)
 	if err != nil {
-		return err
+		return fmt.Errorf("SaveLogClientConfigToFile | WriteFile | %w", err)
 	}
 	return nil
 }
 
-func ReadLogClientConfigFromFile(config *PLLogClientConfig, filePath string) error {
+// ReadLogClientConfigFromFile: read log client config from file
+func ReadLogClientConfigFromFile(config *LogClientConfig, filePath string) error {
 	file, err := ioutil.ReadFile(filePath)
 	if err != nil {
-		return err
+		return fmt.Errorf("ReadLogClientConfigFromFile | ReadFile | %w", err)
 	}
 
 	err = json.Unmarshal([]byte(file), config)
 	if err != nil {
-		return err
+		return fmt.Errorf("ReadLogClientConfigFromFile | Unmarshal | %w", err)
 	}
 
 	return nil
