@@ -20,6 +20,8 @@ clean:
 policy_log:
 	@go build -o bin/logserver_exec cmd/logserver/logserver_exec.go
 	@go build -o bin/logsigner_exec cmd/logsigner/logsigner_exec.go
+	@cp config/logserver_config.json bin/logserver_config.json
+	@cp config/logsigner_config.json bin/logsigner_config.json
 
 test_folders:
 	@mkdir -p tests/intergration_tests/policylog_interaction/testdata/output/trees_config/
