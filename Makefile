@@ -15,6 +15,7 @@ clean:
 	@rm -f pkg/common/testdata/*.json
 	@rm -r tests/intergration_tests/performance_test/testdata/trees_config
 	@find . -name ".DS_Store" -delete
+	@rm -f pkg/policylog/server/logserver/logserver_config.json
 
 policy_log:
 	@go build -o bin/logserver_exec cmd/logserver/logserver_exec.go
