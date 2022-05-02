@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Test_Config: do nothing
 func Test_Config(t *testing.T) {
 	_, err := NewPCA("testdata/pca_config.json")
 	require.NoError(t, err, "New PCA error")

@@ -39,8 +39,8 @@ type LogServer struct {
 	config *LogServerConfig
 }
 
-// PLCreateLogServer: Create a log server
-func PLCreateLogServer(configPath string) {
+// CreateLogServer: Create a log server
+func CreateLogServer(configPath string) {
 	flag.Parse()
 
 	logConfig := &LogServerConfig{}

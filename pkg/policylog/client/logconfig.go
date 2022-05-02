@@ -47,6 +47,5 @@ func ReadLogClientConfigFromFile(config *LogClientConfig, filePath string) error
 	if err != nil {
 		return fmt.Errorf("ReadLogClientConfigFromFile | Unmarshal | %w", err)
 	}
-
 	return nil
 }

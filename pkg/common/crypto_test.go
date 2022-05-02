@@ -9,10 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-//------------------------------------------------------
-//           tests for crypto.go
-//------------------------------------------------------
-
 // TestSignatureOfRCSR: Generate RCSR -> generate signature for RCSR -> verify signature
 func TestSignatureOfRCSR(t *testing.T) {
 	privKey, err := LoadRSAKeyPairFromFile("./testdata/clientkey.pem")

@@ -55,7 +55,7 @@ func NewPCA(configPath string) (*PCA, error) {
 	config := &PCAConfig{}
 	err := ReadConfigFromFile(config, configPath)
 	if err != nil {
-		return nil, fmt.Errorf("NewPCA | LoadRSAKeyPairFromFile | %s", err.Error())
+		return nil, fmt.Errorf("NewPCA | ReadConfigFromFile | %s", err.Error())
 	}
 	// load rsa key pair
 	keyPair, err := common.LoadRSAKeyPairFromFile(config.KeyPath)
@@ -78,7 +78,7 @@ func (pca *PCA) SignAndLogRCSR(rcsr *common.RCSR) error {
 	// verify the signature in the rcsr; check if the domain's pub key is correct
 	err := common.RCSRVerifySignature(rcsr)
 	if err != nil {
-		return fmt.Errorf("SignAndLogRCSR | RCSR_VerifySignature | %s", err.Error())
+		return fmt.Errorf("SignAndLogRCSR | RCSRVerifySignature | %s", err.Error())
 	}
 
 	// decide not before time
@@ -97,7 +97,7 @@ func (pca *PCA) SignAndLogRCSR(rcsr *common.RCSR) error {
 	// generate pre-RPC (without SPT)
 	rpc, err := common.RCSRGenerateRPC(rcsr, notBefore, pca.serialNumber, pca.rsaKeyPair, pca.caName)
 	if err != nil {
-		return fmt.Errorf("SignAndLogRCSR | RCSR_GenerateRPC | %s", err.Error())
+		return fmt.Errorf("SignAndLogRCSR | RCSRGenerateRPC | %s", err.Error())
 	}
 
 	// add the rpc to preRPC(without SPT)
@@ -118,7 +118,7 @@ func (pca *PCA) ReceiveSPTFromPolicyLog() error {
 	for k, v := range pca.preRPCByDomains {
 		rpcBytes, err := common.JsonStrucToBytes(v)
 		if err != nil {
-			return fmt.Errorf("ReceiveSPTFromPolicyLog | Json_StrucToBytes | %s", err.Error())
+			return fmt.Errorf("ReceiveSPTFromPolicyLog | JsonStrucToBytes | %s", err.Error())
 		}
 
 		// hash the rpc
@@ -131,7 +131,7 @@ func (pca *PCA) ReceiveSPTFromPolicyLog() error {
 		spt := &common.SPT{}
 		err = common.JsonFileToSPT(spt, pca.policyLogOutputPath+"/spt/"+fileName)
 		if err != nil {
-			return fmt.Errorf("ReceiveSPTFromPolicyLog | Json_FileToRPC | %s", err.Error())
+			return fmt.Errorf("ReceiveSPTFromPolicyLog | JsonFileToSPT | %s", err.Error())
 		}
 
 		// verify the PoI, STH
@@ -143,7 +143,6 @@ func (pca *PCA) ReceiveSPTFromPolicyLog() error {
 			// move the rpc from pre-rpc to valid-rpc
 			delete(pca.preRPCByDomains, k)
 			pca.validRPCsByDomains[k] = v
-
 		} else {
 			log.Printf("fail to verify")
 			// TODO: change this to soft-fail, or add it the spicious SPT; for testing, we use hard-fail here

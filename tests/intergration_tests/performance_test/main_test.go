@@ -8,35 +8,29 @@ import (
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/policylog/client"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-// TODO: modify this later
-func Test_Create_Tree_Add_Leaf_Then_Verify_With_Consistency_Proof(t *testing.T) {
+//TestCreateTreeAddLeafThenVerifyWithConsistencyProof: Add leaves to tree -> get Proof of Inclusion
+// Used to measure the time to add leaves
+func TestCreateTreeAddLeafThenGetPoI(t *testing.T) {
 	// init admin adminClient
-	adminClient, err := client.PLGetAdminClient("./testdata/adminclient_config")
-
-	if err != nil {
-		t.Errorf(err.Error())
-		return
-	}
+	adminClient, err := client.GetAdminClient("./testdata/adminclient_config")
+	require.NoError(t, err, "get admin client error")
 
 	// create new tree
 	tree, err := adminClient.CreateNewTree()
-	if err != nil {
-		t.Errorf(err.Error())
-		return
-	}
+	require.NoError(t, err, "create tree error")
 
 	// init log client
 	logClient, err := client.NewLogClient("./testdata/logclient_config", tree.TreeId)
-	if err != nil {
-		t.Errorf(err.Error())
-		return
-	}
+	require.NoError(t, err, "new log client error")
 
-	// add 2000 leaves
+	// prepare 20 leaves
 	leaves := [][]byte{}
-	for i := 1; i < 2000; i++ {
+	for i := 1; i < 20; i++ {
 		leaves = append(leaves, generateRandomBytes())
 	}
 
@@ -45,34 +39,27 @@ func Test_Create_Tree_Add_Leaf_Then_Verify_With_Consistency_Proof(t *testing.T) 
 
 	start := time.Now()
 
+	// add 20 leaves to log
 	addLeavesResult := logClient.AddLeaves(ctx, leaves)
-	if len(addLeavesResult.Errs) != 0 {
-		t.Errorf("add leaves error")
-		fmt.Println(addLeavesResult.Errs)
-		return
-	}
+	assert.Equal(t, len(addLeavesResult.Errs), 0, "add leaves error")
 
 	elapsed := time.Since(start)
 	fmt.Println("queue leaves succeed!")
 	fmt.Println(elapsed)
 
+	// wait some time for the policy log to actually add the leaves
+	// in final implementation, more elegant method is applied.
 	time.Sleep(2000 * time.Millisecond)
 
+	// update the tree size of the policy log
 	err = logClient.UpdateTreeSize(ctx)
-	if err != nil {
-		t.Errorf(err.Error())
-		return
-	}
+	require.NoError(t, err, "update tree size error")
 
 	start = time.Now()
 
+	// fetch PoI
 	incResult := logClient.FetchInclusions(ctx, leaves)
-
-	if len(incResult.Errs) != 0 {
-		t.Errorf("fetch inclusion error")
-		fmt.Println(incResult.Errs)
-		return
-	}
+	assert.Equal(t, len(incResult.Errs), 0, "fetch inclusion error")
 
 	elapsed = time.Since(start)
 	fmt.Println("fetch proofs succeed!")

@@ -5,5 +5,5 @@ import (
 )
 
 func main() {
-	logserver.PLCreateLogServer("logserver_config.json")
+	logserver.CreateLogServer("logserver_config.json")
 }

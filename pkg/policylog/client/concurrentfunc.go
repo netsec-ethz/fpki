@@ -21,7 +21,8 @@ import (
 // When all the work is finished, leader will return the result
 
 // IMPORTANT!!!!! AddLeaves() is not idempotent! Run func for same leaf will add the leaf multiple times.
-//                FetchInclusions() is not deterministic. If the tree size is changed (new leaves are added), STH and PoI will also change.
+//                FetchInclusions() is not deterministic. If the tree size is changed (new leaves are added),
+//                        STH and PoI will also change.
 
 // result from worker; only for internal use
 type addLeavesResultFromWorker struct {
@@ -58,7 +59,8 @@ type PoIAndSTH struct {
 }
 
 // func for single worker to add a leaf
-func worker_addLeaf(ctx context.Context, worker trillian.TrillianLogClient, workChan <-chan string, resultChan chan<- addLeavesResultFromWorker, treeId int64) {
+func worker_addLeaf(ctx context.Context, worker trillian.TrillianLogClient, workChan <-chan string,
+	resultChan chan<- addLeavesResultFromWorker, treeId int64) {
 	for {
 		// read leaf data from channel
 		leafData, ok := <-workChan
@@ -91,7 +93,7 @@ func worker_addLeaf(ctx context.Context, worker trillian.TrillianLogClient, work
 }
 
 // AddLeaves: Queue a list of leaves
-func (c *PLLogClient) AddLeaves(ctx context.Context, data [][]byte) *addLeavesResult {
+func (c *LogClient) AddLeaves(ctx context.Context, data [][]byte) *addLeavesResult {
 	// init result
 	result := &addLeavesResult{
 		Errs:         []error{},
@@ -161,7 +163,8 @@ send_receive_loop:
 }
 
 // func for a worker to fetch the inclusion
-func worker_fetchInclusion(ctx context.Context, worker trillian.TrillianLogClient, workChan <-chan string, resultChan chan<- fetchInclusionResultFromWorker, treeId int64, treeSize int64) {
+func worker_fetchInclusion(ctx context.Context, worker trillian.TrillianLogClient, workChan <-chan string,
+	resultChan chan<- fetchInclusionResultFromWorker, treeId int64, treeSize int64) {
 	for {
 		// receive data from channel
 		leafData, ok := <-workChan
@@ -241,7 +244,7 @@ func worker_fetchInclusion(ctx context.Context, worker trillian.TrillianLogClien
 
 // FetchInclusions: fetch inclusion proof for leaves
 // similar to previous func
-func (c *PLLogClient) FetchInclusions(ctx context.Context, leavesData [][]byte) *fetchInclusionResult {
+func (c *LogClient) FetchInclusions(ctx context.Context, leavesData [][]byte) *fetchInclusionResult {
 	// init result
 	fetchInclusionResult := new(fetchInclusionResult)
 	fetchInclusionResult.PoIs = make(map[string]*PoIAndSTH)

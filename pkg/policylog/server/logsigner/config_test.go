@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestConfig: Write config to file -> read config from file -> compare
 func TestConfig(t *testing.T) {
 	config := &logsigner.LogSignerConfig{
 		RpcEndpoint:                    "localhost:8092",
