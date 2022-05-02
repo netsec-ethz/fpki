@@ -14,22 +14,13 @@ func TestConfig(t *testing.T) {
 		RpcEndpoint:                    "localhost:8090",
 		HttpEndpoint:                   "localhost:8091",
 		HealthzTimeout:                 5,
-		TlsCertFile:                    "",
-		TlsKeyFile:                     "",
 		EtcdService:                    "trillian-logserver",
 		EtcdHTTPService:                "trillian-logserver-http",
 		QuotaSystem:                    "mysql",
-		QuotaDryRun:                    false,
 		StorageSystem:                  "mysql",
 		TreeGCEnabled:                  true,
 		TreeDeleteThresholdInHour:      7 * 24,
 		TreeDeleteMinRunIntervalInHour: 4,
-		Tracing:                        false,
-		TracingProjectID:               "",
-		TracingPercent:                 0,
-		ConfigFile:                     "",
-		CpuProfile:                     "",
-		MemProfile:                     "",
 	}
 
 	tempFile := path.Join("./", "logserver_config.json")

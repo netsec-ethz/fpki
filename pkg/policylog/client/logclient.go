@@ -12,6 +12,10 @@ import (
 	"github.com/transparency-dev/merkle/rfc6962"
 )
 
+// TODO(Yongzhe, CRITICAL): Around line 183, the func will wait forever, if one identical leaf is added to the trillian
+// Possible cause: Trillian will update the identical leaf, rather than add a new one... So the tree size will not grow
+// To Be Solved Later...
+
 // what will a LogCLient do?
 // 1. Add leaves to the log
 // 2. Get the inclusion proof for one leaf
@@ -177,7 +181,7 @@ func (c *PLLogClient) QueueRPCs(ctx context.Context, fileNames []string) (*Queue
 	// record previous tree size
 	prevTreeSize := c.currentTreeSize
 
-	// wait for the leaves to be added to the log
+	// wait for the leaves to be added to the log (BUG FOUND!!!!!!)
 	for {
 		err = c.UpdateTreeSize(ctx)
 		if err != nil {

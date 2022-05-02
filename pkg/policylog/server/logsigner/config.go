@@ -14,12 +14,6 @@ type LogSignerConfig struct {
 	// "http_endpoint", "localhost:8093", "Endpoint for HTTP metrics (host:port, empty means disabled)"
 	HttpEndpoint string `json:",omitempty"`
 
-	// "tls_cert_file", "", "Path to the TLS server certificate. If unset, the server will use unsecured connections."
-	TlsCertFile string `json:",omitempty"`
-
-	// "tls_key_file", "", "Path to the TLS server key. If unset, the server will use unsecured connections."
-	TlsKeyFile string `json:",omitempty"`
-
 	// "healthz_timeout", time.Second*5, "Timeout used during healthz checks"
 	HealthzTimeoutInSec int `json:",omitempty"`
 
@@ -28,9 +22,6 @@ type LogSignerConfig struct {
 
 	// "storage_system", "mysql"
 	StorageSystem string `json:",omitempty"`
-
-	// "config", "", "Config file containing flags, file contents can be overridden by command line flags"
-	ConfigFile string `json:",omitempty"`
 
 	// "sequencer_interval", 100*time.Millisecond, "Time between each sequencing pass through all logs"
 	SequencerIntervalFlagInMillSec int `json:",omitempty"`
@@ -67,12 +58,6 @@ type LogSignerConfig struct {
 
 	//"master_hold_jitter", 120*time.Second, "Maximal random addition to --master_hold_interval"
 	MasterHoldJitterInSec int `json:",omitempty"`
-
-	// "cpuprofile", "", "If set, write CPU profile to this file"
-	CpuProfile string `json:",omitempty"`
-
-	// "memprofile", "", "If set, write memory profile to this file"
-	MemProfile string `json:",omitempty"`
 }
 
 // SaveLogSignerConfigToFile: Save log signer config from file
