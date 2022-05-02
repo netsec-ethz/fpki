@@ -1,9 +1,12 @@
 package pca
 
 // for future use
+// Testing of PCA is in the integration test, because it also need the help of domain owner.
+// This file will be used for future logics.
 import (
-	"github.com/stretchr/testify/require"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func Test_Config(t *testing.T) {
