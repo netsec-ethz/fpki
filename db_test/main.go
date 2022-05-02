@@ -14,9 +14,12 @@ func main() {
 	}
 	defer c.Close()
 
-	err = c.TestCreateData()
+	err = db.DeletemeCreateNodes(c)
 	if err != nil {
 		panic(err)
 	}
 	fmt.Println("ready")
+
+	// deleteme:
+
 }
