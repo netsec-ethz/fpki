@@ -105,3 +105,31 @@ func JsonFileToSPT(struc *SPT, filePath string) error {
 
 	return nil
 }
+func JsonFileToProof(proof *trillian.Proof, filePath string) error {
+	file, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		return err
+	}
+
+	err = json.Unmarshal([]byte(file), proof)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// JsonFileToSPT: read json files and unmarshal it to Signed Policy Timestamp
+func JsonFileToSTH(struc *types.LogRootV1, filePath string) error {
+	file, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		return err
+	}
+
+	err = json.Unmarshal([]byte(file), struc)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
