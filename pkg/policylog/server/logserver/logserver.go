@@ -7,7 +7,6 @@ import (
 	"context"
 	_ "net/http/pprof" // Register pprof HTTP handlers.
 	"os"
-	"runtime/pprof"
 	"time"
 
 	"github.com/golang/glog"
@@ -59,17 +58,7 @@ func PLCreateLogServer(configPath string) {
 	defer cancel()
 	go util.AwaitSignal(ctx, cancel)
 
-	var options []grpc.ServerOption
 	monitoring.SetStartSpan(opencensus.StartSpan)
-
-	if pl_LogServer.config.Tracing {
-		opts, err := opencensus.EnableRPCServerTracing(pl_LogServer.config.TracingProjectID, pl_LogServer.config.TracingPercent)
-		if err != nil {
-			glog.Exitf("Failed to initialize stackdriver / opencensus tracing: %v", err)
-		}
-		// Enable the server request counter tracing etc.
-		options = append(options, opts...)
-	}
 
 	sp, err := storage.NewProvider(pl_LogServer.config.StorageSystem, nil)
 	if err != nil {
@@ -89,21 +78,14 @@ func PLCreateLogServer(configPath string) {
 		MetricFactory: nil,
 	}
 
-	// Enable CPU profile if requested.
-	if pl_LogServer.config.CpuProfile != "" {
-		f := mustCreate(pl_LogServer.config.CpuProfile)
-		pprof.StartCPUProfile(f)
-		defer pprof.StopCPUProfile()
-	}
-
 	m := serverUtil.Main{
 		RPCEndpoint:  pl_LogServer.config.RpcEndpoint,
 		HTTPEndpoint: pl_LogServer.config.HttpEndpoint,
-		TLSCertFile:  pl_LogServer.config.TlsCertFile,
-		TLSKeyFile:   pl_LogServer.config.TlsKeyFile,
+		TLSCertFile:  "",
+		TLSKeyFile:   "",
 		StatsPrefix:  "log",
-		ExtraOptions: options,
-		QuotaDryRun:  pl_LogServer.config.QuotaDryRun,
+		ExtraOptions: []grpc.ServerOption{},
+		QuotaDryRun:  false,
 		DBClose:      sp.Close,
 		Registry:     registry,
 		RegisterServerFn: func(s *grpc.Server, registry extension.Registry) error {
@@ -127,11 +109,6 @@ func PLCreateLogServer(configPath string) {
 
 	if err := m.Run(ctx); err != nil {
 		glog.Exitf("Server exited with error: %v", err)
-	}
-
-	if pl_LogServer.config.MemProfile != "" {
-		f := mustCreate(pl_LogServer.config.MemProfile)
-		pprof.WriteHeapProfile(f)
 	}
 }
 

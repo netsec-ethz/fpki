@@ -6,7 +6,6 @@ import (
 	"fmt"
 	_ "net/http/pprof" // Register pprof HTTP handlers.
 	"os"
-	"runtime/pprof"
 	"time"
 
 	"github.com/golang/glog"
@@ -114,18 +113,11 @@ func CreateLogSigner(configPath string) {
 	sequencerTask := log.NewOperationManager(info, sequencerManager)
 	go sequencerTask.OperationLoop(ctx)
 
-	// Enable CPU profile if requested
-	if pl_LogServer.config.CpuProfile != "" {
-		f := mustCreate(pl_LogServer.config.CpuProfile)
-		pprof.StartCPUProfile(f)
-		defer pprof.StopCPUProfile()
-	}
-
 	m := serverUtil.Main{
 		RPCEndpoint:      pl_LogServer.config.RpcEndpoint,
 		HTTPEndpoint:     pl_LogServer.config.HttpEndpoint,
-		TLSCertFile:      pl_LogServer.config.TlsCertFile,
-		TLSKeyFile:       pl_LogServer.config.TlsKeyFile,
+		TLSCertFile:      "",
+		TLSKeyFile:       "",
 		StatsPrefix:      "logsigner",
 		DBClose:          sp.Close,
 		Registry:         registry,
@@ -136,11 +128,6 @@ func CreateLogSigner(configPath string) {
 
 	if err := m.Run(ctx); err != nil {
 		glog.Exitf("Server exited with error: %v", err)
-	}
-
-	if pl_LogServer.config.MemProfile != "" {
-		f := mustCreate(pl_LogServer.config.MemProfile)
-		pprof.WriteHeapProfile(f)
 	}
 
 	// Give things a few seconds to tidy up

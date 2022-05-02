@@ -17,12 +17,6 @@ type LogServerConfig struct {
 	// "healthz_timeout", time.Second*5, "Timeout used during healthz checks"
 	HealthzTimeout int `json:",omitempty"`
 
-	// "tls_cert_file", "", "Path to the TLS server certificate. If unset, the server will use unsecured connections."
-	TlsCertFile string `json:",omitempty"`
-
-	// "tls_key_file", "", "Path to the TLS server key. If unset, the server will use unsecured connections."
-	TlsKeyFile string `json:",omitempty"`
-
 	// "etcd_service", "trillian-logserver", "Service name to announce ourselves under"
 	EtcdService string `json:",omitempty"`
 
@@ -31,9 +25,6 @@ type LogServerConfig struct {
 
 	// "quota_system", "mysql"
 	QuotaSystem string `json:",omitempty"`
-
-	// "quota_dry_run", false, "If true no requests are blocked due to lack of tokens"
-	QuotaDryRun bool `json:",omitempty"`
 
 	// "storage_system", "mysql"
 	StorageSystem string `json:",omitempty"`
@@ -46,25 +37,6 @@ type LogServerConfig struct {
 
 	// "tree_delete_min_run_interval", serverutil.DefaultTreeDeleteMinInterval, "Minimum interval between tree garbage collection sweeps. Actual runs happen randomly between [minInterval,2*minInterval)."
 	TreeDeleteMinRunIntervalInHour int `json:",omitempty"`
-
-	// "tracing", false, "If true opencensus Stackdriver tracing will be enabled. See https://opencensus.io/."
-	Tracing bool `json:",omitempty"`
-
-	// "tracing_project_id", "", "project ID to pass to stackdriver. Can be empty for GCP, consult docs for other platforms."
-	TracingProjectID string `json:",omitempty"`
-
-	// "tracing_percent", 0, "Percent of requests to be traced. Zero is a special case to use the DefaultSampler"
-	TracingPercent int `json:",omitempty"`
-
-	// "config", "", "Config file containing flags, file contents can be overridden by command line flags"
-	ConfigFile string `json:",omitempty"`
-
-	// Profiling related flags.
-	// "cpuprofile", "", "If set, write CPU profile to this file"
-	CpuProfile string `json:",omitempty"`
-
-	// "memprofile", "", "If set, write memory profile to this file"
-	MemProfile string `json:",omitempty"`
 }
 
 // SaveLogConfigToFile: Save log server config to file

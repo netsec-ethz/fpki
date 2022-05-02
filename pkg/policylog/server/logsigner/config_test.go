@@ -13,12 +13,9 @@ func TestConfig(t *testing.T) {
 	config := &logsigner.LogSignerConfig{
 		RpcEndpoint:                    "localhost:8092",
 		HttpEndpoint:                   "localhost:8093",
-		TlsCertFile:                    "",
-		TlsKeyFile:                     "",
 		HealthzTimeoutInSec:            5,
 		QuotaSystem:                    "mysql",
 		StorageSystem:                  "mysql",
-		ConfigFile:                     "",
 		SequencerIntervalFlagInMillSec: 100,
 		BatchSizeFlag:                  1000,
 		NumSeqFlag:                     10,
@@ -30,8 +27,6 @@ func TestConfig(t *testing.T) {
 		PreElectionPauseInSec:          1,
 		MasterHoldIntervalInSec:        60,
 		MasterHoldJitterInSec:          120,
-		CpuProfile:                     "",
-		MemProfile:                     "",
 	}
 
 	tempFile := path.Join(os.TempDir(), "logsigner_config.json")
