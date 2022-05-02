@@ -9,15 +9,11 @@ import (
 	"io/ioutil"
 )
 
-// ----------------------------------------------------------------------------------
-//                     Key or certificate related functions
-// ----------------------------------------------------------------------------------
-
 // RsaPublicKeyToPemBytes: marshall public key to bytes
 func RsaPublicKeyToPemBytes(pubkey *rsa.PublicKey) ([]byte, error) {
 	pubkey_bytes, err := x509.MarshalPKIXPublicKey(pubkey)
 	if err != nil {
-		return []byte{}, fmt.Errorf("RsaPublicKeyToPemBytes | MarshalPKIXPublicKey | %w", err)
+		return nil, fmt.Errorf("RsaPublicKeyToPemBytes | MarshalPKIXPublicKey | %w", err)
 	}
 
 	return pem.EncodeToMemory(
@@ -44,14 +40,12 @@ func PemBytesToRsaPublicKey(pubkey []byte) (*rsa.PublicKey, error) {
 	if ok {
 		return pubKeyResult, nil
 	}
-
 	return nil, errors.New("PemBytesToRsaPublicKey | ParsePKIXPublicKey | Key type is not RSA")
 }
 
 // X509CertFromFile: read x509 cert from files
 func X509CertFromFile(fileName string) (*x509.Certificate, error) {
 	content, err := ioutil.ReadFile(fileName)
-
 	if err != nil {
 		return nil, fmt.Errorf("X509CertFromFile | failed to read %s: %s", fileName, err)
 	}
@@ -78,14 +72,14 @@ func X509CertFromFile(fileName string) (*x509.Certificate, error) {
 func LoadRSAKeyPairFromFile(keyPath string) (*rsa.PrivateKey, error) {
 	bytes, err := ioutil.ReadFile(keyPath)
 	if err != nil {
-		return nil, fmt.Errorf("LoadPrivPubKeyFromFile | read file | %w", err)
+		return nil, fmt.Errorf("LoadRSAKeyPairFromFile | read file | %w", err)
 	}
 
 	block, _ := pem.Decode(bytes)
 
 	keyPair, err := x509.ParsePKCS1PrivateKey(block.Bytes)
 	if err != nil {
-		return nil, fmt.Errorf("LoadPrivPubKeyFromFile | ParsePKCS1PrivateKey | %w", err)
+		return nil, fmt.Errorf("LoadRSAKeyPairFromFile | ParsePKCS1PrivateKey | %w", err)
 	}
 	return keyPair, nil
 }

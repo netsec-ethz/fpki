@@ -8,8 +8,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TODO(Yongzhe): more unit tests
-
 // TestEncAndDecOfPubKey public key -> bytes -> public key
 func TestEncAndDecOfPubKey(t *testing.T) {
 	privateKeyPair, err := rsa.GenerateKey(rand.Reader, 2048)

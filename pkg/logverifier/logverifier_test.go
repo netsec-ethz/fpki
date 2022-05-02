@@ -6,9 +6,11 @@ import (
 	"github.com/google/trillian"
 	"github.com/google/trillian/types"
 	"github.com/netsec-ethz/fpki/pkg/common"
+
 	"github.com/stretchr/testify/require"
 )
 
+// TestVerification: Test logverifier.VerifyInclusionByHash()
 func TestVerification(t *testing.T) {
 	proof := &trillian.Proof{}
 	err := common.JsonFileToProof(proof, "./testdata/POI.json")
@@ -33,6 +35,7 @@ func TestVerification(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// TestConsistencyBetweenSTH: test logverifier.VerifyRoot()
 func TestConsistencyBetweenSTH(t *testing.T) {
 	sth := &types.LogRootV1{}
 	err := common.JsonFileToSTH(sth, "./testdata/STH.json")
@@ -51,6 +54,7 @@ func TestConsistencyBetweenSTH(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// TestProveWithOldSTH: Test logverifier.VerifyInclusionWithPrevLogRoot()
 func TestProveWithOldSTH(t *testing.T) {
 	proof := &trillian.Proof{}
 	err := common.JsonFileToProof(proof, "./testdata/POI.json")

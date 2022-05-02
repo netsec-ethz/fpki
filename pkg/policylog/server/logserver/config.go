@@ -54,13 +54,12 @@ func SaveLogConfigToFile(config *LogServerConfig, configPath string) error {
 func ReadLogConfigFromFile(config *LogServerConfig, configPath string) error {
 	file, err := ioutil.ReadFile(configPath)
 	if err != nil {
-		return fmt.Errorf("ReadLogSignerConfigFromFile | ReadFile | %w", err)
+		return fmt.Errorf("ReadLogConfigFromFile | ReadFile | %w", err)
 	}
 
 	err = json.Unmarshal([]byte(file), config)
 	if err != nil {
-		return fmt.Errorf("ReadLogSignerConfigFromFile | Unmarshal | %w", err)
+		return fmt.Errorf("ReadLogConfigFromFile | Unmarshal | %w", err)
 	}
-
 	return nil
 }

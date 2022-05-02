@@ -64,7 +64,7 @@ func (do *DomainOwner) GenerateRCSR(domainName string, version int) (*common.RCS
 	err = common.RCSRCreateSignature(do.currentPrivateKeyPair, rcsr)
 
 	if err != nil {
-		return nil, fmt.Errorf("X509CertFromFile | ParseCertificate | %w", err)
+		return nil, fmt.Errorf("GenerateRCSR | RCSRCreateSignature | %w", err)
 	}
 
 	return rcsr, nil

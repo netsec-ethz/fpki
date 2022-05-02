@@ -18,31 +18,31 @@ import (
 // For example, create tree, list trees or delete tree
 
 // TODO(yongzhe): termination of conn
-type PLAdminClient struct {
+type AdminClient struct {
 	client     trillian.TrillianAdminClient
 	config     *AdminClientConfig
 	configPath string
 	conn       *grpc.ClientConn
 }
 
-//PLGetAdminClient: get a new admin client
-func PLGetAdminClient(configPath string) (*PLAdminClient, error) {
+//GetAdminClient: get a new admin client
+func GetAdminClient(configPath string) (*AdminClient, error) {
 	// read the config file
 	config := &AdminClientConfig{}
 	err := ReadAdminClientConfigFromFile(config, configPath)
 	if err != nil {
-		return nil, fmt.Errorf("PL_GetAdminClient | ReadAdminClientConfigFromFile | %s", err.Error())
+		return nil, fmt.Errorf("GetAdminClient | ReadAdminClientConfigFromFile | %s", err.Error())
 	}
 
 	// get conn
 	conn, err := getGRPCConn(config.MaxReceiveMessageSize, config.LogAddress)
 	if err != nil {
-		return nil, fmt.Errorf("PL_GetAdminClient | Dial | %s", err.Error())
+		return nil, fmt.Errorf("GetAdminClient | getGRPCConn | %s", err.Error())
 	}
 
 	adminClient := trillian.NewTrillianAdminClient(conn)
 
-	client := &PLAdminClient{
+	client := &AdminClient{
 		client:     adminClient,
 		config:     config,
 		configPath: configPath,
@@ -53,7 +53,7 @@ func PLGetAdminClient(configPath string) (*PLAdminClient, error) {
 }
 
 // CreateNewTree: CreateNewTree: create a new tree (Merkle Tree)
-func (client PLAdminClient) CreateNewTree() (*trillian.Tree, error) {
+func (client AdminClient) CreateNewTree() (*trillian.Tree, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*time.Duration(client.config.RpcMaxWaitingTimeInSec))
 	defer cancel()
 
@@ -77,7 +77,7 @@ func (client PLAdminClient) CreateNewTree() (*trillian.Tree, error) {
 }
 
 // return a request to create a tree
-func (client PLAdminClient) generateCreateTreeReq() *trillian.CreateTreeRequest {
+func (client AdminClient) generateCreateTreeReq() *trillian.CreateTreeRequest {
 	createRequest := &trillian.CreateTreeRequest{Tree: &trillian.Tree{
 		TreeState:       trillian.TreeState_ACTIVE,
 		TreeType:        trillian.TreeType_LOG,
@@ -90,7 +90,7 @@ func (client PLAdminClient) generateCreateTreeReq() *trillian.CreateTreeRequest 
 }
 
 // write tree config to file
-func (client PLAdminClient) writeTreeToFile(tree *trillian.Tree) error {
+func (client AdminClient) writeTreeToFile(tree *trillian.Tree) error {
 	file, err := json.MarshalIndent(tree, "", " ")
 	if err != nil {
 		return fmt.Errorf("writeTreeToFile | MarshalIndent | %s", err.Error())
