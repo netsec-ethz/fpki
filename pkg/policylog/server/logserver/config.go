@@ -35,7 +35,8 @@ type LogServerConfig struct {
 	// "tree_delete_threshold", serverutil.DefaultTreeDeleteThreshold, "Minimum period a tree has to remain deleted before being hard-deleted"
 	TreeDeleteThresholdInHour int `json:",omitempty"`
 
-	// "tree_delete_min_run_interval", serverutil.DefaultTreeDeleteMinInterval, "Minimum interval between tree garbage collection sweeps. Actual runs happen randomly between [minInterval,2*minInterval)."
+	// "tree_delete_min_run_interval", serverutil.DefaultTreeDeleteMinInterval, "Minimum interval between tree garbage collection sweeps.
+	// Actual runs happen randomly between [minInterval,2*minInterval)."
 	TreeDeleteMinRunIntervalInHour int `json:",omitempty"`
 }
 
@@ -46,7 +47,6 @@ func SaveLogConfigToFile(config *LogServerConfig, configPath string) error {
 	if err != nil {
 		return fmt.Errorf("SaveLogConfigToFile | WriteFile | %w", err)
 	}
-
 	return nil
 }
 

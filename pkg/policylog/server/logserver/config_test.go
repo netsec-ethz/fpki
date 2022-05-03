@@ -1,6 +1,7 @@
 package logserver
 
 import (
+	"os"
 	"path"
 	"testing"
 
@@ -9,7 +10,6 @@ import (
 
 // TestConfig: Write config -> read config -> compare
 func TestConfig(t *testing.T) {
-
 	config := &LogServerConfig{
 		RpcEndpoint:                    "localhost:8090",
 		HttpEndpoint:                   "localhost:8091",
@@ -24,7 +24,7 @@ func TestConfig(t *testing.T) {
 	}
 
 	tempFile := path.Join("./", "logserver_config.json")
-	//defer os.Remove(tempFile)
+	defer os.Remove(tempFile)
 
 	err := SaveLogConfigToFile(config, tempFile)
 	require.NoError(t, err)

@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-//TestCreateTreeAddLeafThenVerifyWithConsistencyProof: Add leaves to tree -> get Proof of Inclusion
+//TestCreateTreeAddLeafThenGetPoI: Add leaves to tree -> get Proof of Inclusion
 // Used to measure the time to add leaves
 func TestCreateTreeAddLeafThenGetPoI(t *testing.T) {
 	// init admin adminClient

@@ -10,7 +10,7 @@ import (
 )
 
 // Assume one domain owner only have one domain; Logic can be changed later
-// Cool-off period is not fully implemented.
+// TODO(yongzhe): Cool-off period is not fully implemented.
 
 //DomainOwner: struc which represents one domain owner.
 type DomainOwner struct {
@@ -62,7 +62,6 @@ func (do *DomainOwner) GenerateRCSR(domainName string, version int) (*common.RCS
 
 	// generate signature for RCSR, using the new pub key
 	err = common.RCSRCreateSignature(do.currentPrivateKeyPair, rcsr)
-
 	if err != nil {
 		return nil, fmt.Errorf("GenerateRCSR | RCSRCreateSignature | %w", err)
 	}

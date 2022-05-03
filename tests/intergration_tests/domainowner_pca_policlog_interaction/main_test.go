@@ -26,16 +26,17 @@ func TestPCAPolocyLog(t *testing.T) {
 
 	// first rcsr
 	rcsr, err := do.GenerateRCSR("abc.com", 1)
-	require.NoError(t, err, "Generate RCSR error")
+	require.NoError(t, err, "Generate RCSR for abc.com error")
 	assert.Equal(t, len(rcsr.PRCSignature), 0, "first rcsr error: should not have RPCSignature")
 
 	// sign and log the first rcsr
 	err = pca.SignAndLogRCSR(rcsr)
-	require.NoError(t, err, "Sign and log RCSR error")
+	require.NoError(t, err, "Sign and log RCSR for abc.com error")
 
 	// second rcsr
 	rcsr, err = do.GenerateRCSR("fpki.com", 1)
 	require.NoError(t, err, "Generate RCSR for fpki.com error")
+	assert.Equal(t, len(rcsr.PRCSignature), 0, "second rcsr error: should not have RPCSignature")
 
 	// sign and log the second rcsr
 	err = pca.SignAndLogRCSR(rcsr)
