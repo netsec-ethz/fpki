@@ -30,3 +30,10 @@ test_folders:
 	@mkdir -p tests/intergration_tests/domainowner_pca_policlog_interaction/file_exchange/policylog/trees_config/
 	@mkdir -p tests/intergration_tests/domainowner_pca_policlog_interaction/file_exchange/pcaoutput/rpc/
 	@mkdir -p tests/intergration_tests/performance_test/testdata/trees_config/
+
+cerate_database:
+	@mysql -u root -e "create database map;"
+
+reset_tables:
+	@mysql -u root -e "DROP TABLE map.node;"
+	@mysql -u root -e "DROP TABLE map.value;"

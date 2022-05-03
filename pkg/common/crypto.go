@@ -38,7 +38,6 @@ func SignStrucRSASHA256(struc interface{}, privKey *rsa.PrivateKey) ([]byte, err
 	if err != nil {
 		return nil, fmt.Errorf("SignStrucRSASHA256 | SignPKCS1v15 | %s", err.Error())
 	}
-
 	return signature, nil
 }
 
@@ -201,6 +200,5 @@ func RPCVerifyCASignature(caCert *x509.Certificate, rpc *RPC) error {
 	if err != nil {
 		return fmt.Errorf("RPCVerifyCASignature | VerifyPKCS1v15 | %s", err.Error())
 	}
-
 	return nil
 }

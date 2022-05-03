@@ -39,9 +39,9 @@ func (c *LogVerifier) VerifyInclusionWithPrevLogRoot(trusted *types.LogRootV1, n
 	consistency [][]byte, leafHash []byte, proof []*trillian.Proof) error {
 	switch {
 	case trusted == nil:
-		return fmt.Errorf("VerifyInclusion_WithPrevLogRoot() error: trusted == nil")
+		return fmt.Errorf("VerifyInclusionWithPrevLogRoot() error: trusted == nil")
 	case newRoot == nil:
-		return fmt.Errorf("VerifyInclusion_WithPrevLogRoot() error: newRoot == nil")
+		return fmt.Errorf("VerifyInclusionWithPrevLogRoot() error: newRoot == nil")
 	}
 
 	err := c.VerifyInclusionByHash(trusted, leafHash, proof)

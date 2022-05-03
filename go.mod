@@ -5,6 +5,8 @@ go 1.17
 replace github.com/netsec-ethz/fpki => ./
 
 require (
+	github.com/celestiaorg/smt v0.2.1-0.20220414134126-dba215ccb884
+	github.com/go-sql-driver/mysql v1.6.0
 	github.com/golang/glog v1.0.0
 	github.com/google/trillian v1.4.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
@@ -25,7 +27,6 @@ require (
 	github.com/aws/aws-sdk-go v1.37.0 // indirect
 	github.com/census-instrumentation/opencensus-proto v0.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/go-sql-driver/mysql v1.6.0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/mock v1.6.0 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect

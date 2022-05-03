@@ -131,7 +131,6 @@ func (sprt *SPRT) Equal(sprt_ *SPRT) bool {
 				return false
 			}
 		}
-
 		return true
 	}
 	return false

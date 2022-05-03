@@ -78,15 +78,13 @@ func (client AdminClient) CreateNewTree() (*trillian.Tree, error) {
 
 // return a request to create a tree
 func (client AdminClient) generateCreateTreeReq() *trillian.CreateTreeRequest {
-	createRequest := &trillian.CreateTreeRequest{Tree: &trillian.Tree{
+	return &trillian.CreateTreeRequest{Tree: &trillian.Tree{
 		TreeState:       trillian.TreeState_ACTIVE,
 		TreeType:        trillian.TreeType_LOG,
 		DisplayName:     client.config.DisplayName,
 		Description:     client.config.Description,
 		MaxRootDuration: durationpb.New(time.Second * time.Duration(client.config.RpcMaxWaitingTimeInSec)),
 	}}
-
-	return createRequest
 }
 
 // write tree config to file

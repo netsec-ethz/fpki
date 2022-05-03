@@ -120,7 +120,6 @@ func JsonFileToProof(proof *trillian.Proof, filePath string) error {
 	if err != nil {
 		return fmt.Errorf("JsonFileToProof | Unmarshal | %w", err)
 	}
-
 	return nil
 }
 
@@ -135,6 +134,5 @@ func JsonFileToSTH(struc *types.LogRootV1, filePath string) error {
 	if err != nil {
 		return fmt.Errorf("JsonFileToSTH | Unmarshal | %w", err)
 	}
-
 	return nil
 }

@@ -14,7 +14,6 @@ import (
 
 // TestEncodeAndDecodeOfSPT: SPT -> files -> SPT
 func TestEncodeAndDecodeOfSPT(t *testing.T) {
-
 	spt := &SPT{
 		Version:         12314,
 		Subject:         "you are funny",

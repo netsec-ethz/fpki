@@ -97,7 +97,7 @@ func (c *LogClient) AddLeaves(ctx context.Context, data [][]byte) *addLeavesResu
 	// init result
 	result := &addLeavesResult{
 		Errs:         []error{},
-		FailedLeaves: [][]byte{[]byte{}},
+		FailedLeaves: [][]byte{{}},
 	}
 
 	// channels to workers
