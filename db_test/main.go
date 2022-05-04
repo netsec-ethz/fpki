@@ -13,8 +13,8 @@ func main() {
 	check(err)
 	defer c.Close()
 
-	err = db.DeletemeDropAllNodes(c)
-	check(err)
+	// err = db.DeletemeDropAllNodes(c)
+	// check(err)
 	t0 := time.Now()
 	// err = db.DeletemeCreateNodes(c, 1000) // 5.975667276s
 
@@ -26,10 +26,12 @@ func main() {
 	// err = db.DeletemeCreateNodesBulk2(c, 200000) // 1.161974957s
 	// err = db.DeletemeCreateNodesBulk2(c, 1000*1000) // 11.807568854s
 
-	err = db.DeletemeCreateNodesBulk3(c, 1000*1000) // 10.23273209s
+	// err = db.DeletemeCreateNodesBulk3(c, 1000*1000) // 10.23273209s
+
+	err = db.DeletemeSelectNodes(c, 1) // 357.921365ms
 
 	check(err)
-	fmt.Printf("insert: %s\n", time.Since(t0))
+	fmt.Printf("time: %s\n", time.Since(t0))
 	fmt.Println("ready")
 
 	// deleteme:

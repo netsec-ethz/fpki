@@ -1,10 +1,12 @@
 package db
 
 import (
+	"context"
 	"encoding/hex"
 	"fmt"
 	"math/big"
 	"strings"
+	"time"
 )
 
 func DeletemeDropAllNodes(db DB) error {
@@ -227,6 +229,31 @@ func DeletemeCreateNodesBulk3(db DB, count int) error {
 	}
 	_, err = c.db.Exec("UNLOCK TABLES")
 	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func DeletemeSelectNodes(db DB, count int) error {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	defer cancelF()
+	c := db.(*mysqlDB)
+
+	initial, err := hex.DecodeString("0000000000000100000000000000000000000000000000000000000000030196")
+	if err != nil {
+		panic(err)
+	}
+	if len(initial) != 32 {
+		panic("logic error")
+	}
+	idhash := [32]byte{}
+	copy(idhash[:], initial)
+	fmt.Printf("id = %s\n", hex.EncodeToString(idhash[:]))
+	row := c.db.QueryRowContext(ctx, "SELECT idhash,value FROM nodes WHERE idhash=?", idhash[:])
+
+	retIdHash := []byte{}
+	var value []byte
+	if err := row.Scan(&retIdHash, &value); err != nil {
 		return err
 	}
 	return nil
