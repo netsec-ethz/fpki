@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/db"
 )
@@ -9,17 +10,30 @@ import (
 func main() {
 	fmt.Println("hello")
 	c, err := db.Connect()
-	if err != nil {
-		panic(err)
-	}
+	check(err)
 	defer c.Close()
 
-	err = db.DeletemeCreateNodes(c)
-	if err != nil {
-		panic(err)
-	}
+	err = db.DeletemeDropAllNodes(c)
+	check(err)
+	t0 := time.Now()
+	// err = db.DeletemeCreateNodes(c, 1000) // 5.975667276s
+	// err = db.DeletemeCreateNodesBulk(c, 1000) // 60.954469ms
+	// err = db.DeletemeCreateNodesBulk(c, 1000000) // too slow (before prepared statements)
+	// err = db.DeletemeCreateNodesBulk(c, 50000) // 1.724559003s
+	// err = db.DeletemeCreateNodesBulk(c, 100000) // too slow
+	// err = db.DeletemeCreateNodesBulk2(c, 200000) // 1.161974957s
+	err = db.DeletemeCreateNodesBulk2(c, 1000000) // 11.807568854s
+
+	check(err)
+	fmt.Printf("insert: %s\n", time.Since(t0))
 	fmt.Println("ready")
 
 	// deleteme:
 
+}
+
+func check(err error) {
+	if err != nil {
+		panic(err)
+	}
 }
