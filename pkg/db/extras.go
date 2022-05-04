@@ -235,11 +235,11 @@ func DeletemeCreateNodesBulk3(db DB, count int) error {
 }
 
 func DeletemeSelectNodes(db DB, count int) error {
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 	c := db.(*mysqlDB)
 
-	initial, err := hex.DecodeString("0000000000000100000000000000000000000000000000000000000000030196")
+	initial, err := hex.DecodeString("000000000000010000000000000000000000000000000000000000000004A769")
 	if err != nil {
 		panic(err)
 	}
@@ -248,13 +248,17 @@ func DeletemeSelectNodes(db DB, count int) error {
 	}
 	idhash := [32]byte{}
 	copy(idhash[:], initial)
-	fmt.Printf("id = %s\n", hex.EncodeToString(idhash[:]))
-	row := c.db.QueryRowContext(ctx, "SELECT idhash,value FROM nodes WHERE idhash=?", idhash[:])
-
-	retIdHash := []byte{}
-	var value []byte
-	if err := row.Scan(&retIdHash, &value); err != nil {
-		return err
+	// fmt.Printf("id = %s\n", hex.EncodeToString(idhash[:]))
+	for i := 0; i < count; i++ {
+		row := c.db.QueryRowContext(ctx, "SELECT idhash,value FROM nodes WHERE idhash=?", idhash[:])
+		retIdHash := []byte{}
+		var value []byte
+		if err := row.Scan(&retIdHash, &value); err != nil {
+			return err
+		}
+		if i%10000 == 0 {
+			fmt.Printf("%d / %d\n", i, count)
+		}
 	}
 	return nil
 }

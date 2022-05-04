@@ -36,7 +36,9 @@ func main() {
 		err = db.DeletemeCreateNodesBulk3(c, 1000*1000) // 10.23273209s
 	}
 	if *queryFlag {
-		err = db.DeletemeSelectNodes(c, 1) // 975.161µs
+		// err = db.DeletemeSelectNodes(c, 1) // 975.161µs
+		// err = db.DeletemeSelectNodes(c, 1000) // 105.641493ms
+		err = db.DeletemeSelectNodes(c, 100*1000) // 10.217178627s
 	}
 
 	check(err)
