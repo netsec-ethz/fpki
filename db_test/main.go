@@ -9,6 +9,7 @@ import (
 )
 
 func main() {
+	truncateFlag := flag.Bool("truncate", false, "insert values")
 	insertFlag := flag.Bool("insert", false, "insert values")
 	queryFlag := flag.Bool("query", false, "perform a query")
 	flag.Parse()
@@ -19,10 +20,12 @@ func main() {
 
 	t0 := time.Now()
 
-	if *insertFlag {
+	if *truncateFlag {
 		err = db.DeletemeDropAllNodes(c)
 		check(err)
 		t0 = time.Now()
+	}
+	if *insertFlag {
 		// err = db.DeletemeCreateNodes(c, 1000) // 5.975667276s
 
 		// err = db.DeletemeCreateNodesBulk(c, 1000) // 60.954469ms
@@ -33,7 +36,10 @@ func main() {
 		// err = db.DeletemeCreateNodesBulk2(c, 200000) // 1.161974957s
 		// err = db.DeletemeCreateNodesBulk2(c, 1000*1000) // 11.807568854s
 
-		err = db.DeletemeCreateNodesBulk3(c, 1000*1000) // 10.23273209s
+		// err = db.DeletemeCreateNodesBulk3(c, 1000*1000) // 10.23273209s
+
+		// err = db.DeletemeCreateNodesBulk4(c, 100*1000) // 1.693980634s
+		err = db.DeletemeCreateNodesBulk4(c, 1000*1000) // 17.182428746s
 	}
 	if *queryFlag {
 		// err = db.DeletemeSelectNodes(c, 1) // 975.161µs
@@ -43,7 +49,10 @@ func main() {
 		// err = db.DeletemeSelectNodes2(c, 100*1000) // 8.854317991s
 
 		// err = db.DeletemeSelectNodes3(c, 100*1000, 8) // 2.184544624s
-		err = db.DeletemeSelectNodes3(c, 500*1000, 32) // 11.123422821s = 1M in 22.2s
+		// err = db.DeletemeSelectNodes3(c, 500*1000, 32) // 11.123422821s = 1M in 22.2s
+
+		// err = db.DeletemeSelectNodesRandom4(c, 100*1000, 32) // 2.176723473s
+		err = db.DeletemeSelectNodesRandom4(c, 1000*1000, 32) // 21.620978374s
 	}
 
 	check(err)
