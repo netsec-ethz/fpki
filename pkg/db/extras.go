@@ -263,6 +263,41 @@ func DeletemeSelectNodes(db DB, count int) error {
 	return nil
 }
 
+// with prepared stmts
+func DeletemeSelectNodes2(db DB, count int) error {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+	c := db.(*mysqlDB)
+
+	initial, err := hex.DecodeString("000000000000010000000000000000000000000000000000000000000004A769")
+	if err != nil {
+		panic(err)
+	}
+	if len(initial) != 32 {
+		panic("logic error")
+	}
+	idhash := [32]byte{}
+	copy(idhash[:], initial)
+	// fmt.Printf("id = %s\n", hex.EncodeToString(idhash[:]))
+	prepStmt, err := c.db.Prepare("SELECT idhash,value FROM nodes WHERE idhash=?")
+	if err != nil {
+		return err
+	}
+	for i := 0; i < count; i++ {
+		// row := c.db.QueryRowContext(ctx, "SELECT idhash,value FROM nodes WHERE idhash=?", idhash[:])
+		row := prepStmt.QueryRowContext(ctx, idhash[:])
+		retIdHash := []byte{}
+		var value []byte
+		if err := row.Scan(&retIdHash, &value); err != nil {
+			return err
+		}
+		if i%10000 == 0 {
+			fmt.Printf("%d / %d\n", i, count)
+		}
+	}
+	return nil
+}
+
 func repeatStmt(N int, noOfComponents int) string {
 	components := make([]string, noOfComponents)
 	for i := 0; i < len(components); i++ {
