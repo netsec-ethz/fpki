@@ -40,7 +40,10 @@ func main() {
 		// err = db.DeletemeSelectNodes(c, 1000) // 108.110884ms
 		// err = db.DeletemeSelectNodes(c, 100*1000) // 10.606129185s
 
-		err = db.DeletemeSelectNodes2(c, 100*1000) // 8.854317991s
+		// err = db.DeletemeSelectNodes2(c, 100*1000) // 8.854317991s
+
+		// err = db.DeletemeSelectNodes3(c, 100*1000, 8) // 2.184544624s
+		err = db.DeletemeSelectNodes3(c, 500*1000, 32) // 11.123422821s = 1M in 22.2s
 	}
 
 	check(err)

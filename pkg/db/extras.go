@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -301,6 +302,57 @@ func DeletemeSelectNodes2(db DB, count int) error {
 			fmt.Printf("%d / %d\n", i, count)
 		}
 	}
+	return nil
+}
+
+// DeletemeSelectNodes3 has multiple go routines
+func DeletemeSelectNodes3(db DB, count int, goroutinesCount int) error {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+	c := db.(*mysqlDB)
+
+	initial, err := hex.DecodeString("000000000000010000000000000000000000000000000000000000000004A769")
+	if err != nil {
+		panic(err)
+	}
+	if len(initial) != 32 {
+		panic("logic error")
+	}
+	sequentialHash := big.NewInt(0)
+	sequentialHash.SetBytes(initial[:])
+	prepStmt, err := c.db.Prepare("SELECT idhash,value FROM nodes WHERE idhash=?")
+	if err != nil {
+		return err
+	}
+
+	// to simplify code, check that we run all queries: count must be divisible by routine count
+	if count%goroutinesCount != 0 {
+		panic("logic error")
+	}
+
+	wg := sync.WaitGroup{}
+	wg.Add(goroutinesCount)
+	for r := 0; r < goroutinesCount; r++ {
+		go func() {
+			defer wg.Done()
+			for i := 0; i < count/goroutinesCount; i++ {
+				idhash := [32]byte{}
+				sequentialHash.FillBytes(idhash[:])
+				sequentialHash.Add(sequentialHash, big.NewInt(1))
+				row := prepStmt.QueryRowContext(ctx, idhash[:])
+				// fmt.Printf("id = %s\n", hex.EncodeToString(idhash[:]))
+				retIdHash := []byte{}
+				var value []byte
+				if err := row.Scan(&retIdHash, &value); err != nil {
+					panic(err)
+				}
+				if i%10000 == 0 {
+					fmt.Printf("%d / %d\n", i, count)
+				}
+			}
+		}()
+	}
+	wg.Wait()
 	return nil
 }
 
