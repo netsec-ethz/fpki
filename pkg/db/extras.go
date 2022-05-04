@@ -246,11 +246,15 @@ func DeletemeSelectNodes(db DB, count int) error {
 	if len(initial) != 32 {
 		panic("logic error")
 	}
-	idhash := [32]byte{}
-	copy(idhash[:], initial)
-	// fmt.Printf("id = %s\n", hex.EncodeToString(idhash[:]))
+	sequentialHash := big.NewInt(0)
+	sequentialHash.SetBytes(initial[:])
+
 	for i := 0; i < count; i++ {
+		idhash := [32]byte{}
+		sequentialHash.FillBytes(idhash[:])
+		sequentialHash.Add(sequentialHash, big.NewInt(1))
 		row := c.db.QueryRowContext(ctx, "SELECT idhash,value FROM nodes WHERE idhash=?", idhash[:])
+		// fmt.Printf("id = %s\n", hex.EncodeToString(idhash[:]))
 		retIdHash := []byte{}
 		var value []byte
 		if err := row.Scan(&retIdHash, &value); err != nil {
@@ -276,16 +280,18 @@ func DeletemeSelectNodes2(db DB, count int) error {
 	if len(initial) != 32 {
 		panic("logic error")
 	}
-	idhash := [32]byte{}
-	copy(idhash[:], initial)
-	// fmt.Printf("id = %s\n", hex.EncodeToString(idhash[:]))
+	sequentialHash := big.NewInt(0)
+	sequentialHash.SetBytes(initial[:])
 	prepStmt, err := c.db.Prepare("SELECT idhash,value FROM nodes WHERE idhash=?")
 	if err != nil {
 		return err
 	}
 	for i := 0; i < count; i++ {
-		// row := c.db.QueryRowContext(ctx, "SELECT idhash,value FROM nodes WHERE idhash=?", idhash[:])
+		idhash := [32]byte{}
+		sequentialHash.FillBytes(idhash[:])
+		sequentialHash.Add(sequentialHash, big.NewInt(1))
 		row := prepStmt.QueryRowContext(ctx, idhash[:])
+		// fmt.Printf("id = %s\n", hex.EncodeToString(idhash[:]))
 		retIdHash := []byte{}
 		var value []byte
 		if err := row.Scan(&retIdHash, &value); err != nil {
