@@ -1,0 +1,5 @@
+SELECT COUNT(*) FROM fpki.nodes;
+SELECT HEX(idhash), HEX(value) FROM fpki.nodes;
+-- SELECT HEX(idhash) FROM fpki.nodes limit 64;
+-- EXPLAIN SELECT HEX(idhash), HEX(value) FROM fpki.nodes WHERE idhash=UNHEX("000000000000010000000000000000000000000000000000000000000004A769");
+
