@@ -45,8 +45,9 @@ UNLOCK TABLES;
 -- DROP TABLE IF EXISTS nodes;
 -- CREATE TABLE nodes (
 --   idhash VARCHAR(32),
---   value BLOB
--- ) CHARSET=ascii;
+--   value BLOB,
+--   KEY(idhash)
+-- ) CHARSET=binary COLLATE=binary;
 
 
 -- CREATE INDEX index1 ON nodes(idhash);

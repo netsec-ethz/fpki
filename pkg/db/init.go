@@ -17,6 +17,7 @@ func Connect() (DB, error) {
 	}
 	val := dsn.Query()
 	val.Add("interpolateParams", "true") // 1 round trip per query
+	val.Add("collation", "binary")
 	dsn.RawQuery = val.Encode()
 	fmt.Printf("connecting with %s\n", dsn)
 	db, err := sql.Open("mysql", dsn.Redacted()) // TODO(juagargi) DSN should be a parameter
