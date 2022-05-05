@@ -429,7 +429,7 @@ func DeletemeSelectNodes3(db DB, count int, goroutinesCount int) error {
 	return nil
 }
 
-// DeletemeSelectNodes3 has multiple go routines
+// DeletemeSelectNodesRandom4 has multiple go routines and reads random IDs
 func DeletemeSelectNodesRandom4(db DB, count int, goroutinesCount int) error {
 	var err error
 	c := db.(*mysqlDB)
@@ -471,6 +471,71 @@ func DeletemeSelectNodesRandom4(db DB, count int, goroutinesCount int) error {
 			}
 		}()
 	}
+	wg.Wait()
+	return nil
+}
+
+// DeletemeSelectNodesRandom5 creates `connectionCount` connections with
+// `routinesPerConn` go routines per connection.
+func DeletemeSelectNodesRandom5(count, connectionCount, routinesPerConn int) error {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
+	DB, err := Connect()
+	if err != nil {
+		return err
+	}
+	masterConn := DB.(*mysqlDB)
+	totalRoutines := connectionCount * routinesPerConn
+	randomIDs, err := retrieveIDs(ctx, masterConn, totalRoutines)
+	if err != nil {
+		return err
+	}
+	if err = DB.Close(); err != nil {
+		return err
+	}
+
+	// to simplify code, check that we run all queries: count must be divisible by routine count
+	if count%totalRoutines != 0 {
+		panic(fmt.Sprintf("logic error: count not divisible by number of total routines %d "+
+			"round count to %d", totalRoutines, count+count%totalRoutines))
+	}
+
+	wg := sync.WaitGroup{}
+	wg.Add(totalRoutines)
+	for c := 0; c < connectionCount; c++ {
+		go func() {
+			DB, err := Connect()
+			if err != nil {
+				panic(err)
+			}
+			conn := DB.(*mysqlDB)
+			prepStmt, err := conn.db.Prepare("SELECT idhash,value FROM nodes WHERE idhash=?")
+			if err != nil {
+				panic(err)
+			}
+
+			for r := 0; r < routinesPerConn; r++ {
+				go func() {
+					defer wg.Done()
+					for i := 0; i < count/totalRoutines; i++ {
+						idhash := randomIDs[rand.Intn(len(randomIDs))]
+						row := prepStmt.QueryRowContext(ctx, idhash[:])
+						// fmt.Printf("id = %s\n", hex.EncodeToString(idhash[:]))
+						retIdHash := []byte{}
+						var value []byte
+						if err := row.Scan(&retIdHash, &value); err != nil {
+							panic(err)
+						}
+						if i%10000 == 0 {
+							fmt.Printf("%d / %d\n", i, count)
+						}
+					}
+				}()
+			}
+		}()
+	}
+
 	wg.Wait()
 	return nil
 }

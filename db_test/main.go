@@ -52,7 +52,14 @@ func main() {
 		// err = db.DeletemeSelectNodes3(c, 500*1000, 32) // 11.123422821s = 1M in 22.2s
 
 		// err = db.DeletemeSelectNodesRandom4(c, 100*1000, 32) // 2.176723473s
-		err = db.DeletemeSelectNodesRandom4(c, 1000*1000, 32) // 21.620978374s
+		// err = db.DeletemeSelectNodesRandom4(c, 1000*1000, 16) // 16.294332418s
+		// err = db.DeletemeSelectNodesRandom4(c, 1000*1000, 32) // 16.207375911s
+		// err = db.DeletemeSelectNodesRandom4(c, 1000*1000, 64) // 16.208407496s
+
+		// err = db.DeletemeSelectNodesRandom5(1000*1000, 16, 2) // 7.190813246s
+		// err = db.DeletemeSelectNodesRandom5(1000*1000, 32, 2) // 6.906053331s
+		// err = db.DeletemeSelectNodesRandom5(1000*1000+64, 32, 4) // 5.78090823s
+		err = db.DeletemeSelectNodesRandom5(1000*1000+192, 32, 8) // 5.602697327s
 	}
 
 	check(err)
