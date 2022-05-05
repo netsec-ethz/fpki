@@ -53,7 +53,7 @@ func checkSchema(c *sql.DB) error {
 		return err
 	}
 	fmt.Printf("***************** Init %s : %s\n", varName, varValue)
-	if _, err = c.Exec("SET GLOBAL max_connections = 512"); err != nil {
+	if _, err = c.Exec("SET GLOBAL max_connections = 1024"); err != nil {
 		return err
 	}
 	fmt.Printf("***************** Init %s : %s\n", varName, varValue)

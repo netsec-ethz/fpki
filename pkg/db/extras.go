@@ -477,22 +477,23 @@ func DeletemeSelectNodesRandom4(db DB, count int, goroutinesCount int) error {
 
 // DeletemeSelectNodesRandom5 creates `connectionCount` connections with
 // `routinesPerConn` go routines per connection.
-func DeletemeSelectNodesRandom5(count, connectionCount, routinesPerConn int) error {
+// returns the time when it started to do actual work, and error
+func DeletemeSelectNodesRandom5(count, connectionCount, routinesPerConn int) (time.Time, error) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
 	DB, err := Connect()
 	if err != nil {
-		return err
+		return time.Time{}, err
 	}
 	masterConn := DB.(*mysqlDB)
 	totalRoutines := connectionCount * routinesPerConn
 	randomIDs, err := retrieveIDs(ctx, masterConn, totalRoutines)
 	if err != nil {
-		return err
+		return time.Time{}, err
 	}
 	if err = DB.Close(); err != nil {
-		return err
+		return time.Time{}, err
 	}
 
 	// to simplify code, check that we run all queries: count must be divisible by routine count
@@ -501,15 +502,21 @@ func DeletemeSelectNodesRandom5(count, connectionCount, routinesPerConn int) err
 			"round count to %d", totalRoutines, count+count%totalRoutines))
 	}
 
+	conns := make([]*mysqlDB, connectionCount)
+	for c := 0; c < connectionCount; c++ {
+		DB, err := Connect()
+		if err != nil {
+			return time.Time{}, err
+		}
+		conns[c] = DB.(*mysqlDB)
+	}
+	t0 := time.Now()
 	wg := sync.WaitGroup{}
 	wg.Add(totalRoutines)
 	for c := 0; c < connectionCount; c++ {
+		cc := c
 		go func() {
-			DB, err := Connect()
-			if err != nil {
-				panic(err)
-			}
-			conn := DB.(*mysqlDB)
+			conn := conns[cc]
 			prepStmt, err := conn.db.Prepare("SELECT idhash,value FROM nodes WHERE idhash=?")
 			if err != nil {
 				panic(err)
@@ -537,7 +544,7 @@ func DeletemeSelectNodesRandom5(count, connectionCount, routinesPerConn int) err
 	}
 
 	wg.Wait()
-	return nil
+	return t0, nil
 }
 
 func repeatStmt(N int, noOfComponents int) string {
