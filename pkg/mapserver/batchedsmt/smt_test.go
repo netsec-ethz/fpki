@@ -306,7 +306,7 @@ func benchmark1MAccounts(smt *SMT, b *testing.B) ([][]byte, [][]byte) {
 
 func benchmarkGet1MProof(smt *SMT, keys [][]byte, values [][]byte) error {
 	start := time.Now()
-	fmt.Println(len(keys))
+	fmt.Println("number of keys: ", len(keys))
 	for _, key := range keys {
 		_, err := smt.MerkleProof(key)
 		if err != nil {
