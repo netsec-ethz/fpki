@@ -1,4 +1,9 @@
-package batchedsmt
+/**
+ *  @file
+ *  @copyright defined in aergo/LICENSE.txt
+ */
+
+package trie
 
 import (
 	"database/sql"
@@ -26,10 +31,10 @@ type ReadResult struct {
 // CacheDB: a cached db. It has one map in memory.
 type CacheDB struct {
 	// cachedNodes contains the first levels of the tree (nodes that have 2 non default children)
-	cachedNodes map[Hash][][]byte
+	liveCache map[Hash][][]byte
 
 	// cacheMux is a lock for cachedNodes
-	cacheMux sync.RWMutex
+	liveMux sync.RWMutex
 
 	// updatedNodes that have will be flushed to disk
 	updatedNodes map[Hash][][]byte
@@ -41,7 +46,7 @@ type CacheDB struct {
 	lock sync.RWMutex
 
 	// dbConn is the conn to mysql db
-	dbConn *sql.DB
+	Store *sql.DB
 
 	// Client is the channel for user input; Used to get read request from client
 	ClientInput chan ReadRequest
@@ -60,9 +65,9 @@ func NewCacheDB(store *sql.DB) (*CacheDB, error) {
 	clientInput := make(chan ReadRequest)
 
 	return &CacheDB{
-		cachedNodes:  make(map[Hash][][]byte),
+		liveCache:    make(map[Hash][][]byte),
 		updatedNodes: make(map[Hash][][]byte),
-		dbConn:       store,
+		Store:        store,
 		ClientInput:  clientInput,
 	}, nil
 }
@@ -71,7 +76,7 @@ func NewCacheDB(store *sql.DB) (*CacheDB, error) {
 func (db *CacheDB) Start() {
 	workerChan := make(chan ReadRequest)
 	for i := 0; i < 10; i++ {
-		go workerThread(workerChan, db.dbConn)
+		go workerThread(workerChan, db.Store)
 	}
 	workerDistributor(db.ClientInput, workerChan)
 }
@@ -180,11 +185,30 @@ func (db *CacheDB) writeCachedDataToDB() error {
 	}
 	sb.WriteString(";")
 
+	fmt.Println("size of writes: ", len(db.updatedNodes))
+
 	// TODO(yongzhe): wrap the error later
-	result, err := db.dbConn.Query(sb.String())
+	result, err := db.Store.Query(sb.String())
 	if err != nil {
 		return fmt.Errorf("commit | Query | %w", err)
 	}
 	defer result.Close()
+	db.updatedNodes = make(map[Hash][][]byte)
 	return nil
+}
+
+// serializeBatch serialises the 2D [][]byte into a []byte for db
+func serializeBatch(batch [][]byte) []byte {
+	serialized := make([]byte, 4) //, 30*33)
+	if batch[0][0] == 1 {
+		// the batch node is a shortcut
+		bitSet(serialized, 31)
+	}
+	for i := 1; i < 31; i++ {
+		if len(batch[i]) != 0 {
+			bitSet(serialized, i-1)
+			serialized = append(serialized, batch[i]...)
+		}
+	}
+	return serialized
 }
