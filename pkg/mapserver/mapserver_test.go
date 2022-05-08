@@ -33,7 +33,9 @@ func Test(t *testing.T) {
 	fmt.Println(end.Sub(start))
 
 	for _, proof := range proofs {
-		assert.Equal(t, VerifyProofByDomain(proof, domainMap[proof.domain]), true, "verification error")
+		proofType, isCorrect := VerifyProofByDomain(proof, domainMap[proof.domain])
+		assert.Equal(t, proofType, PoP, "proof type error")
+		assert.Equal(t, isCorrect, true, "proof Verification error")
 	}
 }
 

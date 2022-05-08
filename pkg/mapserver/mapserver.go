@@ -6,11 +6,11 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/batchedsmt"
+	tire "github.com/netsec-ethz/fpki/pkg/mapserver/tire"
 )
 
 type MapServer struct {
-	smt *batchedsmt.SMT
+	smt *tire.Trie
 }
 
 func NewMapServer(dburl string, cacheHeight int) (*MapServer, error) {
@@ -19,7 +19,7 @@ func NewMapServer(dburl string, cacheHeight int) (*MapServer, error) {
 		return nil, fmt.Errorf("NewMapServer | sql.Open | %w", err)
 	}
 
-	smt, err := batchedsmt.NewSMT(nil, batchedsmt.Hasher, db)
+	smt, err := tire.NewTrie(nil, tire.Hasher, *db)
 	smt.CacheHeightLimit = cacheHeight
 	if err != nil {
 		return nil, fmt.Errorf("NewMapServer | NewSMT | %w", err)
@@ -44,7 +44,7 @@ func (mapServer *MapServer) UpdateDomains(domainEntries []DomainEntry) error {
 		return fmt.Errorf("UpdateDomains | Update | %w", err)
 	}
 
-	err = mapServer.smt.StoreUpdatedNode()
+	err = mapServer.smt.Commit()
 	if err != nil {
 		return fmt.Errorf("UpdateDomains | StoreUpdatedNode | %w", err)
 	}
@@ -55,15 +55,28 @@ func (mapServer *MapServer) GetProofs(domains []string) ([]Proof, error) {
 	proofsResult := []Proof{}
 
 	for _, domain := range domains {
-		hashV := batchedsmt.Hasher([]byte(domain))
+		hashV := tire.Hasher([]byte(domain))
 		start := time.Now()
-		proof, err := mapServer.smt.MerkleProof(hashV)
+		proof, isPoP, proofKey, ProofValue, err := mapServer.smt.MerkleProof(hashV)
 		end := time.Now()
 		fmt.Println(end.Sub(start))
 		if err != nil {
 			return nil, fmt.Errorf("GetProofs | MerkleProof | %w", err)
 		}
-		proofsResult = append(proofsResult, Proof{domain: domain, poi: PoI{proof: proof, root: mapServer.smt.Root}})
+		var proofType ProofType
+		switch {
+		case isPoP:
+			proofType = PoP
+		case !isPoP:
+			proofType = PoA
+		}
+		proofsResult = append(proofsResult, Proof{domain: domain,
+			poi: PoI{
+				proof:      proof,
+				root:       mapServer.smt.Root,
+				proofType:  proofType,
+				proofKey:   proofKey,
+				proofValue: ProofValue}})
 	}
 
 	return proofsResult, nil

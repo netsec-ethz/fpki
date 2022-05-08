@@ -5,7 +5,7 @@ import (
 
 	"sort"
 
-	"github.com/netsec-ethz/fpki/pkg/mapserver/batchedsmt"
+	tire "github.com/netsec-ethz/fpki/pkg/mapserver/tire"
 )
 
 func HashDomainEntriesThenSort(domainEntries []DomainEntry) []UpdateInput {
@@ -13,8 +13,8 @@ func HashDomainEntriesThenSort(domainEntries []DomainEntry) []UpdateInput {
 
 	for _, v := range domainEntries {
 		hashInput := UpdateInput{
-			key:   batchedsmt.Hasher([]byte(v.domainName)),
-			value: batchedsmt.Hasher(append([]byte(v.domainName), flattenBytesSlice(v.certificates)...)),
+			key:   tire.Hasher([]byte(v.domainName)),
+			value: tire.Hasher(append([]byte(v.domainName), flattenBytesSlice(v.certificates)...)),
 		}
 		result = append(result, hashInput)
 	}

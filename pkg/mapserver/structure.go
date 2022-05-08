@@ -16,6 +16,16 @@ type Proof struct {
 }
 
 type PoI struct {
-	proof [][]byte
-	root  []byte
+	proofType  ProofType
+	proof      [][]byte
+	root       []byte
+	proofKey   []byte
+	proofValue []byte
 }
+
+type ProofType int
+
+const (
+	PoA ProofType = iota
+	PoP ProofType = iota
+)
