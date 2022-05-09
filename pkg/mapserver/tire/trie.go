@@ -146,6 +146,9 @@ func (s *Trie) update(root []byte, keys, values, batch [][]byte, iBatch, height 
 		return
 	}
 
+	var rootCopy [32]byte
+	copy(rootCopy[:], root)
+
 	// Load the node to update
 	batch, iBatch, lnode, rnode, isShortcut, err := s.loadChildren(root, height, iBatch, batch)
 	if err != nil {
@@ -176,6 +179,11 @@ func (s *Trie) update(root []byte, keys, values, batch [][]byte, iBatch, height 
 		if bytes.Equal(DefaultLeaf, values[0]) {
 			ch <- mresult{nil, true, nil}
 		} else {
+			if rootCopy != [32]byte{0} && height%4 == 0 {
+				s.db.removeMux.Lock()
+				s.db.removedNode[rootCopy] = []byte{0}
+				s.db.removeMux.Unlock()
+			}
 			node := s.leafHash(keys[0], values[0], root, batch, iBatch, height)
 			ch <- mresult{node, false, nil}
 		}
@@ -189,10 +197,28 @@ func (s *Trie) update(root []byte, keys, values, batch [][]byte, iBatch, height 
 
 	switch {
 	case len(lkeys) == 0 && len(rkeys) > 0:
+		if rootCopy != [32]byte{0} && height%4 == 0 {
+			s.db.removeMux.Lock()
+			s.db.removedNode[rootCopy] = []byte{0}
+			s.db.removeMux.Unlock()
+		}
+
 		s.updateRight(lnode, rnode, root, keys, values, batch, iBatch, height, ch)
 	case len(lkeys) > 0 && len(rkeys) == 0:
+		if rootCopy != [32]byte{0} && height%4 == 0 {
+			s.db.removeMux.Lock()
+			s.db.removedNode[rootCopy] = []byte{0}
+			s.db.removeMux.Unlock()
+		}
+
 		s.updateLeft(lnode, rnode, root, keys, values, batch, iBatch, height, ch)
 	default:
+		if rootCopy != [32]byte{0} && height%4 == 0 {
+			s.db.removeMux.Lock()
+			s.db.removedNode[rootCopy] = []byte{0}
+			s.db.removeMux.Unlock()
+		}
+
 		s.updateParallel(lnode, rnode, root, lkeys, rkeys, lvalues, rvalues, batch, iBatch, height, ch)
 	}
 }
@@ -279,12 +305,6 @@ func (s *Trie) deleteOldNode(root []byte, height int, movingUp bool) {
 		s.db.liveMux.Lock()
 		delete(s.db.liveCache, node)
 		s.db.liveMux.Unlock()
-
-		if node != [32]byte{0} {
-			s.db.removeMux.Lock()
-			s.db.removedNode[node] = []byte{0}
-			s.db.removeMux.Unlock()
-		}
 	}
 }
 
