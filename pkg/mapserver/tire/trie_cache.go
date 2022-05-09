@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -48,6 +49,10 @@ type CacheDB struct {
 	// dbConn is the conn to mysql db
 	Store *sql.DB
 
+	removedNode map[Hash][]byte
+
+	removeMux sync.RWMutex
+
 	// Client is the channel for user input; Used to get read request from client
 	ClientInput chan ReadRequest
 }
@@ -67,6 +72,7 @@ func NewCacheDB(store *sql.DB) (*CacheDB, error) {
 	return &CacheDB{
 		liveCache:    make(map[Hash][][]byte),
 		updatedNodes: make(map[Hash][][]byte),
+		removedNode:  make(map[Hash][]byte),
 		Store:        store,
 		ClientInput:  clientInput,
 	}, nil
@@ -149,7 +155,7 @@ func initValueMap(db *sql.DB) (bool, error) {
 		// create a new table with two columns
 		// key             VARCHAR(64)             Primary Key
 		// value           VARCHAR(4096)
-		createMapStr := "CREATE TABLE `map`.`cacheStore` (`key` VARCHAR(128) NOT NULL, `value` VARCHAR(4096) NOT NULL, PRIMARY KEY (`key`));"
+		createMapStr := "CREATE TABLE `map`.`cacheStore` (`key` VARCHAR(64) NOT NULL, `value` VARCHAR(2048) NOT NULL, PRIMARY KEY (`key`));"
 		newTable, err := db.Query(createMapStr)
 		if err != nil {
 			return false, fmt.Errorf("initValueMap | CREATE TABLE | %w", err)
@@ -159,8 +165,8 @@ func initValueMap(db *sql.DB) (bool, error) {
 	return tableIsExisted, nil
 }
 
-// writeCachedDataToDB stores the updated nodes to disk.
-func (db *CacheDB) writeCachedDataToDB() error {
+// commitChangesToDB stores the updated nodes to disk.
+func (db *CacheDB) commitChangesToDB() error {
 	db.updatedMux.Lock()
 	defer db.updatedMux.Unlock()
 	// string builder for query
@@ -194,6 +200,38 @@ func (db *CacheDB) writeCachedDataToDB() error {
 	}
 	defer result.Close()
 	db.updatedNodes = make(map[Hash][][]byte)
+
+	start := time.Now()
+	if len(db.removedNode) != 0 {
+		var deleteSB strings.Builder
+		queryStr = "DELETE from `map`.`cacheStore` WHERE `key` IN ("
+		deleteSB.WriteString(queryStr)
+
+		isFirst = true
+		for k, _ := range db.removedNode {
+			key := hex.EncodeToString(k[:])
+			if isFirst {
+				deleteSB.WriteString("'" + key + "'")
+				isFirst = false
+			} else {
+				deleteSB.WriteString(",'" + key + "'")
+			}
+		}
+
+		deleteSB.WriteString(");")
+
+		fmt.Println("size of remove: ", len(db.removedNode))
+
+		// TODO(yongzhe): wrap the error later
+		result, err = db.Store.Query(deleteSB.String())
+		if err != nil {
+			return fmt.Errorf("commit | DELETE | %w", err)
+		}
+		defer result.Close()
+		db.removedNode = make(map[Hash][]byte)
+	}
+	end := time.Now()
+	fmt.Println("time to delete nodes: ", end.Sub(start))
 	return nil
 }
 

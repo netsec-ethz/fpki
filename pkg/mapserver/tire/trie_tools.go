@@ -132,7 +132,7 @@ func (s *Trie) TrieRootExists(root []byte) bool {
 }
 
 func (s *Trie) Commit() error {
-	err := s.db.writeCachedDataToDB()
+	err := s.db.commitChangesToDB()
 	if err != nil {
 		return err
 	}

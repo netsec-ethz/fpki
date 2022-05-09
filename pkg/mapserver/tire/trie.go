@@ -279,6 +279,12 @@ func (s *Trie) deleteOldNode(root []byte, height int, movingUp bool) {
 		s.db.liveMux.Lock()
 		delete(s.db.liveCache, node)
 		s.db.liveMux.Unlock()
+
+		if node != [32]byte{0} {
+			s.db.removeMux.Lock()
+			s.db.removedNode[node] = []byte{0}
+			s.db.removeMux.Unlock()
+		}
 	}
 }
 

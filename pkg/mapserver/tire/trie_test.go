@@ -316,8 +316,8 @@ func TestTrieMerkleProofAndReloadTree(t *testing.T) {
 	smt, err := NewTrie(nil, Hasher, *db)
 
 	// Add data to empty trie
-	keys := getFreshData(10000, 32)
-	values := getFreshData(10000, 32)
+	keys := getFreshData(100, 32)
+	values := getFreshData(100, 32)
 	smt.Update(keys, values)
 	smt.Commit()
 
@@ -534,7 +534,10 @@ func benchmark10MAccounts10Ktps(smt *Trie, b *testing.B) ([][]byte, [][]byte) {
 		start := time.Now()
 		smt.Update(newkeys, newvalues)
 		end := time.Now()
-		smt.Commit()
+		err := smt.Commit()
+		if err != nil {
+			panic(err)
+		}
 		end2 := time.Now()
 		for j, key := range newkeys {
 			val, _ := smt.Get(key)
@@ -569,6 +572,8 @@ func BenchmarkCacheHeightLimit233(b *testing.B) {
 
 	smt.CacheHeightLimit = 233
 	allKeys, allValues := benchmark10MAccounts10Ktps(smt, b)
+	//benchmark10MAccounts10Ktps(smt, b)
+
 	fmt.Println("length of keys: ", len(allKeys))
 
 	for i := 0; i < 30; i++ {
