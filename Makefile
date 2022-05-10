@@ -37,3 +37,31 @@ cerate_database:
 reset_tables:
 	@mysql -u root -e "DROP TABLE map.node;"
 	@mysql -u root -e "DROP TABLE map.value;"
+
+build_grpc_benchmark:
+	@go build ./pkg/grpc/grpcclient
+	@go build ./pkg/grpc/grpcserver
+
+benchmark_grpc:
+	./grpcclient  & \
+	./grpcclient  & \
+	./grpcclient  & \
+	./grpcclient  & \
+	./grpcclient  & \
+	./grpcclient  & \
+	./grpcclient  & \
+	./grpcclient  & \
+	./grpcclient  & \
+	./grpcclient  & \
+	./grpcclient  & \
+	./grpcclient  & \
+	./grpcclient  & \
+	./grpcclient  & \
+	./grpcclient  & \
+	./grpcclient  & \
+	./grpcclient  & \
+	./grpcclient  & \
+	./grpcclient  & \
+	./grpcclient  & \
+	wait; \
+    echo "DONE"

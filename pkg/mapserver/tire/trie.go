@@ -67,6 +67,14 @@ func NewTrie(root []byte, hash func(data ...[]byte) []byte, store sql.DB) (*Trie
 	return s, nil
 }
 
+func (s *Trie) PrintCacheSize() {
+	fmt.Println(len(s.db.liveCache))
+}
+
+func (s *Trie) Close() error {
+	return s.db.Store.Close()
+}
+
 // Update adds and deletes a sorted list of keys and their values to the trie
 // Adding and deleting can be simultaneous.
 // To delete, set the value to DefaultLeaf.
@@ -445,7 +453,7 @@ func (s *Trie) loadChildren(root []byte, height, iBatch int, batch [][]byte) ([]
 			batch[0] = []byte{0}
 		} else {
 			var err error
-			batch, err = s.loadBatch(root)
+			batch, err = s.loadBatch(root, height)
 			if err != nil {
 				return nil, 0, nil, nil, false, err
 			}
@@ -463,7 +471,7 @@ func (s *Trie) loadChildren(root []byte, height, iBatch int, batch [][]byte) ([]
 }
 
 // loadBatch fetches a batch of nodes in cache or db
-func (s *Trie) loadBatch(root []byte) ([][]byte, error) {
+func (s *Trie) loadBatch(root []byte, height int) ([][]byte, error) {
 	var node Hash
 	copy(node[:], root)
 
@@ -526,7 +534,14 @@ func (s *Trie) loadBatch(root []byte) ([][]byte, error) {
 	s.db.lock.Unlock()
 	nodeSize := len(readResult.result)
 	if nodeSize != 0 {
-		return s.parseBatch(readResult.result), nil
+		// Added: add the newly fetched nodes, and cache them into memory
+		resultBytes := s.parseBatch(readResult.result)
+		if height >= s.CacheHeightLimit {
+			var rootCopy [32]byte
+			copy(rootCopy[:], root[:HashLength])
+			s.db.liveCache[rootCopy] = resultBytes
+		}
+		return resultBytes, nil
 	}
 	return nil, fmt.Errorf("the trie node %x is unavailable in the disk db, db may be corrupted", root)
 }
