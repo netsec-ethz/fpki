@@ -1,7 +1,6 @@
 package common
 
 import (
-	"fmt"
 	"reflect"
 	"testing"
 
@@ -10,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+//TestSerialisingDomainEntry: Serialising and deserialising of DomainEntry
 func TestSerialisingDomainEntry(t *testing.T) {
 	cert, err := common.X509CertFromFile("./testdata/cert.pem")
 	require.NoError(t, err, "X509CertFromFile error")
@@ -37,6 +37,4 @@ func TestSerialisingDomainEntry(t *testing.T) {
 	require.NoError(t, err, "DesrialiseDomainEnrty error")
 
 	assert.Equal(t, reflect.DeepEqual(testDomainEntry, testDomainEntryDeserialised), true, "structure not equal")
-	fmt.Println(testDomainEntry)
-	fmt.Println(testDomainEntryDeserialised)
 }

@@ -8,18 +8,13 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/common"
 )
 
-type ProofType int
-
-const (
-	PoA ProofType = iota
-	PoP ProofType = iota
-)
-
+// DomainEntry: Value of the leaf. The value will be hashed, and stored in the sparse merkle tree
 type DomainEntry struct {
 	DomainName string
 	CAEntry    []CAEntry
 }
 
+// CAEntry: All certificate, RPC, PC and revocation issued by one specific CA.
 // TODO(yongzhe): add PC
 type CAEntry struct {
 	CAName           string
@@ -30,6 +25,7 @@ type CAEntry struct {
 	DomainCerts      [][]byte
 }
 
+// SerialiseDomainEnrty: DomainEntry -> bytes. Use gob
 func SerialiseDomainEnrty(domainEntry *DomainEntry) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
@@ -39,6 +35,7 @@ func SerialiseDomainEnrty(domainEntry *DomainEntry) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// DesrialiseDomainEnrty: bytes -> DomainEntry. Use gob
 func DesrialiseDomainEnrty(input []byte) (*DomainEntry, error) {
 	buf := bytes.NewBuffer(input)
 	dec := gob.NewDecoder(buf)
@@ -50,29 +47,29 @@ func DesrialiseDomainEnrty(input []byte) (*DomainEntry, error) {
 	return result, nil
 }
 
-type UpdateInput struct {
-	Key   []byte
-	Value []byte
-}
+// Proof type enum
+// PoA: Proof of Absence; non-inclusion proof
+// PoP: Proof of Presence; inclusion proof
+type ProofType int
 
-type Proof struct {
-	Domain           string
+const (
+	PoA ProofType = iota
+	PoP ProofType = iota
+)
+
+// MapServerResponse: response from map server to client
+type MapServerResponse struct {
+	Domain string
+	// serialised bytes of DomainEntry
 	DomainEntryBytes []byte
 	PoI              PoI
 }
 
+// PoI: Proof of Inclusion(or non-inclusion)
 type PoI struct {
 	ProofType  ProofType
 	Proof      [][]byte
 	Root       []byte
 	ProofKey   []byte
 	ProofValue []byte
-}
-
-func FlattenBytesSlice(input [][]byte) []byte {
-	result := []byte{}
-	for _, v := range input {
-		result = append(result, v...)
-	}
-	return result
 }

@@ -193,7 +193,6 @@ func (db *CacheDB) commitChangesToDB() error {
 
 	fmt.Println("size of writes: ", len(db.updatedNodes))
 
-	// TODO(yongzhe): wrap the error later
 	result, err := db.Store.Query(sb.String())
 	if err != nil {
 		return fmt.Errorf("commit | Query | %w", err)

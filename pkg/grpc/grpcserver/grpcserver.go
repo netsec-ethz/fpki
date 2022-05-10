@@ -16,11 +16,13 @@ var (
 	port = flag.Int("port", 50051, "The server port")
 )
 
+// ResponderServer: server to distribute map response
 type ResponderServer struct {
 	pb.UnimplementedMapResponderServer
 	result map[string][]byte
 }
 
+// QueryMapEntries: return value according to key
 func (server ResponderServer) QueryMapEntries(ctx context.Context, in *pb.MapClientRequest) (*pb.MapClientReply, error) {
 	//log.Printf("Received: %v", in.GetDomainName())
 
