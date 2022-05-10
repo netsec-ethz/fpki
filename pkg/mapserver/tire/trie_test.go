@@ -579,13 +579,16 @@ func BenchmarkCacheHeightLimit233(b *testing.B) {
 	for i := 0; i < 30; i++ {
 		start := time.Now()
 		for j := 0; j < 10000; j++ {
+
 			ap_, _, _, _, _ := smt.MerkleProof(allKeys[i*10000+j])
+
 			if !VerifyInclusion(smt.Root, ap_, allKeys[i*10000+j], allValues[i*10000+j]) {
 				panic("failed to verify inclusion proof")
 			}
 		}
 		end := time.Now()
 		fmt.Println("batch ", i, " passed time: ", end.Sub(start))
+
 	}
 }
 

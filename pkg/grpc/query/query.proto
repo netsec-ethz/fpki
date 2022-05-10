@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+option go_package = "github.com/netsec-ethz/fpki/pkg/grpc/query";
+
+package query;
+
+service MapResponder {
+    rpc QueryMapEntries (MapClientRequest) returns (MapClientReply) {}
+}
+
+enum ProofType {
+    PoP = 0;
+    PoA = 1;
+}
+
+// The request message containing the user's name.
+message MapClientRequest {
+    string domainName = 1;
+}
+  
+// The response message containing the greetings
+message MapClientReply {
+    string domainName = 1;
+    bytes materials = 2;
+    ProofType ProofType = 3;
+    bytes proof = 4;
+}
+  

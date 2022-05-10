@@ -1,53 +1,110 @@
 package mapserver
 
 import (
+	"database/sql"
+	"fmt"
 	"math/rand"
 	"testing"
 
+	"github.com/netsec-ethz/fpki/pkg/common"
+	mapCommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/responder"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"fmt"
 	"time"
+
+	"github.com/cockroachdb/copyist"
+	prover "github.com/netsec-ethz/fpki/pkg/mapserver/prover"
 )
 
-func Test(t *testing.T) {
+func init() {
+	copyist.Register("postgres")
+}
+
+func TestUpdaterAndResponder(t *testing.T) {
+	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/map?maxAllowedPacket=1073741824")
+	require.NoError(t, err, "updator db conn error")
+
 	testDomain, domainMap := getRandomDomainEntry()
 
-	mapServer, err := NewMapServer("root:@tcp(127.0.0.1:3306)/map?maxAllowedPacket=1073741824", 233)
-	require.NoError(t, err, "db conn error")
+	mapUpdater, err := updater.NewMapUpdater(db, nil, 233)
+	require.NoError(t, err, "NewMapUpdater error")
 
-	err = mapServer.UpdateDomains(testDomain)
-	require.NoError(t, err, "update error")
+	start := time.Now()
+	err = mapUpdater.UpdateDomains(testDomain)
+	require.NoError(t, err, "updator update error")
+	end := time.Now()
+	fmt.Println("time to update 10000 domain entries: ", end.Sub(start))
 
 	domains := []string{}
 	for _, domain := range testDomain {
-		domains = append(domains, domain.domainName)
+		domains = append(domains, domain.DomainName)
 	}
 
-	start := time.Now()
-	proofs, err := mapServer.GetProofs(domains)
+	root := mapUpdater.GetRoot()
+	err = mapUpdater.Close()
+	require.NoError(t, err, "update close error")
+
+	db, err = sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/map?maxAllowedPacket=1073741824")
+	require.NoError(t, err, "updator db conn error")
+
+	mapResponder, err := responder.NewMapResponder(db, root, 233)
+
+	start = time.Now()
+	proofs, err := mapResponder.GetProofs(domains)
+	require.NoError(t, err, "GetProofs error")
+	end = time.Now()
+	fmt.Println("time to get 10000 proof: ", end.Sub(start))
+
+	start = time.Now()
+	proofs, err = mapResponder.GetProofs(domains)
+	require.NoError(t, err, "GetProofs error")
+	end = time.Now()
+	fmt.Println("time to get 10000 proof: ", end.Sub(start))
+
+	start = time.Now()
+	for _, proof := range proofs {
+		proofType, isCorrect, err := prover.VerifyProofByDomain(proof, domainMap[proof.Domain])
+		assert.Equal(t, proofType, mapCommon.PoP, "inclusion proof type error")
+		assert.Equal(t, isCorrect, true, "inclusion proof Verification error")
+		require.NoError(t, err, "VerifyProofByDomain error")
+	}
+	end = time.Now()
+	fmt.Println("time to verify 10000 proof: ", end.Sub(start))
+
+	domains = []string{"no member", "hi", "this is a test"}
+	proofs, err = mapResponder.GetProofs(domains)
 	require.NoError(t, err, "GetProofs error")
 
-	end := time.Now()
-	fmt.Println(end.Sub(start))
-
 	for _, proof := range proofs {
-		proofType, isCorrect := VerifyProofByDomain(proof, domainMap[proof.domain])
-		assert.Equal(t, proofType, PoP, "proof type error")
-		assert.Equal(t, isCorrect, true, "proof Verification error")
+		proofType, isCorrect, err := prover.VerifyProofByDomain(proof, domainMap[proof.Domain])
+		assert.Equal(t, proofType, mapCommon.PoA, "non-inclusion proof type error")
+		assert.Equal(t, isCorrect, true, "non-inclusion proof Verification error")
+		require.NoError(t, err, "VerifyProofByDomain error")
 	}
 }
 
-func getRandomDomainEntry() ([]DomainEntry, map[string]DomainEntry) {
-	domainEntries := []DomainEntry{}
-	domainMaps := make(map[string]DomainEntry)
+func getRandomDomainEntry() ([]mapCommon.DomainEntry, map[string]mapCommon.DomainEntry) {
+	domainEntries := []mapCommon.DomainEntry{}
+	domainMaps := make(map[string]mapCommon.DomainEntry)
 	for i := 0; i < 10000; i++ {
 		domainName := RandStringRunes(30)
-		certificates := generateRandomBytesArray()
-		domainEntrie := DomainEntry{domainName: domainName, certificates: certificates}
-		domainEntries = append(domainEntries, domainEntrie)
-		domainMaps[domainName] = domainEntrie
+		domainEntry := mapCommon.DomainEntry{
+			DomainName: domainName,
+			CAEntry: []mapCommon.CAEntry{
+				{
+					CAName: RandStringRunes(10),
+					CurrentRPC: common.RPC{
+						PublicKey: generateRandomBytes(),
+					},
+					Revocation: generateRandomBytesArray(),
+				},
+			},
+		}
+		domainEntries = append(domainEntries, domainEntry)
+		domainMaps[domainName] = domainEntry
 	}
 	return domainEntries, domainMaps
 }
@@ -71,26 +128,3 @@ func generateRandomBytes() []byte {
 func generateRandomBytesArray() [][]byte {
 	return [][]byte{generateRandomBytes()}
 }
-
-/*
-
-import (
-	"fmt"
-	"math/rand"
-	"testing"
-)
-
-func TestSort(t *testing.T) {
-	domainEntries := []DomainEntry{}
-
-	for i := 0; i < 100; i++ {
-		domainEntries = append(domainEntries, DomainEntry{domainName: RandStringRunes(80), certificates: generateRandomBytesArray()})
-	}
-
-	result := HashDomainEntriesThenSort(domainEntries)
-	for _, k := range result {
-		fmt.Println(k.key)
-	}
-}
-
-*/

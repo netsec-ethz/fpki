@@ -208,7 +208,7 @@ func (db *CacheDB) commitChangesToDB() error {
 		deleteSB.WriteString(queryStr)
 
 		isFirst = true
-		for k, _ := range db.removedNode {
+		for k := range db.removedNode {
 			key := hex.EncodeToString(k[:])
 			if isFirst {
 				deleteSB.WriteString("'" + key + "'")
