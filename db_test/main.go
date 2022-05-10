@@ -39,7 +39,8 @@ func main() {
 		// err = db.DeletemeCreateNodesBulk3(c, 1000*1000) // 10.23273209s
 
 		// err = db.DeletemeCreateNodesBulk4(c, 100*1000) // 1.693980634s
-		err = db.DeletemeCreateNodesBulk4(c, 1000*1000) // 17.182428746s
+		// err = db.DeletemeCreateNodesBulk4(c, 1000*1000) // 17.182428746s
+		err = db.DeletemeCreateNodes2(c, 10)
 	}
 	if *queryFlag {
 		// err = db.DeletemeSelectNodes(c, 1) // 975.161µs
@@ -56,14 +57,14 @@ func main() {
 		// err = db.DeletemeSelectNodesRandom4(c, 1000*1000, 32) // 16.207375911s
 		// err = db.DeletemeSelectNodesRandom4(c, 1000*1000, 64) // 16.208407496s
 
-		// t0, err = db.DeletemeSelectNodesRandom5(1000*1000, 16, 2) // 7.190813246s
+		t0, err = db.DeletemeSelectNodesRandom5(1000*1000, 16, 2) // 7.190813246s
 		// t0, err = db.DeletemeSelectNodesRandom5(1000*1000, 32, 2) // 6.906053331s
 		// t0, err = db.DeletemeSelectNodesRandom5(1000*1000+64, 32, 4) // 5.78090823s
 		// t0, err = db.DeletemeSelectNodesRandom5(1000*1000+64, 64, 2) // 5.845077626s
 		// t0, err = db.DeletemeSelectNodesRandom5(1000*1000+192, 64, 4) // 5.57853586s
 		// t0, err = db.DeletemeSelectNodesRandom5(1000*1000+192, 128, 1) // 5.772750195s
 		// t0, err = db.DeletemeSelectNodesRandom5(1000*1000+192, 128, 2) // 5.593609741s
-		t0, err = db.DeletemeSelectNodesRandom5(1000*1000+448, 128, 4) // 5.829905885s
+		// t0, err = db.DeletemeSelectNodesRandom5(1000*1000+448, 128, 4) // 5.829905885s
 	}
 
 	check(err)

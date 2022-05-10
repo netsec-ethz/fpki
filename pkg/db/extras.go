@@ -564,7 +564,7 @@ func retrieveIDs(ctx context.Context, c *mysqlDB, count int) ([][32]byte, error)
 	ids := make([][32]byte, count)
 	for i := 0; i < count; i++ {
 		if !rows.Next() {
-			return nil, fmt.Errorf("wrong number of IDs retrieved")
+			return nil, fmt.Errorf("wrong number of IDs retrieved, at iteration %d", i)
 		}
 		var slice []byte
 		if err = rows.Scan(&slice); err != nil {

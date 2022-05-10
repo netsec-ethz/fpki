@@ -42,13 +42,16 @@ UNLOCK TABLES;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
 -- TODO(juagargi) new definition:
--- DROP TABLE IF EXISTS nodes;
 -- CREATE TABLE nodes (
+--   depth CHAR,
 --   idhash VARCHAR(32),
+--   parentnode VARCHAR(32),
+--   leftnode VARCHAR(32),
+--   rightnode VARCHAR(32),
 --   value BLOB,
 --   KEY(idhash)
 -- ) CHARSET=binary COLLATE=binary;
 
-
 -- CREATE INDEX index1 ON nodes(idhash);
+
 
