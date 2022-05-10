@@ -1,7 +1,6 @@
 package db
 
 import (
-	"encoding/hex"
 	"fmt"
 	"math/big"
 	"math/rand"
@@ -32,10 +31,10 @@ func DeletemeCreateNodes2(db DB, count int) error {
 	root := &node{}
 	for i := 0; i < count; i++ {
 		var idhash [32]byte
-		if _, err = rand.Read(idhash[31:]); err != nil {
+		if _, err = rand.Read(idhash[:]); err != nil {
 			return err
 		}
-		fmt.Printf("id: %s\n", hex.EncodeToString(idhash[:]))
+		// fmt.Printf("id: %s\n", hex.EncodeToString(idhash[:]))
 		updateStructureRaw(root, idhash)
 	}
 	_ = c
