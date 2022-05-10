@@ -7,6 +7,13 @@ import (
 	"math/rand"
 )
 
+// node represents a node in our sparse Merkle tree.
+// node contains a pointer (!!!) to a big Int. When setting it, be sure to create a unique copy
+// that won't be altered outside this tree.
+// node contains the depth of this node in the virtual Merkle tree. That is, depth represents
+// the number of bits from the Id that are valid to represent this node.
+// node also contains two pointers to possible children (left, right), and one to a parent.
+// All nodes have a parent except the root node.
 type node struct {
 	id          *big.Int // MSB is index 255, LSB and last bit is at 0
 	depth       int      // leafs at 256, root at 0
@@ -14,10 +21,7 @@ type node struct {
 	left, right *node
 }
 
-func (n node) String() string { // deleteme ?
-	if n.id == nil {
-		return "  0"
-	}
+func (n node) String() string {
 	return fmt.Sprintf("%3d %s", n.depth, bitString(n.id)[:n.depth])
 }
 
@@ -54,8 +58,10 @@ func updateStructure(root *node, leafId *big.Int) {
 			next = &currentNode.left
 		}
 		if *next == nil {
+			leafIdCopy := big.NewInt(0)
+			leafIdCopy.SetBytes(leafId.Bytes()) // store a copy (not the original pointer)
 			*next = &node{
-				id:     leafId,
+				id:     leafIdCopy,
 				depth:  256,
 				parent: currentNode,
 			}
@@ -95,6 +101,38 @@ func updateStructure(root *node, leafId *big.Int) {
 		// current visited node is the newly created one
 		currentNode = node
 	}
+}
+
+// retrieve will return the path from the root to the node with that ID, or nil
+func retrieve(root *node, leafId *big.Int) []*node {
+	path := []*node{root}
+	currentNode := root
+	for i := 255; i >= 0; i-- {
+		right := leafId.Bit(i) == 1
+		if right {
+			currentNode = currentNode.right
+		} else {
+			currentNode = currentNode.left
+		}
+		if currentNode == nil {
+			return nil
+		}
+		path = append(path, currentNode)
+		if currentNode.depth == 256 {
+			if currentNode.id.Cmp(leafId) == 0 {
+				return path
+			}
+			return nil
+		}
+
+		_, overlapCount := overlappingBits(currentNode.id, leafId)
+		if overlapCount < currentNode.depth {
+			return nil
+		}
+		i = 255 - currentNode.depth + 1
+	}
+	// we should have found a path ending on a leaf or a nil
+	panic("logic error")
 }
 
 // overlappingBits returns the part of the two IDs that is the same, starting from

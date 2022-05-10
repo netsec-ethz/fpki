@@ -1,7 +1,9 @@
 package db
 
 import (
+	"fmt"
 	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -64,17 +66,16 @@ func TestOverlappingBits(t *testing.T) {
 // 0010
 // 0011
 // 1000
-// 1100
-// 1110
-// 1111
-// 0000
 func TestUpdateStructure(t *testing.T) {
-	root := &node{}
+	root := &node{
+		id:    big.NewInt(0),
+		depth: 0,
+	}
 
 	leaf := big.NewInt(0b0001)
 	updateStructure(root, leaf)
 	checkStructureIsConsistent(t, root, 1)
-	require.Equal(t, (*big.Int)(nil), root.id)
+	require.Equal(t, 0, root.depth)
 	require.NotNil(t, root.left)
 	require.Nil(t, root.right)
 	require.Equal(t, big.NewInt(0b0001), root.left.id) // depth 1
@@ -82,7 +83,7 @@ func TestUpdateStructure(t *testing.T) {
 	leaf = big.NewInt(0b0010)
 	updateStructure(root, leaf)
 	checkStructureIsConsistent(t, root, 2)
-	require.Equal(t, (*big.Int)(nil), root.id) // depth 0
+	require.Equal(t, 0, root.depth) // depth 0
 	require.NotNil(t, root.left)
 	require.Nil(t, root.right)
 	require.Equal(t, big.NewInt(0b00), root.left.id) // depth 1
@@ -98,7 +99,7 @@ func TestUpdateStructure(t *testing.T) {
 	leaf = big.NewInt(0b0011)
 	updateStructure(root, leaf)
 	checkStructureIsConsistent(t, root, 3)
-	require.Equal(t, (*big.Int)(nil), root.id)       // depth 0
+	require.Equal(t, 0, root.depth)                  // depth 0
 	require.Equal(t, big.NewInt(0b00), root.left.id) // depth 1
 	require.Equal(t, 254, root.left.depth)
 	require.Equal(t, big.NewInt(0b0001), root.left.left.id) // depth 2
@@ -115,21 +116,19 @@ func TestUpdateStructure(t *testing.T) {
 	checkStructureIsConsistent(t, root, 4)
 	require.Equal(t, 252, root.left.depth)
 
-	leaf = big.NewInt(0b1100)
-	updateStructure(root, leaf)
-	checkStructureIsConsistent(t, root, 5)
-
-	leaf = big.NewInt(0b1110)
-	updateStructure(root, leaf)
-	checkStructureIsConsistent(t, root, 6)
-
-	leaf = big.NewInt(0b1111)
-	updateStructure(root, leaf)
-	checkStructureIsConsistent(t, root, 7)
-
-	leaf = big.NewInt(0b0000)
-	updateStructure(root, leaf)
-	checkStructureIsConsistent(t, root, 8)
+	// complete the tree
+	leafCount := 4
+	for i := big.NewInt(0); i.Cmp(big.NewInt(16)) == -1; i = i.Add(i, big.NewInt(1)) {
+		fmt.Printf("\n%s\n", bitString(i)[252:])
+		printWholeTree(root, 4)
+		if retrieve(root, i) == nil {
+			updateStructure(root, i)
+			leafCount++
+			checkStructureIsConsistent(t, root, leafCount)
+			fmt.Println("added")
+		}
+	}
+	require.Equal(t, 16, leafCount)
 }
 
 // biggie(255, "1010", 0, "1") sets the 4 most MSB bits to 1010 and the LSB to 1
@@ -174,13 +173,79 @@ func checkStructureIsConsistent(t *testing.T, root *node, leafCount int) {
 			require.Greater(t, current.right.depth, current.depth, "failed at current %s", current)
 			pending = append(pending, current.right)
 		}
-		if current.left == nil && current.right == nil {
-			// leaf
+		if current.left == nil && current.right == nil { // leaf
 			require.Equal(t, 256, current.depth)
+			path := pathFromLeaf(current)
+			prevDepth := -1
+			for _, n := range path {
+				require.Greater(t, n.depth, prevDepth)
+				prevDepth = n.depth
+			}
 			totalLeafs++
+			if _, ok := uniqueLeafs[current.String()]; ok {
+				// report
+				existingPath := pathFromLeaf(uniqueLeafs[current.String()])
+				fmt.Printf("existing path:\n%s\n", pathToString(existingPath))
+				fmt.Println()
+				newPath := pathFromLeaf(current)
+				fmt.Printf("new path:\n%s\n", pathToString(newPath))
+
+				require.FailNow(t, "leaf already present (duplicated leaves)")
+			}
 			uniqueLeafs[current.String()] = current
+		} else {
+			require.Less(t, current.depth, 256)
 		}
 	}
-	require.Len(t, uniqueLeafs, totalLeafs)
 	require.Equal(t, leafCount, totalLeafs)
+}
+
+func pathFromLeaf(leaf *node) []*node {
+	path := []*node{}
+	for leaf != nil {
+		path = append(path, leaf)
+		leaf = leaf.parent
+	}
+	// reverse
+	len := len(path)
+	for i := 0; i < len/2; i++ {
+		path[i], path[len-i-1] = path[len-i-1], path[i]
+	}
+	return path
+}
+
+func pathToString(path []*node) string {
+	steps := make([]string, len(path))
+	for i, n := range path {
+		steps[i] = n.String()
+	}
+	return strings.Join(steps, "\n\u2193\n")
+}
+
+func printWholeTree(root *node, noOfBits int) {
+	nodes := map[*node]int{
+		root: 0,
+	}
+	sequentialID := 1
+	pending := []*node{root}
+	for len(pending) > 0 {
+		c := pending[0]
+		pending = pending[1:]
+		id := bitString(c.id)
+		s := fmt.Sprintf("%2d %3d %s", nodes[c], c.depth, id[len(id)-noOfBits:])
+		if c.left != nil {
+			pending = append(pending, c.left)
+			s += fmt.Sprintf(" L%d", sequentialID)
+			nodes[c.left] = sequentialID
+			sequentialID++
+		}
+		if c.right != nil {
+			pending = append(pending, c.right)
+			// s += " R"
+			s += fmt.Sprintf(" L%d", sequentialID)
+			nodes[c.right] = sequentialID
+			sequentialID++
+		}
+		fmt.Println(s)
+	}
 }
