@@ -42,16 +42,32 @@ UNLOCK TABLES;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
 -- TODO(juagargi) new definition:
--- CREATE TABLE nodes (
---   depth CHAR,
---   idhash VARCHAR(32),
---   parentnode VARCHAR(32),
---   leftnode VARCHAR(32),
---   rightnode VARCHAR(32),
---   value BLOB,
---   KEY(idhash)
--- ) CHARSET=binary COLLATE=binary;
+CREATE TABLE nodes (
+  idhash      varbinary(33) NOT NULL,
+  parentnode  varbinary(33) DEFAULT NULL,
+  leftnode    varbinary(33) DEFAULT NULL,
+  rightnode   varbinary(33) DEFAULT NULL,
+  value       blob,
+  UNIQUE KEY idhash (idhash)
+  -- KEY idhash (idhash)
+) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
 
+-- ALTER TABLE nodes
+-- DROP INDEX idhash ;
+-- ;
+
+-- ALTER TABLE nodes
+-- ADD INDEX idhash (idhash ASC) VISIBLE;
+-- ;
+
+-- or
+-- -- create the unique index (unnecessary?)
+-- ALTER TABLE nodes 
+-- ADD UNIQUE INDEX idhash_UNIQUE (idhash ASC) VISIBLE;
+-- ;
+
+
+-- maybe this also works??:
 -- CREATE INDEX index1 ON nodes(idhash);
 
 

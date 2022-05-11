@@ -1,9 +1,9 @@
 package db
 
 import (
+	"bytes"
 	"fmt"
 	"math/big"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -131,6 +131,32 @@ func TestUpdateStructure(t *testing.T) {
 	require.Equal(t, 16, leafCount)
 }
 
+func TestFullID(t *testing.T) {
+	leaf := &node{
+		id:    biggie(255, "1", 7, "11111111"),
+		depth: 256,
+	}
+	fmt.Println(bitString(leaf.id))
+	id := leaf.FullID()
+	require.Equal(t, byte(255), id[0])
+	require.Equal(t, byte(0b11111111), id[32])
+
+	// second part: bug found in FullID
+	b1, ok := big.NewInt(0).SetString("57896044618658097711785492504343953926634992332820282019728792003956564819968", 10)
+	require.True(t, ok)
+	b2, ok := big.NewInt(0).SetString("226156424291633194186662080095093570025917938800079226639565593765455331328", 10)
+	require.True(t, ok)
+	id1 := (&node{
+		id:    b1,
+		depth: 9,
+	}).FullID()
+	id2 := (&node{
+		id:    b2,
+		depth: 9,
+	}).FullID()
+	require.False(t, bytes.Equal(id1[:], id2[:]))
+}
+
 // biggie(255, "1010", 0, "1") sets the 4 most MSB bits to 1010 and the LSB to 1
 func biggie(params ...interface{}) *big.Int {
 	if len(params)%2 != 0 {
@@ -160,9 +186,17 @@ func checkStructureIsConsistent(t *testing.T, root *node, leafCount int) {
 	pending := []*node{root}
 	uniqueLeafs := make(map[string]*node)
 	totalLeafs := 0
+	uniqueNodes := make(map[[33]byte]*node)
 	for len(pending) > 0 {
 		current := pending[0]
 		pending = pending[1:]
+		if current.depth > 0 {
+			// check for uniqueness
+			if prev, ok := uniqueNodes[current.FullID()]; ok {
+				require.FailNow(t, "two nodes with the same [33] full ID",
+					"prev node at depth %d, this node at %d", prev.depth, current.depth)
+			}
+		}
 		if current.left != nil {
 			require.Equal(t, current, current.left.parent)
 			require.Greater(t, current.left.depth, current.depth, "failed at current %s", current)
@@ -175,7 +209,7 @@ func checkStructureIsConsistent(t *testing.T, root *node, leafCount int) {
 		}
 		if current.left == nil && current.right == nil { // leaf
 			require.Equal(t, 256, current.depth)
-			path := pathFromLeaf(current)
+			path := pathFromNode(current)
 			prevDepth := -1
 			for _, n := range path {
 				require.Greater(t, n.depth, prevDepth)
@@ -184,10 +218,10 @@ func checkStructureIsConsistent(t *testing.T, root *node, leafCount int) {
 			totalLeafs++
 			if _, ok := uniqueLeafs[current.String()]; ok {
 				// report
-				existingPath := pathFromLeaf(uniqueLeafs[current.String()])
+				existingPath := pathFromNode(uniqueLeafs[current.String()])
 				fmt.Printf("existing path:\n%s\n", pathToString(existingPath))
 				fmt.Println()
-				newPath := pathFromLeaf(current)
+				newPath := pathFromNode(current)
 				fmt.Printf("new path:\n%s\n", pathToString(newPath))
 
 				require.FailNow(t, "leaf already present (duplicated leaves)")
@@ -198,28 +232,6 @@ func checkStructureIsConsistent(t *testing.T, root *node, leafCount int) {
 		}
 	}
 	require.Equal(t, leafCount, totalLeafs)
-}
-
-func pathFromLeaf(leaf *node) []*node {
-	path := []*node{}
-	for leaf != nil {
-		path = append(path, leaf)
-		leaf = leaf.parent
-	}
-	// reverse
-	len := len(path)
-	for i := 0; i < len/2; i++ {
-		path[i], path[len-i-1] = path[len-i-1], path[i]
-	}
-	return path
-}
-
-func pathToString(path []*node) string {
-	steps := make([]string, len(path))
-	for i, n := range path {
-		steps[i] = n.String()
-	}
-	return strings.Join(steps, "\n\u2193\n")
 }
 
 func printWholeTree(root *node, noOfBits int) {

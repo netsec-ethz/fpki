@@ -40,7 +40,12 @@ func main() {
 
 		// err = db.DeletemeCreateNodesBulk4(c, 100*1000) // 1.693980634s
 		// err = db.DeletemeCreateNodesBulk4(c, 1000*1000) // 17.182428746s
-		err = db.DeletemeCreateNodes2(c, 100*1000)
+
+		// err = db.DeletemeCreateNodes2(c, 1000) // 212.752302ms
+		// err = db.DeletemeCreateNodes2(c, 10*1000) // 456.4187ms
+		err = db.DeletemeCreateNodes2(c, 100*1000) // 9.51899883s
+		// err = db.DeletemeCreateNodes2(c, 100*1000) // 4.351831675s
+		// err = db.DeletemeCreateNodes2(c, 1000*1000) // 1m16.537726013s
 	}
 	if *queryFlag {
 		// err = db.DeletemeSelectNodes(c, 1) // 975.161µs
