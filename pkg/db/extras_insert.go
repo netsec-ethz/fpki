@@ -1,14 +1,10 @@
 package db
 
 import (
-	"context"
 	"encoding/hex"
 	"fmt"
 	"math/big"
 	"math/rand"
-	"strings"
-	"sync"
-	"time"
 )
 
 func DeletemeDropAllNodes(db DB) error {
@@ -308,269 +304,44 @@ func DeletemeCreateNodesBulk4(db DB, count int) error {
 	return nil
 }
 
-func DeletemeSelectNodes(db DB, count int) error {
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
-	defer cancelF()
-	c := db.(*mysqlDB)
-
-	initial, err := hex.DecodeString("000000000000010000000000000000000000000000000000000000000004A769")
-	if err != nil {
-		panic(err)
-	}
-	if len(initial) != 32 {
-		panic("logic error")
-	}
-	sequentialHash := big.NewInt(0)
-	sequentialHash.SetBytes(initial[:])
-
-	for i := 0; i < count; i++ {
-		idhash := [32]byte{}
-		sequentialHash.FillBytes(idhash[:])
-		sequentialHash.Add(sequentialHash, big.NewInt(1))
-		row := c.db.QueryRowContext(ctx, "SELECT idhash,value FROM nodes WHERE idhash=?", idhash[:])
-		// fmt.Printf("id = %s\n", hex.EncodeToString(idhash[:]))
-		retIdHash := []byte{}
-		var value []byte
-		if err := row.Scan(&retIdHash, &value); err != nil {
-			return err
-		}
-		if i%10000 == 0 {
-			fmt.Printf("%d / %d\n", i, count)
-		}
-	}
-	return nil
-}
-
-// with prepared stmts
-func DeletemeSelectNodes2(db DB, count int) error {
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
-	defer cancelF()
-	c := db.(*mysqlDB)
-
-	initial, err := hex.DecodeString("000000000000010000000000000000000000000000000000000000000004A769")
-	if err != nil {
-		panic(err)
-	}
-	if len(initial) != 32 {
-		panic("logic error")
-	}
-	sequentialHash := big.NewInt(0)
-	sequentialHash.SetBytes(initial[:])
-	prepStmt, err := c.db.Prepare("SELECT idhash,value FROM nodes WHERE idhash=?")
-	if err != nil {
-		return err
-	}
-	for i := 0; i < count; i++ {
-		idhash := [32]byte{}
-		sequentialHash.FillBytes(idhash[:])
-		sequentialHash.Add(sequentialHash, big.NewInt(1))
-		row := prepStmt.QueryRowContext(ctx, idhash[:])
-		// fmt.Printf("id = %s\n", hex.EncodeToString(idhash[:]))
-		retIdHash := []byte{}
-		var value []byte
-		if err := row.Scan(&retIdHash, &value); err != nil {
-			return err
-		}
-		if i%10000 == 0 {
-			fmt.Printf("%d / %d\n", i, count)
-		}
-	}
-	return nil
-}
-
-// DeletemeSelectNodes3 has multiple go routines
-func DeletemeSelectNodes3(db DB, count int, goroutinesCount int) error {
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
-	defer cancelF()
-	c := db.(*mysqlDB)
-
-	initial, err := hex.DecodeString("000000000000010000000000000000000000000000000000000000000004A769")
-	if err != nil {
-		panic(err)
-	}
-	if len(initial) != 32 {
-		panic("logic error")
-	}
-	sequentialHash := big.NewInt(0)
-	sequentialHash.SetBytes(initial[:])
-	prepStmt, err := c.db.Prepare("SELECT idhash,value FROM nodes WHERE idhash=?")
-	if err != nil {
-		return err
-	}
-
-	// to simplify code, check that we run all queries: count must be divisible by routine count
-	if count%goroutinesCount != 0 {
-		panic("logic error")
-	}
-
-	wg := sync.WaitGroup{}
-	wg.Add(goroutinesCount)
-	for r := 0; r < goroutinesCount; r++ {
-		go func() {
-			defer wg.Done()
-			for i := 0; i < count/goroutinesCount; i++ {
-				idhash := [32]byte{}
-				sequentialHash.FillBytes(idhash[:])
-				sequentialHash.Add(sequentialHash, big.NewInt(1))
-				row := prepStmt.QueryRowContext(ctx, idhash[:])
-				// fmt.Printf("id = %s\n", hex.EncodeToString(idhash[:]))
-				retIdHash := []byte{}
-				var value []byte
-				if err := row.Scan(&retIdHash, &value); err != nil {
-					panic(err)
-				}
-				if i%10000 == 0 {
-					fmt.Printf("%d / %d\n", i, count)
-				}
-			}
-		}()
-	}
-	wg.Wait()
-	return nil
-}
-
-// DeletemeSelectNodesRandom4 has multiple go routines and reads random IDs
-func DeletemeSelectNodesRandom4(db DB, count int, goroutinesCount int) error {
+// DeletemeCreateNodes2 where cound is the number of leaves
+func DeletemeCreateNodes2(db DB, count int) error {
 	var err error
 	c := db.(*mysqlDB)
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
-	defer cancelF()
 
-	randomIDs, err := retrieveIDs(ctx, c, goroutinesCount)
-	if err != nil {
-		return err
+	root := &node{
+		id:    big.NewInt(0),
+		depth: 0,
 	}
-
-	prepStmt, err := c.db.Prepare("SELECT idhash,value FROM nodes WHERE idhash=?")
-	if err != nil {
-		return err
-	}
-
-	// to simplify code, check that we run all queries: count must be divisible by routine count
-	if count%goroutinesCount != 0 {
-		panic("logic error: count not divisible by number of routines")
-	}
-
-	wg := sync.WaitGroup{}
-	wg.Add(goroutinesCount)
-	for r := 0; r < goroutinesCount; r++ {
-		go func() {
-			defer wg.Done()
-			for i := 0; i < count/goroutinesCount; i++ {
-				idhash := randomIDs[rand.Intn(len(randomIDs))]
-				row := prepStmt.QueryRowContext(ctx, idhash[:])
-				// fmt.Printf("id = %s\n", hex.EncodeToString(idhash[:]))
-				retIdHash := []byte{}
-				var value []byte
-				if err := row.Scan(&retIdHash, &value); err != nil {
-					panic(err)
-				}
-				if i%10000 == 0 {
-					fmt.Printf("%d / %d\n", i, count)
-				}
-			}
-		}()
-	}
-	wg.Wait()
-	return nil
-}
-
-// DeletemeSelectNodesRandom5 creates `connectionCount` connections with
-// `routinesPerConn` go routines per connection.
-// returns the time when it started to do actual work, and error
-func DeletemeSelectNodesRandom5(count, connectionCount, routinesPerConn int) (time.Time, error) {
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
-	defer cancelF()
-
-	DB, err := Connect()
-	if err != nil {
-		return time.Time{}, err
-	}
-	masterConn := DB.(*mysqlDB)
-	totalRoutines := connectionCount * routinesPerConn
-	randomIDs, err := retrieveIDs(ctx, masterConn, totalRoutines)
-	if err != nil {
-		return time.Time{}, err
-	}
-	if err = DB.Close(); err != nil {
-		return time.Time{}, err
-	}
-
-	// to simplify code, check that we run all queries: count must be divisible by routine count
-	if count%totalRoutines != 0 {
-		panic(fmt.Sprintf("logic error: count not divisible by number of total routines %d "+
-			"round count to %d", totalRoutines, count+count%totalRoutines))
-	}
-
-	conns := make([]*mysqlDB, connectionCount)
-	for c := 0; c < connectionCount; c++ {
-		DB, err := Connect()
-		if err != nil {
-			return time.Time{}, err
-		}
-		conns[c] = DB.(*mysqlDB)
-	}
-	t0 := time.Now()
-	wg := sync.WaitGroup{}
-	wg.Add(totalRoutines)
-	for c := 0; c < connectionCount; c++ {
-		cc := c
-		go func() {
-			conn := conns[cc]
-			prepStmt, err := conn.db.Prepare("SELECT idhash,value FROM nodes WHERE idhash=?")
-			if err != nil {
-				panic(err)
-			}
-
-			for r := 0; r < routinesPerConn; r++ {
-				go func() {
-					defer wg.Done()
-					for i := 0; i < count/totalRoutines; i++ {
-						idhash := randomIDs[rand.Intn(len(randomIDs))]
-						row := prepStmt.QueryRowContext(ctx, idhash[:])
-						// fmt.Printf("id = %s\n", hex.EncodeToString(idhash[:]))
-						retIdHash := []byte{}
-						var value []byte
-						if err := row.Scan(&retIdHash, &value); err != nil {
-							panic(err)
-						}
-						if i%10000 == 0 {
-							fmt.Printf("%d / %d\n", i, count)
-						}
-					}
-				}()
-			}
-		}()
-	}
-
-	wg.Wait()
-	return t0, nil
-}
-
-func repeatStmt(N int, noOfComponents int) string {
-	components := make([]string, noOfComponents)
-	for i := 0; i < len(components); i++ {
-		components[i] = "?"
-	}
-	toRepeat := "(" + strings.Join(components, ",") + ")"
-	return strings.Repeat(toRepeat+",", N-1) + toRepeat
-}
-
-func retrieveIDs(ctx context.Context, c *mysqlDB, count int) ([][32]byte, error) {
-	rows, err := c.db.QueryContext(ctx, "SELECT idhash FROM nodes LIMIT ?", count)
-	if err != nil {
-		return nil, err
-	}
-	ids := make([][32]byte, count)
+	uniqueLeaves := make(map[[32]byte]struct{})
 	for i := 0; i < count; i++ {
-		if !rows.Next() {
-			return nil, fmt.Errorf("wrong number of IDs retrieved, at iteration %d", i)
+		var idhash [32]byte
+		if _, err = rand.Read(idhash[:]); err != nil {
+			return err
 		}
-		var slice []byte
-		if err = rows.Scan(&slice); err != nil {
-			return nil, err
+		if _, ok := uniqueLeaves[idhash]; ok {
+			panic("duplicate random ID")
 		}
-		copy(ids[i][:], slice)
+		uniqueLeaves[idhash] = struct{}{}
+		updateStructureRaw(root, idhash)
 	}
-	return ids, nil
+	dups := findDuplicates(root) // deleteme
+	if len(dups) > 0 {
+		fmt.Printf("%d duplicates found\n", len(dups))
+		for id, d := range dups {
+			fmt.Printf("ID: [%s] %2d nodes\n", hex.EncodeToString(id[:]), len(d))
+			for i, c := range d {
+				fmt.Printf("\t[%2d] depth %d\n\n", i, c.depth)
+				tempId := c.FullID()
+				fmt.Printf("\thex: %s\n\tbits: %s\n",
+					hex.EncodeToString(tempId[1:]), bitString(c.id))
+				fmt.Println(pathToString(pathFromNode(c)))
+			}
+		}
+		panic("duplicates")
+	}
+	if err = insertIntoDB(c, root); err != nil {
+		return err
+	}
+	return nil
 }
