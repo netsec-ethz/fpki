@@ -36,6 +36,26 @@ func retrieveIDs(ctx context.Context, c *mysqlDB, count int) ([][32]byte, error)
 	return ids, nil
 }
 
+func retrieveLeafIDs(ctx context.Context, c *mysqlDB, count int) ([][33]byte, error) {
+	rows, err := c.db.QueryContext(ctx,
+		`SELECT idhash FROM nodes WHERE LEFT(idhash,1) = UNHEX("FF") LIMIT ?`, count)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([][33]byte, count)
+	for i := 0; i < count; i++ {
+		if !rows.Next() {
+			return nil, fmt.Errorf("wrong number of IDs retrieved, at iteration %d", i)
+		}
+		var slice []byte
+		if err = rows.Scan(&slice); err != nil {
+			return nil, err
+		}
+		copy(ids[i][:], slice)
+	}
+	return ids, nil
+}
+
 func insertIntoDB(c *mysqlDB, root *node) error {
 	// var err error
 	// _, err = c.db.Exec("LOCK TABLES nodes WRITE;")
@@ -151,4 +171,41 @@ func nodeBatchToDB(c *mysqlDB, stmt *sql.Stmt, nodes []*node) error {
 		return fmt.Errorf("executing prep. statement: %w", err)
 	}
 	return nil
+}
+
+// getRecord returns parent, value, or error
+func getRecord(ctx context.Context, c *mysqlDB, id [33]byte) ([]byte, []byte, error) {
+	slice := make([]byte, len(id))
+	copy(slice, id[:])
+	// fmt.Printf("select for %s\n", hex.EncodeToString(slice))
+	row := c.db.QueryRowContext(ctx, "SELECT idhash,parentnode,value FROM nodes WHERE idhash=?",
+		slice)
+	var idFromDB []byte
+	var parentID []byte
+	var value []byte
+	if err := row.Scan(&idFromDB, &parentID, &value); err != nil {
+		return nil, nil, err
+	}
+	return parentID, value, nil
+}
+
+// getPathFromLeaf returns the path leaf to root or error
+func getPathFromLeaf(ctx context.Context, c *mysqlDB, leafId [33]byte) ([][33]byte, error) {
+	id := leafId
+	path := [][33]byte{id}
+	for {
+		parent, _, err := getRecord(ctx, c, id)
+		// fmt.Printf("id: %s parent: %s\n", hex.EncodeToString(id[:]), hex.EncodeToString(parent))
+		if err != nil {
+			return nil, err
+		}
+		var parentID [33]byte
+		copy(parentID[:], parent)
+		path = append(path, parentID)
+		if parent == nil {
+			break
+		}
+		id = parentID
+	}
+	return path, nil
 }

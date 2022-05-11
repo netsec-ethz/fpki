@@ -248,3 +248,37 @@ func DeletemeSelectNodesRandom5(count, connectionCount, routinesPerConn int) (ti
 	wg.Wait()
 	return t0, nil
 }
+
+// DeletemeSelectLeaves performs count retrievals of leaves, monothreaded.
+// It is useful to determine the speedup of an alternative approach, such as stored proc.
+func DeletemeSelectLeaves(leafCount int) (time.Time, error) {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
+	t0 := time.Now()
+	DB, err := Connect()
+	if err != nil {
+		return time.Time{}, err
+	}
+	c := DB.(*mysqlDB)
+
+	randomIDs, err := retrieveLeafIDs(ctx, c, min(leafCount, 100))
+	if err != nil {
+		return time.Time{}, err
+	}
+	for i := 0; i < leafCount; i++ {
+		for _, leafId := range randomIDs {
+			pathFromLeaf, err := getPathFromLeaf(ctx, c, leafId)
+			if err != nil {
+				panic(err)
+			}
+			// fmt.Printf("path has %d components\n", len(pathFromLeaf))
+			_ = pathFromLeaf
+			if i%1000 == 0 {
+				fmt.Printf("%d / %d\n", i, leafCount)
+			}
+			i++
+		}
+	}
+	return t0, nil
+}
