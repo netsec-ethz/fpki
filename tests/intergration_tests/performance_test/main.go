@@ -81,7 +81,7 @@ func main() {
 	fmt.Println("fetch proofs succeed!")
 	fmt.Println(elapsed)
 
-	os.RemoveAll("./testdata/trees_config")
+	os.RemoveAll("./file_exchange")
 	fmt.Println("test succeed!")
 }
 
