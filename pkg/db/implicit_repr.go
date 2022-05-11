@@ -42,6 +42,7 @@ func (n *node) FullID() [33]byte {
 	return id
 }
 
+// DeletemeCreateNodes2 where cound is the number of leaves
 func DeletemeCreateNodes2(db DB, count int) error {
 	var err error
 	c := db.(*mysqlDB)
@@ -89,19 +90,19 @@ func updateStructureRaw(root *node, leafHash [32]byte) {
 }
 
 func insertIntoDB(c *mysqlDB, root *node) error {
-	var err error
-	_, err = c.db.Exec("LOCK TABLES nodes WRITE;")
-	if err != nil {
-		return err
-	}
-	_, err = c.db.Exec("SET autocommit=0")
-	if err != nil {
-		return err
-	}
-	_, err = c.db.Exec("ALTER TABLE nodes DROP INDEX idhash; ;")
-	if err != nil {
-		return err
-	}
+	// var err error
+	// _, err = c.db.Exec("LOCK TABLES nodes WRITE;")
+	// if err != nil {
+	// 	return err
+	// }
+	// _, err = c.db.Exec("SET autocommit=0") // XXX(juagargi) this seems to cause some trouble by omitting some records
+	// if err != nil {
+	// 	return err
+	// }
+	// _, err = c.db.Exec("ALTER TABLE nodes DROP INDEX idhash; ;")
+	// if err != nil {
+	// 	return err
+	// }
 
 	N := 1000
 
@@ -161,18 +162,18 @@ func insertIntoDB(c *mysqlDB, root *node) error {
 		}
 	}
 
-	_, err = c.db.Exec("COMMIT")
-	if err != nil {
-		return err
-	}
-	_, err = c.db.Exec("ALTER TABLE nodes ADD UNIQUE INDEX idhash_UNIQUE (idhash ASC) VISIBLE; ;")
-	if err != nil {
-		return err
-	}
-	_, err = c.db.Exec("UNLOCK TABLES")
-	if err != nil {
-		return err
-	}
+	// _, err = c.db.Exec("COMMIT")
+	// if err != nil {
+	// 	return err
+	// }
+	// _, err = c.db.Exec("ALTER TABLE nodes ADD UNIQUE INDEX idhash (idhash ASC) VISIBLE; ;")
+	// if err != nil {
+	// 	return err
+	// }
+	// _, err = c.db.Exec("UNLOCK TABLES")
+	// if err != nil {
+	// 	return err
+	// }
 	return nil
 }
 
