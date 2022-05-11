@@ -1,6 +1,8 @@
 package common
 
 import (
+	"os"
+	"path"
 	"testing"
 	"time"
 
@@ -14,6 +16,9 @@ import (
 
 // TestEncodeAndDecodeOfSPT: SPT -> files -> SPT
 func TestEncodeAndDecodeOfSPT(t *testing.T) {
+	tempFile := path.Join("./", "spt.json")
+	defer os.Remove(tempFile)
+
 	spt := &SPT{
 		Version:         12314,
 		Subject:         "you are funny",
@@ -27,12 +32,12 @@ func TestEncodeAndDecodeOfSPT(t *testing.T) {
 		Signature:       generateRandomBytes(),
 	}
 
-	err := JsonStrucToFile(spt, "./testdata/spt.json")
+	err := JsonStrucToFile(spt, tempFile)
 	require.NoError(t, err, "Json Struc To File error")
 
 	deserlialisedSPT := &SPT{}
 
-	err = JsonFileToSPT(deserlialisedSPT, "./testdata/spt.json")
+	err = JsonFileToSPT(deserlialisedSPT, tempFile)
 	require.NoError(t, err, "Json File To SPT error")
 
 	assert.True(t, deserlialisedSPT.Equal(*spt), "SPT serialise and deserialise error")
@@ -40,6 +45,9 @@ func TestEncodeAndDecodeOfSPT(t *testing.T) {
 
 // TestEncodeAndDecodeOfRPC: RPC -> files -> RPC
 func TestEncodeAndDecodeOfRPC(t *testing.T) {
+	tempFile := path.Join("./", "rpc.json")
+	defer os.Remove(tempFile)
+
 	spt1 := &SPT{
 		Version:         12313,
 		Subject:         "hihihihihhi",
@@ -82,12 +90,12 @@ func TestEncodeAndDecodeOfRPC(t *testing.T) {
 		SPTs:               []SPT{*spt1, *spt2},
 	}
 
-	err := JsonStrucToFile(rpc, "./testdata/rpc.json")
+	err := JsonStrucToFile(rpc, tempFile)
 	require.NoError(t, err, "Json Struc To File error")
 
 	deserlialisedSPT := &RPC{}
 
-	err = JsonFileToRPC(deserlialisedSPT, "./testdata/rpc.json")
+	err = JsonFileToRPC(deserlialisedSPT, tempFile)
 	require.NoError(t, err, "Json File To RPC error")
 
 	assert.True(t, deserlialisedSPT.Equal(rpc), "RPC serialise and deserialise error")

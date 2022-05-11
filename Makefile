@@ -1,67 +1,60 @@
-.PHONY: all clean policy_log test_folders
+.PHONY: all clean policy_log
 
-
-all: policy_log
+all: policy_log build_grpc_benchmark_exec
 
 clean:
-	@rm -f bin/logserver_exec
-	@rm -f bin/logsigner_exec
-
-	@rm -f tests/intergration_tests/policylog_interaction/testdata/output/trees_config/*
-	@rm -f tests/intergration_tests/domainowner_pca_policlog_interaction/file_exchange/policylog/logRoot/*
-	@rm -f tests/intergration_tests/domainowner_pca_policlog_interaction/file_exchange/policylog/spt/*
-	@rm -f tests/intergration_tests/domainowner_pca_policlog_interaction/file_exchange/policylog/trees_config/*
-	@rm -f tests/intergration_tests/domainowner_pca_policlog_interaction/file_exchange/pcaoutput/rpc/*
-	@rm -f pkg/common/testdata/*.json
-	@rm -r tests/intergration_tests/performance_test/testdata/trees_config
-	@find . -name ".DS_Store" -delete
-	@rm -f pkg/policylog/server/logserver/logserver_config.json
+	@rm -f bin/*
 
 policy_log:
 	@go build -o bin/logserver_exec cmd/logserver/logserver_exec.go
 	@go build -o bin/logsigner_exec cmd/logsigner/logsigner_exec.go
-	@cp config/logserver_config.json bin/logserver_config.json
-	@cp config/logsigner_config.json bin/logsigner_config.json
 
-test_folders:
-	@mkdir -p tests/intergration_tests/policylog_interaction/testdata/output/trees_config/
-	@mkdir -p tests/intergration_tests/domainowner_pca_policlog_interaction/file_exchange/policylog/logRoot/
-	@mkdir -p tests/intergration_tests/domainowner_pca_policlog_interaction/file_exchange/policylog/spt/
-	@mkdir -p tests/intergration_tests/domainowner_pca_policlog_interaction/file_exchange/policylog/trees_config/
-	@mkdir -p tests/intergration_tests/domainowner_pca_policlog_interaction/file_exchange/pcaoutput/rpc/
-	@mkdir -p tests/intergration_tests/performance_test/testdata/trees_config/
-
-cerate_database:
+create_database:
 	@mysql -u root -e "create database map;"
 
 reset_tables:
 	@mysql -u root -e "DROP TABLE map.node;"
 	@mysql -u root -e "DROP TABLE map.value;"
 
-build_grpc_benchmark:
-	@go build ./pkg/grpc/grpcclient
-	@go build ./pkg/grpc/grpcserver
+build_integration_test:
+	@go build -o ./bin/policylog_interaction  ./tests/intergration_tests/policylog_interaction
+	@go build -o ./bin/domainowner_pca_policlog_interaction  ./tests/intergration_tests/domainowner_pca_policlog_interaction
+	@go build -o ./bin/performance_test  ./tests/intergration_tests/performance_test
 
-benchmark_grpc:
-	./grpcclient  & \
-	./grpcclient  & \
-	./grpcclient  & \
-	./grpcclient  & \
-	./grpcclient  & \
-	./grpcclient  & \
-	./grpcclient  & \
-	./grpcclient  & \
-	./grpcclient  & \
-	./grpcclient  & \
-	./grpcclient  & \
-	./grpcclient  & \
-	./grpcclient  & \
-	./grpcclient  & \
-	./grpcclient  & \
-	./grpcclient  & \
-	./grpcclient  & \
-	./grpcclient  & \
-	./grpcclient  & \
-	./grpcclient  & \
+run_integration_test:
+	@sudo ./scripts/integration_tests.sh
+
+
+## TODO(yongzhe): write these in a seperate shell file
+build_grpc_benchmark_exec:
+	@go build -o ./bin/grpcclient ./pkg/grpc/grpcclient
+	@go build -o ./bin/grpcserver ./pkg/grpc/grpcserver
+
+benchmark_grpc: grpc_server grpc_client
+
+
+grpc_client:
+	sleep 2 \
+	./bin/grpcclient  & \
+	./bin/grpcclient  & \
+	./bin/grpcclient  & \
+	./bin/grpcclient  & \
+	./bin/grpcclient  & \
+	./bin/grpcclient  & \
+	./bin/grpcclient  & \
+	./bin/grpcclient  & \
+	./bin/grpcclient  & \
+	./bin/grpcclient  & \
+	./bin/grpcclient  & \
+	./bin/grpcclient  & \
+	./bin/grpcclient  & \
+	./bin/grpcclient  & \
+	./bin/grpcclient  & \
+	./bin/grpcclient  & \
+	./bin/grpcclient  & \
+	./bin/grpcclient  & \
+	./bin/grpcclient  & \
+	./bin/grpcclient  & \
 	wait; \
-    echo "DONE"
+    echo "DONE" \
+

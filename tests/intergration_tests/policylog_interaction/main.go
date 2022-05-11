@@ -3,32 +3,39 @@ package main
 import (
 	"context"
 	b64 "encoding/base64"
+	"flag"
 	"fmt"
 	"math/rand"
-	"testing"
+	"os"
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/logverifier"
 	"github.com/netsec-ethz/fpki/pkg/policylog/client"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 //TestCreateTreeAddLeafThenVerifyWithConsistencyProof: add leaves, retrive PoI and STH, then verify the return PoI and STH
-func TestCreateTreeAddLeafThenVerifyWithConsistencyProof(t *testing.T) {
-	// init admin adminClient
-	adminClient, err := client.GetAdminClient("testdata/adminclient_config")
-	require.NoError(t, err, "Get admin client error")
+func main() {
+	flag.Parse()
+	err := os.MkdirAll("./file_exchange/policylog/trees_config", os.ModePerm)
+	if err != nil {
+		panic(err)
+	}
 
+	// init admin adminClient
+	adminClient, err := client.GetAdminClient("config/adminclient_config.json")
+	if err != nil {
+		panic(err)
+	}
 	// create new tree
 	tree, err := adminClient.CreateNewTree()
-	require.NoError(t, err, "Create new tree error")
-
+	if err != nil {
+		panic(err)
+	}
 	// init log client
-	logClient, err := client.NewLogClient("testdata/logclient_config", tree.TreeId)
-	require.NoError(t, err, "New log client error")
-
+	logClient, err := client.NewLogClient("config/logclient_config.json", tree.TreeId)
+	if err != nil {
+		panic(err)
+	}
 	// add 20 leaves
 	leaves := [][]byte{}
 	for i := 1; i < 20; i++ {
@@ -40,20 +47,24 @@ func TestCreateTreeAddLeafThenVerifyWithConsistencyProof(t *testing.T) {
 
 	// add leaves
 	addLeavesResult := logClient.AddLeaves(ctx, leaves)
-	assert.Equal(t, len(addLeavesResult.Errs), 0, "add leaves error")
+	if len(addLeavesResult.Errs) != 0 {
+		panic("add leaves error")
+	}
 
 	time.Sleep(2000 * time.Millisecond)
 	err = logClient.UpdateTreeSize(ctx)
-	require.NoError(t, err, "Update tree size error")
-
+	if err != nil {
+		panic(err)
+	}
 	fetchResult := logClient.FetchInclusions(ctx, leaves)
-	assert.Equal(t, len(fetchResult.Errs), 0, "retrive leaves error")
-
-	fmt.Println(fetchResult.FailedLeaves)
+	if len(fetchResult.Errs) != 0 {
+		panic("retrive leaves error")
+	}
 
 	oldRoot, err := logClient.GetCurrentLogRoot(ctx)
-	require.NoError(t, err, "Get current log root error")
-
+	if err != nil {
+		panic(err)
+	}
 	// add another 20 leaves
 	leaves = [][]byte{}
 	for i := 1; i < 20; i++ {
@@ -61,14 +72,17 @@ func TestCreateTreeAddLeafThenVerifyWithConsistencyProof(t *testing.T) {
 	}
 
 	addLeavesResult = logClient.AddLeaves(ctx, leaves)
-	assert.Equal(t, len(addLeavesResult.Errs), 0, "add leaves error")
+	if len(addLeavesResult.Errs) != 0 {
+		panic("add leaves error")
+	}
 
 	time.Sleep(2000 * time.Millisecond)
 
 	// get new root
 	newRoot, err := logClient.GetCurrentLogRoot(ctx)
-	require.NoError(t, err, "Get current log root error")
-
+	if err != nil {
+		panic(err)
+	}
 	consistencyProof, err := logClient.GetConsistencyProof(ctx, oldRoot, newRoot)
 
 	verifier := logverifier.NewLogVerifier(nil)
@@ -76,8 +90,13 @@ func TestCreateTreeAddLeafThenVerifyWithConsistencyProof(t *testing.T) {
 	for k, v := range fetchResult.PoIs {
 		hashedValue, _ := b64.URLEncoding.DecodeString(k)
 		err = verifier.VerifyInclusionWithPrevLogRoot(&v.STH, newRoot, consistencyProof, hashedValue, v.PoIs)
-		require.NoError(t, err, "Verification error")
+		if err != nil {
+			panic(err)
+		}
 	}
+
+	os.RemoveAll("./testdata/output")
+	fmt.Println("test succeed!")
 }
 
 func generateRandomBytes() []byte {

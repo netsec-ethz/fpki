@@ -55,13 +55,15 @@ type CacheDB struct {
 
 	// Client is the channel for user input; Used to get read request from client
 	ClientInput chan ReadRequest
+
+	tableName string
 }
 
 // NewCacheDB: return a cached db
-func NewCacheDB(store *sql.DB) (*CacheDB, error) {
+func NewCacheDB(store *sql.DB, tableName string) (*CacheDB, error) {
 	// check if the table exists
 	// if not, create a new one
-	_, err := initValueMap(store)
+	_, err := initValueMap(store, tableName)
 	if err != nil {
 		return nil, fmt.Errorf("NewCacheDB | initValueMap | %w", err)
 	}
@@ -75,6 +77,7 @@ func NewCacheDB(store *sql.DB) (*CacheDB, error) {
 		removedNode:  make(map[Hash][]byte),
 		Store:        store,
 		ClientInput:  clientInput,
+		tableName:    tableName,
 	}, nil
 }
 
@@ -82,7 +85,7 @@ func NewCacheDB(store *sql.DB) (*CacheDB, error) {
 func (db *CacheDB) Start() {
 	workerChan := make(chan ReadRequest)
 	for i := 0; i < 10; i++ {
-		go workerThread(workerChan, db.Store)
+		go workerThread(workerChan, db.Store, db.tableName)
 	}
 	workerDistributor(db.ClientInput, workerChan)
 }
@@ -100,14 +103,14 @@ func workerDistributor(clientInpuht chan ReadRequest, workerChan chan ReadReques
 }
 
 // queries the data, and return the result to the client
-func workerThread(workerChan chan ReadRequest, db *sql.DB) {
+func workerThread(workerChan chan ReadRequest, db *sql.DB, tableName string) {
 	for {
 		select {
 		case newRequest := <-workerChan:
 			readResult := ReadResult{}
 
 			keyString := hex.EncodeToString(newRequest.key[:])
-			queryGetStr := "SELECT value FROM `map`.`cacheStore` WHERE `key` = '" + keyString + "';"
+			queryGetStr := "SELECT value FROM `map`.`" + tableName + "` WHERE `key` = '" + keyString + "';"
 
 			var valueString string
 			err := db.QueryRow(queryGetStr).Scan(&valueString)
@@ -131,10 +134,10 @@ func workerThread(workerChan chan ReadRequest, db *sql.DB) {
 }
 
 // Create or load a table (every table represnets one tree)
-func initValueMap(db *sql.DB) (bool, error) {
+func initValueMap(db *sql.DB, tableName string) (bool, error) {
 	// query to check if table exists
 	// defeult db schema = 'map'
-	queryTableStr := "SELECT COUNT(*) FROM information_schema.tables  WHERE table_schema = 'map'  AND table_name = 'cacheStore';"
+	queryTableStr := "SELECT COUNT(*) FROM information_schema.tables  WHERE table_schema = 'map'  AND table_name = '" + tableName + "';"
 
 	result, err := db.Query(queryTableStr)
 	if err != nil {
@@ -155,7 +158,7 @@ func initValueMap(db *sql.DB) (bool, error) {
 		// create a new table with two columns
 		// key             VARCHAR(64)             Primary Key
 		// value           VARCHAR(4096)
-		createMapStr := "CREATE TABLE `map`.`cacheStore` (`key` VARCHAR(64) NOT NULL, `value` VARCHAR(2048) NOT NULL, PRIMARY KEY (`key`));"
+		createMapStr := "CREATE TABLE `map`.`" + tableName + "` (`key` VARCHAR(64) NOT NULL, `value` VARCHAR(2048) NOT NULL, PRIMARY KEY (`key`));"
 		newTable, err := db.Query(createMapStr)
 		if err != nil {
 			return false, fmt.Errorf("initValueMap | CREATE TABLE | %w", err)
@@ -174,7 +177,7 @@ func (db *CacheDB) commitChangesToDB() error {
 
 	// TODO(yongzhe): maybe update is more efficient?
 	// replace the current (key, value) pair in DB; If exists, update it; If not, add one
-	queryStr := "REPLACE into `map`.`cacheStore` (`key`, `value`) values "
+	queryStr := "REPLACE into `map`.`" + db.tableName + "` (`key`, `value`) values "
 	sb.WriteString(queryStr)
 
 	isFirst := true
@@ -193,17 +196,17 @@ func (db *CacheDB) commitChangesToDB() error {
 
 	fmt.Println("size of writes: ", len(db.updatedNodes))
 
-	result, err := db.Store.Query(sb.String())
+	_, err := db.Store.Exec(sb.String())
 	if err != nil {
 		return fmt.Errorf("commit | Query | %w", err)
 	}
-	defer result.Close()
+
 	db.updatedNodes = make(map[Hash][][]byte)
 
 	start := time.Now()
 	if len(db.removedNode) != 0 {
 		var deleteSB strings.Builder
-		queryStr = "DELETE from `map`.`cacheStore` WHERE `key` IN ("
+		queryStr = "DELETE from `map`.`" + db.tableName + "` WHERE `key` IN ("
 		deleteSB.WriteString(queryStr)
 
 		isFirst = true
@@ -221,12 +224,11 @@ func (db *CacheDB) commitChangesToDB() error {
 
 		fmt.Println("size of remove: ", len(db.removedNode))
 
-		// TODO(yongzhe): wrap the error later
-		result, err = db.Store.Query(deleteSB.String())
+		_, err := db.Store.Exec(deleteSB.String())
 		if err != nil {
 			return fmt.Errorf("commit | DELETE | %w", err)
 		}
-		defer result.Close()
+
 		db.removedNode = make(map[Hash][]byte)
 	}
 	end := time.Now()

@@ -48,14 +48,14 @@ type Trie struct {
 }
 
 // NewSMT creates a new SMT given a keySize and a hash function.
-func NewTrie(root []byte, hash func(data ...[]byte) []byte, store sql.DB) (*Trie, error) {
+func NewTrie(root []byte, hash func(data ...[]byte) []byte, store sql.DB, tableName string) (*Trie, error) {
 	s := &Trie{
 		hash:       hash,
 		TrieHeight: len(hash([]byte("height"))) * 8, // hash any string to get output length
 		counterOn:  false,
 	}
 	var err error
-	s.db, err = NewCacheDB(&store)
+	s.db, err = NewCacheDB(&store, tableName)
 	if err != nil {
 		return nil, err
 	}
@@ -536,7 +536,7 @@ func (s *Trie) loadBatch(root []byte, height int) ([][]byte, error) {
 	if nodeSize != 0 {
 		// Added: add the newly fetched nodes, and cache them into memory
 		resultBytes := s.parseBatch(readResult.result)
-		if height >= s.CacheHeightLimit {
+		if height >= s.CacheHeightLimit && height%4 == 0 {
 			var rootCopy [32]byte
 			copy(rootCopy[:], root[:HashLength])
 			s.db.liveCache[rootCopy] = resultBytes

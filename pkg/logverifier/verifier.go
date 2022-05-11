@@ -7,13 +7,13 @@ import (
 	"github.com/google/trillian"
 	"github.com/google/trillian/types"
 	"github.com/transparency-dev/merkle"
+	logProof "github.com/transparency-dev/merkle/proof"
 	"github.com/transparency-dev/merkle/rfc6962"
 )
 
 // LogVerifier: verifier is used to verify the proof from log
 type LogVerifier struct {
 	hasher merkle.LogHasher
-	v      merkle.LogVerifier
 }
 
 //NewLogVerifier: retutn a new log verifier
@@ -24,7 +24,6 @@ func NewLogVerifier(hasher merkle.LogHasher) *LogVerifier {
 
 	return &LogVerifier{
 		hasher: hasher,
-		v:      merkle.NewLogVerifier(hasher),
 	}
 }
 
@@ -49,7 +48,7 @@ func (c *LogVerifier) VerifyInclusionWithPrevLogRoot(trusted *types.LogRootV1, n
 		return fmt.Errorf("VerifyInclusionWithPrevLogRoot | VerifyInclusionByHash | %w", err)
 	}
 
-	// TODO(Yongzhe): compare two tree heads. If they are the same, directly return nil.
+	// TODO(yongzhe): compare two tree heads. If they are the same, directly return nil.
 	_, err = c.VerifyRoot(trusted, newRoot, consistency)
 	if err != nil {
 		return fmt.Errorf("VerifyInclusionWithPrevLogRoot | VerifyRoot | %w", err)
@@ -68,8 +67,8 @@ func (c *LogVerifier) VerifyRoot(trusted *types.LogRootV1,
 		return nil, fmt.Errorf("VerifyRoot() error: newRoot == nil")
 	case trusted.TreeSize != 0:
 		// Verify consistency proof.
-		if err := c.v.VerifyConsistency(trusted.TreeSize, newRoot.TreeSize, trusted.RootHash,
-			newRoot.RootHash, consistency); err != nil {
+		if err := logProof.VerifyConsistency(c.hasher, trusted.TreeSize, newRoot.TreeSize, consistency, trusted.RootHash,
+			newRoot.RootHash); err != nil {
 			return nil, fmt.Errorf("failed to verify consistency proof from %d->%d %x->%x: %v",
 				trusted.TreeSize, newRoot.TreeSize, trusted.RootHash, newRoot.RootHash, err)
 		}
@@ -93,7 +92,7 @@ func (c *LogVerifier) VerifyInclusionByHash(trusted *types.LogRootV1, leafHash [
 	// Proofs might contains multiple proof for different leaves, while the content of each leaf is identical.
 	// Trillian will return all the proofs for one content. So one successful verification is enough.
 	for _, proof := range proofs {
-		err := c.v.VerifyInclusion(uint64(proof.LeafIndex), trusted.TreeSize, leafHash,
+		err := logProof.VerifyInclusion(c.hasher, uint64(proof.LeafIndex), trusted.TreeSize, leafHash,
 			proof.Hashes, trusted.RootHash)
 		if err == nil {
 			isVerified = true

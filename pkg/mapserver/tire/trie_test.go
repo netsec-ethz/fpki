@@ -28,7 +28,7 @@ func TestTrieEmpty(t *testing.T) {
 	require.NoError(t, err, "db conn error")
 
 	defer db.Close()
-	smt, err := NewTrie(nil, Hasher, *db)
+	smt, err := NewTrie(nil, Hasher, *db, "cacheStore")
 
 	if len(smt.Root) != 0 {
 		t.Fatal("empty trie root hash not correct")
@@ -40,7 +40,7 @@ func TestTrieUpdateAndGet(t *testing.T) {
 	require.NoError(t, err, "db conn error")
 
 	defer db.Close()
-	smt, err := NewTrie(nil, Hasher, *db)
+	smt, err := NewTrie(nil, Hasher, *db, "cacheStore")
 
 	smt.atomicUpdate = false
 
@@ -83,7 +83,7 @@ func TestTrieAtomicUpdate(t *testing.T) {
 	require.NoError(t, err, "db conn error")
 
 	defer db.Close()
-	smt, err := NewTrie(nil, Hasher, *db)
+	smt, err := NewTrie(nil, Hasher, *db, "cacheStore")
 
 	smt.CacheHeightLimit = 0
 	keys := getFreshData(1, 32)
@@ -116,7 +116,7 @@ func TestTriePublicUpdateAndGet(t *testing.T) {
 	require.NoError(t, err, "db conn error")
 
 	defer db.Close()
-	smt, err := NewTrie(nil, Hasher, *db)
+	smt, err := NewTrie(nil, Hasher, *db, "cacheStore")
 
 	smt.CacheHeightLimit = 0
 	// Add data to empty trie
@@ -160,7 +160,7 @@ func TestTrieDelete(t *testing.T) {
 	require.NoError(t, err, "db conn error")
 
 	defer db.Close()
-	smt, err := NewTrie(nil, Hasher, *db)
+	smt, err := NewTrie(nil, Hasher, *db, "cacheStore")
 
 	// Add data to empty trie
 	keys := getFreshData(20, 32)
@@ -190,7 +190,7 @@ func TestTrieDelete(t *testing.T) {
 	require.NoError(t, err, "db conn error")
 
 	defer db.Close()
-	smt2, err := NewTrie(nil, Hasher, *db)
+	smt2, err := NewTrie(nil, Hasher, *db, "cacheStore")
 
 	ch = make(chan mresult, 1)
 	smt2.update(smt.Root, keys[1:], values[1:], nil, 0, smt.TrieHeight, ch)
@@ -223,7 +223,7 @@ func TestTrieDelete(t *testing.T) {
 	require.NoError(t, err, "db conn error")
 
 	defer db.Close()
-	smt, err = NewTrie(nil, Hasher, *db)
+	smt, err = NewTrie(nil, Hasher, *db, "cacheStore")
 
 	keys = getFreshData(2, 32)
 	values = getFreshData(2, 32)
@@ -242,7 +242,7 @@ func TestTrieUpdateAndDelete(t *testing.T) {
 	require.NoError(t, err, "db conn error")
 
 	defer db.Close()
-	smt, err := NewTrie(nil, Hasher, *db)
+	smt, err := NewTrie(nil, Hasher, *db, "cacheStore")
 
 	smt.CacheHeightLimit = 0
 	key0 := make([]byte, 32, 32)
@@ -282,7 +282,7 @@ func TestTrieMerkleProof(t *testing.T) {
 	require.NoError(t, err, "db conn error")
 
 	defer db.Close()
-	smt, err := NewTrie(nil, Hasher, *db)
+	smt, err := NewTrie(nil, Hasher, *db, "cacheStore")
 
 	// Add data to empty trie
 	keys := getFreshData(10, 32)
@@ -313,7 +313,7 @@ func TestTrieMerkleProofAndReloadTree(t *testing.T) {
 	require.NoError(t, err, "db conn error")
 
 	defer db.Close()
-	smt, err := NewTrie(nil, Hasher, *db)
+	smt, err := NewTrie(nil, Hasher, *db, "cacheStore")
 
 	// Add data to empty trie
 	keys := getFreshData(100, 32)
@@ -344,7 +344,7 @@ func TestTrieMerkleProofAndReloadTree(t *testing.T) {
 
 	defer db1.Close()
 
-	smt1, err := NewTrie(smt.Root, Hasher, *db1)
+	smt1, err := NewTrie(smt.Root, Hasher, *db1, "cacheStore")
 
 	for i, key_ := range keys {
 		ap_, _, k_, v_, _ := smt1.MerkleProof(key_)
@@ -371,7 +371,7 @@ func TestTrieMerkleProofCompressed(t *testing.T) {
 	require.NoError(t, err, "db conn error")
 
 	defer db.Close()
-	smt, err := NewTrie(nil, Hasher, *db)
+	smt, err := NewTrie(nil, Hasher, *db, "cacheStore")
 
 	// Add data to empty trie
 	keys := getFreshData(10, 32)
@@ -402,7 +402,7 @@ func TestTrieCommit(t *testing.T) {
 	require.NoError(t, err, "db conn error")
 
 	defer db.Close()
-	smt, err := NewTrie(nil, Hasher, *db)
+	smt, err := NewTrie(nil, Hasher, *db, "cacheStore")
 
 	keys := getFreshData(10, 32)
 	values := getFreshData(10, 32)
@@ -423,7 +423,7 @@ func TestTrieLoadCache(t *testing.T) {
 	require.NoError(t, err, "db conn error")
 
 	defer db.Close()
-	smt, err := NewTrie(nil, Hasher, *db)
+	smt, err := NewTrie(nil, Hasher, *db, "cacheStore")
 
 	// Test size of cache
 	smt.CacheHeightLimit = 0
@@ -464,7 +464,7 @@ func TestHeight0LeafShortcut(t *testing.T) {
 	require.NoError(t, err, "db conn error")
 
 	defer db.Close()
-	smt, err := NewTrie(nil, Hasher, *db)
+	smt, err := NewTrie(nil, Hasher, *db, "cacheStore")
 
 	// Add 2 sibling keys that will be stored at height 0
 	key0 := make([]byte, keySize, keySize)
@@ -568,7 +568,7 @@ func BenchmarkCacheHeightLimit233(b *testing.B) {
 	}
 
 	defer db.Close()
-	smt, err := NewTrie(nil, Hasher, *db)
+	smt, err := NewTrie(nil, Hasher, *db, "cacheStore")
 
 	smt.CacheHeightLimit = 233
 	allKeys, allValues := benchmark10MAccounts10Ktps(smt, b)

@@ -5,5 +5,5 @@ import (
 )
 
 func main() {
-	logsigner.CreateLogSigner("logsigner_config.json")
+	logsigner.CreateLogSigner("./config/logsigner_config.json")
 }

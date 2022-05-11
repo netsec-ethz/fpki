@@ -17,7 +17,10 @@ func TestTrieUpdateWithSameKeys(t *testing.T) {
 	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/map?multiStatements=true")
 	require.NoError(t, err, "db conn error")
 
-	smt, err := NewTrie(nil, Hasher, *db)
+	err = dropTestTable(db)
+	require.NoError(t, err, "dropTestTable error")
+
+	smt, err := NewTrie(nil, Hasher, *db, "deleteTest")
 
 	smt.CacheHeightLimit = 0
 	// Add 10000 key-value pair
@@ -61,20 +64,24 @@ func TestTrieUpdateWithSameKeys(t *testing.T) {
 
 // get number of rows in the table
 func getDbEntries(db *sql.DB) (int, error) {
-	queryStr := "SELECT COUNT(*) FROM map.cacheStore;"
+	queryStr := "SELECT COUNT(*) FROM map.deleteTest;"
 
-	result, err := db.Query(queryStr)
+	var number int
+	err := db.QueryRow(queryStr).Scan(&number)
 	if err != nil {
 		return 0, fmt.Errorf("getDbEntries | SELECT COUNT(*) | %w", err)
 	}
-	defer result.Close()
-
-	var number int
-	result.Next()
-	err = result.Scan(&number)
-	if err != nil {
-		return 0, fmt.Errorf("getDbEntries | Scan | %w", err)
-	}
 
 	return number, nil
+}
+
+func dropTestTable(db *sql.DB) error {
+	queryStr := "DROP TABLE `map`.`deleteTest`;"
+
+	_, err := db.Exec(queryStr)
+	if err != nil && err.Error() != "Error 1051: Unknown table 'map.deletetest'" {
+		return fmt.Errorf("dropTestTable | DROP | %w", err)
+	}
+
+	return nil
 }
