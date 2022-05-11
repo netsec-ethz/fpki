@@ -95,7 +95,7 @@ func main() {
 		}
 	}
 
-	os.RemoveAll("./testdata/output")
+	os.RemoveAll("./file_exchange")
 	fmt.Println("test succeed!")
 }
 
