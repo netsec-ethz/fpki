@@ -2,31 +2,41 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"math/rand"
-	"testing"
+	"os"
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/policylog/client"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 //TestCreateTreeAddLeafThenGetPoI: Add leaves to tree -> get Proof of Inclusion
 // Used to measure the time to add leaves
-func TestCreateTreeAddLeafThenGetPoI(t *testing.T) {
+func main() {
+	flag.Parse()
+	err := os.MkdirAll("./file_exchange/policylog/trees_config", os.ModePerm)
+	if err != nil {
+		panic(err)
+	}
+
 	// init admin adminClient
-	adminClient, err := client.GetAdminClient("./testdata/adminclient_config")
-	require.NoError(t, err, "get admin client error")
+	adminClient, err := client.GetAdminClient("config/adminclient_config.json")
+	if err != nil {
+		panic(err)
+	}
 
 	// create new tree
 	tree, err := adminClient.CreateNewTree()
-	require.NoError(t, err, "create tree error")
+	if err != nil {
+		panic(err)
+	}
 
 	// init log client
-	logClient, err := client.NewLogClient("./testdata/logclient_config", tree.TreeId)
-	require.NoError(t, err, "new log client error")
+	logClient, err := client.NewLogClient("config/logclient_config.json", tree.TreeId)
+	if err != nil {
+		panic(err)
+	}
 
 	// prepare 20 leaves
 	leaves := [][]byte{}
@@ -41,7 +51,9 @@ func TestCreateTreeAddLeafThenGetPoI(t *testing.T) {
 
 	// add 20 leaves to log
 	addLeavesResult := logClient.AddLeaves(ctx, leaves)
-	assert.Equal(t, len(addLeavesResult.Errs), 0, "add leaves error")
+	if len(addLeavesResult.Errs) != 0 {
+		panic("add leaves error")
+	}
 
 	elapsed := time.Since(start)
 	fmt.Println("queue leaves succeed!")
@@ -53,17 +65,24 @@ func TestCreateTreeAddLeafThenGetPoI(t *testing.T) {
 
 	// update the tree size of the policy log
 	err = logClient.UpdateTreeSize(ctx)
-	require.NoError(t, err, "update tree size error")
+	if err != nil {
+		panic(err)
+	}
 
 	start = time.Now()
 
 	// fetch PoI
 	incResult := logClient.FetchInclusions(ctx, leaves)
-	assert.Equal(t, len(incResult.Errs), 0, "fetch inclusion error")
+	if len(incResult.Errs) != 0 {
+		panic("fetch inclusion error")
+	}
 
 	elapsed = time.Since(start)
 	fmt.Println("fetch proofs succeed!")
 	fmt.Println(elapsed)
+
+	os.RemoveAll("./testdata/trees_config")
+	fmt.Println("test succeed!")
 }
 
 func generateRandomBytes() []byte {

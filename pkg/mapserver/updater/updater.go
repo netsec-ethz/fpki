@@ -16,7 +16,7 @@ type MapUpdater struct {
 
 // NewMapUpdater: return a new map updator. Input paras is similiar to NewMapResponder
 func NewMapUpdater(db *sql.DB, root []byte, cacheHeight int) (*MapUpdater, error) {
-	smt, err := tire.NewTrie(root, tire.Hasher, *db)
+	smt, err := tire.NewTrie(root, tire.Hasher, *db, "cacheStore")
 	if err != nil {
 		return nil, fmt.Errorf("NewMapServer | NewTrie | %w", err)
 	}

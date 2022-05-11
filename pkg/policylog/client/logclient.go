@@ -12,7 +12,7 @@ import (
 	"github.com/transparency-dev/merkle/rfc6962"
 )
 
-// TODO(Yongzhe, CRITICAL): Around line 183, the func will wait forever, if one identical leaf is added to the trillian
+// TODO(yongzhe, CRITICAL): Around line 183, the func will wait forever, if one identical leaf is added to the trillian
 // Possible cause: Trillian will update the identical leaf, rather than add a new one... So the tree size will not grow
 // To Be Solved Later...
 
