@@ -6,7 +6,7 @@ import (
 	"sort"
 
 	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
-	tire "github.com/netsec-ethz/fpki/pkg/mapserver/tire"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
 // UpdateInput: key-value pair for updating
@@ -26,8 +26,8 @@ func HashDomainEntriesThenSort(domainEntries []common.DomainEntry) ([]UpdateInpu
 			return nil, fmt.Errorf("HashDomainEntriesThenSort | SerialiseDomainEnrty | %w", err)
 		}
 		hashInput := UpdateInput{
-			Key:   tire.Hasher([]byte(v.DomainName)),
-			Value: tire.Hasher(domainEntryBytes),
+			Key:   trie.Hasher([]byte(v.DomainName)),
+			Value: trie.Hasher(domainEntryBytes),
 		}
 		result = append(result, hashInput)
 	}
