@@ -6,17 +6,17 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
-	tire "github.com/netsec-ethz/fpki/pkg/mapserver/tire"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
 // MapUpdater: map updator. It is responsible for updating the tree, and writing to db
 type MapUpdater struct {
-	smt *tire.Trie
+	smt *trie.Trie
 }
 
 // NewMapUpdater: return a new map updator. Input paras is similiar to NewMapResponder
 func NewMapUpdater(db *sql.DB, root []byte, cacheHeight int) (*MapUpdater, error) {
-	smt, err := tire.NewTrie(root, tire.Hasher, *db, "cacheStore")
+	smt, err := trie.NewTrie(root, trie.Hasher, *db, "cacheStore")
 	if err != nil {
 		return nil, fmt.Errorf("NewMapServer | NewTrie | %w", err)
 	}

@@ -6,12 +6,12 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
-	tire "github.com/netsec-ethz/fpki/pkg/mapserver/tire"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
 // MapResponder: A map responder, which is responsible for receiving client's request. Only read from db.
 type MapResponder struct {
-	smt *tire.Trie
+	smt *trie.Trie
 
 	// TODO(yongzhe): store this in the db
 	storedDomainEntries map[string][]byte
@@ -23,7 +23,7 @@ type MapResponder struct {
 //   --root: for a new tree, it can be nil. To load a non-empty tree, root should be the latest root of the tree.
 //   --cacheHeight: Maximum height of the cached tree (in memory). 256 means no cache, 0 means cache the whole tree. 0-256
 func NewMapResponder(db *sql.DB, root []byte, cacheHeight int) (*MapResponder, error) {
-	smt, err := tire.NewTrie(root, tire.Hasher, *db, "cacheStore")
+	smt, err := trie.NewTrie(root, trie.Hasher, *db, "cacheStore")
 	smt.CacheHeightLimit = cacheHeight
 	if err != nil {
 		return nil, fmt.Errorf("NewMapResponder | NewTrie | %w", err)
@@ -42,7 +42,7 @@ func (mapResponder *MapResponder) GetMapResponse(domains []string) ([]common.Map
 
 	for _, domain := range domains {
 		// hash the domain name -> key
-		domainHash := tire.Hasher([]byte(domain))
+		domainHash := trie.Hasher([]byte(domain))
 		// get the merkle proof from the smt. If isPoP == true, then it's a proof of inclusion
 		proof, isPoP, proofKey, ProofValue, err := mapResponder.smt.MerkleProof(domainHash)
 		if err != nil {
