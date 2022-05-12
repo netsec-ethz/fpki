@@ -14,12 +14,10 @@
     ├── cmd                                   # Executables. Log server and log signer
     ├── config                                # Config file for PCA and policy log
     ├── doc                                   # FPKI design
-    ├── fileExchange                          # Folder for exchanging files between PCA and policy log. Contains RPCs and SPTs.
-    ├── images
-    ├── performance_test_output               # Some results of the policy log performance
+    │   ├── images
+    │   └── performance_test_output           # Some results of the policy log performance
     ├── pkg                                   # Packages of the project
     ├── scripts                               # Scripts to clean and build the executables
-    ├── test_cert                             # For test. Not important
     └── tests                                 # Some intergration tests. Unit tests are in the individual pkg 
     
     
