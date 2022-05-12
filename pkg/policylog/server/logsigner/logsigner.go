@@ -19,7 +19,6 @@ import (
 	"github.com/google/trillian/util/clock"
 	"github.com/google/trillian/util/election"
 	"github.com/google/trillian/util/election2"
-	serverUtil "github.com/netsec-ethz/fpki/pkg/policylog/server/util"
 	"google.golang.org/grpc"
 
 	// Register supported storage providers.
@@ -28,6 +27,8 @@ import (
 
 	// Load MySQL quota provider
 	_ "github.com/google/trillian/quota/mysqlqm"
+
+	serverUtil "github.com/netsec-ethz/fpki/pkg/policylog/server/util"
 )
 
 // TODO(juagargi) this file is too complex really for what we need. Rethink it.

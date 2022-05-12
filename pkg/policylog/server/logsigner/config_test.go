@@ -5,13 +5,12 @@ import (
 	"path"
 	"testing"
 
-	"github.com/netsec-ethz/fpki/pkg/policylog/server/logsigner"
 	"github.com/stretchr/testify/require"
 )
 
 // TestConfig: Write config to file -> read config from file -> compare
 func TestConfig(t *testing.T) {
-	config := &logsigner.LogSignerConfig{
+	config := &LogSignerConfig{
 		RpcEndpoint:                    "localhost:8092",
 		HttpEndpoint:                   "localhost:8093",
 		HealthzTimeoutInSec:            5,
@@ -33,11 +32,11 @@ func TestConfig(t *testing.T) {
 	tempFile := path.Join(os.TempDir(), "logsigner_config.json")
 	defer os.Remove(tempFile)
 
-	err := logsigner.SaveLogSignerConfigToFile(config, tempFile)
+	err := SaveLogSignerConfigToFile(config, tempFile)
 	require.NoError(t, err)
 
-	config_ := &logsigner.LogSignerConfig{}
-	err = logsigner.ReadLogSignerConfigFromFile(config_, tempFile)
+	config_ := &LogSignerConfig{}
+	err = ReadLogSignerConfigFromFile(config_, tempFile)
 	require.NoError(t, err)
 
 	require.Equal(t, config, config_)
