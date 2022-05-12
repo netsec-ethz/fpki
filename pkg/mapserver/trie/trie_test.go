@@ -7,19 +7,15 @@ package trie
 
 import (
 	"bytes"
-	"runtime"
-
-	"time"
-
+	"database/sql"
 	"fmt"
 	"math/rand"
+	"runtime"
 	"sort"
 	"testing"
-
-	"database/sql"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
-
 	"github.com/stretchr/testify/require"
 )
 
@@ -29,6 +25,7 @@ func TestTrieEmpty(t *testing.T) {
 
 	defer db.Close()
 	smt, err := NewTrie(nil, Hasher, *db, "cacheStore")
+	require.NoError(t, err)
 
 	if len(smt.Root) != 0 {
 		t.Fatal("empty trie root hash not correct")
@@ -41,6 +38,7 @@ func TestTrieUpdateAndGet(t *testing.T) {
 
 	defer db.Close()
 	smt, err := NewTrie(nil, Hasher, *db, "cacheStore")
+	require.NoError(t, err)
 
 	smt.atomicUpdate = false
 
@@ -84,6 +82,7 @@ func TestTrieAtomicUpdate(t *testing.T) {
 
 	defer db.Close()
 	smt, err := NewTrie(nil, Hasher, *db, "cacheStore")
+	require.NoError(t, err)
 
 	smt.CacheHeightLimit = 0
 	keys := getFreshData(1, 32)
@@ -117,6 +116,7 @@ func TestTriePublicUpdateAndGet(t *testing.T) {
 
 	defer db.Close()
 	smt, err := NewTrie(nil, Hasher, *db, "cacheStore")
+	require.NoError(t, err)
 
 	smt.CacheHeightLimit = 0
 	// Add data to empty trie
@@ -161,6 +161,7 @@ func TestTrieDelete(t *testing.T) {
 
 	defer db.Close()
 	smt, err := NewTrie(nil, Hasher, *db, "cacheStore")
+	require.NoError(t, err)
 
 	// Add data to empty trie
 	keys := getFreshData(20, 32)
@@ -243,6 +244,7 @@ func TestTrieUpdateAndDelete(t *testing.T) {
 
 	defer db.Close()
 	smt, err := NewTrie(nil, Hasher, *db, "cacheStore")
+	require.NoError(t, err)
 
 	smt.CacheHeightLimit = 0
 	key0 := make([]byte, 32, 32)
@@ -283,6 +285,7 @@ func TestTrieMerkleProof(t *testing.T) {
 
 	defer db.Close()
 	smt, err := NewTrie(nil, Hasher, *db, "cacheStore")
+	require.NoError(t, err)
 
 	// Add data to empty trie
 	keys := getFreshData(10, 32)
@@ -314,6 +317,7 @@ func TestTrieMerkleProofAndReloadTree(t *testing.T) {
 
 	defer db.Close()
 	smt, err := NewTrie(nil, Hasher, *db, "cacheStore")
+	require.NoError(t, err)
 
 	// Add data to empty trie
 	keys := getFreshData(100, 32)
@@ -372,6 +376,7 @@ func TestTrieMerkleProofCompressed(t *testing.T) {
 
 	defer db.Close()
 	smt, err := NewTrie(nil, Hasher, *db, "cacheStore")
+	require.NoError(t, err)
 
 	// Add data to empty trie
 	keys := getFreshData(10, 32)
@@ -403,6 +408,7 @@ func TestTrieCommit(t *testing.T) {
 
 	defer db.Close()
 	smt, err := NewTrie(nil, Hasher, *db, "cacheStore")
+	require.NoError(t, err)
 
 	keys := getFreshData(10, 32)
 	values := getFreshData(10, 32)
@@ -424,6 +430,7 @@ func TestTrieLoadCache(t *testing.T) {
 
 	defer db.Close()
 	smt, err := NewTrie(nil, Hasher, *db, "cacheStore")
+	require.NoError(t, err)
 
 	// Test size of cache
 	smt.CacheHeightLimit = 0
@@ -465,6 +472,7 @@ func TestHeight0LeafShortcut(t *testing.T) {
 
 	defer db.Close()
 	smt, err := NewTrie(nil, Hasher, *db, "cacheStore")
+	require.NoError(t, err)
 
 	// Add 2 sibling keys that will be stored at height 0
 	key0 := make([]byte, keySize, keySize)
@@ -569,6 +577,7 @@ func BenchmarkCacheHeightLimit233(b *testing.B) {
 
 	defer db.Close()
 	smt, err := NewTrie(nil, Hasher, *db, "cacheStore")
+	require.NoError(b, err)
 
 	smt.CacheHeightLimit = 233
 	allKeys, allValues := benchmark10MAccounts10Ktps(smt, b)
