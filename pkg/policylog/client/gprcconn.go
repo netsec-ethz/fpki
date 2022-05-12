@@ -12,7 +12,7 @@ func getGRPCConn(maxReceiveMessageSize int, logAddress string) (*grpc.ClientConn
 	// get security flag
 	dialOpts, err := rpcflags.NewClientDialOptionsFromFlags()
 	if err != nil {
-		return nil, fmt.Errorf("GetGRPCConn | NewClientDialOptionsFromFlags | %s", err.Error())
+		return nil, fmt.Errorf("GetGRPCConn | NewClientDialOptionsFromFlags | %w", err)
 	}
 
 	// add max_receive_msg flag
@@ -23,7 +23,7 @@ func getGRPCConn(maxReceiveMessageSize int, logAddress string) (*grpc.ClientConn
 	// dial the grpc
 	conn, err := grpc.Dial(logAddress, dialOpts...)
 	if err != nil {
-		return nil, fmt.Errorf("GetGRPCConn | Dial | %s", err.Error())
+		return nil, fmt.Errorf("GetGRPCConn | Dial | %w", err)
 	}
 	return conn, nil
 }

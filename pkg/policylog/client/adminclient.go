@@ -31,13 +31,13 @@ func GetAdminClient(configPath string) (*AdminClient, error) {
 	config := &AdminClientConfig{}
 	err := ReadAdminClientConfigFromFile(config, configPath)
 	if err != nil {
-		return nil, fmt.Errorf("GetAdminClient | ReadAdminClientConfigFromFile | %s", err.Error())
+		return nil, fmt.Errorf("GetAdminClient | ReadAdminClientConfigFromFile | %w", err)
 	}
 
 	// get conn
 	conn, err := getGRPCConn(config.MaxReceiveMessageSize, config.LogAddress)
 	if err != nil {
-		return nil, fmt.Errorf("GetAdminClient | getGRPCConn | %s", err.Error())
+		return nil, fmt.Errorf("GetAdminClient | getGRPCConn | %w", err)
 	}
 
 	adminClient := trillian.NewTrillianAdminClient(conn)
@@ -65,7 +65,7 @@ func (client AdminClient) CreateNewTree() (*trillian.Tree, error) {
 	// init the tree
 	tree, err := trillianClient.CreateAndInitTree(ctx, req, client.client, logClient)
 	if err != nil {
-		return nil, fmt.Errorf("CreateNewTree | CreateAndInitTree | %s", err.Error())
+		return nil, fmt.Errorf("CreateNewTree | CreateAndInitTree | %w", err)
 	}
 
 	// write tree info to files.
@@ -91,12 +91,12 @@ func (client AdminClient) generateCreateTreeReq() *trillian.CreateTreeRequest {
 func (client AdminClient) writeTreeToFile(tree *trillian.Tree) error {
 	file, err := json.MarshalIndent(tree, "", " ")
 	if err != nil {
-		return fmt.Errorf("writeTreeToFile | MarshalIndent | %s", err.Error())
+		return fmt.Errorf("writeTreeToFile | MarshalIndent | %w", err)
 	}
 
 	err = ioutil.WriteFile(client.config.OutPutPath+"/trees_config/"+strconv.FormatInt(tree.TreeId, 10), file, 0644)
 	if err != nil {
-		return fmt.Errorf("writeTreeToFile | WriteFile | %s", err.Error())
+		return fmt.Errorf("writeTreeToFile | WriteFile | %w", err)
 	}
 	return nil
 }
