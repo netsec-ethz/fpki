@@ -43,10 +43,10 @@ UNLOCK TABLES;
 
 -- TODO(juagargi) new definition:
 CREATE TABLE nodes (
-  idhash      varbinary(33) NOT NULL,
-  parentnode  varbinary(33) DEFAULT NULL,
-  leftnode    varbinary(33) DEFAULT NULL,
-  rightnode   varbinary(33) DEFAULT NULL,
+  idhash      VARBINARY(33) NOT NULL,
+  parentnode  VARBINARY(33) DEFAULT NULL,
+  leftnode    VARBINARY(33) DEFAULT NULL,
+  rightnode   VARBINARY(33) DEFAULT NULL,
   value       blob,
   UNIQUE KEY idhash (idhash)
   -- KEY idhash (idhash)

@@ -73,7 +73,9 @@ func main() {
 
 		// t0, err = db.DeletemeSelectLeaves(100) // 164.934957ms
 		// t0, err = db.DeletemeSelectLeaves(1000) // 1.446072294s
-		t0, err = db.DeletemeSelectLeaves(10 * 1000) // 14.24444017s
+		// t0, err = db.DeletemeSelectLeaves(10 * 1000) // 14.24444017s
+
+		t0, err = db.DeletemeSelectLeavesStoredProc(1000) // 608.293495ms
 	}
 
 	check(err)

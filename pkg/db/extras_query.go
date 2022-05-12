@@ -282,3 +282,36 @@ func DeletemeSelectLeaves(leafCount int) (time.Time, error) {
 	}
 	return t0, nil
 }
+
+func DeletemeSelectLeavesStoredProc(leafCount int) (time.Time, error) {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
+	t0 := time.Now()
+	DB, err := Connect()
+	if err != nil {
+		return time.Time{}, err
+	}
+	c := DB.(*mysqlDB)
+
+	randomIDs, err := retrieveLeafIDs(ctx, c, min(leafCount, 100))
+	if err != nil {
+		return time.Time{}, err
+	}
+	for i := 0; i < leafCount; i++ {
+		for _, leafId := range randomIDs {
+			row := c.db.QueryRowContext(ctx, "CALL get_leaf(?)", leafId[:])
+			var path []byte
+			err = row.Scan(&path)
+			if err != nil {
+				panic(err)
+			}
+			fmt.Printf("%s\n\n", hex.EncodeToString(path))
+			if i%1000 == 0 {
+				fmt.Printf("%d / %d\n", i, leafCount)
+			}
+			i++
+		}
+	}
+	return t0, nil
+}
