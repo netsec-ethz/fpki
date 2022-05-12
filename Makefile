@@ -25,7 +25,7 @@ build_integration_test:
 	@go build -o ./bin/performance_test  ./tests/intergration_tests/performance_test
 
 run_integration_test:
-	@sudo ./scripts/integration_tests.sh
+	@./scripts/integration_tests.sh
 
 
 ## TODO(yongzhe): write these in a seperate shell file
