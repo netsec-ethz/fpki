@@ -29,14 +29,14 @@ const (
 func SignStrucRSASHA256(struc interface{}, privKey *rsa.PrivateKey) ([]byte, error) {
 	bytes, err := JsonStrucToBytes(struc)
 	if err != nil {
-		return nil, fmt.Errorf("SignStrucRSASHA256 | JsonStrucToBytes | %s", err.Error())
+		return nil, fmt.Errorf("SignStrucRSASHA256 | JsonStrucToBytes | %w", err)
 	}
 
 	hashOutput := sha256.Sum256(bytes)
 
 	signature, err := rsa.SignPKCS1v15(rand.Reader, privKey, crypto.SHA256, hashOutput[:])
 	if err != nil {
-		return nil, fmt.Errorf("SignStrucRSASHA256 | SignPKCS1v15 | %s", err.Error())
+		return nil, fmt.Errorf("SignStrucRSASHA256 | SignPKCS1v15 | %w", err)
 	}
 	return signature, nil
 }
@@ -52,7 +52,7 @@ func RCSRCreateSignature(domainOwnerPrivKey *rsa.PrivateKey, rcsr *RCSR) error {
 
 	signature, err := SignStrucRSASHA256(rcsr, domainOwnerPrivKey)
 	if err != nil {
-		return fmt.Errorf("RCSRCreateSignature | SignStrucRSASHA256 | %s", err.Error())
+		return fmt.Errorf("RCSRCreateSignature | SignStrucRSASHA256 | %w", err)
 	}
 
 	rcsr.Signature = signature
@@ -68,7 +68,7 @@ func RCSRGenerateRPCSignature(rcsr *RCSR, prevPrivKeyOfPRC *rsa.PrivateKey) erro
 
 	rpcSignature, err := SignStrucRSASHA256(rcsr, prevPrivKeyOfPRC)
 	if err != nil {
-		return fmt.Errorf("RCSRGenerateRPCSignature | SignStrucRSASHA256 | %s", err.Error())
+		return fmt.Errorf("RCSRGenerateRPCSignature | SignStrucRSASHA256 | %w", err)
 	}
 
 	rcsr.PRCSignature = rpcSignature
@@ -91,19 +91,19 @@ func RCSRVerifySignature(rcsr *RCSR) error {
 
 	serialisedStruc, err := JsonStrucToBytes(rcsrCopy)
 	if err != nil {
-		return fmt.Errorf("RCSRVerifySignature | JsonStrucToBytes | %s", err.Error())
+		return fmt.Errorf("RCSRVerifySignature | JsonStrucToBytes | %w", err)
 	}
 
 	// get the pub key
 	pubKey, err := PemBytesToRsaPublicKey(rcsr.PublicKey)
 	if err != nil {
-		return fmt.Errorf("RCSRVerifySignature | PemBytesToRsaPublicKey | %s", err.Error())
+		return fmt.Errorf("RCSRVerifySignature | PemBytesToRsaPublicKey | %w", err)
 	}
 
 	hashOutput := sha256.Sum256(serialisedStruc)
 	err = rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, hashOutput[:], rcsr.Signature)
 	if err != nil {
-		return fmt.Errorf("RCSRVerifySignature | VerifyPKCS1v15 | %s", err.Error())
+		return fmt.Errorf("RCSRVerifySignature | VerifyPKCS1v15 | %w", err)
 	}
 	return nil
 }
@@ -123,18 +123,18 @@ func RCSRVerifyRPCSIgnature(rcsr *RCSR, rpc *RPC) error {
 
 	serialisedStruc, err := JsonStrucToBytes(rcsrCopy)
 	if err != nil {
-		return fmt.Errorf("RCSRVerifyRPCSIgnature | JsonStrucToBytes | %s", err.Error())
+		return fmt.Errorf("RCSRVerifyRPCSIgnature | JsonStrucToBytes | %w", err)
 	}
 
 	pubKey, err := PemBytesToRsaPublicKey(rpc.PublicKey)
 	if err != nil {
-		return fmt.Errorf("RCSRVerifyRPCSIgnature | PemBytesToRsaPublicKey | %s", err.Error())
+		return fmt.Errorf("RCSRVerifyRPCSIgnature | PemBytesToRsaPublicKey | %w", err)
 	}
 
 	hashOutput := sha256.Sum256(serialisedStruc)
 	err = rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, hashOutput[:], rcsr.PRCSignature)
 	if err != nil {
-		return fmt.Errorf("RCSRVerifyRPCSIgnature | VerifyPKCS1v15 | %s", err.Error())
+		return fmt.Errorf("RCSRVerifyRPCSIgnature | VerifyPKCS1v15 | %w", err)
 	}
 	return nil
 }
@@ -159,7 +159,7 @@ func RCSRGenerateRPC(rcsr *RCSR, notBefore time.Time, serialNumber int, caPrivKe
 
 	signature, err := SignStrucRSASHA256(rpc, caPrivKey)
 	if err != nil {
-		return nil, fmt.Errorf("RCSRGenerateRPC | SignStrucRSASHA256 | %s", err.Error())
+		return nil, fmt.Errorf("RCSRGenerateRPC | SignStrucRSASHA256 | %w", err)
 	}
 
 	rpc.CASignature = signature
@@ -192,13 +192,13 @@ func RPCVerifyCASignature(caCert *x509.Certificate, rpc *RPC) error {
 
 	bytes, err := JsonStrucToBytes(rpcCopy)
 	if err != nil {
-		return fmt.Errorf("RPCVerifyCASignature | JsonStrucToBytes | %s", err.Error())
+		return fmt.Errorf("RPCVerifyCASignature | JsonStrucToBytes | %w", err)
 	}
 
 	hashOutput := sha256.Sum256(bytes)
 	err = rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, hashOutput[:], rpc.CASignature)
 	if err != nil {
-		return fmt.Errorf("RPCVerifyCASignature | VerifyPKCS1v15 | %s", err.Error())
+		return fmt.Errorf("RPCVerifyCASignature | VerifyPKCS1v15 | %w", err)
 	}
 	return nil
 }

@@ -55,12 +55,12 @@ func NewPCA(configPath string) (*PCA, error) {
 	config := &PCAConfig{}
 	err := ReadConfigFromFile(config, configPath)
 	if err != nil {
-		return nil, fmt.Errorf("NewPCA | ReadConfigFromFile | %s", err.Error())
+		return nil, fmt.Errorf("NewPCA | ReadConfigFromFile | %w", err)
 	}
 	// load rsa key pair
 	keyPair, err := common.LoadRSAKeyPairFromFile(config.KeyPath)
 	if err != nil {
-		return nil, fmt.Errorf("NewPCA | LoadRSAKeyPairFromFile | %s", err.Error())
+		return nil, fmt.Errorf("NewPCA | LoadRSAKeyPairFromFile | %w", err)
 	}
 	return &PCA{
 		validRPCsByDomains:  make(map[string]*common.RPC),
@@ -78,7 +78,7 @@ func (pca *PCA) SignAndLogRCSR(rcsr *common.RCSR) error {
 	// verify the signature in the rcsr; check if the domain's pub key is correct
 	err := common.RCSRVerifySignature(rcsr)
 	if err != nil {
-		return fmt.Errorf("SignAndLogRCSR | RCSRVerifySignature | %s", err.Error())
+		return fmt.Errorf("SignAndLogRCSR | RCSRVerifySignature | %w", err)
 	}
 
 	// decide not before time
@@ -97,7 +97,7 @@ func (pca *PCA) SignAndLogRCSR(rcsr *common.RCSR) error {
 	// generate pre-RPC (without SPT)
 	rpc, err := common.RCSRGenerateRPC(rcsr, notBefore, pca.serialNumber, pca.rsaKeyPair, pca.caName)
 	if err != nil {
-		return fmt.Errorf("SignAndLogRCSR | RCSRGenerateRPC | %s", err.Error())
+		return fmt.Errorf("SignAndLogRCSR | RCSRGenerateRPC | %w", err)
 	}
 
 	// add the rpc to preRPC(without SPT)
@@ -107,7 +107,7 @@ func (pca *PCA) SignAndLogRCSR(rcsr *common.RCSR) error {
 	err = pca.sendRPCToPolicyLog(rpc, strconv.Itoa(pca.serialNumber))
 
 	if err != nil {
-		return fmt.Errorf("SignAndLogRCSR | sendRPCToPolicyLog | %s", err.Error())
+		return fmt.Errorf("SignAndLogRCSR | sendRPCToPolicyLog | %w", err)
 	}
 	return nil
 }
@@ -118,7 +118,7 @@ func (pca *PCA) ReceiveSPTFromPolicyLog() error {
 	for k, v := range pca.preRPCByDomains {
 		rpcBytes, err := common.JsonStrucToBytes(v)
 		if err != nil {
-			return fmt.Errorf("ReceiveSPTFromPolicyLog | JsonStrucToBytes | %s", err.Error())
+			return fmt.Errorf("ReceiveSPTFromPolicyLog | JsonStrucToBytes | %w", err)
 		}
 
 		// hash the rpc
@@ -131,7 +131,7 @@ func (pca *PCA) ReceiveSPTFromPolicyLog() error {
 		spt := &common.SPT{}
 		err = common.JsonFileToSPT(spt, pca.policyLogOutputPath+"/spt/"+fileName)
 		if err != nil {
-			return fmt.Errorf("ReceiveSPTFromPolicyLog | JsonFileToSPT | %s", err.Error())
+			return fmt.Errorf("ReceiveSPTFromPolicyLog | JsonFileToSPT | %w", err)
 		}
 
 		// verify the PoI, STH
@@ -168,7 +168,7 @@ func (pca *PCA) verifySPT(spt *common.SPT, rpc *common.RPC) error {
 	for _, poi := range spt.PoI {
 		poiStruc, err := common.JsonBytesToPoI(poi)
 		if err != nil {
-			return fmt.Errorf("verifySPT | Json_BytesToPoI | %s", err.Error())
+			return fmt.Errorf("verifySPT | Json_BytesToPoI | %w", err)
 		}
 		proofs = append(proofs, poiStruc)
 	}
@@ -176,20 +176,20 @@ func (pca *PCA) verifySPT(spt *common.SPT, rpc *common.RPC) error {
 	// get leaf hash
 	rpcBytes, err := common.JsonStrucToBytes(rpc)
 	if err != nil {
-		return fmt.Errorf("verifySPT | Json_StrucToBytes | %s", err.Error())
+		return fmt.Errorf("verifySPT | Json_StrucToBytes | %w", err)
 	}
 	leafHash := pca.logVerifier.HashLeaf(rpcBytes)
 
 	// get LogRootV1
 	logRoot, err := common.JsonBytesToLogRoot(spt.STH)
 	if err != nil {
-		return fmt.Errorf("verifySPT | JsonBytesToLogRoot | %s", err.Error())
+		return fmt.Errorf("verifySPT | JsonBytesToLogRoot | %w", err)
 	}
 
 	// verify the PoI
 	err = pca.logVerifier.VerifyInclusionByHash(logRoot, leafHash, proofs)
 	if err != nil {
-		return fmt.Errorf("verifySPT | VerifyInclusionByHash | %s", err.Error())
+		return fmt.Errorf("verifySPT | VerifyInclusionByHash | %w", err)
 	}
 
 	return nil

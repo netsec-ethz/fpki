@@ -47,7 +47,7 @@ func PemBytesToRsaPublicKey(pubkey []byte) (*rsa.PublicKey, error) {
 func X509CertFromFile(fileName string) (*x509.Certificate, error) {
 	content, err := ioutil.ReadFile(fileName)
 	if err != nil {
-		return nil, fmt.Errorf("X509CertFromFile | failed to read %s: %s", fileName, err)
+		return nil, fmt.Errorf("X509CertFromFile | failed to read %s: %w", fileName, err)
 	}
 
 	var block *pem.Block
