@@ -15,4 +15,4 @@ echo "#################         Running performance_test                    ####
 
 # stop log
 pkill -f logserver_exec
-pkill -f logsigner_exec 
+pkill -f logsigner_exec
