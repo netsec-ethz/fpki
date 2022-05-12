@@ -315,3 +315,106 @@ func DeletemeSelectLeavesStoredProc(leafCount int) (time.Time, error) {
 	}
 	return t0, nil
 }
+
+// DeletemeSelectLeavesStoredFunc uses a stored function to retrieve the path from the leave to
+// the root of the tree.
+// This function is monothreaded.
+func DeletemeSelectLeavesStoredFunc(leafCount int) (time.Time, error) {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
+	t0 := time.Now()
+	DB, err := Connect()
+	if err != nil {
+		return time.Time{}, err
+	}
+	c := DB.(*mysqlDB)
+
+	randomIDs, err := retrieveLeafIDs(ctx, c, min(leafCount, 100))
+	if err != nil {
+		return time.Time{}, err
+	}
+	for i := 0; i < leafCount; i++ {
+		for _, leafId := range randomIDs {
+			row := c.db.QueryRowContext(ctx, "SELECT node_path(?)", leafId[:])
+			var path []byte
+			err = row.Scan(&path)
+			if err != nil {
+				panic(err)
+			}
+			// fmt.Printf("%s\n\n", hex.EncodeToString(path))
+			if i%1000 == 0 {
+				fmt.Printf("%d / %d\n", i, leafCount)
+			}
+			i++
+		}
+	}
+	return t0, nil
+}
+
+func DeletemeSelectLeavesStoredFunc2(leafCount, connectionCount, routinesPerConn int) (
+	time.Time, error) {
+
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
+	DB, err := Connect()
+	if err != nil {
+		return time.Time{}, err
+	}
+	c := DB.(*mysqlDB)
+	totalRoutines := connectionCount * routinesPerConn
+	randomIDs, err := retrieveLeafIDs(ctx, c, min(leafCount, 100))
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	// to simplify code, check that we run all queries: count must be divisible by routine count
+	if leafCount%totalRoutines != 0 {
+		panic(fmt.Sprintf("logic error: count not divisible by number of total routines %d "+
+			"round count to %d", totalRoutines, leafCount+leafCount%totalRoutines))
+	}
+	conns := make([]*mysqlDB, connectionCount)
+	for c := 0; c < connectionCount; c++ {
+		DB, err := Connect()
+		if err != nil {
+			return time.Time{}, err
+		}
+		conns[c] = DB.(*mysqlDB)
+	}
+
+	t0 := time.Now()
+	wg := sync.WaitGroup{}
+	wg.Add(totalRoutines)
+	for c := 0; c < connectionCount; c++ {
+		cc := c
+		go func() {
+			conn := conns[cc]
+			prepStmt, err := conn.db.Prepare("SELECT node_path(?)")
+			if err != nil {
+				panic(err)
+			}
+
+			for r := 0; r < routinesPerConn; r++ {
+				go func() {
+					defer wg.Done()
+					for i := 0; i < leafCount/totalRoutines; i++ {
+						idhash := randomIDs[rand.Intn(len(randomIDs))]
+						row := prepStmt.QueryRowContext(ctx, idhash[:])
+						// fmt.Printf("id = %s\n", hex.EncodeToString(idhash[:]))
+						var path []byte
+						if err := row.Scan(&path); err != nil {
+							panic(err)
+						}
+						if i%10000 == 0 {
+							fmt.Printf("%d / %d\n", i, leafCount)
+						}
+					}
+				}()
+			}
+		}()
+	}
+
+	wg.Wait()
+	return t0, nil
+}

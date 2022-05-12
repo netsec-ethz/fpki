@@ -75,7 +75,17 @@ func main() {
 		// t0, err = db.DeletemeSelectLeaves(1000) // 1.446072294s
 		// t0, err = db.DeletemeSelectLeaves(10 * 1000) // 14.24444017s
 
-		t0, err = db.DeletemeSelectLeavesStoredProc(1000) // 608.293495ms
+		// t0, err = db.DeletemeSelectLeavesStoredProc(1000) // 608.293495ms
+
+		// t0, err = db.DeletemeSelectLeavesStoredFunc(1000) // 459.793285ms
+		// t0, err = db.DeletemeSelectLeavesStoredFunc(100 * 1000) // 36.995034654s
+
+		// t0, err = db.DeletemeSelectLeavesStoredFunc2(1000, 1, 1) // 373.195752ms
+		// t0, err = db.DeletemeSelectLeavesStoredFunc2(1000, 1, 8) // 95.495026ms
+		// t0, err = db.DeletemeSelectLeavesStoredFunc2(100*1000, 1, 8) // 8.746812923s
+		// t0, err = db.DeletemeSelectLeavesStoredFunc2(100*1000, 1, 16) // 8.096993868s
+		// t0, err = db.DeletemeSelectLeavesStoredFunc2(100*1000, 8, 1) // 8.737253918s
+		t0, err = db.DeletemeSelectLeavesStoredFunc2(100*1000+32, 8, 8) // 7.914086447s
 	}
 
 	check(err)

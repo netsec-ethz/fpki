@@ -73,34 +73,64 @@
 
 -- CALL get_leaf(UNHEX(""));
 
--- ----------------------------------------------------------------------------------------------------
+-- -- ----------------------------------------------------------------------------------------------------
+
+-- USE fpki;
+-- DROP PROCEDURE IF EXISTS get_leaf;
+
+-- DELIMITER $$
+-- CREATE PROCEDURE get_leaf(
+-- 	IN nodehash VARBINARY(33)
+-- )
+-- BEGIN
+-- 		DECLARE hashes BLOB DEFAULT '';
+--         DECLARE temp VARBINARY(33);
+--         DECLARE parent VARBINARY(33);
+
+-- WHILE nodehash IS NOT NULL DO
+-- 	SELECT idhash,parentnode INTO nodehash,parent FROM nodes WHERE idhash = nodehash;
+
+--     SET hashes = CONCAT(hashes,nodehash);
+--     SET nodehash = parent;
+-- END WHILE;
+-- 	-- SELECT HEX(hashes);
+--     SELECT hashes;
+    
+-- END$$
+-- DELIMITER ;
+
+-- CALL get_leaf(UNHEX("FF000043A7C4C7520CDDA0A24160987B27D5AED35AA402B34A18D92947B039323F"));
+
+
+-- -- ----------------------------------------------------------------------------------------------------
 
 USE fpki;
-DROP PROCEDURE IF EXISTS get_leaf;
+DROP FUNCTION IF EXISTS node_path;
 
 DELIMITER $$
-CREATE PROCEDURE get_leaf(
-	IN nodehash VARBINARY(33)
+CREATE FUNCTION node_path(
+	nodehash VARBINARY(33)
 )
+RETURNS BLOB
+DETERMINISTIC
 BEGIN
 		DECLARE hashes BLOB DEFAULT '';
         DECLARE temp VARBINARY(33);
         DECLARE parent VARBINARY(33);
 
-mainloop: LOOP
-	IF nodehash IS NULL THEN
-		LEAVE mainloop;
-	END IF;
-
+WHILE nodehash IS NOT NULL DO
 	SELECT idhash,parentnode INTO nodehash,parent FROM nodes WHERE idhash = nodehash;
 
     SET hashes = CONCAT(hashes,nodehash);
     SET nodehash = parent;
-END LOOP;
+END WHILE;
 	-- SELECT HEX(hashes);
-    SELECT hashes;
-
+    -- SELECT hashes;
+    -- RETURN HEX(hashes);
+    RETURN hashes;
+    
 END$$
 DELIMITER ;
 
-CALL get_leaf(UNHEX("FF000043A7C4C7520CDDA0A24160987B27D5AED35AA402B34A18D92947B039323F"));
+-- CALL get_leaf(UNHEX("FF000043A7C4C7520CDDA0A24160987B27D5AED35AA402B34A18D92947B039323F"));
+SELECT HEX(node_path(UNHEX("FF000043A7C4C7520CDDA0A24160987B27D5AED35AA402B34A18D92947B039323F")));
