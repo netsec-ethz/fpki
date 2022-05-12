@@ -1,8 +1,6 @@
-module fpki
+module github.com/netsec-ethz/fpki
 
 go 1.17
-
-replace github.com/netsec-ethz/fpki => ./
 
 require (
 	github.com/go-sql-driver/mysql v1.6.0
@@ -10,7 +8,6 @@ require (
 	github.com/google/trillian v1.4.1
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/minio/sha256-simd v1.0.0
-	github.com/netsec-ethz/fpki v0.0.0-00010101000000-000000000000
 	github.com/stretchr/testify v1.7.1
 	github.com/transparency-dev/merkle v0.0.1
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
