@@ -1,6 +1,6 @@
 .PHONY: all clean test policy_log
 
-all: policy_log build_grpc_benchmark_exec build_integration_test
+all: policy_log build_integration_test
 
 clean:
 	@rm -f bin/*
