@@ -12,7 +12,10 @@ build_policy_log:
 	@go build -o bin/logserver_exec cmd/logserver/logserver_exec.go
 	@go build -o bin/logsigner_exec cmd/logsigner/logsigner_exec.go
 
-setup_db: create_smt_database create_log_database
+setup_db: start_db create_smt_database create_log_database
+
+start_db:
+	@mysql.server start
 
 create_smt_database:
 	@mysql -u root -e "create database map;"
