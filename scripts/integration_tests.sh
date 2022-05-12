@@ -9,9 +9,10 @@ echo "#################    Running domainowner_pca_policlog_interaction     ####
 ./bin/domainowner_pca_policlog_interaction 
 echo "#################         Running policylog_interaction               ###################"
 ./bin/policylog_interaction
-echo "#################         Running performance_test                    ###################"
-./bin/performance_test
-
+echo "#################         Running mapserver   test                 ###################"
+./bin/mapserver
+echo "#################         Running smt test                    ###################"
+./bin/smt
 
 # stop log
 pkill -f logserver_exec

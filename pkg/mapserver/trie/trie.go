@@ -9,8 +9,6 @@ import (
 	"bytes"
 	"fmt"
 	"sync"
-
-	"database/sql"
 )
 
 // Trie is a modified sparse Merkle tree.
@@ -48,14 +46,14 @@ type Trie struct {
 }
 
 // NewSMT creates a new SMT given a keySize and a hash function.
-func NewTrie(root []byte, hash func(data ...[]byte) []byte, store sql.DB, tableName string) (*Trie, error) {
+func NewTrie(root []byte, hash func(data ...[]byte) []byte, store SQLDB, tableName string, iniTable bool) (*Trie, error) {
 	s := &Trie{
 		hash:       hash,
 		TrieHeight: len(hash([]byte("height"))) * 8, // hash any string to get output length
 		counterOn:  false,
 	}
 	var err error
-	s.db, err = NewCacheDB(&store, tableName)
+	s.db, err = NewCacheDB(store, tableName, iniTable)
 	if err != nil {
 		return nil, err
 	}
@@ -637,4 +635,12 @@ func (s *Trie) updatePastTries() {
 	} else {
 		s.pastTries = append(s.pastTries, s.Root)
 	}
+}
+
+func (s *Trie) GetLiveCacheSize() int {
+	return s.db.GetLiveCacheSize()
+}
+
+func (s *Trie) ResetLiveCache() {
+	s.db.liveCache = make(map[Hash][][]byte)
 }

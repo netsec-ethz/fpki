@@ -1,17 +1,14 @@
-package mapserver
+package main
 
 import (
 	"database/sql"
 	"fmt"
 	"math/rand"
-	"testing"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	mapCommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/responder"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 
 	"time"
 
@@ -19,9 +16,11 @@ import (
 )
 
 // TestUpdaterAndResponder: store a list of domain entries -> fetch inclusion -> verify inclusion
-func TestUpdaterAndResponder(t *testing.T) {
+func main() {
 	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/map?maxAllowedPacket=1073741824")
-	require.NoError(t, err, "updator db conn error")
+	if err != nil {
+		panic(err)
+	}
 
 	// get random domain entries for testing
 	testDomain := getRandomDomainEntry()
@@ -31,32 +30,46 @@ func TestUpdaterAndResponder(t *testing.T) {
 	}
 
 	// new map updator
-	mapUpdater, err := updater.NewMapUpdater(db, nil, 233)
-	require.NoError(t, err, "NewMapUpdater error")
+	mapUpdater, err := updater.NewMapUpdater(db, nil, 233, true)
+	if err != nil {
+		panic(err)
+	}
 
 	start := time.Now()
 	// update the domain entries
 	err = mapUpdater.UpdateDomains(testDomain)
-	require.NoError(t, err, "updator update error")
+	if err != nil {
+		panic(err)
+	}
+
 	end := time.Now()
 	fmt.Println("time to update 10000 domain entries: ", end.Sub(start))
 
 	root := mapUpdater.GetRoot()
 	err = mapUpdater.Close()
-	require.NoError(t, err, "update close error")
+	if err != nil {
+		panic(err)
+	}
 
 	db, err = sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/map?maxAllowedPacket=1073741824")
-	require.NoError(t, err, "updator db conn error")
+	if err != nil {
+		panic(err)
+	}
 
 	// get a new responder, and load an existing tree
-	mapResponder, err := responder.NewMapResponder(db, root, 233)
+	mapResponder, err := responder.NewMapResponder(db, root, 233, true)
 	err = mapResponder.ReadDomainEntriesFromDB(testDomain)
-	require.NoError(t, err, "ReadDomainEntriesFromDB error")
+	if err != nil {
+		panic(err)
+	}
 
 	start = time.Now()
 	// get proofs for all the added domains
 	proofs, err := mapResponder.GetMapResponse(domains)
-	require.NoError(t, err, "GetProofs error")
+	if err != nil {
+		panic(err)
+	}
+
 	end = time.Now()
 	fmt.Println("time to get 10000 proof: ", end.Sub(start))
 
@@ -64,7 +77,10 @@ func TestUpdaterAndResponder(t *testing.T) {
 	// this time, the fetching time should be much less than the previous one, because the cache is loaded
 	start = time.Now()
 	proofs, err = mapResponder.GetMapResponse(domains)
-	require.NoError(t, err, "GetProofs error")
+	if err != nil {
+		panic(err)
+	}
+
 	end = time.Now()
 	fmt.Println("time to get 10000 proof: ", end.Sub(start))
 
@@ -73,10 +89,16 @@ func TestUpdaterAndResponder(t *testing.T) {
 		// verify the proof
 		proofType, isCorrect, err := prover.VerifyProofByDomain(proof)
 		// should be Proof of Presence
-		assert.Equal(t, proofType, mapCommon.PoP, "inclusion proof type error")
+		if proofType != mapCommon.PoP {
+			panic("inclusion proof type error")
+		}
 		// verification should be correct
-		assert.Equal(t, isCorrect, true, "inclusion proof Verification error")
-		require.NoError(t, err, "VerifyProofByDomain error")
+		if !isCorrect {
+			panic("inclusion proof Verification error")
+		}
+		if err != nil {
+			panic(err)
+		}
 	}
 	end = time.Now()
 	fmt.Println("time to verify 10000 proof: ", end.Sub(start))
@@ -84,15 +106,25 @@ func TestUpdaterAndResponder(t *testing.T) {
 	// test for non-inclusion
 	domains = []string{"no member", "hi", "this is a test"}
 	proofs, err = mapResponder.GetMapResponse(domains)
-	require.NoError(t, err, "GetProofs error")
+	if err != nil {
+		panic(err)
+	}
 
 	for _, proof := range proofs {
 		proofType, isCorrect, err := prover.VerifyProofByDomain(proof)
 		// shoud be Proof of Absence
-		assert.Equal(t, proofType, mapCommon.PoA, "non-inclusion proof type error")
-		assert.Equal(t, isCorrect, true, "non-inclusion proof Verification error")
-		require.NoError(t, err, "VerifyProofByDomain error")
+		if proofType != mapCommon.PoA {
+			panic("non-inclusion proof type error")
+		}
+		// verification should be correct
+		if !isCorrect {
+			panic("non-inclusion proof Verification error")
+		}
+		if err != nil {
+			panic(err)
+		}
 	}
+	fmt.Println("map server succeed!")
 }
 
 // get random domain entries

@@ -22,7 +22,21 @@ reset_tables:
 build_integration_test:
 	@go build -o ./bin/policylog_interaction  ./tests/intergration_tests/policylog_interaction
 	@go build -o ./bin/domainowner_pca_policlog_interaction  ./tests/intergration_tests/domainowner_pca_policlog_interaction
-	@go build -o ./bin/performance_test  ./tests/intergration_tests/performance_test
+	@go build -o ./bin/mapserver  ./tests/intergration_tests/mapserver
+	@go build -o ./bin/smt  ./tests/intergration_tests/smt
+
+drop_cacheTable:
+	@mysql -u root -e "DROP TABLE map.deleteTest;"
 
 run_integration_test:
 	@./scripts/integration_tests.sh
+
+build_benchmark:
+	@go build -o ./bin/log_benchmark  ./tests/benchmark/logserver_benchmark
+	@go build -o ./bin/smt_benchmark  ./tests/benchmark/smt_benchmark
+
+run_log_benchmark:
+	@./scripts/log_benchmark.sh
+
+run_smt_benchmark:
+	@./bin/smt_benchmark
