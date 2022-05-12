@@ -26,38 +26,3 @@ build_integration_test:
 
 run_integration_test:
 	@./scripts/integration_tests.sh
-
-
-## TODO(yongzhe): write these in a seperate shell file
-build_grpc_benchmark_exec:
-	@go build -o ./bin/grpcclient ./pkg/grpc/grpcclient
-	@go build -o ./bin/grpcserver ./pkg/grpc/grpcserver
-
-benchmark_grpc: grpc_server grpc_client
-
-
-grpc_client:
-	sleep 2 \
-	./bin/grpcclient  & \
-	./bin/grpcclient  & \
-	./bin/grpcclient  & \
-	./bin/grpcclient  & \
-	./bin/grpcclient  & \
-	./bin/grpcclient  & \
-	./bin/grpcclient  & \
-	./bin/grpcclient  & \
-	./bin/grpcclient  & \
-	./bin/grpcclient  & \
-	./bin/grpcclient  & \
-	./bin/grpcclient  & \
-	./bin/grpcclient  & \
-	./bin/grpcclient  & \
-	./bin/grpcclient  & \
-	./bin/grpcclient  & \
-	./bin/grpcclient  & \
-	./bin/grpcclient  & \
-	./bin/grpcclient  & \
-	./bin/grpcclient  & \
-	wait; \
-    echo "DONE" \
-
