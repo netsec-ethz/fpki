@@ -140,7 +140,7 @@ func (c *LogClient) GetConsistencyProof(ctx context.Context, trusted *types.LogR
 
 // QueueRPCs: queue rpcs and generate spts
 // steps:
-// 1. read rpc from "fileExchange" folder; TODO: replace the folder by http later
+// 1. read rpc from "fileExchange" folder; TODO(yongzhe): replace the folder by http later
 // 2. add the rpc to the log
 // 3. update the tree size
 // 4. fetch proof for successfully added leaves
@@ -266,7 +266,7 @@ func (c *LogClient) storeProofMapToSPT(proofMap map[string]*PoIAndSTH) error {
 		}
 
 		// attach PoI and STH to SPT
-		// TODO: fill in the other fields
+		// TODO(yongzhe): fill in the other fields
 		spt := &common.SPT{
 			PoI: proofBytes,
 			STH: sth,

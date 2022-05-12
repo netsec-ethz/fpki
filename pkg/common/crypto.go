@@ -10,8 +10,8 @@ import (
 	"time"
 )
 
-// currently only SHA256 and RSA is supported
 // SignatureAlgorithm: Enum of supported signature algorithm; Currently only SHA256
+// currently only SHA256 and RSA is supported
 type SignatureAlgorithm int
 
 const (

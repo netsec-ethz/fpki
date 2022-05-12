@@ -145,7 +145,7 @@ func (pca *PCA) ReceiveSPTFromPolicyLog() error {
 			pca.validRPCsByDomains[k] = v
 		} else {
 			log.Printf("fail to verify")
-			// TODO: change this to soft-fail, or add it the spicious SPT; for testing, we use hard-fail here
+			// TODO(yongzhe): change this to soft-fail, or add it the spicious SPT; for testing, we use hard-fail here
 			return fmt.Errorf("Fail to verify one SPT")
 		}
 	}
