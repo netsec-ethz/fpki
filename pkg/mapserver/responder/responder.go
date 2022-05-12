@@ -22,8 +22,8 @@ type MapResponder struct {
 //   --db: db connection to the tree
 //   --root: for a new tree, it can be nil. To load a non-empty tree, root should be the latest root of the tree.
 //   --cacheHeight: Maximum height of the cached tree (in memory). 256 means no cache, 0 means cache the whole tree. 0-256
-func NewMapResponder(db *sql.DB, root []byte, cacheHeight int) (*MapResponder, error) {
-	smt, err := trie.NewTrie(root, trie.Hasher, *db, "cacheStore")
+func NewMapResponder(db *sql.DB, root []byte, cacheHeight int, initTable bool) (*MapResponder, error) {
+	smt, err := trie.NewTrie(root, trie.Hasher, db, "cacheStore", initTable)
 	smt.CacheHeightLimit = cacheHeight
 	if err != nil {
 		return nil, fmt.Errorf("NewMapResponder | NewTrie | %w", err)

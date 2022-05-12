@@ -6,7 +6,6 @@
 package trie
 
 import (
-	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"strings"
@@ -47,7 +46,7 @@ type CacheDB struct {
 	lock sync.RWMutex
 
 	// dbConn is the conn to mysql db
-	Store *sql.DB
+	Store SQLDB
 
 	removedNode map[Hash][]byte
 
@@ -60,12 +59,14 @@ type CacheDB struct {
 }
 
 // NewCacheDB: return a cached db
-func NewCacheDB(store *sql.DB, tableName string) (*CacheDB, error) {
+func NewCacheDB(store SQLDB, tableName string, iniTable bool) (*CacheDB, error) {
 	// check if the table exists
 	// if not, create a new one
-	_, err := initValueMap(store, tableName)
-	if err != nil {
-		return nil, fmt.Errorf("NewCacheDB | initValueMap | %w", err)
+	if iniTable {
+		_, err := initValueMap(store, tableName)
+		if err != nil {
+			return nil, fmt.Errorf("NewCacheDB | initValueMap | %w", err)
+		}
 	}
 
 	// channel for the client input
@@ -103,7 +104,7 @@ func workerDistributor(clientInpuht chan ReadRequest, workerChan chan ReadReques
 }
 
 // queries the data, and return the result to the client
-func workerThread(workerChan chan ReadRequest, db *sql.DB, tableName string) {
+func workerThread(workerChan chan ReadRequest, db SQLDB, tableName string) {
 	for {
 		select {
 		case newRequest := <-workerChan:
@@ -134,7 +135,7 @@ func workerThread(workerChan chan ReadRequest, db *sql.DB, tableName string) {
 }
 
 // Create or load a table (every table represnets one tree)
-func initValueMap(db *sql.DB, tableName string) (bool, error) {
+func initValueMap(db SQLDB, tableName string) (bool, error) {
 	// query to check if table exists
 	// defeult db schema = 'map'
 	queryTableStr := "SELECT COUNT(*) FROM information_schema.tables  WHERE table_schema = 'map'  AND table_name = '" + tableName + "';"
@@ -250,4 +251,8 @@ func serializeBatch(batch [][]byte) []byte {
 		}
 	}
 	return serialized
+}
+
+func (db *CacheDB) GetLiveCacheSize() int {
+	return len(db.liveCache)
 }

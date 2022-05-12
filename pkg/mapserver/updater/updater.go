@@ -15,8 +15,8 @@ type MapUpdater struct {
 }
 
 // NewMapUpdater: return a new map updator. Input paras is similiar to NewMapResponder
-func NewMapUpdater(db *sql.DB, root []byte, cacheHeight int) (*MapUpdater, error) {
-	smt, err := trie.NewTrie(root, trie.Hasher, *db, "cacheStore")
+func NewMapUpdater(db *sql.DB, root []byte, cacheHeight int, initTable bool) (*MapUpdater, error) {
+	smt, err := trie.NewTrie(root, trie.Hasher, db, "cacheStore", initTable)
 	if err != nil {
 		return nil, fmt.Errorf("NewMapServer | NewTrie | %w", err)
 	}
