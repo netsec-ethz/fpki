@@ -1,6 +1,6 @@
 .PHONY: all clean test policy_log
 
-all: policy_log build_integration_test
+all: build_policy_log build_integration_test build_benchmark setup_db
 
 clean:
 	@rm -f bin/*
@@ -8,12 +8,17 @@ clean:
 test:
 	@go test ./...
 
-policy_log:
+build_policy_log:
 	@go build -o bin/logserver_exec cmd/logserver/logserver_exec.go
 	@go build -o bin/logsigner_exec cmd/logsigner/logsigner_exec.go
 
-create_database:
+setup_db: create_smt_database create_log_database
+
+create_smt_database:
 	@mysql -u root -e "create database map;"
+
+create_log_database:
+	@./scripts/reset_db/resetdb.sh
 
 reset_tables:
 	@mysql -u root -e "DROP TABLE map.node;"

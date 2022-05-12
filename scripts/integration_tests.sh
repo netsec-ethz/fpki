@@ -4,6 +4,7 @@
 # Start log signer
 ./bin/logsigner_exec >/dev/null& 
 
+sleep 2
 # run tests
 echo "#################    Running domainowner_pca_policlog_interaction     ###################"
 ./bin/domainowner_pca_policlog_interaction 
