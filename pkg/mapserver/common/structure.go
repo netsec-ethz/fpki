@@ -1,8 +1,7 @@
 package common
 
 import (
-	"bytes"
-	"encoding/gob"
+	"encoding/json"
 	"fmt"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
@@ -25,6 +24,7 @@ type CAEntry struct {
 	DomainCerts      [][]byte
 }
 
+/*
 // SerialiseDomainEnrty: DomainEntry -> bytes. Use gob
 func SerialiseDomainEnrty(domainEntry *DomainEntry) ([]byte, error) {
 	var buf bytes.Buffer
@@ -43,6 +43,27 @@ func DesrialiseDomainEnrty(input []byte) (*DomainEntry, error) {
 	result := &DomainEntry{}
 	if err := dec.Decode(result); err != nil {
 		return nil, fmt.Errorf("DesrialiseDomainEnrty | Decode | %w", err)
+	}
+	return result, nil
+}
+*/
+
+// SerialiseDomainEnrty: DomainEntry -> bytes. Use json
+func SerialiseDomainEnrty(domainEntry *DomainEntry) ([]byte, error) {
+	result, err := json.Marshal(domainEntry)
+	if err != nil {
+		return nil, fmt.Errorf("SerialiseDomainEnrty | Marshal | %w", err)
+	}
+	return result, nil
+}
+
+// DesrialiseDomainEnrty: bytes -> DomainEntry. Use json
+func DesrialiseDomainEnrty(input []byte) (*DomainEntry, error) {
+	result := &DomainEntry{}
+
+	err := json.Unmarshal(input, result)
+	if err != nil {
+		return nil, fmt.Errorf("DesrialiseDomainEnrty | Unmarshal | %w", err)
 	}
 	return result, nil
 }
