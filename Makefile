@@ -1,6 +1,6 @@
 .PHONY: all clean test policy_log
 
-all: build_policy_log build_integration_test build_benchmark setup_db
+all: build_policy_log build_integration_test build_benchmark
 
 clean:
 	@rm -f bin/*
@@ -12,7 +12,7 @@ build_policy_log:
 	@go build -o bin/logserver_exec cmd/logserver/logserver_exec.go
 	@go build -o bin/logsigner_exec cmd/logsigner/logsigner_exec.go
 
-setup_db: start_db create_smt_database create_log_database
+setup_db: start_db create_smt_database create_log_database create_domainEntriesTable
 
 start_db:
 	@mysql.server start
@@ -20,18 +20,20 @@ start_db:
 create_smt_database:
 	@mysql -u root -e "create database map;"
 
+create_domainEntriesTable:
+	@mysql -u root -e "CREATE TABLE \`map\`.\`domainEntries\` (\`key\` VARCHAR(64) NOT NULL,\`value\` LONGTEXT NOT NULL, PRIMARY KEY (\`key\`));"
+
 create_log_database:
 	@./scripts/reset_db/resetdb.sh
 
-reset_tables:
-	@mysql -u root -e "DROP TABLE map.node;"
-	@mysql -u root -e "DROP TABLE map.value;"
+
 
 build_integration_test:
 	@go build -o ./bin/policylog_interaction  ./tests/intergration_tests/policylog_interaction
 	@go build -o ./bin/domainowner_pca_policlog_interaction  ./tests/intergration_tests/domainowner_pca_policlog_interaction
 	@go build -o ./bin/mapserver  ./tests/intergration_tests/mapserver
 	@go build -o ./bin/smt  ./tests/intergration_tests/smt
+	@go build -o ./bin/log_picker  ./tests/intergration_tests/log_picker
 
 drop_cacheTable:
 	@mysql -u root -e "DROP TABLE map.deleteTest;"

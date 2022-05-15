@@ -14,6 +14,8 @@ echo "#################         Running mapserver   test                 #######
 ./bin/mapserver
 echo "#################         Running smt test                    ###################"
 ./bin/smt
+echo "#################         Running log_picker test                    ###################"
+./bin/log_picker
 
 # stop log
 pkill -f logserver_exec
