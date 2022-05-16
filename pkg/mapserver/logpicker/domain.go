@@ -64,16 +64,17 @@ func findLongestMatch(domainNames [][]string) string {
 main_loop:
 	// loop to compare the domain name one level by one level
 	for i := 0; i < shortestLength; i++ {
-		newName := domainNames[0][shortestLength-1-i]
+		newName := domainNames[0][len(domainNames[0])-1-i]
 		for _, name := range domainNames {
 			// if one level of domain name is not equal among all the input
-			if name[shortestLength-1-i] != newName {
+			if name[len(name)-1-i] != newName {
 				break main_loop
 			}
-			newName = name[shortestLength-1-i]
+			newName = name[len(name)-1-i]
 		}
 		result = newName + "." + result
 	}
+
 	return result
 }
 
