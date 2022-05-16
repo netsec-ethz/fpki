@@ -80,12 +80,22 @@ func main() {
 		// t0, err = db.DeletemeSelectLeavesStoredFunc(1000) // 459.793285ms
 		// t0, err = db.DeletemeSelectLeavesStoredFunc(100 * 1000) // 36.995034654s
 
+		// values at ETH's computer
 		// t0, err = db.DeletemeSelectLeavesStoredFunc2(1000, 1, 1) // 373.195752ms
 		// t0, err = db.DeletemeSelectLeavesStoredFunc2(1000, 1, 8) // 95.495026ms
 		// t0, err = db.DeletemeSelectLeavesStoredFunc2(100*1000, 1, 8) // 8.746812923s
 		// t0, err = db.DeletemeSelectLeavesStoredFunc2(100*1000, 1, 16) // 8.096993868s
 		// t0, err = db.DeletemeSelectLeavesStoredFunc2(100*1000, 8, 1) // 8.737253918s
-		t0, err = db.DeletemeSelectLeavesStoredFunc2(100*1000+32, 8, 8) // 7.914086447s
+		// t0, err = db.DeletemeSelectLeavesStoredFunc2(100*1000+32, 8, 8) // 7.914086447s
+
+		// values at home computer:
+		// t0, err = db.DeletemeSelectLeavesStoredFunc2(1000, 1, 1) // 244.728829ms
+		// t0, err = db.DeletemeSelectLeavesStoredFunc2(1000, 1, 8) // 55.34648ms
+		// t0, err = db.DeletemeSelectLeavesStoredFunc2(100*1000, 1, 8) // 4.77145546s
+		// t0, err = db.DeletemeSelectLeavesStoredFunc2(100*1000, 1, 16) // 3.158051082s
+		// t0, err = db.DeletemeSelectLeavesStoredFunc2(100*1000, 8, 1) // 4.794854328s
+		// t0, err = db.DeletemeSelectLeavesStoredFunc2(100*1000+32, 8, 8) // 2.429056914s
+		t0, err = db.DeletemeSelectLeavesStoredFunc2(1000*1000+192, 16, 16) // 21.987717762s
 	}
 
 	check(err)
