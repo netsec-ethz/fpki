@@ -372,7 +372,7 @@ func DeletemeSelectLeavesStoredFunc2(leafCount, connectionCount, routinesPerConn
 	// to simplify code, check that we run all queries: count must be divisible by routine count
 	if leafCount%totalRoutines != 0 {
 		panic(fmt.Sprintf("logic error: count not divisible by number of total routines %d "+
-			"round count to %d", totalRoutines, leafCount+leafCount%totalRoutines))
+			"round count to %d", totalRoutines, totalRoutines*(1+leafCount/totalRoutines)))
 	}
 	conns := make([]*mysqlDB, connectionCount)
 	for c := 0; c < connectionCount; c++ {
