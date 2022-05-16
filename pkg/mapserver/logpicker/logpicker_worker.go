@@ -175,7 +175,7 @@ func workerThread(ctURL string, start, end int64, resultChan chan UpdateCertResu
 			if queryResult.Err == nil {
 				break
 				// resource not avaliable; other thread is updating (part of) the requested resource
-			} else if queryResult.Err.Error() == "resource locked!" {
+			} else if queryResult.Err == ErrorResourceLocked {
 				fmt.Println("resource locked; try later ", retryNum, " id ", start, " round ", i)
 				retryNum++
 				// sleep random time
