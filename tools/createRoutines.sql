@@ -104,6 +104,7 @@
 
 -- -- ----------------------------------------------------------------------------------------------------
 
+
 USE fpki;
 DROP FUNCTION IF EXISTS node_path;
 
@@ -119,9 +120,9 @@ BEGIN
         DECLARE parent VARBINARY(33);
 
 WHILE nodehash IS NOT NULL DO
-	SELECT idhash,parentnode INTO nodehash,parent FROM nodes WHERE idhash = nodehash;
+	SELECT idhash,parentnode INTO temp,parent FROM nodes WHERE idhash = nodehash;
 
-    SET hashes = CONCAT(hashes,nodehash);
+    SET hashes = CONCAT(hashes,temp);
     SET nodehash = parent;
 END WHILE;
 	-- SELECT HEX(hashes);
