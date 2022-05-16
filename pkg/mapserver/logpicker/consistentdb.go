@@ -9,6 +9,7 @@ import (
 )
 
 var tableName = "domainEntries"
+var updateIndexTableName = "updatedDomains"
 
 var ErrorResourceLocked = errors.New("resource locked")
 

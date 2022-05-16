@@ -30,7 +30,7 @@ import (
 // Output: Effectived domain: example.com, helloworld.com
 
 // extract the effected domain, given a list of domain name (common name + SANs)
-func extractEffectedDomains(domainNames []string) []string {
+func ExtractEffectedDomains(domainNames []string) []string {
 	result := make(map[string][][]string)
 	for _, domainName := range domainNames {
 		// split the domain name into: E2LD + child domains

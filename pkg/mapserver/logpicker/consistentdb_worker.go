@@ -27,6 +27,7 @@ func newWorker(inputChan chan UpdateRequest, processorPointer *ConsistentDB) (*d
 
 // start working
 func (worker *dbWorker) work() {
+main_loop:
 	for {
 		// get a new request
 		newRequest := <-worker.inputChan
@@ -52,8 +53,9 @@ func (worker *dbWorker) work() {
 			// query the data
 			mysqlResults, err := worker.db.Query(querySB.String())
 			if err != nil {
-				newRequest.ReturnChan <- UpdateResult{Err: fmt.Errorf("db.Query | %w", err)}
-				continue
+				newRequest.ReturnChan <- UpdateResult{Err: fmt.Errorf("db.Query SELECT | %w", err)}
+				worker.processorPointer.unlockDomain(newRequest.Domains)
+				continue main_loop
 			}
 			defer mysqlResults.Close()
 
@@ -68,21 +70,27 @@ func (worker *dbWorker) work() {
 			for mysqlResults.Next() {
 				err := mysqlResults.Scan(&domain, &value)
 				if err != nil {
+					fmt.Println("error ", err)
 					newRequest.ReturnChan <- UpdateResult{Err: fmt.Errorf("Scan | %w", err)}
-					continue
+					worker.processorPointer.unlockDomain(newRequest.Domains)
+					continue main_loop
 				}
 				domainBytes, err := hex.DecodeString(domain)
 				if err != nil {
+					fmt.Println("error ", err)
 					newRequest.ReturnChan <- UpdateResult{Err: fmt.Errorf("DecodeString domain | %w", err)}
-					continue
+					worker.processorPointer.unlockDomain(newRequest.Domains)
+					continue main_loop
 				}
 
 				valueBytes := []byte(value)
 
 				// size of the hash must be 32 bytes
 				if len(domainBytes) != 32 {
+					fmt.Println("error bytes")
 					newRequest.ReturnChan <- UpdateResult{Err: fmt.Errorf("size of the hash is not 32 bytes.")}
-					continue
+					worker.processorPointer.unlockDomain(newRequest.Domains)
+					continue main_loop
 				}
 
 				var domainBytesCopy [32]byte
@@ -95,6 +103,14 @@ func (worker *dbWorker) work() {
 
 		// log picker thread wants to store data to db
 		case newRequest.RequestType == UpdateDomain:
+			// if no domain is updated
+			if len(newRequest.UpdatedDomainContent) == 0 {
+				worker.processorPointer.unlockDomain(newRequest.Domains)
+				newRequest.ReturnChan <- UpdateResult{}
+				continue main_loop
+			}
+
+			// insert updated domains' entries
 			var insertSB strings.Builder
 
 			queryStr := "REPLACE into `map`.`" + tableName + "` (`key`, `value`) values "
@@ -113,13 +129,39 @@ func (worker *dbWorker) work() {
 			insertSB.WriteString(";")
 
 			_, err := worker.db.Exec(insertSB.String())
-			// unlock the cooresponding domains
-			worker.processorPointer.unlockDomain(newRequest.Domains)
 			if err != nil {
-				newRequest.ReturnChan <- UpdateResult{Err: fmt.Errorf(" db.Exec | %w", err)}
-			} else {
-				newRequest.ReturnChan <- UpdateResult{}
+				newRequest.ReturnChan <- UpdateResult{Err: fmt.Errorf(" db.Exec REPLACE | %w", err)}
+				worker.processorPointer.unlockDomain(newRequest.Domains)
+				continue main_loop
 			}
+
+			// insert index of updated
+			var updateSB strings.Builder
+
+			queryStr = "INSERT IGNORE into `map`.`" + updateIndexTableName + "` (`domainHash`) VALUES "
+			updateSB.WriteString(queryStr)
+
+			isFirst = true
+			for _, v := range newRequest.UpdatedDomainName {
+				if isFirst {
+					updateSB.WriteString("('" + v + "')")
+					isFirst = false
+				} else {
+					updateSB.WriteString(",('" + v + "')")
+				}
+			}
+			updateSB.WriteString(";")
+
+			_, err = worker.db.Exec(updateSB.String())
+			// unlock the cooresponding domains
+			if err != nil {
+				newRequest.ReturnChan <- UpdateResult{Err: fmt.Errorf(" db.Exec INSERT IGNORE | %w", err)}
+				worker.processorPointer.unlockDomain(newRequest.Domains)
+				continue main_loop
+			}
+
+			newRequest.ReturnChan <- UpdateResult{}
+			worker.processorPointer.unlockDomain(newRequest.Domains)
 		}
 	}
 
