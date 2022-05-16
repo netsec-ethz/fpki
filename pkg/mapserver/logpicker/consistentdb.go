@@ -1,6 +1,7 @@
 package logpicker
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 
@@ -8,6 +9,8 @@ import (
 )
 
 var tableName = "domainEntries"
+
+var ErrorResourceLocked = errors.New("resource locked")
 
 // RequestType: type of the log picker's request
 type RequestType int
@@ -78,7 +81,7 @@ func (processor *ConsistentDB) StartWork() {
 			case ok:
 				processor.workerChan <- newRequest
 			case !ok:
-				newRequest.ReturnChan <- UpdateResult{Err: fmt.Errorf("resource locked!")}
+				newRequest.ReturnChan <- UpdateResult{Err: ErrorResourceLocked}
 			}
 		// if one log picker thread completes the updating in memory, and wants to store the changes
 		case newRequest.RequestType == UpdateDomain:
