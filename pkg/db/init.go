@@ -12,7 +12,41 @@ import (
 
 var initVars sync.Once
 
-func Connect() (DB, error) {
+type Configuration struct {
+	Dsn         string
+	Values      map[string]string
+	CheckSchema bool // indicates if opening the connection checks the health of the schema
+}
+
+func Connect(config *Configuration) (Conn, error) {
+	dsn, err := url.Parse(config.Dsn)
+	if err != nil {
+		return nil, fmt.Errorf("bad connection string: %w", err)
+	}
+	uri := dsn.Query()
+	for k, v := range config.Values {
+		uri.Add(k, v)
+	}
+	dsn.RawQuery = uri.Encode()
+	db, err := sql.Open("mysql", dsn.String())
+	if err != nil {
+		return nil, fmt.Errorf("cannot open DB: %w", err)
+	}
+	db.SetMaxOpenConns(512) // TODO(juagargi) set higher for production
+	db.SetMaxIdleConns(512)
+	db.SetConnMaxLifetime(2 * time.Second)
+	db.SetConnMaxIdleTime(1 * time.Second) // lower or equal than above
+	// check schema
+	if config.CheckSchema {
+		if err := checkSchema(db); err != nil {
+			return nil, fmt.Errorf("checking schema on connection: %w", err)
+		}
+	}
+
+	return &mysqlDB{db: db}, nil
+}
+
+func Connect_old() (Conn, error) {
 	dsn, err := url.Parse("root@tcp(localhost)/fpki")
 	if err != nil {
 		panic(err) // logic error

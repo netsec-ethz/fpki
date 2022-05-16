@@ -7,13 +7,13 @@ import (
 	"math/rand"
 )
 
-func DeletemeDropAllNodes(db DB) error {
+func DeletemeDropAllNodes(db Conn) error {
 	c := db.(*mysqlDB)
 	_, err := c.db.Exec("DELETE FROM nodes")
 	return err
 }
 
-func DeletemeCreateNodes(db DB, count int) error {
+func DeletemeCreateNodes(db Conn, count int) error {
 	c := db.(*mysqlDB)
 	_, err := c.db.Exec("ALTER TABLE `nodes` DISABLE KEYS")
 	if err != nil {
@@ -39,7 +39,7 @@ func DeletemeCreateNodes(db DB, count int) error {
 	return nil
 }
 
-func DeletemeCreateNodesBulk(db DB, count int) error {
+func DeletemeCreateNodesBulk(db Conn, count int) error {
 	c := db.(*mysqlDB)
 	// _, err := c.db.Exec("ALTER TABLE `nodes` DROP INDEX PRIMARY")
 	// if err != nil {
@@ -86,7 +86,7 @@ func DeletemeCreateNodesBulk(db DB, count int) error {
 	return nil
 }
 
-func DeletemeCreateNodesBulk2(db DB, count int) error {
+func DeletemeCreateNodesBulk2(db Conn, count int) error {
 	var err error
 	c := db.(*mysqlDB)
 	_, err = c.db.Exec("LOCK TABLES nodes WRITE;")
@@ -155,7 +155,7 @@ var initialSequentialHash = *((&big.Int{}).Exp(big.NewInt(2), big.NewInt(200), n
 
 // - inserts BLOBS of values
 // - inserts hashes of 32 bytes as indices
-func DeletemeCreateNodesBulk3(db DB, count int) error {
+func DeletemeCreateNodesBulk3(db Conn, count int) error {
 	var err error
 	c := db.(*mysqlDB)
 	_, err = c.db.Exec("LOCK TABLES nodes WRITE;")
@@ -234,7 +234,7 @@ func DeletemeCreateNodesBulk3(db DB, count int) error {
 
 // - inserts BLOBS of values
 // - inserts hashes of 32 bytes as indices, random value
-func DeletemeCreateNodesBulk4(db DB, count int) error {
+func DeletemeCreateNodesBulk4(db Conn, count int) error {
 	var err error
 	c := db.(*mysqlDB)
 	_, err = c.db.Exec("LOCK TABLES nodes WRITE;")
@@ -305,7 +305,7 @@ func DeletemeCreateNodesBulk4(db DB, count int) error {
 }
 
 // DeletemeCreateNodes2 where cound is the number of leaves
-func DeletemeCreateNodes2(db DB, count int) error {
+func DeletemeCreateNodes2(db Conn, count int) error {
 	var err error
 	c := db.(*mysqlDB)
 

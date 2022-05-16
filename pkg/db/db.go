@@ -2,7 +2,7 @@ package db
 
 import "database/sql"
 
-type DB interface {
+type Conn interface {
 	Close() error
 }
 

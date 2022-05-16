@@ -14,7 +14,48 @@ func main() {
 	queryFlag := flag.Bool("query", false, "perform a query")
 	flag.Parse()
 
-	c, err := db.Connect()
+	config := db.Configuration{
+		Dsn: "root@tcp(localhost)/fpki",
+		Values: map[string]string{
+			"interpolateParams": "true", // 1 round trip per query
+			"collation":         "binary",
+		},
+	}
+	createConn := func() (db.Conn, error) {
+		return db.Connect(&config)
+	}
+
+	var err error
+	t0 := time.Now()
+
+	if *truncateFlag {
+		c, err := createConn()
+		check(err)
+		err = db.DeletemeDropAllNodes(c)
+		check(err)
+		t0 = time.Now()
+	}
+	if *insertFlag {
+		c, err := createConn()
+		check(err)
+		err = db.DeletemeCreateNodes2(c, 100*1000)
+		check(err)
+	}
+	if *queryFlag {
+		t0, err = db.DeletemeSelectLeavesStoredFunc2(createConn, 100*1000+32, 8, 8)
+		check(err)
+	}
+	fmt.Printf("time: %s\n", time.Since(t0))
+	fmt.Println("ready")
+}
+
+func main2() {
+	truncateFlag := flag.Bool("truncate", false, "insert values")
+	insertFlag := flag.Bool("insert", false, "insert values")
+	queryFlag := flag.Bool("query", false, "perform a query")
+	flag.Parse()
+
+	c, err := db.Connect_old()
 	check(err)
 	defer c.Close()
 
@@ -95,15 +136,12 @@ func main() {
 		// t0, err = db.DeletemeSelectLeavesStoredFunc2(100*1000, 1, 16) // 3.158051082s
 		// t0, err = db.DeletemeSelectLeavesStoredFunc2(100*1000, 8, 1) // 4.794854328s
 		// t0, err = db.DeletemeSelectLeavesStoredFunc2(100*1000+32, 8, 8) // 2.429056914s
-		t0, err = db.DeletemeSelectLeavesStoredFunc2(1000*1000+192, 16, 16) // 21.987717762s
+		// t0, err = db.DeletemeSelectLeavesStoredFunc2(1000*1000+192, 16, 16) // 21.987717762s
 	}
 
 	check(err)
 	fmt.Printf("time: %s\n", time.Since(t0))
 	fmt.Println("ready")
-
-	// deleteme:
-
 }
 
 func check(err error) {

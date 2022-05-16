@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func DeletemeSelectNodes(db DB, count int) error {
+func DeletemeSelectNodes(db Conn, count int) error {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 	c := db.(*mysqlDB)
@@ -44,7 +44,7 @@ func DeletemeSelectNodes(db DB, count int) error {
 }
 
 // with prepared stmts
-func DeletemeSelectNodes2(db DB, count int) error {
+func DeletemeSelectNodes2(db Conn, count int) error {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 	c := db.(*mysqlDB)
@@ -81,7 +81,7 @@ func DeletemeSelectNodes2(db DB, count int) error {
 }
 
 // DeletemeSelectNodes3 has multiple go routines
-func DeletemeSelectNodes3(db DB, count int, goroutinesCount int) error {
+func DeletemeSelectNodes3(db Conn, count int, goroutinesCount int) error {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 	c := db.(*mysqlDB)
@@ -132,7 +132,7 @@ func DeletemeSelectNodes3(db DB, count int, goroutinesCount int) error {
 }
 
 // DeletemeSelectNodesRandom4 has multiple go routines and reads random IDs
-func DeletemeSelectNodesRandom4(db DB, count int, goroutinesCount int) error {
+func DeletemeSelectNodesRandom4(db Conn, count int, goroutinesCount int) error {
 	var err error
 	c := db.(*mysqlDB)
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
@@ -184,7 +184,7 @@ func DeletemeSelectNodesRandom5(count, connectionCount, routinesPerConn int) (ti
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	DB, err := Connect()
+	DB, err := Connect_old()
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -206,7 +206,7 @@ func DeletemeSelectNodesRandom5(count, connectionCount, routinesPerConn int) (ti
 
 	conns := make([]*mysqlDB, connectionCount)
 	for c := 0; c < connectionCount; c++ {
-		DB, err := Connect()
+		DB, err := Connect_old()
 		if err != nil {
 			return time.Time{}, err
 		}
@@ -256,7 +256,7 @@ func DeletemeSelectLeaves(leafCount int) (time.Time, error) {
 	defer cancelF()
 
 	t0 := time.Now()
-	DB, err := Connect()
+	DB, err := Connect_old()
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -288,7 +288,7 @@ func DeletemeSelectLeavesStoredProc(leafCount int) (time.Time, error) {
 	defer cancelF()
 
 	t0 := time.Now()
-	DB, err := Connect()
+	DB, err := Connect_old()
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -324,7 +324,7 @@ func DeletemeSelectLeavesStoredFunc(leafCount int) (time.Time, error) {
 	defer cancelF()
 
 	t0 := time.Now()
-	DB, err := Connect()
+	DB, err := Connect_old()
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -352,13 +352,14 @@ func DeletemeSelectLeavesStoredFunc(leafCount int) (time.Time, error) {
 	return t0, nil
 }
 
-func DeletemeSelectLeavesStoredFunc2(leafCount, connectionCount, routinesPerConn int) (
-	time.Time, error) {
+func DeletemeSelectLeavesStoredFunc2(createConn func() (Conn, error),
+	leafCount, connectionCount, routinesPerConn int) (time.Time, error) {
 
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	DB, err := Connect()
+	// DB, err := Connect()
+	DB, err := createConn()
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -376,7 +377,7 @@ func DeletemeSelectLeavesStoredFunc2(leafCount, connectionCount, routinesPerConn
 	}
 	conns := make([]*mysqlDB, connectionCount)
 	for c := 0; c < connectionCount; c++ {
-		DB, err := Connect()
+		DB, err := Connect_old()
 		if err != nil {
 			return time.Time{}, err
 		}
