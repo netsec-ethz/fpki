@@ -72,7 +72,7 @@ func Connect_old() (Conn, error) {
 		}
 	})
 
-	return &mysqlDB{db: db}, nil
+	return NewMysqlDB(db)
 }
 
 func checkSchema(c *sql.DB) error {

@@ -304,7 +304,8 @@ func DeletemeCreateNodesBulk4(db Conn, count int) error {
 	return nil
 }
 
-// DeletemeCreateNodes2 where cound is the number of leaves
+// DeletemeCreateNodes2 where count is the number of leaves.
+// It adds a value (0xDEADBEEF) and a proof (idhash[1:]) to each node.
 func DeletemeCreateNodes2(db Conn, count int) error {
 	var err error
 	c := db.(*mysqlDB)
@@ -340,7 +341,7 @@ func DeletemeCreateNodes2(db Conn, count int) error {
 		}
 		panic("duplicates")
 	}
-	if err = insertIntoDB(c, root); err != nil {
+	if err = insertIntoDB2(c, root); err != nil {
 		return err
 	}
 	return nil

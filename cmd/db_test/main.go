@@ -21,7 +21,7 @@ func main() {
 			"collation":         "binary",
 		},
 	}
-	createConn := func() (db.Conn, error) {
+	createConn := func() (db.Conn, error) { // define a function that creates connections
 		return db.Connect(&config)
 	}
 
@@ -42,7 +42,7 @@ func main() {
 		check(err)
 	}
 	if *queryFlag {
-		t0, err = db.DeletemeSelectLeavesStoredFunc2(createConn, 100*1000+32, 8, 8)
+		t0, err = db.DeletemeSelectLeavesStoredFunc3(createConn, 100*1000+96, 8, 8) // 3.085243872s
 		check(err)
 	}
 	fmt.Printf("time: %s\n", time.Since(t0))

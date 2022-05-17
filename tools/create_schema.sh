@@ -30,6 +30,7 @@ CREATE TABLE nodes (
   leftnode    VARBINARY(33) DEFAULT NULL,
   rightnode   VARBINARY(33) DEFAULT NULL,
   value       blob,
+  proof       VARBINARY(32) DEFAULT NULL,
   UNIQUE KEY idhash (idhash)
 ) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
 EOF
@@ -67,10 +68,31 @@ EOF
 echo "$CMD" | mysql -u root
 
 
-# CMD=$(cat <<EOF
-# USE fpki;
-# SELECT * FROM nodes LIMIT 2;
-# EOF
-# )
+CMD=$(cat <<EOF
+USE fpki;
+DROP PROCEDURE IF EXISTS val_and_proof_path;
 
-# echo "$CMD" | mysql -u root
+DELIMITER $$
+CREATE PROCEDURE val_and_proof_path(
+	IN nodehash VARBINARY(33)
+)
+BEGIN
+        DECLARE temp VARBINARY(33);
+        DECLARE parent VARBINARY(33);
+        DECLARE nodevalue BLOB;
+		DECLARE proofs BLOB DEFAULT '';
+
+SELECT value INTO nodevalue FROM nodes WHERE idhash = nodehash;
+
+WHILE nodehash IS NOT NULL DO
+	SELECT proof,parentnode INTO temp,parent FROM nodes WHERE idhash = nodehash;
+
+    SET proofs = CONCAT(proofs,temp);
+    SET nodehash = parent;
+END WHILE;
+    SELECT nodevalue,proofs;
+END$$
+DELIMITER ;
+EOF
+)
+echo "$CMD" | mysql -u root

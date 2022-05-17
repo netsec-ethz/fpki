@@ -47,7 +47,7 @@ DELIMITER $$
 CREATE FUNCTION node_path(
 	nodehash VARBINARY(33)
 )
-RETURNS BLOB
+RETURNS BLOB  -- the proof path (except the root), squashed into one blob.
 DETERMINISTIC
 BEGIN
 		DECLARE hashes BLOB DEFAULT '';
@@ -65,31 +65,37 @@ END WHILE;
 END$$
 DELIMITER ;
 
+-- SELECT HEX(node_path(UNHEX("FF00008EE8B701BFCEE3D0F0ECC2D1FD183A363E01CC3347BC13446AE28CE4FD9D")));
+
 
 -- ---------------------------------------------
 -- ---------------------------------------------
 -- Create Stored Proc
 
+
 USE fpki;
-DROP PROCEDURE IF EXISTS get_leaf;
+DROP PROCEDURE IF EXISTS val_and_proof_path;
 
 DELIMITER $$
-CREATE PROCEDURE get_leaf(
+CREATE PROCEDURE val_and_proof_path(
 	IN nodehash VARBINARY(33)
 )
 BEGIN
-		DECLARE hashes BLOB DEFAULT '';
         DECLARE temp VARBINARY(33);
         DECLARE parent VARBINARY(33);
+        DECLARE nodevalue BLOB;
+		DECLARE proofs BLOB DEFAULT '';
+
+SELECT value INTO nodevalue FROM nodes WHERE idhash = nodehash;
 
 WHILE nodehash IS NOT NULL DO
-	SELECT idhash,parentnode INTO nodehash,parent FROM nodes WHERE idhash = nodehash;
+	SELECT proof,parentnode INTO temp,parent FROM nodes WHERE idhash = nodehash;
 
-    SET hashes = CONCAT(hashes,nodehash);
+    SET proofs = CONCAT(proofs,temp);
     SET nodehash = parent;
 END WHILE;
-	-- SELECT HEX(hashes);
-    SELECT hashes;
-    
+    SELECT nodevalue,proofs;
 END$$
 DELIMITER ;
+
+-- CALL val_and_proof_path(UNHEX("FF00008EE8B701BFCEE3D0F0ECC2D1FD183A363E01CC3347BC13446AE28CE4FD9D"))

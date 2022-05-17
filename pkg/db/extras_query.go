@@ -419,3 +419,71 @@ func DeletemeSelectLeavesStoredFunc2(createConn func() (Conn, error),
 	wg.Wait()
 	return t0, nil
 }
+
+// DeletemeSelectLeavesStoredFunc3 uses the official interface.
+func DeletemeSelectLeavesStoredFunc3(createConn func() (Conn, error), leafCount,
+	connectionCount, routinesPerConn int) (time.Time, error) {
+
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
+	// DB, err := Connect()
+	DB, err := createConn()
+	if err != nil {
+		return time.Time{}, err
+	}
+	c := DB.(*mysqlDB)
+	totalRoutines := connectionCount * routinesPerConn
+	randomIDs, err := retrieveLeafIDs(ctx, c, min(leafCount, 100))
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	// to simplify code, check that we run all queries: count must be divisible by routine count
+	if leafCount%totalRoutines != 0 {
+		panic(fmt.Sprintf("logic error: count not divisible by number of total routines %d "+
+			"round count to %d", totalRoutines, totalRoutines*(1+leafCount/totalRoutines)))
+	}
+	conns := make([]*mysqlDB, connectionCount)
+	for c := 0; c < connectionCount; c++ {
+		DB, err := Connect_old()
+		if err != nil {
+			return time.Time{}, err
+		}
+		conns[c] = DB.(*mysqlDB)
+	}
+
+	t0 := time.Now()
+	wg := sync.WaitGroup{}
+	wg.Add(totalRoutines)
+	for c := 0; c < connectionCount; c++ {
+		cc := c
+		go func() {
+			conn := conns[cc]
+
+			for r := 0; r < routinesPerConn; r++ {
+				go func() {
+					defer wg.Done()
+					for i := 0; i < leafCount/totalRoutines; i++ {
+						idhash := randomIDs[rand.Intn(len(randomIDs))]
+						value, path, err := conn.RetrieveNode(ctx, idhash)
+						if err != nil {
+							panic(err)
+						}
+						// fmt.Printf("id = %s VALUE = %s\nPATH = %s\n",
+						// 	hex.EncodeToString(idhash[:]),
+						// 	hex.EncodeToString(value),
+						// 	hex.EncodeToString(path))
+						_, _ = value, path
+						if i%10000 == 0 {
+							fmt.Printf("%d / %d\n", i, leafCount)
+						}
+					}
+				}()
+			}
+		}()
+	}
+
+	wg.Wait()
+	return t0, nil
+}
