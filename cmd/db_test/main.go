@@ -42,7 +42,9 @@ func main() {
 		check(err)
 	}
 	if *queryFlag {
-		t0, err = db.DeletemeSelectLeavesStoredFunc3(createConn, 100*1000+96, 8, 8) // 3.085243872s
+		// t0, err = db.DeletemeSelectLeavesStoredFunc3(createConn, 100*1000+96, 8, 8) // 3.085243872s
+		// t0, err = db.DeletemeSelectLeavesStoredFunc3(createConn, 100*1000+96, 16, 1) // 4.289929758s
+		t0, err = db.DeletemeSelectLeavesStoredFunc3(createConn, 100*1000+96, 1, 16) // 4.305125693s
 		check(err)
 	}
 	fmt.Printf("time: %s\n", time.Since(t0))
