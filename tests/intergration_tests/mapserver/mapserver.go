@@ -131,6 +131,7 @@ func main() {
 			for _, mapResponse := range mapResponses {
 				fmt.Println("---checking domain: ", mapResponse.Domain)
 				proofType, isCorrect, err := prover.VerifyProofByDomain(mapResponse)
+				fmt.Println("---proof type: ", proofType)
 				if err != nil {
 					panic(err)
 				}
