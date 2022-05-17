@@ -202,3 +202,88 @@ func RPCVerifyCASignature(caCert *x509.Certificate, rpc *RPC) error {
 	}
 	return nil
 }
+
+// ----------------------------------------------------------------------------------
+//                               functions on PC
+// ----------------------------------------------------------------------------------
+// DomainOwnerSignPC: Used by domain owner to sign the PC
+func DomainOwnerSignPC(domainOnwerPrivKey *rsa.PrivateKey, pc *PC) error {
+	pc.SPTs = []SPT{}
+	pc.RootCertSignature = []byte{}
+	pc.CASignature = []byte{}
+	pc.SerialNumber = 0
+	pc.CAName = ""
+	pc.TimeStamp = time.Time{}
+
+	signature, err := SignStrucRSASHA256(pc, domainOnwerPrivKey)
+	if err != nil {
+		return fmt.Errorf("DomainOwnerSignPC | SignStrucRSASHA256 | %w", err)
+	}
+
+	pc.RootCertSignature = signature
+	return nil
+}
+
+//CAVefiryPCAndSign: verify the signature and sign the signature
+func CAVefiryPCAndSign(domainOnwerCert *x509.Certificate, pc PC, caPrivKey *rsa.PrivateKey, caName string, serialNum int) (PC, error) {
+	if len(pc.RootCertSignature) == 0 {
+		return PC{}, fmt.Errorf("CAVefiryPCAndSign | no valid signature")
+	}
+
+	pcCopy := PC{
+		Policies: pc.Policies,
+		Subject:  pc.Subject,
+	}
+
+	serialisedStruc, err := JsonStrucToBytes(&pcCopy)
+	if err != nil {
+		return PC{}, fmt.Errorf("CAVefiryPCAndSign | JsonStrucToBytes | %w", err)
+	}
+
+	hashOutput := sha256.Sum256(serialisedStruc)
+	err = rsa.VerifyPKCS1v15(domainOnwerCert.PublicKey.(*rsa.PublicKey), crypto.SHA256, hashOutput[:], pc.RootCertSignature)
+	if err != nil {
+		return PC{}, fmt.Errorf("CAVefiryPCAndSign | VerifyPKCS1v15 | %w", err)
+	}
+
+	pcCopy.RootCertSignature = pc.RootCertSignature
+	pcCopy.TimeStamp = time.Now()
+	pcCopy.CAName = caName
+	pcCopy.SerialNumber = serialNum
+
+	caSignature, err := SignStrucRSASHA256(&pcCopy, caPrivKey)
+	if err != nil {
+		return PC{}, fmt.Errorf("CAVefiryPCAndSign | SignStrucRSASHA256 | %w", err)
+	}
+
+	pcCopy.CASignature = caSignature
+	return pcCopy, nil
+}
+
+// VerifyCASigInPC: verify CA's signature
+func VerifyCASigInPC(caCert *x509.Certificate, pc PC) error {
+	if len(pc.CASignature) == 0 {
+		return fmt.Errorf("VerifyCASigInPC | no valid CA signature")
+	}
+
+	pcCopy := PC{
+		Policies:          pc.Policies,
+		Subject:           pc.Subject,
+		RootCertSignature: pc.RootCertSignature,
+		TimeStamp:         pc.TimeStamp,
+		CAName:            pc.CAName,
+		SerialNumber:      pc.SerialNumber,
+	}
+
+	serialisedStruc, err := JsonStrucToBytes(&pcCopy)
+	if err != nil {
+		return fmt.Errorf("VerifyCASigInPC | JsonStrucToBytes | %w", err)
+	}
+
+	hashOutput := sha256.Sum256(serialisedStruc)
+	err = rsa.VerifyPKCS1v15(caCert.PublicKey.(*rsa.PublicKey), crypto.SHA256, hashOutput[:], pc.CASignature)
+	if err != nil {
+		return fmt.Errorf("VerifyCASigInPC | VerifyPKCS1v15 | %w", err)
+	}
+	return nil
+}

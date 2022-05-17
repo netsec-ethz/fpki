@@ -12,16 +12,19 @@ build_policy_log:
 	@go build -o bin/logserver_exec cmd/logserver/logserver_exec.go
 	@go build -o bin/logsigner_exec cmd/logsigner/logsigner_exec.go
 
-setup_db: start_db create_smt_database create_log_database create_domainEntriesTable
+setup_db: start_db create_smt_database create_log_database create_tables
 
 start_db:
 	@mysql.server start
 
 create_smt_database:
-	@mysql -u root -e "create database map;"
+	@mysql -u root -e "CREATE SCHEMA IF NOT EXISTS \`map\`;"
 
-create_domainEntriesTable:
-	@mysql -u root -e "CREATE TABLE \`map\`.\`domainEntries\` (\`key\` VARCHAR(64) NOT NULL,\`value\` LONGTEXT NOT NULL, PRIMARY KEY (\`key\`));"
+create_tables:
+	@mysql -u root -e "CREATE TABLE IF NOT EXISTS \`map\`.\`cacheStore\` (\`key\` VARCHAR(64) NOT NULL,\`value\` VARCHAR(2048) NOT NULL, PRIMARY KEY (\`key\`));"
+	@mysql -u root -e "CREATE TABLE IF NOT EXISTS \`map\`.\`deleteTest\` (\`key\` VARCHAR(64) NOT NULL,\`value\` VARCHAR(2048) NOT NULL, PRIMARY KEY (\`key\`));"
+	@mysql -u root -e "CREATE TABLE IF NOT EXISTS \`map\`.\`domainEntries\` (\`key\` VARCHAR(64) NOT NULL,\`value\` LONGTEXT NOT NULL, PRIMARY KEY (\`key\`));"
+	@mysql -u root -e "CREATE TABLE IF NOT EXISTS \`map\`.\`updatedDomains\` (\`domainHash\` VARCHAR(64) NOT NULL, PRIMARY KEY (\`domainHash\`));"
 
 create_log_database:
 	@./scripts/reset_db/resetdb.sh

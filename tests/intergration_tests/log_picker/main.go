@@ -23,7 +23,7 @@ import (
 
 func main() {
 	startIdx := 1100000
-	endIdx := 1100999
+	endIdx := 1109999
 
 	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/map?maxAllowedPacket=1073741824")
 	defer db.Close()
@@ -37,18 +37,14 @@ func main() {
 		panic(err)
 	}
 
-	processorChan := make(chan logpicker.UpdateRequest)
-	logPicker := logpicker.NewLogPicker(processorChan)
-	certProcessor, err := logpicker.NewConsistentDB(20, processorChan)
+	logPicker, err := logpicker.NewLogPicker(20)
 	if err != nil {
 		panic(err)
 	}
 
-	go certProcessor.StartWork()
-
 	// insert certificates
 	start := time.Now()
-	numOfAffectedDomains, numOfUpdatedCerts, err := logPicker.UpdateDomainFromLog("https://ct.googleapis.com/logs/argon2021", int64(startIdx), int64(endIdx), 10, 600)
+	numOfAffectedDomains, numOfUpdatedCerts, err := logPicker.UpdateDomainFromLog("https://ct.googleapis.com/logs/argon2021", int64(startIdx), int64(endIdx), 70, 600)
 	if err != nil {
 		panic(err)
 	}

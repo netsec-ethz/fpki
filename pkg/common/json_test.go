@@ -100,3 +100,47 @@ func TestEncodeAndDecodeOfRPC(t *testing.T) {
 
 	assert.True(t, deserlialisedSPT.Equal(rpc), "RPC serialise and deserialise error")
 }
+
+// TestEncodeAndDecodeOfPC: PC -> file -> PC
+func TestEncodeAndDecodeOfPC(t *testing.T) {
+	tempFile := path.Join("./", "pc.json")
+	defer os.Remove(tempFile)
+
+	spt := SPT{
+		Version:         12368713,
+		Subject:         "hohohoho",
+		CAName:          "I'm malicious CA, nice to meet you",
+		LogID:           1324123,
+		CertType:        0x21,
+		AddedTS:         time.Now(),
+		STH:             generateRandomBytes(),
+		PoI:             generateRandomBytesArray(),
+		STHSerialNumber: 114378,
+		Signature:       generateRandomBytes(),
+	}
+
+	policy := Policy{
+		TrustedCA: []string{"my CA"},
+	}
+
+	pc := PC{
+		Policies:          []Policy{policy},
+		TimeStamp:         time.Now(),
+		Subject:           "hihihi",
+		CAName:            "hihihi",
+		SerialNumber:      1,
+		CASignature:       []byte{1, 4, 2, 1, 4},
+		RootCertSignature: []byte{1, 4, 2, 1, 4},
+		SPTs:              []SPT{spt},
+	}
+
+	err := JsonStrucToFile(&pc, tempFile)
+	require.NoError(t, err, "Json Struc To File error")
+
+	deserlialisedPC := &PC{}
+
+	err = JsonFileToPC(deserlialisedPC, tempFile)
+	require.NoError(t, err, "Json File To SPT error")
+
+	assert.True(t, deserlialisedPC.Equal(pc), "PC serialise and deserialise error")
+}

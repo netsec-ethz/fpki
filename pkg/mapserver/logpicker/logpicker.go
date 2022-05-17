@@ -7,11 +7,18 @@ import (
 // LogPicker: A component which is responsible for collecting certificate from CT log, and update the cooresponding domain entries in db
 type LogPicker struct {
 	processorChan chan UpdateRequest
+	consistentDB  *ConsistentDB
 }
 
 // NewLogPicker: return a new log picker
-func NewLogPicker(processorChan chan UpdateRequest) *LogPicker {
-	return &LogPicker{processorChan: processorChan}
+func NewLogPicker(numOfDBWorker int) (*LogPicker, error) {
+	processorChan := make(chan UpdateRequest)
+	consistentDB, err := NewConsistentDB(numOfDBWorker, processorChan)
+	if err != nil {
+		return nil, fmt.Errorf("NewLogPicker | NewConsistentDB | %w", err)
+	}
+	go consistentDB.StartWork()
+	return &LogPicker{processorChan: processorChan, consistentDB: consistentDB}, nil
 }
 
 // TODO(yongzhe): modify the error handling

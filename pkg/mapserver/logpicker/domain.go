@@ -34,7 +34,7 @@ func ExtractEffectedDomains(domainNames []string) []string {
 	result := make(map[string][][]string)
 	for _, domainName := range domainNames {
 		// split the domain name into: E2LD + child domains
-		dividedName, err := splitE2LD(domainName)
+		dividedName, err := SplitE2LD(domainName)
 		if err != nil {
 			// print the error (for debugging), and skip this domain.
 			fmt.Println(err)
@@ -88,7 +88,7 @@ func findShortestLength(domainNames [][]string) int {
 	return length
 }
 
-func splitE2LD(domain string) ([]string, error) {
+func SplitE2LD(domain string) ([]string, error) {
 	// remove wildcard
 	if len(domain) > 2 && domain[:2] == "*." {
 		domain = domain[2:]

@@ -88,6 +88,41 @@ func TestIssuanceOfRPC(t *testing.T) {
 	require.NoError(t, err, "RPC Verify CA Signature error")
 }
 
+// TestIssuanceOfPC: generate PC -> domain owner generate signature -> pca verify signature -> pca sign PC -> domain owner verifies PC
+func TestIssuanceOfPC(t *testing.T) {
+	privKey, err := LoadRSAKeyPairFromFile("./testdata/clientkey.pem")
+	require.NoError(t, err, "Load RSA Key Pair From File error")
+
+	pc := PC{
+		Policies: []Policy{
+			{
+				TrustedCA: []string{
+					"hihihih", "I'm the test",
+				},
+			},
+		},
+		Subject: "test domain",
+	}
+
+	err = DomainOwnerSignPC(privKey, &pc)
+	require.NoError(t, err, "DomainOwnerSignPC error")
+
+	pcaPrivKey, err := LoadRSAKeyPairFromFile("./testdata/serverkey.pem")
+	require.NoError(t, err, "LoadRSAKeyPairFromFile error")
+
+	domainRPC, err := X509CertFromFile("./testdata/clientcert.pem")
+	require.NoError(t, err, "X509CertFromFile error")
+
+	signedPC, err := CAVefiryPCAndSign(domainRPC, pc, pcaPrivKey, "pca", 16)
+	require.NoError(t, err, "CAVefiryPCAndSign error")
+
+	pcaCert, err := X509CertFromFile("./testdata/servercert.pem")
+	require.NoError(t, err, "X509CertFromFile error")
+
+	err = VerifyCASigInPC(pcaCert, signedPC)
+	require.NoError(t, err, "VerifyCASigInPC error")
+}
+
 //-------------------------------------------------------------
 //                    funcs for testing
 //-------------------------------------------------------------

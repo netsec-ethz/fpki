@@ -63,6 +63,23 @@ type SPRT struct {
 	Signature       []byte    `json:",omitempty"`
 }
 
+// Policy Certificate
+type PC struct {
+	Policies          []Policy  `json:",omitempty"`
+	TimeStamp         time.Time `json:",omitempty"`
+	Subject           string    `json:",omitempty"`
+	CAName            string    `json:",omitempty"`
+	SerialNumber      int       `json:",omitempty"`
+	CASignature       []byte    `json:",omitempty"`
+	RootCertSignature []byte    `json:",omitempty"`
+	SPTs              []SPT     `json:",omitempty"`
+}
+
+// Domain policy
+type Policy struct {
+	TrustedCA []string
+}
+
 //----------------------------------------------------------------
 //                       Equal function
 //----------------------------------------------------------------
@@ -84,6 +101,37 @@ func (s SPT) Equal(o SPT) bool {
 		s.LogID == o.LogID && s.CertType == o.CertType && s.AddedTS.Equal(o.AddedTS) &&
 		bytes.Equal(s.STH, o.STH) && equalSliceSlicesBytes(s.PoI, o.PoI) &&
 		s.STHSerialNumber == o.STHSerialNumber && bytes.Equal(s.Signature, o.Signature)
+}
+
+func (s Policy) Equal(o Policy) bool {
+	for i, v := range s.TrustedCA {
+		if v != o.TrustedCA[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func (s PC) Equal(o PC) bool {
+	if s.TimeStamp.Equal(o.TimeStamp) &&
+		s.Subject == o.Subject &&
+		s.CAName == o.CAName &&
+		s.SerialNumber == o.SerialNumber &&
+		bytes.Equal(s.CASignature, o.CASignature) &&
+		bytes.Equal(s.RootCertSignature, o.RootCertSignature) {
+		for i, v := range s.SPTs {
+			if !v.Equal(o.SPTs[i]) {
+				return false
+			}
+		}
+		for i, v := range s.Policies {
+			if !v.Equal(o.Policies[i]) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
 }
 
 func (rpc *RPC) Equal(rpc_ *RPC) bool {

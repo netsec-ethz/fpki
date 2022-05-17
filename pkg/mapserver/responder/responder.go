@@ -2,10 +2,12 @@ package responder
 
 import (
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/logpicker"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
@@ -13,8 +15,7 @@ import (
 type MapResponder struct {
 	smt *trie.Trie
 
-	// TODO(yongzhe): store this in the db
-	storedDomainEntries map[string][]byte
+	dbConn *sql.DB
 }
 
 // NewMapResponder: return a new MapResponder.
@@ -29,18 +30,26 @@ func NewMapResponder(db *sql.DB, root []byte, cacheHeight int, initTable bool) (
 		return nil, fmt.Errorf("NewMapResponder | NewTrie | %w", err)
 	}
 
+	dbConn, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/map?maxAllowedPacket=1073741824")
+	if err != nil {
+		return nil, fmt.Errorf("NewMapResponder | sql.Open | %w", err)
+	}
+
 	return &MapResponder{
-		smt:                 smt,
-		storedDomainEntries: make(map[string][]byte)}, nil
+		smt:    smt,
+		dbConn: dbConn,
+	}, nil
 }
 
 // GetMapResponse: Query the proofs and materials for a list of domains. Return type: DomainEntry
-func (mapResponder *MapResponder) GetMapResponse(domains []string) ([]common.MapServerResponse, error) {
-	// TODO(yongzhe): remove in the final version. For debugging only
-	mapResponder.smt.PrintCacheSize()
+func (mapResponder *MapResponder) GetDomainProof(domainName string) ([]common.MapServerResponse, error) {
 	proofsResult := []common.MapServerResponse{}
+	domainList, err := parseDomainName(domainName)
+	if err != nil {
+		return nil, fmt.Errorf("GetDomainProof | parseDomainName | %w", err)
+	}
 
-	for _, domain := range domains {
+	for _, domain := range domainList {
 		// hash the domain name -> key
 		domainHash := trie.Hasher([]byte(domain))
 		// get the merkle proof from the smt. If isPoP == true, then it's a proof of inclusion
@@ -54,12 +63,14 @@ func (mapResponder *MapResponder) GetMapResponse(domains []string) ([]common.Map
 		switch {
 		case isPoP:
 			proofType = common.PoP
-			var ok bool
+
 			// fetch the domain bytes from map
-			// TODO(yongzhe): store the domain bytes in the db
-			if domainBytes, ok = mapResponder.storedDomainEntries[domain]; !ok {
-				return nil, fmt.Errorf("GetProofs | no such domain: %s, db might be corrupted", domain)
+			var domainContent string
+			err := mapResponder.dbConn.QueryRow("SELECT `value` FROM map.domainEntries WHERE `key`='" + hex.EncodeToString(domainHash) + "';").Scan(&domainContent)
+			if err != nil {
+				return nil, fmt.Errorf("GetDomainProof | QueryRow | %w", err)
 			}
+			domainBytes = []byte(domainContent)
 		case !isPoP:
 			proofType = common.PoA
 		}
@@ -78,17 +89,22 @@ func (mapResponder *MapResponder) GetMapResponse(domains []string) ([]common.Map
 	return proofsResult, nil
 }
 
-// ReadDomainEntriesFromDB: Read domain entries from db
-// TODO(yongzhe): read data from another table (domainName-material key-value store)
-func (mapResponder *MapResponder) ReadDomainEntriesFromDB(domainEntries []common.DomainEntry) error {
-	for _, v := range domainEntries {
-		domainBytes, err := common.SerialiseDomainEnrty(&v)
-		if err != nil {
-			return fmt.Errorf("ReadDomainEntriesFromDB | SerialiseDomainEnrty | %w", err)
-		}
-		mapResponder.storedDomainEntries[v.DomainName] = domainBytes
+func parseDomainName(domainName string) ([]string, error) {
+	result, err := logpicker.SplitE2LD(domainName)
+	resultString := []string{}
+	var domain string
+	if err != nil {
+		return nil, fmt.Errorf("parseDomainName | SplitE2LD | %w", err)
+	} else if len(result) == 0 {
+		return nil, fmt.Errorf("domain length is zero")
 	}
-	return nil
+	domain = result[len(result)-1]
+	resultString = append(resultString, domain)
+	for i := len(result) - 2; i >= 0; i-- {
+		domain = result[i] + "." + domain
+		resultString = append(resultString, domain)
+	}
+	return resultString, nil
 }
 
 // GetRoot: get current root of the smt
