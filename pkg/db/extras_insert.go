@@ -346,3 +346,54 @@ func DeletemeCreateNodes2(db Conn, count int) error {
 	}
 	return nil
 }
+
+// DeletemeCreateNodes2 where count is the number of leaves.
+// It adds a value (0xDEADBEEF) and a proof (idhash[1:]) to each node.
+// Removes the index and then creates it again.
+func DeletemeCreateNodes3(db Conn, count int) error {
+	var err error
+	c := db.(*mysqlDB)
+
+	root := &node{
+		id:    big.NewInt(0),
+		depth: 0,
+	}
+	uniqueLeaves := make(map[[32]byte]struct{})
+	for i := 0; i < count; i++ {
+		var idhash [32]byte
+		if _, err = rand.Read(idhash[:]); err != nil {
+			return err
+		}
+		if _, ok := uniqueLeaves[idhash]; ok {
+			panic("duplicate random ID")
+		}
+		uniqueLeaves[idhash] = struct{}{}
+		updateStructureRaw(root, idhash)
+	}
+	dups := findDuplicates(root) // deleteme
+	if len(dups) > 0 {
+		fmt.Printf("%d duplicates found\n", len(dups))
+		for id, d := range dups {
+			fmt.Printf("ID: [%s] %2d nodes\n", hex.EncodeToString(id[:]), len(d))
+			for i, c := range d {
+				fmt.Printf("\t[%2d] depth %d\n\n", i, c.depth)
+				tempId := c.FullID()
+				fmt.Printf("\thex: %s\n\tbits: %s\n",
+					hex.EncodeToString(tempId[1:]), bitString(c.id))
+				fmt.Println(pathToString(pathFromNode(c)))
+			}
+		}
+		panic("duplicates")
+	}
+	if _, err = c.db.Exec("ALTER TABLE nodes DROP INDEX idhash;"); err != nil {
+		return err
+	}
+	if err = insertIntoDB2(c, root); err != nil {
+		return err
+	}
+	fmt.Println("creating index...")
+	if _, err = c.db.Exec("ALTER TABLE nodes ADD  UNIQUE INDEX idhash (idhash);"); err != nil {
+		return err
+	}
+	return nil
+}

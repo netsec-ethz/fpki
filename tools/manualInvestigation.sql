@@ -99,3 +99,72 @@ END$$
 DELIMITER ;
 
 -- CALL val_and_proof_path(UNHEX("FF00008EE8B701BFCEE3D0F0ECC2D1FD183A363E01CC3347BC13446AE28CE4FD9D"))
+
+
+
+-- ---------------------------------------------
+-- ---------------------------------------------
+-- create leaves
+
+DROP TABLE IF EXISTS leaves;
+CREATE TABLE leaves (
+  idhash      VARBINARY(32) NOT NULL,
+  value       BLOB DEFAULT NULL,
+  proof       BLOB DEFAULT NULL,
+  UNIQUE KEY idhash (idhash)
+) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
+
+
+
+
+
+USE fpki;
+DROP PROCEDURE IF EXISTS _flatten_subtree;
+
+DELIMITER $$
+-- recursive procedure that flattens a subtree into simple leaf records
+CREATE PROCEDURE _flatten_subtree(
+	IN nodeid VARBINARY(33),
+	IN proofchain BLOB
+)
+BEGIN
+		DECLARE xleft  VARBINARY(33);
+        DECLARE xright VARBINARY(33);
+        DECLARE xproof BLOB;
+        DECLARE xvalue BLOB;
+
+	SELECT leftnode,rightnode,proof,value INTO xleft,xright,xproof,xvalue FROM nodes WHERE idhash=nodeid;
+    -- SELECT HEX(LEFT(nodeid, 1)),HEX(xproof);
+	IF LEFT(nodeid, 1) = UNHEX("FF") THEN
+		-- this is a leaf. End recursion
+        INSERT INTO leaves(idhash,proof,value) VALUES (RIGHT(nodeid,32), CONCAT(proofchain,xproof),xvalue);
+        -- SET proofchain = CONCAT(proofchain,xproof);
+    ELSE
+		-- this is an intermediate node
+		IF xleft IS NOT NULL THEN
+			CALL _flatten_subtree(xleft,CONCAT(proofchain,xproof));
+		END IF;
+		IF xright IS NOT NULL THEN
+			CALL _flatten_subtree(xright,CONCAT(proofchain,xproof));
+		END IF;
+	END IF;
+END$$
+DELIMITER ;
+
+USE fpki;
+DROP PROCEDURE IF EXISTS create_leaves;
+
+DELIMITER $$
+CREATE PROCEDURE create_leaves()
+BEGIN
+	TRUNCATE leaves;
+    SET autocommit=0;
+	-- TODO(juagargi) obtain the values of the proofs for the left and right nodes
+    CALL _flatten_subtree(UNHEX("000000000000000000000000000000000000000000000000000000000000000000"),''); -- left node
+    CALL _flatten_subtree(UNHEX("008000000000000000000000000000000000000000000000000000000000000000"),''); -- right node
+    COMMIT;
+END$$
+DELIMITER ;
+
+SET max_sp_recursion_depth = 255;
+CALL create_leaves();

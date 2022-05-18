@@ -17,8 +17,9 @@ func main() {
 	config := db.Configuration{
 		Dsn: "root@tcp(localhost)/fpki",
 		Values: map[string]string{
-			"interpolateParams": "true", // 1 round trip per query
-			"collation":         "binary",
+			"interpolateParams":      "true", // 1 round trip per query
+			"collation":              "binary",
+			"max_sp_recursion_depth": "255", // recursion to build the leaves table
 		},
 	}
 	createConn := func() (db.Conn, error) { // define a function that creates connections
@@ -38,7 +39,11 @@ func main() {
 	if *insertFlag {
 		c, err := createConn()
 		check(err)
-		err = db.DeletemeCreateNodes2(c, 100*1000)
+		// err = db.DeletemeCreateNodes2(c, 100*1000)
+		// err = db.DeletemeCreateNodes2(c, 1000*1000) // 5m7.557550068s !!!
+
+		// err = db.DeletemeCreateNodes3(c, 1000*1000) // 2m25.822974156s
+		err = db.DeletemeCreateNodes3(c, 10*1000*1000) //
 		check(err)
 	}
 	if *queryFlag {
