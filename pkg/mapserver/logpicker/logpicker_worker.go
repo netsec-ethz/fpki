@@ -31,6 +31,7 @@ type CertLog struct {
 	Entries []CertData
 }
 
+// UpdateCertResult: result of the update
 type UpdateCertResult struct {
 	Err                error
 	EffectedDomainsNum int
@@ -81,8 +82,8 @@ parse_cert_loop:
 	return certList, nil
 }
 
+// workerThread: worker thread for log picker
 func workerThread(ctURL string, start, end int64, resultChan chan UpdateCertResult, processorChan chan UpdateRequest, batchSize int) {
-	//fmt.Println(start, end)
 	processorResultChan := make(chan UpdateResult)
 	effectedDomainsNum := 0
 	numberOfFetchedCerts := 0
@@ -107,6 +108,7 @@ func workerThread(ctURL string, start, end int64, resultChan chan UpdateCertResu
 		}
 		certs = append(certs, newCerts...)
 
+		// if batch size is reached, or if this is the last round
 		if len(certs) > batchSize || i+20 > end {
 			// to generate unique list
 			uniqEffectedDomains := make(map[string]byte)
@@ -180,7 +182,7 @@ func workerThread(ctURL string, start, end int64, resultChan chan UpdateCertResu
 					break
 					// resource not avaliable; other thread is updating (part of) the requested resource
 				} else if queryResult.Err == ErrorResourceLocked {
-					//fmt.Println("WARNING: resource locked | thread will try later | retry attempts: ", retryNum, " | id: ", start)
+					// TODO(yongzhe): Ugly approach
 					retryNum++
 					// sleep random time
 					time.Sleep(time.Duration(getRandomInt()) * time.Millisecond)

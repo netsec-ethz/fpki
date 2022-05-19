@@ -5,7 +5,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
-// VerifyProofByDomain: verify the MapServerResponse(received from map server)
+// VerifyProofByDomain: verify the MapServerResponse(received from map server), return the type of proof, and proofing result
 func VerifyProofByDomain(proof common.MapServerResponse) (common.ProofType, bool, error) {
 	if proof.PoI.ProofType == common.PoP {
 		//TODO(yongzhe): compare h(domainEntry) and proof.poi.proofValue

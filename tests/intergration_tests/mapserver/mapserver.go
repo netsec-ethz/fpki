@@ -6,13 +6,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"net/http"
 
 	ct "github.com/google/certificate-transparency-go"
 	ctTls "github.com/google/certificate-transparency-go/tls"
 	ctX509 "github.com/google/certificate-transparency-go/x509"
-	"github.com/netsec-ethz/fpki/pkg/common"
 	mapCommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/prover"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/responder"
@@ -23,6 +21,7 @@ import (
 
 // TestUpdaterAndResponder: store a list of domain entries -> fetch inclusion -> verify inclusion
 func main() {
+	// truncate tables
 	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/map?maxAllowedPacket=1073741824")
 	if err != nil {
 		panic(err)
@@ -48,13 +47,6 @@ func main() {
 		panic(err)
 	}
 
-	// get random domain entries for testing
-	testDomain := getRandomDomainEntry()
-	domains := []string{}
-	for _, domain := range testDomain {
-		domains = append(domains, domain.DomainName)
-	}
-
 	// new map updator
 	mapUpdater, err := updater.NewMapUpdater(db, nil, 233, true)
 	if err != nil {
@@ -62,7 +54,7 @@ func main() {
 	}
 
 	start := time.Now()
-	// update the domain entries
+	// download the certs and update the domain entries
 	err = mapUpdater.CollectCertsAndUpdate("https://ct.googleapis.com/logs/argon2021", 1000000, 1001999)
 	if err != nil {
 		panic(err)
@@ -77,6 +69,7 @@ func main() {
 		panic(err)
 	}
 
+	// new db conn for map responder
 	db, err = sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/map?maxAllowedPacket=1073741824")
 	if err != nil {
 		panic(err)
@@ -88,6 +81,7 @@ func main() {
 		panic(err)
 	}
 
+	// re-collect the added certs
 	collectedCertMap := []ctX509.Certificate{}
 	for i := 0; i < 100; i++ {
 		certList, err := getCerts("https://ct.googleapis.com/logs/argon2021", int64(1000000+i*20), int64(1000000+i*20+19))
@@ -100,10 +94,13 @@ func main() {
 		}
 	}
 
+	// check whether the certificate is correctly added to the tree
 	for _, cert := range collectedCertMap {
 		fmt.Println()
 		fmt.Println("----------------------- new cert -------------------------")
 		fmt.Println("checking cert: ", cert.Subject.CommonName, ":", cert.SerialNumber)
+
+		// load the common name and SANs
 		caName := cert.Issuer.CommonName
 		domainNameMap := make(map[string]byte)
 		if len(cert.Subject.CommonName) != 0 {
@@ -121,6 +118,7 @@ func main() {
 		}
 		fmt.Println("----------------checking-------------------")
 
+		// check individual domains
 		for domainName, _ := range domainNameMap {
 			mapResponses, err := mapResponder.GetDomainProof(domainName)
 			if err != nil {
@@ -138,14 +136,16 @@ func main() {
 				if !isCorrect {
 					panic("verification error")
 				}
+				// if this proof is a Proof of Presence, check whether the target cert is correctly added
 				if proofType == mapCommon.PoP {
 					domainEntry, err := mapCommon.DesrialiseDomainEnrty(mapResponse.DomainEntryBytes)
 					if err != nil {
 						panic(err)
 					}
-
+					// get the correct CA entry
 					for _, caEntry := range domainEntry.CAEntry {
 						if caEntry.CAName == caName {
+							// check if the cert is in the CA entry
 							for _, certRaw := range caEntry.DomainCerts {
 								if bytes.Equal(certRaw, cert.Raw) {
 									isContained = true
@@ -155,7 +155,6 @@ func main() {
 							}
 						}
 					}
-
 				}
 			}
 			if isContained == false {
@@ -164,73 +163,10 @@ func main() {
 		}
 		fmt.Println()
 	}
-
-	/*
-		start = time.Now()
-		// get proofs for all the added domains
-		proofs, err := mapResponder.GetMapResponse(domains)
-		if err != nil {
-			panic(err)
-		}
-
-		end = time.Now()
-		fmt.Println("time to get 10000 proof: ", end.Sub(start))
-
-		// second test, to check whether the cache is properly loaded.
-		// this time, the fetching time should be much less than the previous one, because the cache is loaded
-		start = time.Now()
-		proofs, err = mapResponder.GetMapResponse(domains)
-		if err != nil {
-			panic(err)
-		}
-
-		end = time.Now()
-		fmt.Println("time to get 10000 proof: ", end.Sub(start))
-
-		start = time.Now()
-		for _, proof := range proofs {
-			// verify the proof
-			proofType, isCorrect, err := prover.VerifyProofByDomain(proof)
-			// should be Proof of Presence
-			if proofType != mapCommon.PoP {
-				panic("inclusion proof type error")
-			}
-			// verification should be correct
-			if !isCorrect {
-				panic("inclusion proof Verification error")
-			}
-			if err != nil {
-				panic(err)
-			}
-		}
-		end = time.Now()
-		fmt.Println("time to verify 10000 proof: ", end.Sub(start))
-
-		// test for non-inclusion
-		domains = []string{"no member", "hi", "this is a test"}
-		proofs, err = mapResponder.GetMapResponse(domains)
-		if err != nil {
-			panic(err)
-		}
-
-		for _, proof := range proofs {
-			proofType, isCorrect, err := prover.VerifyProofByDomain(proof)
-			// shoud be Proof of Absence
-			if proofType != mapCommon.PoA {
-				panic("non-inclusion proof type error")
-			}
-			// verification should be correct
-			if !isCorrect {
-				panic("non-inclusion proof Verification error")
-			}
-			if err != nil {
-				panic(err)
-			}
-		}*/
-
 	fmt.Println("map server succeed!")
 }
 
+// CertData: merkle tree leaf
 type CertData struct {
 	LeafInput string `json:"leaf_input"`
 	ExtraData string `json:"extra_data"`
@@ -281,51 +217,5 @@ parse_cert_loop:
 		}
 		certList = append(certList, *certificate)
 	}
-
 	return certList, nil
-}
-
-// get random domain entries
-func getRandomDomainEntry() []mapCommon.DomainEntry {
-	domainEntries := []mapCommon.DomainEntry{}
-	for i := 0; i < 10000; i++ {
-		domainName := randStringRunes(30)
-		domainEntry := mapCommon.DomainEntry{
-			DomainName: domainName,
-			CAEntry: []mapCommon.CAEntry{
-				{
-					CAName: randStringRunes(10),
-					CurrentRPC: common.RPC{
-						PublicKey: generateRandomBytes(),
-					},
-					Revocation: generateRandomBytesArray(),
-				},
-			},
-		}
-		domainEntries = append(domainEntries, domainEntry)
-	}
-	return domainEntries
-}
-
-var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-
-// get random strings
-func randStringRunes(n int) string {
-	b := make([]rune, n)
-	for i := range b {
-		b[i] = letterRunes[rand.Intn(len(letterRunes))]
-	}
-	return string(b)
-}
-
-// get random []byte
-func generateRandomBytes() []byte {
-	token := make([]byte, 32)
-	rand.Read(token)
-	return token
-}
-
-// get random [][]byte
-func generateRandomBytesArray() [][]byte {
-	return [][]byte{generateRandomBytes()}
 }

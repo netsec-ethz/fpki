@@ -41,7 +41,7 @@ func NewMapResponder(db *sql.DB, root []byte, cacheHeight int, initTable bool) (
 	}, nil
 }
 
-// GetMapResponse: Query the proofs and materials for a list of domains. Return type: DomainEntry
+// GetMapResponse: Query the proofs and materials for a list of domains. Return type: MapServerResponse
 func (mapResponder *MapResponder) GetDomainProof(domainName string) ([]common.MapServerResponse, error) {
 	proofsResult := []common.MapServerResponse{}
 	domainList, err := parseDomainName(domainName)
@@ -89,6 +89,10 @@ func (mapResponder *MapResponder) GetDomainProof(domainName string) ([]common.Ma
 	return proofsResult, nil
 }
 
+// parseDomainName: get the parent domain until E2LD, return a list of domains(remove the www. and *.)
+// eg: video.google.com -> video.google.com google.com
+// eg: *.google.com -> google.com
+// eg: www.google.com -> google.com
 func parseDomainName(domainName string) ([]string, error) {
 	result, err := logpicker.SplitE2LD(domainName)
 	resultString := []string{}

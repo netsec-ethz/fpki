@@ -45,6 +45,5 @@ func (logPicker *LogPicker) UpdateDomainFromLog(ctURL string, startIndex int64, 
 	}
 
 	close(resultChan)
-
 	return effectedDomains, updatedCertsNum, nil
 }

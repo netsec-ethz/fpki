@@ -1,7 +1,6 @@
 package logpicker
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -73,9 +72,6 @@ func TestEffectedDomains(t *testing.T) {
 	// public suffix should not be parsed
 	result = ExtractEffectedDomains([]string{"co.uk"})
 	assert.Equal(t, 0, len(result), "length error")
-
-	result = ExtractEffectedDomains([]string{"store.core.usgovcloudapi.net"})
-	fmt.Println(result)
 }
 
 func stringIsContained(target string, stringSet []string) bool {
