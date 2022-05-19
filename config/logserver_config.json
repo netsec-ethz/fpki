@@ -1,0 +1,12 @@
+{
+ "RpcEndpoint": "localhost:8090",
+ "HttpEndpoint": "localhost:8091",
+ "HealthzTimeout": 5,
+ "EtcdService": "trillian-logserver",
+ "EtcdHTTPService": "trillian-logserver-http",
+ "QuotaSystem": "mysql",
+ "StorageSystem": "mysql",
+ "TreeGCEnabled": true,
+ "TreeDeleteThresholdInHour": 168,
+ "TreeDeleteMinRunIntervalInHour": 4
+}

@@ -1,0 +1,16 @@
+For 10000 leaves
+
+queue leaves succeed!
+8.434761293s
+fetch proofs succeed!
+8.656676005s
+
+AVG: 0.8 ms for adding, 0.8 ms for querying the proof
+
+
+Every second 500          leaves
+Every minute 30000        leaves
+Every hour   1.8 million  leaves
+
+
+There are 367 millions domains in total(does not change every year, even declines a little last year). Assume update frequency is 4 per year. Daily updates will be 8 millions(one RPC, one PC). It takes 4 hours to append and retrieve the daily updates. Even my lap top can do the job for all the domains -:)
