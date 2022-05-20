@@ -44,16 +44,20 @@ func updateStructureRaw(root *node, leafHash [32]byte) {
 	updateStructure(root, id)
 }
 
+// update the structure given a new node
 func updateStructure(root *node, leafId *big.Int) {
 	currentNode := root
 	for i := 255; i >= 0; i-- {
+		// if this node goes to the right place (yeah the right place)
 		right := leafId.Bit(i) == 1
 		var next **node
+		// find the next left/right node
 		if right {
 			next = &currentNode.right
 		} else {
 			next = &currentNode.left
 		}
+		// if the leaf is empty, we are done
 		if *next == nil {
 			leafIdCopy := big.NewInt(0).Set(leafId) // store a copy (not the original pointer)
 			*next = &node{

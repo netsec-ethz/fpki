@@ -1,5 +1,6 @@
 package db
 
+/*
 import (
 	"bytes"
 	"fmt"
@@ -261,3 +262,4 @@ func printWholeTree(root *node, noOfBits int) {
 		fmt.Println(s)
 	}
 }
+*/
