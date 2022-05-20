@@ -47,9 +47,13 @@ run_integration_test:
 build_benchmark:
 	@go build -o ./bin/log_benchmark  ./tests/benchmark/logserver_benchmark
 	@go build -o ./bin/smt_benchmark  ./tests/benchmark/smt_benchmark
+	@go build -o ./bin/db_benchmark  ./tests/benchmark/db_benchmark
 
 run_log_benchmark:
 	@./scripts/log_benchmark.sh
 
 run_smt_benchmark:
 	@./bin/smt_benchmark
+
+run_db_benchmark:
+	@./bin/db_benchmark

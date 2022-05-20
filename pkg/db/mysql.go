@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
+
+	_ "github.com/go-sql-driver/mysql"
 )
 
 type mysqlDB struct {
@@ -31,7 +33,7 @@ func NewMysqlDB(db *sql.DB) (*mysqlDB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("preparing statement: %w", err)
 	}
-	prepGetValueDomainEntries, err := db.Prepare("SELECT `key`, `value` from `domainEntries` WHERE `key`=?")
+	prepGetValueDomainEntries, err := db.Prepare("SELECT `value` from `domainEntries` WHERE `key`=?")
 	if err != nil {
 		return nil, fmt.Errorf("preparing statement prepGetValueDomainEntries: %w", err)
 	}
@@ -80,18 +82,19 @@ func (c *mysqlDB) RetrieveKeyValuePairMultiThread(ctx context.Context, id []stri
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
+	if len(id) < numOfRoutine {
+		numOfRoutine = len(id)
+	}
+
 	count := len(id)
 	step := count / numOfRoutine
 
-	// to simplify code, check that we run all queries: count must be divisible by routine count
-	if count%numOfRoutine != 0 {
-		return nil, fmt.Errorf("RetrieveKeyValuePairMultiThread | count / numOfRoutine != 0")
-	}
-
 	resultChan := make(chan KeyValueResult)
-	for r := 0; r < numOfRoutine; r++ {
-		go fetchKeyValuePairWorker(resultChan, id[r*step:r*step+step-1], *c.prepGetValueDomainEntries, ctx)
+	for r := 0; r < numOfRoutine-1; r++ {
+		go fetchKeyValuePairWorker(resultChan, id[r*step:r*step+step], c.prepGetValueDomainEntries, ctx)
 	}
+	// let the final one do the rest of the work
+	go fetchKeyValuePairWorker(resultChan, id[(numOfRoutine-1)*step:count], c.prepGetValueDomainEntries, ctx)
 
 	finishedWorker := 0
 	keyValuePairs := []KeyValuePair{}
@@ -108,14 +111,19 @@ func (c *mysqlDB) RetrieveKeyValuePairMultiThread(ctx context.Context, id []stri
 	return &KeyValueResult{Pairs: keyValuePairs}, nil
 }
 
-func fetchKeyValuePairWorker(resultChan chan KeyValueResult, keys []string, stmt sql.Stmt, ctx context.Context) {
+func fetchKeyValuePairWorker(resultChan chan KeyValueResult, keys []string, stmt *sql.Stmt, ctx context.Context) {
 	numOfWork := len(keys)
 	pairs := []KeyValuePair{}
 	var value []byte
 
 work_loop:
 	for i := 0; i < numOfWork; i++ {
-		err := stmt.QueryRowContext(ctx, keys[i]).Scan(&value)
+		result := stmt.QueryRow(keys[i])
+		if result == nil {
+			panic("result is nul")
+		}
+
+		err := result.Scan(&value)
 		if err != nil {
 			switch {
 			case err != sql.ErrNoRows:
@@ -133,7 +141,9 @@ work_loop:
 
 func (c *mysqlDB) UpdateKeyValuePairBatches(ctx context.Context, keyValuePairs []KeyValuePair) error {
 	dataLen := len(keyValuePairs)
-	for i := 0; i*1000 < dataLen; i++ {
+	remainingDataLen := dataLen
+	// write in batch of 1000
+	for i := 0; i*1000 <= dataLen-1000; i++ {
 		data := make([]interface{}, 2*1000) // 2 elements per record ()
 
 		for j := 0; j < 1000; j++ {
@@ -144,6 +154,27 @@ func (c *mysqlDB) UpdateKeyValuePairBatches(ctx context.Context, keyValuePairs [
 		_, err := c.prepUpdateValueDomainEntries.Exec(data...)
 		if err != nil {
 			return fmt.Errorf("UpdateKeyValuePairBatches | Exec | %w", err)
+		}
+		remainingDataLen = remainingDataLen - 1000
+	}
+
+	// if remaining data is less than 1000
+	if remainingDataLen > 0 {
+		// insert updated domains' entries
+		repeatedStmt := "REPLACE into domainEntries (`key`, `value`) values " + repeatStmt(remainingDataLen, 2)
+		stmt, err := c.db.Prepare(repeatedStmt)
+		if err != nil {
+			return fmt.Errorf("UpdateKeyValuePairBatches | db.Prepare | %w", err)
+		}
+		data := make([]interface{}, 2*remainingDataLen) // 2 elements per record ()
+
+		for j := 0; j < remainingDataLen; j++ {
+			data[2*j] = keyValuePairs[dataLen-remainingDataLen+j].Key
+			data[2*j+1] = keyValuePairs[dataLen-remainingDataLen+j].Value
+		}
+		_, err = stmt.Exec(data...)
+		if err != nil {
+			return fmt.Errorf("UpdateKeyValuePairBatches | Exec remaining | %w", err)
 		}
 	}
 	return nil

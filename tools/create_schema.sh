@@ -96,3 +96,16 @@ DELIMITER ;
 EOF
 )
 echo "$CMD" | mysql -u root
+
+CMD=$(cat <<EOF
+CREATE TABLE \`fpki\`.\`domainEntries\` (
+  \`id\` BIGINT(64) NOT NULL AUTO_INCREMENT,
+  \`key\` VARCHAR(64) NOT NULL,
+  \`value\` BLOB NOT NULL,
+  PRIMARY KEY (\`id\`),
+  UNIQUE INDEX \`key_UNIQUE\` (\`key\` ASC) VISIBLE);
+
+EOF
+)
+echo "$CMD" | mysql -u root
+
