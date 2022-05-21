@@ -27,4 +27,6 @@ type Conn interface {
 	RetrieveKeyValuePairMultiThread(ctx context.Context, id []string, goroutinesCount int) (*KeyValueResult, error)
 
 	UpdateKeyValuePairBatches(ctx context.Context, keyValuePairs []KeyValuePair) error
+
+	DeleteKeyValuePairBatches(ctx context.Context, keys []string) error
 }

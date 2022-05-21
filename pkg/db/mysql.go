@@ -4,18 +4,39 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 )
 
 type mysqlDB struct {
-	db                           *sql.DB
-	prepNodePath                 *sql.Stmt // returns the node path
-	prepValueProofPath           *sql.Stmt // returns the value and the complete proof path
-	prepGetValue                 *sql.Stmt // returns the value for a node
-	prepGetValueDomainEntries    *sql.Stmt // returns the domain entries
-	prepUpdateValueDomainEntries *sql.Stmt // update the DomainEntries table
+	db                              *sql.DB
+	prepNodePath                    *sql.Stmt // returns the node path
+	prepValueProofPath              *sql.Stmt // returns the value and the complete proof path
+	prepGetValue                    *sql.Stmt // returns the value for a node
+	prepGetValueDomainEntries       *sql.Stmt // returns the domain entries
+	prepUpdateValueDomainEntries    *sql.Stmt // update the DomainEntries table
+	prepDeleteKeyValueDomainEntries *sql.Stmt // delete key value pair from DomainEntries table
+}
+
+func repeatStmtForDelete(N int) string {
+	var deleteSB strings.Builder
+	queryStr := "DELETE from `domainEntries` WHERE `key` IN ("
+	deleteSB.WriteString(queryStr)
+
+	isFirst := true
+	for i := 0; i < N; i++ {
+		if isFirst {
+			deleteSB.WriteString("?")
+			isFirst = false
+		} else {
+			deleteSB.WriteString(", ?")
+		}
+	}
+
+	deleteSB.WriteString(");")
+	return deleteSB.String()
 }
 
 // NewMysqlDB is called to create a new instance of the mysqlDB, initializing certain values,
@@ -42,13 +63,20 @@ func NewMysqlDB(db *sql.DB) (*mysqlDB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("preparing statement prepUpdateValueDomainEntries: %w", err)
 	}
+
+	prepDeleteKeyValueDomainEntries, err := db.Prepare(repeatStmtForDelete(1000))
+	if err != nil {
+		return nil, fmt.Errorf("preparing statement prepUpdateValueDomainEntries: %w", err)
+	}
+
 	return &mysqlDB{
-		db:                           db,
-		prepNodePath:                 prepNodePath,
-		prepValueProofPath:           prepValueProofPath,
-		prepGetValue:                 prepGetValue,
-		prepGetValueDomainEntries:    prepGetValueDomainEntries,
-		prepUpdateValueDomainEntries: prepUpdateValueDomainEntries,
+		db:                              db,
+		prepNodePath:                    prepNodePath,
+		prepValueProofPath:              prepValueProofPath,
+		prepGetValue:                    prepGetValue,
+		prepGetValueDomainEntries:       prepGetValueDomainEntries,
+		prepUpdateValueDomainEntries:    prepUpdateValueDomainEntries,
+		prepDeleteKeyValueDomainEntries: prepDeleteKeyValueDomainEntries,
 	}, nil
 }
 
@@ -178,4 +206,44 @@ func (c *mysqlDB) UpdateKeyValuePairBatches(ctx context.Context, keyValuePairs [
 		}
 	}
 	return nil
+}
+
+func (c *mysqlDB) DeleteKeyValuePairBatches(ctx context.Context, keys []string) error {
+	dataLen := len(keys)
+	remainingDataLen := dataLen
+	// write in batch of 1000
+	for i := 0; i*1000 <= dataLen-1000; i++ {
+		data := make([]interface{}, 1000)
+
+		for j := 0; j < 1000; j++ {
+			data[j] = keys[i*1000+j]
+		}
+
+		_, err := c.prepDeleteKeyValueDomainEntries.Exec(data...)
+		if err != nil {
+			return fmt.Errorf("DeleteKeyValuePairBatches | Exec | %w", err)
+		}
+		remainingDataLen = remainingDataLen - 1000
+	}
+
+	// if remaining data is less than 1000
+	if remainingDataLen > 0 {
+		// insert updated domains' entries
+		repeatedStmt := repeatStmtForDelete(remainingDataLen)
+		stmt, err := c.db.Prepare(repeatedStmt)
+		if err != nil {
+			return fmt.Errorf("DeleteKeyValuePairBatches | db.Prepare | %w", err)
+		}
+		data := make([]interface{}, remainingDataLen)
+
+		for j := 0; j < remainingDataLen; j++ {
+			data[j] = keys[dataLen-remainingDataLen+j]
+		}
+		_, err = stmt.Exec(data...)
+		if err != nil {
+			return fmt.Errorf("DeleteKeyValuePairBatches | Exec remaining | %w", err)
+		}
+	}
+	return nil
+
 }

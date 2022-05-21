@@ -94,6 +94,19 @@ func main() {
 		panic("key size error 4")
 	}
 
+	keys = getKeys(1511, 2155)
+
+	err = conn.DeleteKeyValuePairBatches(ctx, keys)
+	if err != nil {
+		panic(err)
+	}
+
+	keys = getKeys(2056, 4555)
+
+	err = conn.DeleteKeyValuePairBatches(ctx, keys)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func getKeyValuePair(startIdx, endIdx int, content []byte) []db.KeyValuePair {
