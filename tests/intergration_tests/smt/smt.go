@@ -7,28 +7,26 @@ import (
 	"fmt"
 	"sort"
 
+	_ "github.com/go-sql-driver/mysql"
+	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
 func main() {
 	testUpdateWithSameKeys()
+	fmt.Println("test succeed!")
 	testTrieMerkleProofAndReloadTree()
+	fmt.Println("test succeed!")
 	testTrieLoadCache()
+	fmt.Println("test succeed!")
+	truncateTable()
 	fmt.Println("test succeed!")
 }
 
 func testUpdateWithSameKeys() {
-	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/map?multiStatements=true")
-	if err != nil {
-		panic(err)
-	}
+	db, err := db.Connect_old()
 
-	err = dropTestTable(db)
-	if err != nil {
-		panic(err)
-	}
-
-	smt, err := trie.NewTrie(nil, trie.Hasher, db, "deleteTest", true)
+	smt, err := trie.NewTrie(nil, trie.Hasher, db)
 
 	smt.CacheHeightLimit = 0
 	// Add 10000 key-value pair
@@ -40,7 +38,7 @@ func testUpdateWithSameKeys() {
 		panic(err)
 	}
 
-	prevDBSize, err := getDbEntries(db)
+	prevDBSize, err := getDbEntries()
 	if err != nil {
 		panic(err)
 	}
@@ -56,7 +54,7 @@ func testUpdateWithSameKeys() {
 		panic(err)
 	}
 
-	newDBSize, err := getDbEntries(db)
+	newDBSize, err := getDbEntries()
 	if err != nil {
 		panic(err)
 	}
@@ -71,13 +69,12 @@ func testUpdateWithSameKeys() {
 }
 
 func testTrieMerkleProofAndReloadTree() {
-	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/map?multiStatements=true")
+	dbConn, err := db.Connect_old()
 	if err != nil {
 		panic(err)
 	}
 
-	defer db.Close()
-	smt, err := trie.NewTrie(nil, trie.Hasher, db, "cacheStore", true)
+	smt, err := trie.NewTrie(nil, trie.Hasher, dbConn)
 	if err != nil {
 		panic(err)
 	}
@@ -106,14 +103,12 @@ func testTrieMerkleProofAndReloadTree() {
 		panic("failed to verify non inclusion proof")
 	}
 
-	db1, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/map?multiStatements=true")
+	dbConn1, err := db.Connect_old()
 	if err != nil {
 		panic(err)
 	}
 
-	defer db1.Close()
-
-	smt1, err := trie.NewTrie(smt.Root, trie.Hasher, db1, "cacheStore", true)
+	smt1, err := trie.NewTrie(smt.Root, trie.Hasher, dbConn1)
 
 	for i, key_ := range keys {
 		ap_, _, k_, v_, _ := smt1.MerkleProof(key_)
@@ -133,16 +128,16 @@ func testTrieMerkleProofAndReloadTree() {
 	if !trie.VerifyNonInclusion(smt1.Root, ap_, emptyKey, proofValue_, proofKey_) {
 		panic("failed to verify new non inclusion proof")
 	}
+
 }
 
 func testTrieLoadCache() {
-	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/map?multiStatements=true")
+	dbConn, err := db.Connect_old()
 	if err != nil {
 		panic(err)
 	}
 
-	defer db.Close()
-	smt, err := trie.NewTrie(nil, trie.Hasher, db, "cacheStore", true)
+	smt, err := trie.NewTrie(nil, trie.Hasher, dbConn)
 	if err != nil {
 		panic(err)
 	}
@@ -163,7 +158,9 @@ func testTrieLoadCache() {
 	keys := getFreshData(10, 32)
 	values = getFreshData(10, 32)
 	smt.Update(keys, values)
+	fmt.Println("hi")
 	err = smt.Commit()
+	fmt.Println("hi")
 	if err != nil {
 		panic(err)
 	}
@@ -171,39 +168,34 @@ func testTrieLoadCache() {
 	// Simulate node restart by deleting and loading cache
 	cacheSize := smt.GetLiveCacheSize()
 	smt.ResetLiveCache()
+	fmt.Println("hi")
 
 	err = smt.LoadCache(smt.Root)
-
+	fmt.Println("hi")
 	if err != nil {
 		panic(err)
 	}
+
 	if cacheSize != smt.GetLiveCacheSize() {
 		panic("Cache loading from db incorrect")
 	}
 }
 
 // get number of rows in the table
-func getDbEntries(db *sql.DB) (int, error) {
-	queryStr := "SELECT COUNT(*) FROM map.deleteTest;"
+func getDbEntries() (int, error) {
+	db, err := sql.Open("mysql", "root@tcp(localhost)/fpki")
+	if err != nil {
+		return 0, fmt.Errorf("getDbEntries | sql.Open | %w", err)
+	}
+	queryStr := "SELECT COUNT(*) FROM tree;"
 
 	var number int
-	err := db.QueryRow(queryStr).Scan(&number)
+	err = db.QueryRow(queryStr).Scan(&number)
 	if err != nil {
 		return 0, fmt.Errorf("getDbEntries | SELECT COUNT(*) | %w", err)
 	}
 
 	return number, nil
-}
-
-func dropTestTable(db *sql.DB) error {
-	queryStr := "DROP TABLE `map`.`deleteTest`;"
-
-	_, err := db.Exec(queryStr)
-	if err != nil && err.Error() != "Error 1051: Unknown table 'map.deletetest'" {
-		return fmt.Errorf("dropTestTable | DROP | %w", err)
-	}
-
-	return nil
 }
 
 func getFreshData(size, length int) [][]byte {
@@ -222,4 +214,17 @@ func getFreshData(size, length int) [][]byte {
 
 func bitSet(bits []byte, i int) {
 	bits[i/8] |= 1 << uint(7-i%8)
+}
+
+func truncateTable() {
+	db, err := sql.Open("mysql", "root@tcp(localhost)/fpki")
+	if err != nil {
+		panic(fmt.Errorf("truncateTable | sql.Open | %w", err))
+	}
+	queryStr := "TRUNCATE `fpki`.`tree`;"
+
+	_, err = db.Exec(queryStr)
+	if err != nil {
+		panic(fmt.Errorf("truncateTable |  db.Exec | %w", err))
+	}
 }

@@ -99,13 +99,47 @@ echo "$CMD" | mysql -u root
 
 CMD=$(cat <<EOF
 CREATE TABLE \`fpki\`.\`domainEntries\` (
-  \`id\` BIGINT(64) NOT NULL AUTO_INCREMENT,
   \`key\` VARCHAR(64) NOT NULL,
-  \`value\` BLOB NOT NULL,
-  PRIMARY KEY (\`id\`),
-  UNIQUE INDEX \`key_UNIQUE\` (\`key\` ASC) VISIBLE);
+  \`value\` LONGBLOB NOT NULL,
+  PRIMARY KEY (\`key\`));
 
 EOF
 )
 echo "$CMD" | mysql -u root
+
+
+CMD=$(cat <<EOF
+CREATE TABLE \`fpki\`.\`tree\` (
+  \`key\` VARCHAR(64) NOT NULL,
+  \`value\` BLOB NOT NULL,
+  \`id\` BIGINT(64) NOT NULL AUTO_INCREMENT,
+  UNIQUE INDEX \`key_UNIQUE\` (\`key\` ASC) VISIBLE,
+  PRIMARY KEY (\`id\`));
+EOF
+)
+echo "$CMD" | mysql -u root
+
+
+
+CMD=$(cat <<EOF
+CREATE TABLE \`fpki\`.\`deleteTest\` (
+  \`key\` VARCHAR(64) NOT NULL,
+  \`value\` BLOB NOT NULL,
+  \`id\` BIGINT(64) NOT NULL AUTO_INCREMENT,
+  UNIQUE INDEX \`key_UNIQUE\` (\`key\` ASC) VISIBLE,
+  PRIMARY KEY (\`id\`));
+EOF
+)
+echo "$CMD" | mysql -u root
+
+
+CMD=$(cat <<EOF
+CREATE TABLE \`fpki\`.\`updates\` (
+  \`key\` VARCHAR(64) NOT NULL,
+  PRIMARY KEY (\`key\`));
+EOF
+)
+echo "$CMD" | mysql -u root
+
+
 

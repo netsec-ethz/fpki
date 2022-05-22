@@ -9,25 +9,25 @@ import (
 	"strings"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/logpicker"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
 // MapUpdater: map updator. It is responsible for updating the tree, and writing to db
 type MapUpdater struct {
-	smt       *trie.Trie
-	logpicker *logpicker.LogPicker
+	smt *trie.Trie
 }
 
 // NewMapUpdater: return a new map updator. Input paras is similiar to NewMapResponder
-func NewMapUpdater(db *sql.DB, root []byte, cacheHeight int, initTable bool) (*MapUpdater, error) {
-	smt, err := trie.NewTrie(root, trie.Hasher, db, "cacheStore", initTable)
+func NewMapUpdater(db db.Conn, root []byte, cacheHeight int, initTable bool) (*MapUpdater, error) {
+	smt, err := trie.NewTrie(root, trie.Hasher, db)
 	if err != nil {
 		return nil, fmt.Errorf("NewMapServer | NewTrie | %w", err)
 	}
 	smt.CacheHeightLimit = cacheHeight
 
-	logpicker, err := logpicker.NewLogPicker(20)
+	logpicker, err := logpicker.NewLogPicker(20, db)
 	if err != nil {
 		return nil, fmt.Errorf("NewMapServer | NewLogPicker | %w", err)
 	}

@@ -19,12 +19,12 @@ func main() {
 	}
 	// insert 50M node first
 
-	for i := 0; i < 10000; i++ {
+	for i := 0; i < 1000; i++ {
 		newKVPair := getKeyValuePair(i*1000, i*1000+999, generateRandomBytes())
 		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 		defer cancelF()
 		start := time.Now()
-		err = conn.UpdateKeyValuePairBatches(ctx, newKVPair)
+		err, _ = conn.UpdateKeyValuePairBatches(ctx, newKVPair, db.Tree)
 		if err != nil {
 			panic(err)
 		}
@@ -34,19 +34,74 @@ func main() {
 	}
 
 	// read ramdomly
-	for i := 0; i < 10000; i++ {
+	for i := 0; i < 1000; i++ {
 		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 		defer cancelF()
 
 		keys := getKeys(i*1000, i*1000+999)
 
 		start := time.Now()
-		result, err := conn.RetrieveKeyValuePairMultiThread(ctx, keys, 10)
+		result, err := conn.RetrieveKeyValuePairMultiThread(ctx, keys, 10, db.Tree)
 		if err != nil {
 			panic(err)
 		}
-		if len(result.Pairs) != 1000 {
+		if len(result) != 1000 {
 			panic("data missing")
+		}
+		end := time.Now()
+		fmt.Println("READ ", i*1000, "time ", end.Sub(start))
+	}
+
+	for i := 0; i < 100; i++ {
+		keys := getKeys(i*1000, i*1000+999)
+		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+		defer cancelF()
+		start := time.Now()
+		for _, k := range keys {
+
+			result, err := conn.RetrieveOneKeyValuePair(ctx, k, db.Tree)
+			if err != nil {
+				panic(err)
+			}
+			if result.Value == nil {
+				panic("no result")
+			}
+		}
+		end := time.Now()
+		fmt.Println("READ Sequentially", i*1000, "time ", end.Sub(start))
+	}
+
+	// delete entries
+	for i := 0; i < 1000; i++ {
+		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+		defer cancelF()
+
+		keys := getKeys(i*1000, i*1000+999)
+
+		start := time.Now()
+		err := conn.DeleteKeyValuePairBatches(ctx, keys, db.Tree)
+		if err != nil {
+			panic(err)
+		}
+
+		end := time.Now()
+		fmt.Println("DELETE ", i*1000, "time ", end.Sub(start))
+	}
+
+	// read ramdomly
+	for i := 0; i < 1000; i++ {
+		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+		defer cancelF()
+
+		keys := getKeys(i*1000, i*1000+999)
+
+		start := time.Now()
+		result, err := conn.RetrieveKeyValuePairMultiThread(ctx, keys, 10, db.Tree)
+		if err != nil {
+			panic(err)
+		}
+		if len(result) != 0 {
+			panic("read deleted data")
 		}
 		end := time.Now()
 		fmt.Println("READ ", i*1000, "time ", end.Sub(start))
@@ -83,7 +138,7 @@ func getKeys(startIdx, endIdx int) []string {
 func getRandomKeys() []string {
 	result := []string{}
 	for i := 0; i < 1000; i++ {
-		keyHash := trie.Hasher([]byte(strconv.Itoa(rand.Intn(9000000))))
+		keyHash := trie.Hasher([]byte(strconv.Itoa(rand.Intn(900000))))
 		keyString := hex.EncodeToString(keyHash)
 		result = append(result, keyString)
 	}

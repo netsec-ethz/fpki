@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
-	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -18,11 +17,26 @@ type mysqlDB struct {
 	prepGetValueDomainEntries       *sql.Stmt // returns the domain entries
 	prepUpdateValueDomainEntries    *sql.Stmt // update the DomainEntries table
 	prepDeleteKeyValueDomainEntries *sql.Stmt // delete key value pair from DomainEntries table
+
+	prepUpdateValueTree    *sql.Stmt
+	prepGetValueTree       *sql.Stmt
+	prepDeleteKeyValueTree *sql.Stmt
+
+	prepInsertKeysUpdates *sql.Stmt
 }
 
-func repeatStmtForDelete(N int) string {
+func repeatStmt(N int, noOfComponents int) string {
+	components := make([]string, noOfComponents)
+	for i := 0; i < len(components); i++ {
+		components[i] = "?"
+	}
+	toRepeat := "(" + strings.Join(components, ",") + ")"
+	return strings.Repeat(toRepeat+",", N-1) + toRepeat
+}
+
+func repeatStmtForDelete(tableName string, N int) string {
 	var deleteSB strings.Builder
-	queryStr := "DELETE from `domainEntries` WHERE `key` IN ("
+	queryStr := "DELETE from `" + tableName + "` WHERE `key` IN ("
 	deleteSB.WriteString(queryStr)
 
 	isFirst := true
@@ -46,14 +60,17 @@ func NewMysqlDB(db *sql.DB) (*mysqlDB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("preparing statement: %w", err)
 	}
+
 	prepValueProofPath, err := db.Prepare("CALL val_and_proof_path(?)")
 	if err != nil {
 		return nil, fmt.Errorf("preparing statement: %w", err)
 	}
+
 	prepGetValue, err := db.Prepare("SELECT value from nodes WHERE idhash=?")
 	if err != nil {
 		return nil, fmt.Errorf("preparing statement: %w", err)
 	}
+
 	prepGetValueDomainEntries, err := db.Prepare("SELECT `value` from `domainEntries` WHERE `key`=?")
 	if err != nil {
 		return nil, fmt.Errorf("preparing statement prepGetValueDomainEntries: %w", err)
@@ -64,9 +81,29 @@ func NewMysqlDB(db *sql.DB) (*mysqlDB, error) {
 		return nil, fmt.Errorf("preparing statement prepUpdateValueDomainEntries: %w", err)
 	}
 
-	prepDeleteKeyValueDomainEntries, err := db.Prepare(repeatStmtForDelete(1000))
+	prepDeleteKeyValueDomainEntries, err := db.Prepare(repeatStmtForDelete("domainEntries", 1000))
 	if err != nil {
-		return nil, fmt.Errorf("preparing statement prepUpdateValueDomainEntries: %w", err)
+		return nil, fmt.Errorf("preparing statement prepDeleteKeyValueDomainEntries: %w", err)
+	}
+
+	prepUpdateValueTree, err := db.Prepare("REPLACE into tree (`key`, `value`) values " + repeatStmt(1000, 2))
+	if err != nil {
+		return nil, fmt.Errorf("preparing statement prepUpdateValueTree: %w", err)
+	}
+
+	prepGetValueTree, err := db.Prepare("SELECT `value` from `tree` WHERE `key`=?")
+	if err != nil {
+		return nil, fmt.Errorf("preparing statement prepGetValueTree: %w", err)
+	}
+
+	prepDeleteKeyValueTree, err := db.Prepare(repeatStmtForDelete("tree", 1000))
+	if err != nil {
+		return nil, fmt.Errorf("preparing statement prepDeleteKeyValueTree: %w", err)
+	}
+
+	prepInsertKeysUpdates, err := db.Prepare("INSERT IGNORE into `updates` (`key`) VALUES " + repeatStmt(1000, 1))
+	if err != nil {
+		return nil, fmt.Errorf("preparing statement prepDeleteKeyValueTree: %w", err)
 	}
 
 	return &mysqlDB{
@@ -77,6 +114,10 @@ func NewMysqlDB(db *sql.DB) (*mysqlDB, error) {
 		prepGetValueDomainEntries:       prepGetValueDomainEntries,
 		prepUpdateValueDomainEntries:    prepUpdateValueDomainEntries,
 		prepDeleteKeyValueDomainEntries: prepDeleteKeyValueDomainEntries,
+		prepUpdateValueTree:             prepUpdateValueTree,
+		prepGetValueTree:                prepGetValueTree,
+		prepDeleteKeyValueTree:          prepDeleteKeyValueTree,
+		prepInsertKeysUpdates:           prepInsertKeysUpdates,
 	}, nil
 }
 
@@ -104,146 +145,4 @@ func (c *mysqlDB) RetrieveNode(ctx context.Context, id FullID) ([]byte, []byte, 
 		return nil, nil, err
 	}
 	return val, proofPath, nil
-}
-
-func (c *mysqlDB) RetrieveKeyValuePairMultiThread(ctx context.Context, id []string, numOfRoutine int) (*KeyValueResult, error) {
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
-	defer cancelF()
-
-	if len(id) < numOfRoutine {
-		numOfRoutine = len(id)
-	}
-
-	count := len(id)
-	step := count / numOfRoutine
-
-	resultChan := make(chan KeyValueResult)
-	for r := 0; r < numOfRoutine-1; r++ {
-		go fetchKeyValuePairWorker(resultChan, id[r*step:r*step+step], c.prepGetValueDomainEntries, ctx)
-	}
-	// let the final one do the rest of the work
-	go fetchKeyValuePairWorker(resultChan, id[(numOfRoutine-1)*step:count], c.prepGetValueDomainEntries, ctx)
-
-	finishedWorker := 0
-	keyValuePairs := []KeyValuePair{}
-
-	for numOfRoutine > finishedWorker {
-		newResult := <-resultChan
-		if newResult.Err != nil {
-			return nil, fmt.Errorf("RetrieveKeyValuePairMultiThread | %w", newResult.Err)
-		}
-		keyValuePairs = append(keyValuePairs, newResult.Pairs...)
-		finishedWorker++
-	}
-
-	return &KeyValueResult{Pairs: keyValuePairs}, nil
-}
-
-func fetchKeyValuePairWorker(resultChan chan KeyValueResult, keys []string, stmt *sql.Stmt, ctx context.Context) {
-	numOfWork := len(keys)
-	pairs := []KeyValuePair{}
-	var value []byte
-
-work_loop:
-	for i := 0; i < numOfWork; i++ {
-		result := stmt.QueryRow(keys[i])
-		if result == nil {
-			panic("result is nul")
-		}
-
-		err := result.Scan(&value)
-		if err != nil {
-			switch {
-			case err != sql.ErrNoRows:
-				resultChan <- KeyValueResult{Err: err}
-				return
-			case err == sql.ErrNoRows:
-				continue work_loop
-			}
-		}
-		pairs = append(pairs, KeyValuePair{Key: keys[i], Value: value})
-	}
-
-	resultChan <- KeyValueResult{Pairs: pairs}
-}
-
-func (c *mysqlDB) UpdateKeyValuePairBatches(ctx context.Context, keyValuePairs []KeyValuePair) error {
-	dataLen := len(keyValuePairs)
-	remainingDataLen := dataLen
-	// write in batch of 1000
-	for i := 0; i*1000 <= dataLen-1000; i++ {
-		data := make([]interface{}, 2*1000) // 2 elements per record ()
-
-		for j := 0; j < 1000; j++ {
-			data[2*j] = keyValuePairs[i*1000+j].Key
-			data[2*j+1] = keyValuePairs[i*1000+j].Value
-		}
-
-		_, err := c.prepUpdateValueDomainEntries.Exec(data...)
-		if err != nil {
-			return fmt.Errorf("UpdateKeyValuePairBatches | Exec | %w", err)
-		}
-		remainingDataLen = remainingDataLen - 1000
-	}
-
-	// if remaining data is less than 1000
-	if remainingDataLen > 0 {
-		// insert updated domains' entries
-		repeatedStmt := "REPLACE into domainEntries (`key`, `value`) values " + repeatStmt(remainingDataLen, 2)
-		stmt, err := c.db.Prepare(repeatedStmt)
-		if err != nil {
-			return fmt.Errorf("UpdateKeyValuePairBatches | db.Prepare | %w", err)
-		}
-		data := make([]interface{}, 2*remainingDataLen) // 2 elements per record ()
-
-		for j := 0; j < remainingDataLen; j++ {
-			data[2*j] = keyValuePairs[dataLen-remainingDataLen+j].Key
-			data[2*j+1] = keyValuePairs[dataLen-remainingDataLen+j].Value
-		}
-		_, err = stmt.Exec(data...)
-		if err != nil {
-			return fmt.Errorf("UpdateKeyValuePairBatches | Exec remaining | %w", err)
-		}
-	}
-	return nil
-}
-
-func (c *mysqlDB) DeleteKeyValuePairBatches(ctx context.Context, keys []string) error {
-	dataLen := len(keys)
-	remainingDataLen := dataLen
-	// write in batch of 1000
-	for i := 0; i*1000 <= dataLen-1000; i++ {
-		data := make([]interface{}, 1000)
-
-		for j := 0; j < 1000; j++ {
-			data[j] = keys[i*1000+j]
-		}
-
-		_, err := c.prepDeleteKeyValueDomainEntries.Exec(data...)
-		if err != nil {
-			return fmt.Errorf("DeleteKeyValuePairBatches | Exec | %w", err)
-		}
-		remainingDataLen = remainingDataLen - 1000
-	}
-
-	// if remaining data is less than 1000
-	if remainingDataLen > 0 {
-		// insert updated domains' entries
-		repeatedStmt := repeatStmtForDelete(remainingDataLen)
-		stmt, err := c.db.Prepare(repeatedStmt)
-		if err != nil {
-			return fmt.Errorf("DeleteKeyValuePairBatches | db.Prepare | %w", err)
-		}
-		data := make([]interface{}, remainingDataLen)
-
-		for j := 0; j < remainingDataLen; j++ {
-			data[j] = keys[dataLen-remainingDataLen+j]
-		}
-		_, err = stmt.Exec(data...)
-		if err != nil {
-			return fmt.Errorf("DeleteKeyValuePairBatches | Exec remaining | %w", err)
-		}
-	}
-	return nil
-
 }

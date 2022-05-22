@@ -6,14 +6,18 @@
 package trie
 
 import (
+	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/netsec-ethz/fpki/pkg/db"
 )
+
+var ErrorNoRow = errors.New("no row available")
 
 // ReadRequest: Read request from client
 // contains one channel to return the result
@@ -46,42 +50,125 @@ type CacheDB struct {
 	lock sync.RWMutex
 
 	// dbConn is the conn to mysql db
-	Store SQLDB
+	Store db.Conn
 
 	removedNode map[Hash][]byte
 
 	removeMux sync.RWMutex
-
-	// Client is the channel for user input; Used to get read request from client
-	ClientInput chan ReadRequest
-
-	tableName string
 }
 
 // NewCacheDB: return a cached db
-func NewCacheDB(store SQLDB, tableName string, iniTable bool) (*CacheDB, error) {
+func NewCacheDB(store db.Conn) (*CacheDB, error) {
 	// check if the table exists
 	// if not, create a new one
-	if iniTable {
-		_, err := initValueMap(store, tableName)
-		if err != nil {
-			return nil, fmt.Errorf("NewCacheDB | initValueMap | %w", err)
-		}
-	}
-
-	// channel for the client input
-	clientInput := make(chan ReadRequest)
 
 	return &CacheDB{
 		liveCache:    make(map[Hash][][]byte),
 		updatedNodes: make(map[Hash][][]byte),
 		removedNode:  make(map[Hash][]byte),
 		Store:        store,
-		ClientInput:  clientInput,
-		tableName:    tableName,
 	}, nil
 }
 
+// commitChangesToDB stores the updated nodes to disk.
+func (cacheDB *CacheDB) commitChangesToDB() error {
+	cacheDB.updatedMux.Lock()
+	defer cacheDB.updatedMux.Unlock()
+
+	err := cacheDB.Store.DisableKeys()
+	if err != nil {
+		return fmt.Errorf("commitChangesToDB | DisableKeys")
+	}
+
+	updates := []db.KeyValuePair{}
+	for k, v := range cacheDB.updatedNodes {
+		updates = append(updates, db.KeyValuePair{Key: hex.EncodeToString(k[:]), Value: serializeBatch(v)})
+	}
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
+	updateStart := time.Now()
+	err, numOfWrites := cacheDB.Store.UpdateKeyValuePairBatches(ctx, updates, db.Tree)
+	if err != nil {
+		return fmt.Errorf("commitChangesToDB | UpdateKeyValuePairBatches | %w", err)
+	}
+	updateEnd := time.Now()
+	fmt.Println("Update : takes ", updateEnd.Sub(updateStart), " | write ", numOfWrites)
+	// clear update nodes
+	cacheDB.updatedNodes = make(map[Hash][][]byte)
+
+	err = cacheDB.Store.EnableKeys()
+	if err != nil {
+		return fmt.Errorf("commitChangesToDB | EnableKeys")
+	}
+
+	if len(cacheDB.removedNode) != 0 {
+		err := cacheDB.Store.DisableKeys()
+		if err != nil {
+			return fmt.Errorf("commitChangesToDB | DisableKeys")
+		}
+
+		keys := []string{}
+		for k := range cacheDB.removedNode {
+			keys = append(keys, hex.EncodeToString(k[:]))
+		}
+		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+		defer cancelF()
+
+		start := time.Now()
+		err = cacheDB.Store.DeleteKeyValuePairBatches(ctx, keys, db.Tree)
+		if err != nil {
+			return fmt.Errorf("commitChangesToDB | DeleteKeyValuePairBatches | %w", err)
+		}
+		end := time.Now()
+
+		fmt.Println("Delete : takes ", end.Sub(start), " | delete ", len(cacheDB.removedNode))
+		cacheDB.removedNode = make(map[Hash][]byte)
+
+		err = cacheDB.Store.EnableKeys()
+		if err != nil {
+			return fmt.Errorf("commitChangesToDB | EnableKeys")
+		}
+	}
+
+	return nil
+}
+
+func (cacheDB *CacheDB) getValue(key []byte) ([]byte, error) {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
+	result, err := cacheDB.Store.RetrieveOneKeyValuePair(ctx, hex.EncodeToString(key[:]), db.Tree)
+	if err != nil {
+		return nil, fmt.Errorf("getValue | RetrieveOneKeyValuePair | %w", err)
+	}
+	if result.Value == nil {
+		return nil, ErrorNoRow
+	}
+	return result.Value, nil
+}
+
+// serializeBatch serialises the 2D [][]byte into a []byte for db
+func serializeBatch(batch [][]byte) []byte {
+	serialized := make([]byte, 4) //, 30*33)
+	if batch[0][0] == 1 {
+		// the batch node is a shortcut
+		bitSet(serialized, 31)
+	}
+	for i := 1; i < 31; i++ {
+		if len(batch[i]) != 0 {
+			bitSet(serialized, i-1)
+			serialized = append(serialized, batch[i]...)
+		}
+	}
+	return serialized
+}
+
+func (db *CacheDB) GetLiveCacheSize() int {
+	return len(db.liveCache)
+}
+
+/*
 // Start: creates workers and starts the worker distributor thread,
 func (db *CacheDB) Start() {
 	workerChan := make(chan ReadRequest)
@@ -104,7 +191,7 @@ func workerDistributor(clientInpuht chan ReadRequest, workerChan chan ReadReques
 }
 
 // queries the data, and return the result to the client
-func workerThread(workerChan chan ReadRequest, db SQLDB, tableName string) {
+func workerThread(workerChan chan ReadRequest, db db.Conn, tableName string) {
 	for {
 		select {
 		case newRequest := <-workerChan:
@@ -133,7 +220,9 @@ func workerThread(workerChan chan ReadRequest, db SQLDB, tableName string) {
 		}
 	}
 }
+*/
 
+/*
 // Create or load a table (every table represnets one tree)
 func initValueMap(db SQLDB, tableName string) (bool, error) {
 	// query to check if table exists
@@ -168,91 +257,4 @@ func initValueMap(db SQLDB, tableName string) (bool, error) {
 	}
 	return tableIsExisted, nil
 }
-
-// commitChangesToDB stores the updated nodes to disk.
-func (db *CacheDB) commitChangesToDB() error {
-	db.updatedMux.Lock()
-	defer db.updatedMux.Unlock()
-	// string builder for query
-	var sb strings.Builder
-
-	// TODO(yongzhe): maybe update is more efficient?
-	// replace the current (key, value) pair in DB; If exists, update it; If not, add one
-	queryStr := "REPLACE into `map`.`" + db.tableName + "` (`key`, `value`) values "
-	sb.WriteString(queryStr)
-
-	isFirst := true
-	// prepare queries
-	for k, v := range db.updatedNodes {
-		value := hex.EncodeToString(serializeBatch(v))
-		key := hex.EncodeToString(k[:])
-		if isFirst {
-			sb.WriteString("('" + key + "', '" + value + "')")
-			isFirst = false
-		} else {
-			sb.WriteString(",('" + key + "', '" + value + "')")
-		}
-	}
-	sb.WriteString(";")
-
-	fmt.Println("size of writes: ", len(db.updatedNodes))
-
-	_, err := db.Store.Exec(sb.String())
-	if err != nil {
-		return fmt.Errorf("commit | Query | %w", err)
-	}
-
-	db.updatedNodes = make(map[Hash][][]byte)
-
-	start := time.Now()
-	if len(db.removedNode) != 0 {
-		var deleteSB strings.Builder
-		queryStr = "DELETE from `map`.`" + db.tableName + "` WHERE `key` IN ("
-		deleteSB.WriteString(queryStr)
-
-		isFirst = true
-		for k := range db.removedNode {
-			key := hex.EncodeToString(k[:])
-			if isFirst {
-				deleteSB.WriteString("'" + key + "'")
-				isFirst = false
-			} else {
-				deleteSB.WriteString(",'" + key + "'")
-			}
-		}
-
-		deleteSB.WriteString(");")
-
-		fmt.Println("size of remove: ", len(db.removedNode))
-
-		_, err := db.Store.Exec(deleteSB.String())
-		if err != nil {
-			return fmt.Errorf("commit | DELETE | %w", err)
-		}
-
-		db.removedNode = make(map[Hash][]byte)
-	}
-	end := time.Now()
-	fmt.Println("time to delete nodes: ", end.Sub(start))
-	return nil
-}
-
-// serializeBatch serialises the 2D [][]byte into a []byte for db
-func serializeBatch(batch [][]byte) []byte {
-	serialized := make([]byte, 4) //, 30*33)
-	if batch[0][0] == 1 {
-		// the batch node is a shortcut
-		bitSet(serialized, 31)
-	}
-	for i := 1; i < 31; i++ {
-		if len(batch[i]) != 0 {
-			bitSet(serialized, i-1)
-			serialized = append(serialized, batch[i]...)
-		}
-	}
-	return serialized
-}
-
-func (db *CacheDB) GetLiveCacheSize() int {
-	return len(db.liveCache)
-}
+*/

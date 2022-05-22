@@ -11,6 +11,7 @@ import (
 	ct "github.com/google/certificate-transparency-go"
 	ctTls "github.com/google/certificate-transparency-go/tls"
 	ctX509 "github.com/google/certificate-transparency-go/x509"
+	mapDB "github.com/netsec-ethz/fpki/pkg/db"
 	mapCommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/prover"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/responder"
@@ -27,28 +28,33 @@ func main() {
 		panic(err)
 	}
 
-	_, err = db.Exec("TRUNCATE `map`.`deleteTest`;")
+	_, err = db.Exec("TRUNCATE `fpki`.`deleteTest`;")
 	if err != nil {
 		panic(err)
 	}
 
-	_, err = db.Exec("TRUNCATE `map`.`domainEntries`;")
+	_, err = db.Exec("TRUNCATE `fpki`.`domainEntries`;")
 	if err != nil {
 		panic(err)
 	}
 
-	_, err = db.Exec("TRUNCATE `map`.`updatedDomains`;")
+	_, err = db.Exec("TRUNCATE `fpki`.`updatedDomains`;")
 	if err != nil {
 		panic(err)
 	}
 
-	_, err = db.Exec("TRUNCATE `map`.`cacheStore`;")
+	_, err = db.Exec("TRUNCATE `fpki`.`cacheStore`;")
+	if err != nil {
+		panic(err)
+	}
+
+	dbMap, err := mapDB.Connect_old()
 	if err != nil {
 		panic(err)
 	}
 
 	// new map updator
-	mapUpdater, err := updater.NewMapUpdater(db, nil, 233, true)
+	mapUpdater, err := updater.NewMapUpdater(dbMap, nil, 233, true)
 	if err != nil {
 		panic(err)
 	}
@@ -69,14 +75,13 @@ func main() {
 		panic(err)
 	}
 
-	// new db conn for map responder
-	db, err = sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/map?maxAllowedPacket=1073741824")
+	dbMap, err = mapDB.Connect_old()
 	if err != nil {
 		panic(err)
 	}
 
 	// get a new responder, and load an existing tree
-	mapResponder, err := responder.NewMapResponder(db, root, 233, true)
+	mapResponder, err := responder.NewMapResponder(dbMap, root, 233, true)
 	if err != nil {
 		panic(err)
 	}

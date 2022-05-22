@@ -33,23 +33,21 @@ func (s *Trie) loadCache(root []byte, batch [][]byte, iBatch, height int, ch cha
 	if height%4 == 0 {
 		// Load the node from db
 		s.db.lock.Lock()
-		//dbval := s.db.Store.Get(root[:HashLength])
 
-		resultChan := make(chan ReadResult)
-		s.db.ClientInput <- ReadRequest{key: root[:HashLength], resultChan: resultChan}
-		readResult := <-resultChan
-		close(resultChan)
-
+		value, err := s.db.getValue(root[:HashLength])
 		s.db.lock.Unlock()
-		if len(readResult.result) == 0 {
-			ch <- fmt.Errorf("the trie node %x is unavailable in the disk db, db may be corrupted", root)
+
+		if err != nil {
+			ch <- fmt.Errorf("the trie node %x is unavailable in the disk db, db may be corrupted | %w", root, err)
 			return
 		}
 		//Store node in cache.
 		var node Hash
 		copy(node[:], root)
-		batch = s.parseBatch(readResult.result)
+		batch = s.parseBatch(value)
+
 		s.db.liveMux.Lock()
+
 		s.db.liveCache[node] = batch
 		s.db.liveMux.Unlock()
 		iBatch = 0
@@ -112,23 +110,6 @@ func (s *Trie) get(root, key []byte, batch [][]byte, iBatch, height int) ([]byte
 		return s.get(rnode, key, batch, 2*iBatch+2, height-1)
 	}
 	return s.get(lnode, key, batch, 2*iBatch+1, height-1)
-}
-
-// TrieRootExists returns true if the root exists in Database.
-func (s *Trie) TrieRootExists(root []byte) bool {
-	s.db.lock.RLock()
-	//dbval := s.db.Store.Get(root)
-
-	resultChan := make(chan ReadResult)
-	s.db.ClientInput <- ReadRequest{key: root[:HashLength], resultChan: resultChan}
-	readResult := <-resultChan
-	close(resultChan)
-
-	s.db.lock.RUnlock()
-	if len(readResult.result) != 0 {
-		return true
-	}
-	return false
 }
 
 func (s *Trie) Commit() error {

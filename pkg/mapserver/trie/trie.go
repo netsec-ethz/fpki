@@ -9,6 +9,8 @@ import (
 	"bytes"
 	"fmt"
 	"sync"
+
+	"github.com/netsec-ethz/fpki/pkg/db"
 )
 
 // Trie is a modified sparse Merkle tree.
@@ -46,19 +48,18 @@ type Trie struct {
 }
 
 // NewSMT creates a new SMT given a keySize and a hash function.
-func NewTrie(root []byte, hash func(data ...[]byte) []byte, store SQLDB, tableName string, iniTable bool) (*Trie, error) {
+func NewTrie(root []byte, hash func(data ...[]byte) []byte, store db.Conn) (*Trie, error) {
 	s := &Trie{
 		hash:       hash,
 		TrieHeight: len(hash([]byte("height"))) * 8, // hash any string to get output length
 		counterOn:  false,
 	}
 	var err error
-	s.db, err = NewCacheDB(store, tableName, iniTable)
+	s.db, err = NewCacheDB(store)
 	if err != nil {
 		return nil, err
 	}
 
-	go s.db.Start()
 	// don't store any cache by default (contracts state don't use cache)
 	s.CacheHeightLimit = s.TrieHeight + 1
 	s.Root = root
@@ -520,23 +521,21 @@ func (s *Trie) loadBatch(root []byte, height int) ([][]byte, error) {
 	// Replace: replace with mysql db
 	//dbval := s.db.Store.Get(root[:HashLength])
 
-	resultChan := make(chan ReadResult)
-	s.db.ClientInput <- ReadRequest{key: root[:HashLength], resultChan: resultChan}
-	readResult := <-resultChan
-	close(resultChan)
-
-	if readResult.err != nil {
-		return nil, fmt.Errorf("Read error")
+	value, err := s.db.getValue(root[:HashLength])
+	if err != nil {
+		return nil, fmt.Errorf("the trie node %x is unavailable in the disk db, db may be corrupted | %w", root, err)
 	}
-
 	s.db.lock.Unlock()
-	nodeSize := len(readResult.result)
+
+	var rootCopy [32]byte
+	copy(rootCopy[:], root[:HashLength])
+
+	nodeSize := len(value)
 	if nodeSize != 0 {
 		// Added: add the newly fetched nodes, and cache them into memory
-		resultBytes := s.parseBatch(readResult.result)
+		resultBytes := s.parseBatch(value)
 		if height >= s.CacheHeightLimit && height%4 == 0 {
-			var rootCopy [32]byte
-			copy(rootCopy[:], root[:HashLength])
+
 			s.db.liveCache[rootCopy] = resultBytes
 		}
 		return resultBytes, nil

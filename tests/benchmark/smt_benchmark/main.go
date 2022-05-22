@@ -3,12 +3,12 @@ package main
 import (
 	"bytes"
 	"crypto/rand"
-	"database/sql"
 	"fmt"
 	"runtime"
 	"sort"
 	"time"
 
+	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
@@ -20,9 +20,9 @@ func main() {
 func benchmark10MAccounts10Ktps(smt *trie.Trie) ([][]byte, [][]byte) {
 	allKeys := [][]byte{}
 	allValues := [][]byte{}
-	for i := 0; i < 30; i++ {
-		newkeys := getFreshData(10000, 32)
-		newvalues := getFreshData(10000, 32)
+	for i := 0; i < 500; i++ {
+		newkeys := getFreshData(100000, 32)
+		newvalues := getFreshData(100000, 32)
 		allKeys = append(allKeys, newkeys...)
 		allValues = append(allValues, newvalues...)
 
@@ -57,13 +57,12 @@ func benchmark10MAccounts10Ktps(smt *trie.Trie) ([][]byte, [][]byte) {
 
 //go test -run=xxx -bench=BenchmarkCacheHeightLimit233
 func BenchmarkCacheHeightLimit233() {
-	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/map?maxAllowedPacket=1073741824")
+	conn, err := db.Connect_old()
 	if err != nil {
 		panic(err)
 	}
 
-	defer db.Close()
-	smt, err := trie.NewTrie(nil, trie.Hasher, db, "cacheStore", true)
+	smt, err := trie.NewTrie(nil, trie.Hasher, conn)
 	if err != nil {
 		panic(err)
 	}
@@ -74,10 +73,9 @@ func BenchmarkCacheHeightLimit233() {
 
 	fmt.Println("length of keys: ", len(allKeys))
 
-	for i := 0; i < 30; i++ {
+	for i := 0; i < 300; i++ {
 		start := time.Now()
-		for j := 0; j < 10000; j++ {
-
+		for j := 0; j < 1000; j++ {
 			ap_, _, _, _, _ := smt.MerkleProof(allKeys[i*10000+j])
 
 			if !trie.VerifyInclusion(smt.Root, ap_, allKeys[i*10000+j], allValues[i*10000+j]) {

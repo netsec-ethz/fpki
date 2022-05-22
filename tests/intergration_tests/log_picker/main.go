@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -17,61 +18,98 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/mapserver/logpicker"
 
 	_ "github.com/go-sql-driver/mysql"
+	mapDB "github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/domain"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
 func main() {
-	startIdx := 1100000
-	endIdx := 1109999
+	startIdx := 1120000
+	endIdx := 1120999
 
-	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/map?maxAllowedPacket=1073741824")
+	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/fpki?maxAllowedPacket=1073741824")
 	defer db.Close()
 	if err != nil {
 		panic(err)
 	}
 
 	// trancate domain entries table
-	_, err = db.Exec("TRUNCATE `map`.`domainEntries`;")
+	_, err = db.Exec("TRUNCATE `fpki`.`domainEntries`;")
 	if err != nil {
 		panic(err)
 	}
 
-	logPicker, err := logpicker.NewLogPicker(20)
+	// trancate domain entries table
+	_, err = db.Exec("TRUNCATE `fpki`.`updates`;")
 	if err != nil {
 		panic(err)
 	}
 
-	// insert certificates
 	start := time.Now()
-	numOfAffectedDomains, numOfUpdatedCerts, err := logPicker.UpdateDomainFromLog("https://ct.googleapis.com/logs/argon2021", int64(startIdx), int64(endIdx), 70, 600)
+	certs, _, err := logpicker.GetCertMultiThread("https://ct.googleapis.com/logs/argon2021", int64(startIdx), int64(endIdx), 20)
 	if err != nil {
 		panic(err)
 	}
 	end := time.Now()
-	fmt.Println("time to update 10000 certificates ", end.Sub(start))
-	fmt.Println("number of affected domains: ", numOfAffectedDomains)
-	fmt.Println("number of updated certs: ", numOfUpdatedCerts)
+	fmt.Println("time to download 10000 certs ", end.Sub(start))
+
+	dnConn, err := mapDB.Connect_old()
+	if err != nil {
+		panic(err)
+	}
+
+	start = time.Now()
+	_, err = logpicker.UpdateDomainEntries(certs, dnConn, 10)
+	if err != nil {
+		panic(err)
+	}
+	end = time.Now()
+	fmt.Println("time to update 10000 certs ", end.Sub(start))
 
 	var number int
-	err = db.QueryRow("SELECT COUNT(*) FROM map.updatedDomains;").Scan(&number)
+	err = db.QueryRow("SELECT COUNT(*) FROM fpki.updates;").Scan(&number)
 	if err != nil {
 		panic(err)
 	}
 
 	fmt.Println("number of updated domains ", number)
 
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
+	numberOfUpdated, err := dnConn.RetrieveTableRowsCount(ctx)
+	if err != nil {
+		panic(err)
+	}
+
+	if numberOfUpdated != number {
+		panic("number error")
+	}
+
+	start = time.Now()
+	updatedDomainFromDB, err := dnConn.RetrieveUpdatedDomainByRangeMultiThread(ctx, 0, numberOfUpdated, 10)
+	if len(updatedDomainFromDB) != number {
+		fmt.Println(len(updatedDomainFromDB))
+		panic("missing data from update db")
+	}
+	end = time.Now()
+	fmt.Println("time to retrive updated domains ", end.Sub(start))
+
 	// trancate update index
-	_, err = db.Exec("TRUNCATE `map`.`updatedDomains`;")
+	_, err = db.Exec("TRUNCATE `fpki`.`updates`;")
 	if err != nil {
 		panic(err)
 	}
 
 	// insert same certs again
-	_, _, err = logPicker.UpdateDomainFromLog("https://ct.googleapis.com/logs/argon2021", int64(startIdx), int64(endIdx), 20, 600)
+	_, err = logpicker.UpdateDomainEntries(certs, dnConn, 10)
+	if err != nil {
+		panic(err)
+	}
 
 	// query the update table
-	err = db.QueryRow("SELECT COUNT(*) FROM map.updatedDomains;").Scan(&number)
+	err = db.QueryRow("SELECT COUNT(*) FROM fpki.updates;").Scan(&number)
 	if err != nil {
 		panic(err)
 	}
@@ -80,13 +118,6 @@ func main() {
 	if number != 0 {
 		panic("number of new updates should be 0")
 	}
-
-	err = db.QueryRow("SELECT COUNT(*) FROM map.domainEntries;").Scan(&number)
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println("number of entries in db: ", number)
 
 	// re-collect the certs, to see whether they are in the place where they should be
 	collectedCertMap := []ctX509.Certificate{}
@@ -117,7 +148,7 @@ func main() {
 			domainList = append(domainList, name)
 		}
 
-		effectedDomainName := logpicker.ExtractEffectedDomains(domainList)
+		effectedDomainName := domain.ExtractEffectedDomains(domainList)
 		for _, domainName := range effectedDomainName {
 			err := checkDomainEntryIsCorrectlySet(db, domainName, cert)
 			if err != nil {
@@ -135,7 +166,7 @@ func checkDomainEntryIsCorrectlySet(dbConn *sql.DB, domainName string, cert ctX5
 	key := hex.EncodeToString(domainHash[:])
 
 	var domainContent string
-	err := dbConn.QueryRow("SELECT `value`  from `map`.`domainEntries` WHERE `key` IN ('" + key + "');").Scan(&domainContent)
+	err := dbConn.QueryRow("SELECT `value`  from `fpki`.`domainEntries` WHERE `key` IN ('" + key + "');").Scan(&domainContent)
 	if err != nil {
 		return fmt.Errorf("checkDomainEntryIsCorrectlySet | QueryRow | %w", err)
 	}

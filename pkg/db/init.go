@@ -47,7 +47,7 @@ func Connect(config *Configuration) (Conn, error) {
 }
 
 func Connect_old() (Conn, error) {
-	dsn, err := url.Parse("root@tcp(localhost)/fpki")
+	dsn, err := url.Parse("root@tcp(localhost)/fpki?maxAllowedPacket=1073741824")
 	if err != nil {
 		panic(err) // logic error
 	}

@@ -7,18 +7,19 @@ package trie
 
 import (
 	"bytes"
-	"database/sql"
+	"context"
 	"fmt"
 	"math/rand"
 	"sort"
 	"testing"
 
+	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/stretchr/testify/require"
 )
 
 func TestTrieEmpty(t *testing.T) {
 	db := &MockDB{}
-	smt, err := NewTrie(nil, Hasher, db, "cacheStore", false)
+	smt, err := NewTrie(nil, Hasher, db)
 	require.NoError(t, err)
 
 	if len(smt.Root) != 0 {
@@ -28,7 +29,7 @@ func TestTrieEmpty(t *testing.T) {
 
 func TestTrieUpdateAndGet(t *testing.T) {
 	db := &MockDB{}
-	smt, err := NewTrie(nil, Hasher, db, "cacheStore", false)
+	smt, err := NewTrie(nil, Hasher, db)
 	require.NoError(t, err)
 
 	smt.atomicUpdate = false
@@ -69,7 +70,7 @@ func TestTrieUpdateAndGet(t *testing.T) {
 
 func TestTrieAtomicUpdate(t *testing.T) {
 	db := &MockDB{}
-	smt, err := NewTrie(nil, Hasher, db, "cacheStore", false)
+	smt, err := NewTrie(nil, Hasher, db)
 	require.NoError(t, err)
 
 	smt.CacheHeightLimit = 0
@@ -100,7 +101,7 @@ func TestTrieAtomicUpdate(t *testing.T) {
 
 func TestTriePublicUpdateAndGet(t *testing.T) {
 	db := &MockDB{}
-	smt, err := NewTrie(nil, Hasher, db, "cacheStore", false)
+	smt, err := NewTrie(nil, Hasher, db)
 	require.NoError(t, err)
 
 	smt.CacheHeightLimit = 0
@@ -143,7 +144,7 @@ func TestTriePublicUpdateAndGet(t *testing.T) {
 // test updating and deleting at the same time
 func TestTrieUpdateAndDelete(t *testing.T) {
 	db := &MockDB{}
-	smt, err := NewTrie(nil, Hasher, db, "cacheStore", false)
+	smt, err := NewTrie(nil, Hasher, db)
 	require.NoError(t, err)
 
 	smt.CacheHeightLimit = 0
@@ -181,7 +182,7 @@ func TestTrieUpdateAndDelete(t *testing.T) {
 
 func TestTrieMerkleProof(t *testing.T) {
 	db := &MockDB{}
-	smt, err := NewTrie(nil, Hasher, db, "cacheStore", false)
+	smt, err := NewTrie(nil, Hasher, db)
 	require.NoError(t, err)
 
 	// Add data to empty trie
@@ -210,7 +211,7 @@ func TestTrieMerkleProof(t *testing.T) {
 
 func TestTrieMerkleProofCompressed(t *testing.T) {
 	db := &MockDB{}
-	smt, err := NewTrie(nil, Hasher, db, "cacheStore", false)
+	smt, err := NewTrie(nil, Hasher, db)
 	require.NoError(t, err)
 
 	// Add data to empty trie
@@ -240,7 +241,7 @@ func TestTrieMerkleProofCompressed(t *testing.T) {
 func TestHeight0LeafShortcut(t *testing.T) {
 	keySize := 32
 	db := &MockDB{}
-	smt, err := NewTrie(nil, Hasher, db, "cacheStore", false)
+	smt, err := NewTrie(nil, Hasher, db)
 	require.NoError(t, err)
 
 	// Add 2 sibling keys that will be stored at height 0
@@ -315,15 +316,44 @@ func getFreshData(size, length int) [][]byte {
 
 type MockDB struct{}
 
-func (db *MockDB) Exec(query string, args ...interface{}) (sql.Result, error) {
+func (d *MockDB) Close() error
+
+func (d *MockDB) RetrieveValue(ctx context.Context, id db.FullID) ([]byte, error) { return nil, nil }
+
+func (d *MockDB) RetrieveNode(ctx context.Context, id db.FullID) ([]byte, []byte, error) {
+	return nil, nil, nil
+}
+
+func (d *MockDB) RetrieveOneKeyValuePair(ctx context.Context, id string, tableName db.TableName) (*db.KeyValuePair, error) {
 	return nil, nil
 }
-func (db *MockDB) QueryRow(query string, args ...interface{}) *sql.Row {
+
+func (d *MockDB) RetrieveKeyValuePairMultiThread(ctx context.Context, id []string, numOfRoutine int, tableName db.TableName) ([]db.KeyValuePair, error) {
+	return nil, nil
+}
+
+func (d *MockDB) RetrieveUpdatedDomainByRangeMultiThread(ctx context.Context, start, end, numberOfWorker int) ([]string, error) {
+	return nil, nil
+}
+
+func (d *MockDB) RetrieveTableRowsCount(ctx context.Context) (int, error) {
+	return 0, nil
+}
+
+func (d *MockDB) UpdateKeyValuePairBatches(ctx context.Context, keyValuePairs []db.KeyValuePair, tableName db.TableName) (error, int) {
+	return nil, 0
+}
+
+func (d *MockDB) DeleteKeyValuePairBatches(ctx context.Context, keys []string, tableName db.TableName) error {
 	return nil
 }
-func (db *MockDB) Query(query string, args ...interface{}) (*sql.Rows, error) {
-	return nil, nil
+
+func (d *MockDB) InsertIgnoreKeyBatches(ctx context.Context, keys []string) (int, error) {
+	return 0, nil
 }
-func (db *MockDB) Close() error {
+
+func (d *MockDB) DisableKeys() error { return nil }
+
+func (d *MockDB) EnableKeys() error {
 	return nil
 }

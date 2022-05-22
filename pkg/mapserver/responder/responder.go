@@ -6,8 +6,9 @@ import (
 	"fmt"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/logpicker"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/domain"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
@@ -23,8 +24,8 @@ type MapResponder struct {
 //   --db: db connection to the tree
 //   --root: for a new tree, it can be nil. To load a non-empty tree, root should be the latest root of the tree.
 //   --cacheHeight: Maximum height of the cached tree (in memory). 256 means no cache, 0 means cache the whole tree. 0-256
-func NewMapResponder(db *sql.DB, root []byte, cacheHeight int, initTable bool) (*MapResponder, error) {
-	smt, err := trie.NewTrie(root, trie.Hasher, db, "cacheStore", initTable)
+func NewMapResponder(db db.Conn, root []byte, cacheHeight int, initTable bool) (*MapResponder, error) {
+	smt, err := trie.NewTrie(root, trie.Hasher, db)
 	smt.CacheHeightLimit = cacheHeight
 	if err != nil {
 		return nil, fmt.Errorf("NewMapResponder | NewTrie | %w", err)
@@ -94,7 +95,7 @@ func (mapResponder *MapResponder) GetDomainProof(domainName string) ([]common.Ma
 // eg: *.google.com -> google.com
 // eg: www.google.com -> google.com
 func parseDomainName(domainName string) ([]string, error) {
-	result, err := logpicker.SplitE2LD(domainName)
+	result, err := domain.SplitE2LD(domainName)
 	resultString := []string{}
 	var domain string
 	if err != nil {
