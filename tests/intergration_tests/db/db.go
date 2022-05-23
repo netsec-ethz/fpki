@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/hex"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -11,6 +12,35 @@ import (
 )
 
 func main() {
+	testKeyValueStore()
+	testUpdateTable()
+	fmt.Println("succeed")
+}
+
+func testUpdateTable() {
+	conn, err := db.Connect_old()
+	if err != nil {
+		panic(err)
+	}
+
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
+	numOfUpdates, err := conn.RetrieveTableRowsCount(ctx)
+	if err != nil {
+		panic(err)
+	}
+
+	keys, err := conn.RetrieveUpdatedDomainMultiThread(ctx, 1000)
+	fmt.Println(len(keys), " ", numOfUpdates)
+	if len(keys) != numOfUpdates {
+		fmt.Println(len(keys), " ", numOfUpdates)
+		panic("length not equal")
+	}
+
+}
+
+func testKeyValueStore() {
 	conn, err := db.Connect_old()
 	if err != nil {
 		panic(err)
@@ -201,6 +231,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	conn.Close()
 }
 
 func getKeyValuePair(startIdx, endIdx int, content []byte) []db.KeyValuePair {

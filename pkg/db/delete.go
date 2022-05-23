@@ -58,3 +58,11 @@ func (c *mysqlDB) DeleteKeyValuePairBatches(ctx context.Context, keys []string, 
 	}
 	return nil
 }
+
+func (c *mysqlDB) TruncateUpdatesTable(ctx context.Context) error {
+	_, err := c.db.Exec("TRUNCATE `fpki`.`updates`;")
+	if err != nil {
+		return fmt.Errorf("TruncateUpdatesTable | TRUNCATE | %w", err)
+	}
+	return nil
+}

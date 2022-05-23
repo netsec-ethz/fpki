@@ -40,7 +40,7 @@ type Conn interface {
 
 	RetrieveKeyValuePairMultiThread(ctx context.Context, id []string, numOfRoutine int, tableName TableName) ([]KeyValuePair, error)
 
-	RetrieveUpdatedDomainByRangeMultiThread(ctx context.Context, start, end, numberOfWorker int) ([]string, error)
+	RetrieveUpdatedDomainMultiThread(ctx context.Context, perQueryLimit int) ([]string, error)
 
 	RetrieveTableRowsCount(ctx context.Context) (int, error)
 
@@ -49,6 +49,8 @@ type Conn interface {
 	DeleteKeyValuePairBatches(ctx context.Context, keys []string, tableName TableName) error
 
 	InsertIgnoreKeyBatches(ctx context.Context, keys []string) (int, error)
+
+	TruncateUpdatesTable(ctx context.Context) error
 
 	DisableKeys() error
 

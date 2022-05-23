@@ -122,3 +122,21 @@ func SplitE2LD(domain string) ([]string, error) {
 
 	return subdomains, nil
 }
+
+func IsTLD(domainName string) bool {
+	// remove "*."
+	if len(domainName) > 2 && domainName[:2] == "*." {
+		domainName = domainName[2:]
+	}
+
+	// remove "www."
+	if len(domainName) > 4 && domainName[:4] == "www." {
+		domainName = domainName[4:]
+	}
+
+	tld, icann := publicsuffix.PublicSuffix(domainName)
+	if icann && tld == domainName {
+		return true
+	}
+	return false
+}

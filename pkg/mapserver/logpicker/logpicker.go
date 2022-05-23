@@ -1,16 +1,22 @@
 package logpicker
 
 import (
+	"bufio"
 	"bytes"
+	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
+	"time"
 
 	ct "github.com/google/certificate-transparency-go"
 	ctTls "github.com/google/certificate-transparency-go/tls"
 	"github.com/google/certificate-transparency-go/x509"
 	ctX509 "github.com/google/certificate-transparency-go/x509"
+	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/domain"
 )
 
 // CertData: data structure of leaf from CT log
@@ -121,4 +127,47 @@ parse_cert_loop:
 	}
 
 	return certList, nil
+}
+
+// GetPCAndRPC: get PC and RPC from url
+// TODO(yongzhe): currently just generate ramdon PC and RPC using top 1k domain names
+func GetPCAndRPC(ctURL string, startIndex int64, endIndex int64, numOfWorker int) ([]*common.PC, []*common.RPC, error) {
+	resultPC := []*common.PC{}
+	resultRPC := []*common.RPC{}
+
+	f, err := os.Open(ctURL)
+	if err != nil {
+		return nil, nil, fmt.Errorf("GetPCAndRPC | os.Open | %w", err)
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		domainName := scanner.Text()
+		// no policy for TLD
+		if domain.IsTLD(domainName) {
+			continue
+		}
+		resultPC = append(resultPC, &common.PC{
+			Subject:     domainName,
+			TimeStamp:   time.Now(),
+			CASignature: generateRandomBytes(),
+		})
+
+		resultRPC = append(resultRPC, &common.RPC{
+			Subject:   domainName,
+			NotBefore: time.Now(),
+		})
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, nil, fmt.Errorf("GetPCAndRPC | scanner.Err | %w", err)
+	}
+
+	return resultPC, resultRPC, nil
+}
+
+func generateRandomBytes() []byte {
+	token := make([]byte, 40)
+	rand.Read(token)
+	return token
 }

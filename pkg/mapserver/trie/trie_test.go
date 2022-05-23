@@ -316,10 +316,15 @@ func getFreshData(size, length int) [][]byte {
 
 type MockDB struct{}
 
-func (d *MockDB) Close() error
+// Close closes the connection.
+func (d *MockDB) Close() error { return nil }
 
+// RetrieveValue returns the value associated with the node.
 func (d *MockDB) RetrieveValue(ctx context.Context, id db.FullID) ([]byte, error) { return nil, nil }
 
+// RetrieveNode returns the value and the proof path (without the root) for a given node.
+// Since each one of the steps of the proof path has a fixed size, returning the path
+// as a slice is sufficient to know how many steps there were in the proof path.
 func (d *MockDB) RetrieveNode(ctx context.Context, id db.FullID) ([]byte, []byte, error) {
 	return nil, nil, nil
 }
@@ -332,13 +337,11 @@ func (d *MockDB) RetrieveKeyValuePairMultiThread(ctx context.Context, id []strin
 	return nil, nil
 }
 
-func (d *MockDB) RetrieveUpdatedDomainByRangeMultiThread(ctx context.Context, start, end, numberOfWorker int) ([]string, error) {
+func (d *MockDB) RetrieveUpdatedDomainMultiThread(ctx context.Context, perQueryLimit int) ([]string, error) {
 	return nil, nil
 }
 
-func (d *MockDB) RetrieveTableRowsCount(ctx context.Context) (int, error) {
-	return 0, nil
-}
+func (d *MockDB) RetrieveTableRowsCount(ctx context.Context) (int, error) { return 0, nil }
 
 func (d *MockDB) UpdateKeyValuePairBatches(ctx context.Context, keyValuePairs []db.KeyValuePair, tableName db.TableName) (error, int) {
 	return nil, 0
@@ -352,8 +355,8 @@ func (d *MockDB) InsertIgnoreKeyBatches(ctx context.Context, keys []string) (int
 	return 0, nil
 }
 
+func (d *MockDB) TruncateUpdatesTable(ctx context.Context) error { return nil }
+
 func (d *MockDB) DisableKeys() error { return nil }
 
-func (d *MockDB) EnableKeys() error {
-	return nil
-}
+func (d *MockDB) EnableKeys() error { return nil }

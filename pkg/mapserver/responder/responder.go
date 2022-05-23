@@ -1,9 +1,10 @@
 package responder
 
 import (
-	"database/sql"
+	"context"
 	"encoding/hex"
 	"fmt"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/netsec-ethz/fpki/pkg/db"
@@ -16,7 +17,7 @@ import (
 type MapResponder struct {
 	smt *trie.Trie
 
-	dbConn *sql.DB
+	dbConn db.Conn
 }
 
 // NewMapResponder: return a new MapResponder.
@@ -24,17 +25,18 @@ type MapResponder struct {
 //   --db: db connection to the tree
 //   --root: for a new tree, it can be nil. To load a non-empty tree, root should be the latest root of the tree.
 //   --cacheHeight: Maximum height of the cached tree (in memory). 256 means no cache, 0 means cache the whole tree. 0-256
-func NewMapResponder(db db.Conn, root []byte, cacheHeight int, initTable bool) (*MapResponder, error) {
-	smt, err := trie.NewTrie(root, trie.Hasher, db)
-	smt.CacheHeightLimit = cacheHeight
+func NewMapResponder(root []byte, cacheHeight int) (*MapResponder, error) {
+	dbConn, err := db.Connect_old()
+	if err != nil {
+		return nil, fmt.Errorf("NewMapResponder | Connect_old | %w", err)
+	}
+	smt, err := trie.NewTrie(root, trie.Hasher, dbConn)
 	if err != nil {
 		return nil, fmt.Errorf("NewMapResponder | NewTrie | %w", err)
 	}
+	smt.CacheHeightLimit = cacheHeight
 
-	dbConn, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/map?maxAllowedPacket=1073741824")
-	if err != nil {
-		return nil, fmt.Errorf("NewMapResponder | sql.Open | %w", err)
-	}
+	smt.LoadCache(root)
 
 	return &MapResponder{
 		smt:    smt,
@@ -43,38 +45,67 @@ func NewMapResponder(db db.Conn, root []byte, cacheHeight int, initTable bool) (
 }
 
 // GetMapResponse: Query the proofs and materials for a list of domains. Return type: MapServerResponse
-func (mapResponder *MapResponder) GetDomainProof(domainName string) ([]common.MapServerResponse, error) {
+func (mapResponder *MapResponder) GetDomainProof(ctx context.Context, domainName string) ([]common.MapServerResponse, error) {
+
+	start := time.Now()
 	proofsResult := []common.MapServerResponse{}
 	domainList, err := parseDomainName(domainName)
 	if err != nil {
 		return nil, fmt.Errorf("GetDomainProof | parseDomainName | %w", err)
 	}
 
+	var merStart time.Time
+	var merEnd time.Time
+	var newStart time.Time
+	var newEnd time.Time
+	var hashStart time.Time
+	var hashEnd time.Time
+	var hexStart time.Time
+	var hexEnd time.Time
+
+	durationList := []time.Duration{}
+
 	for _, domain := range domainList {
 		// hash the domain name -> key
+		hashStart = time.Now()
 		domainHash := trie.Hasher([]byte(domain))
+		hashEnd = time.Now()
+		durationList = append(durationList, hashEnd.Sub(hashStart))
+
 		// get the merkle proof from the smt. If isPoP == true, then it's a proof of inclusion
+		merStart = time.Now()
 		proof, isPoP, proofKey, ProofValue, err := mapResponder.smt.MerkleProof(domainHash)
 		if err != nil {
 			return nil, fmt.Errorf("GetProofs | MerkleProof | %w", err)
 		}
+		merEnd = time.Now()
+		if merEnd.Sub(merStart) > time.Millisecond {
+			fmt.Println("fetch proof: ", merEnd.Sub(merStart))
+		}
 
+		durationList = append(durationList, merEnd.Sub(merStart))
+
+		newStart = time.Now()
 		var proofType common.ProofType
 		domainBytes := []byte{}
 		switch {
 		case isPoP:
 			proofType = common.PoP
-
-			// fetch the domain bytes from map
-			var domainContent string
-			err := mapResponder.dbConn.QueryRow("SELECT `value` FROM map.domainEntries WHERE `key`='" + hex.EncodeToString(domainHash) + "';").Scan(&domainContent)
+			hexStart = time.Now()
+			domainHashString := hex.EncodeToString(domainHash)
+			hexEnd = time.Now()
+			fmt.Println("hex time:", hexEnd.Sub(hexStart))
+			result, err := mapResponder.dbConn.RetrieveOneKeyValuePair(ctx, domainHashString, db.DomainEntries)
 			if err != nil {
 				return nil, fmt.Errorf("GetDomainProof | QueryRow | %w", err)
 			}
-			domainBytes = []byte(domainContent)
+			domainBytes = result.Value
 		case !isPoP:
 			proofType = common.PoA
 		}
+		newEnd = time.Now()
+
+		durationList = append(durationList, newEnd.Sub(newStart))
 
 		proofsResult = append(proofsResult, common.MapServerResponse{
 			Domain: domain,
@@ -87,6 +118,19 @@ func (mapResponder *MapResponder) GetDomainProof(domainName string) ([]common.Ma
 			DomainEntryBytes: domainBytes,
 		})
 	}
+	end := time.Now()
+	if end.Sub(start) > time.Millisecond {
+		fmt.Println("time to fetch: ", end.Sub(start))
+		fmt.Println(domainName)
+		for i, timeST := range durationList {
+			fmt.Println(timeST)
+			if i%3 == 2 {
+				fmt.Println()
+			}
+		}
+		fmt.Println("--------------------------------------")
+	}
+
 	return proofsResult, nil
 }
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand"
 	"strconv"
+	"time"
 )
 
 type ReadKeyResult struct {
@@ -26,7 +27,10 @@ func (c *mysqlDB) RetrieveOneKeyValuePair(ctx context.Context, id string, tableN
 		return nil, fmt.Errorf("RetrieveOneKeyValuePair : Table name not supported")
 	}
 
+	start := time.Now()
 	result := stmt.QueryRow(id)
+	end := time.Now()
+	fmt.Println("db read: ", end.Sub(start))
 	err := result.Scan(&value)
 	if err != nil {
 		switch {
@@ -108,21 +112,30 @@ func getRandomInt() int {
 	return rand.Intn(50)
 }
 
-func (c *mysqlDB) RetrieveUpdatedDomainByRangeMultiThread(ctx context.Context, start, end, numberOfWorker int) ([]string, error) {
-
-	if end-start < numberOfWorker {
-		numberOfWorker = end - start
+func (c *mysqlDB) RetrieveUpdatedDomainMultiThread(ctx context.Context, perQueryLimit int) ([]string, error) {
+	count, err := c.RetrieveTableRowsCount(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("RetrieveUpdatedDomainMultiThread | RetrieveTableRowsCount | %w", err)
 	}
 
-	count := end - start
-	step := count / numberOfWorker
+	numberOfWorker := 1
+	if count > perQueryLimit {
+		numberOfWorker = count/perQueryLimit + 1
+	}
+
+	var step int
+	if numberOfWorker == 1 {
+		step = count
+	} else {
+		step = count / numberOfWorker
+	}
 
 	resultChan := make(chan ReadKeyResult)
 	for r := 0; r < numberOfWorker-1; r++ {
-		go fetchKeyWorker(resultChan, start+r*step, start+r*step+step, ctx, c.db)
+		go fetchKeyWorker(resultChan, r*step, r*step+step, ctx, c.db)
 	}
 	// let the final one do the rest of the work
-	go fetchKeyWorker(resultChan, start+(numberOfWorker-1)*step, start+count, ctx, c.db)
+	go fetchKeyWorker(resultChan, (numberOfWorker-1)*step, count+1, ctx, c.db)
 
 	finishedWorker := 0
 	keys := []string{}
@@ -139,6 +152,15 @@ func (c *mysqlDB) RetrieveUpdatedDomainByRangeMultiThread(ctx context.Context, s
 		}
 		keys = append(keys, newResult.Keys...)
 		finishedWorker++
+	}
+
+	if count != len(keys) {
+		return nil, fmt.Errorf("RetrieveUpdatedDomainMultiThread | incomplete fetching")
+	}
+
+	err = c.TruncateUpdatesTable(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("RetrieveUpdatedDomainMultiThread | TruncateUpdatesTable | %w", err)
 	}
 
 	return keys, nil

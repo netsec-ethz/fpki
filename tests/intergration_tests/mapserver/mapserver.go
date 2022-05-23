@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
@@ -11,7 +12,6 @@ import (
 	ct "github.com/google/certificate-transparency-go"
 	ctTls "github.com/google/certificate-transparency-go/tls"
 	ctX509 "github.com/google/certificate-transparency-go/x509"
-	mapDB "github.com/netsec-ethz/fpki/pkg/db"
 	mapCommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/prover"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/responder"
@@ -20,54 +20,54 @@ import (
 	"time"
 )
 
+// "https://ct.googleapis.com/logs/argon2021"
+
 // TestUpdaterAndResponder: store a list of domain entries -> fetch inclusion -> verify inclusion
 func main() {
 	// truncate tables
-	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/map?maxAllowedPacket=1073741824")
+	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/fpki?maxAllowedPacket=1073741824")
 	if err != nil {
 		panic(err)
 	}
 
-	_, err = db.Exec("TRUNCATE `fpki`.`deleteTest`;")
+	_, err = db.Exec("TRUNCATE domainEntries;")
 	if err != nil {
 		panic(err)
 	}
 
-	_, err = db.Exec("TRUNCATE `fpki`.`domainEntries`;")
+	_, err = db.Exec("TRUNCATE updates;")
 	if err != nil {
 		panic(err)
 	}
 
-	_, err = db.Exec("TRUNCATE `fpki`.`updatedDomains`;")
-	if err != nil {
-		panic(err)
-	}
-
-	_, err = db.Exec("TRUNCATE `fpki`.`cacheStore`;")
-	if err != nil {
-		panic(err)
-	}
-
-	dbMap, err := mapDB.Connect_old()
+	_, err = db.Exec("TRUNCATE tree;")
 	if err != nil {
 		panic(err)
 	}
 
 	// new map updator
-	mapUpdater, err := updater.NewMapUpdater(dbMap, nil, 233, true)
+	mapUpdater, err := updater.NewMapUpdater(nil, 233)
 	if err != nil {
 		panic(err)
 	}
 
 	start := time.Now()
 	// download the certs and update the domain entries
-	err = mapUpdater.CollectCertsAndUpdate("https://ct.googleapis.com/logs/argon2021", 1000000, 1001999)
+	err = mapUpdater.UpdateFromCT("https://ct.googleapis.com/logs/argon2021", 1120000, 1120999)
 	if err != nil {
 		panic(err)
 	}
 
 	end := time.Now()
-	fmt.Println("time to update 2000 domain entries: ", end.Sub(start))
+	fmt.Println("time to get 10000 certs: ", end.Sub(start))
+
+	start = time.Now()
+	err = mapUpdater.CommitChanges()
+	if err != nil {
+		panic(err)
+	}
+	end = time.Now()
+	fmt.Println("time to commit changes: ", end.Sub(start))
 
 	root := mapUpdater.GetRoot()
 	err = mapUpdater.Close()
@@ -75,22 +75,17 @@ func main() {
 		panic(err)
 	}
 
-	dbMap, err = mapDB.Connect_old()
-	if err != nil {
-		panic(err)
-	}
-
 	// get a new responder, and load an existing tree
-	mapResponder, err := responder.NewMapResponder(dbMap, root, 233, true)
+	mapResponder, err := responder.NewMapResponder(root, 233)
 	if err != nil {
 		panic(err)
 	}
 
 	// re-collect the added certs
 	collectedCertMap := []ctX509.Certificate{}
-	for i := 0; i < 100; i++ {
-		certList, err := getCerts("https://ct.googleapis.com/logs/argon2021", int64(1000000+i*20), int64(1000000+i*20+19))
-		fmt.Println("doanloading : ", int64(1000000+i*20), " - ", int64(1000000+i*20+19))
+	for i := 0; i < 50; i++ {
+		certList, err := getCerts("https://ct.googleapis.com/logs/argon2021", int64(1120000+i*20), int64(1120000+i*20+19))
+		fmt.Println("doanloading : ", int64(1120000+i*20), " - ", int64(1120000+i*20+19))
 		if err != nil {
 			panic(err)
 		}
@@ -125,7 +120,10 @@ func main() {
 
 		// check individual domains
 		for domainName, _ := range domainNameMap {
-			mapResponses, err := mapResponder.GetDomainProof(domainName)
+			ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+			defer cancelF()
+
+			mapResponses, err := mapResponder.GetDomainProof(ctx, domainName)
 			if err != nil {
 				panic(err)
 			}
@@ -166,7 +164,6 @@ func main() {
 				panic("no valid certificate")
 			}
 		}
-		fmt.Println()
 	}
 	fmt.Println("map server succeed!")
 }

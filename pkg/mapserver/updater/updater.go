@@ -2,11 +2,11 @@ package updater
 
 import (
 	"bytes"
-	"database/sql"
+	"context"
 	"encoding/hex"
 	"fmt"
 	"sort"
-	"strings"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/netsec-ethz/fpki/pkg/db"
@@ -16,25 +16,159 @@ import (
 
 // MapUpdater: map updator. It is responsible for updating the tree, and writing to db
 type MapUpdater struct {
-	smt *trie.Trie
+	smt    *trie.Trie
+	dbConn db.Conn
 }
 
 // NewMapUpdater: return a new map updator. Input paras is similiar to NewMapResponder
-func NewMapUpdater(db db.Conn, root []byte, cacheHeight int, initTable bool) (*MapUpdater, error) {
-	smt, err := trie.NewTrie(root, trie.Hasher, db)
+func NewMapUpdater(root []byte, cacheHeight int) (*MapUpdater, error) {
+	dbConn, err := db.Connect_old()
+	if err != nil {
+		return nil, fmt.Errorf("NewMapUpdater | db.Connect_old | %w", err)
+	}
+
+	smt, err := trie.NewTrie(root, trie.Hasher, dbConn)
 	if err != nil {
 		return nil, fmt.Errorf("NewMapServer | NewTrie | %w", err)
 	}
 	smt.CacheHeightLimit = cacheHeight
 
-	logpicker, err := logpicker.NewLogPicker(20, db)
-	if err != nil {
-		return nil, fmt.Errorf("NewMapServer | NewLogPicker | %w", err)
-	}
-
-	return &MapUpdater{smt: smt, logpicker: logpicker}, nil
+	return &MapUpdater{smt: smt, dbConn: dbConn}, nil
 }
 
+func (mapUpdator *MapUpdater) UpdateFromCT(ctUrl string, startIdx, endIdx int64) error {
+	start := time.Now()
+	certs, _, err := logpicker.GetCertMultiThread(ctUrl, startIdx, endIdx, 20)
+	if err != nil {
+		return fmt.Errorf("CollectCerts | GetCertMultiThread | %w", err)
+	}
+	end := time.Now()
+	fmt.Println("time to fetch certs from internet ", end.Sub(start))
+
+	_, err = UpdateDomainEntriesUsingCerts(certs, mapUpdator.dbConn, 10)
+	if err != nil {
+		return fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingCerts | %w", err)
+	}
+
+	updatedDomainHash, err := mapUpdator.fetchUpdatedDomainHash()
+	if err != nil {
+		return fmt.Errorf("CollectCerts | fetchUpdatedDomainHash | %w", err)
+	}
+
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
+	keyValuePairs, err := mapUpdator.dbConn.RetrieveKeyValuePairMultiThread(ctx, updatedDomainHash, 10, db.DomainEntries)
+	if err != nil {
+		return fmt.Errorf("CollectCerts | RetrieveKeyValuePairMultiThread | %w", err)
+	}
+
+	keyInput, valueInput, err := keyValuePairToSMTInput(keyValuePairs)
+	if err != nil {
+		return fmt.Errorf("CollectCerts | keyValuePairToSMTInput | %w", err)
+	}
+
+	_, err = mapUpdator.smt.Update(keyInput, valueInput)
+	if err != nil {
+		return fmt.Errorf("CollectCerts | Update | %w", err)
+	}
+
+	return nil
+}
+
+func (mapUpdator *MapUpdater) UpdateRPCAndPC(ctUrl string, startIdx, endIdx int64) error {
+	pcList, rpcList, err := logpicker.GetPCAndRPC(ctUrl, startIdx, endIdx, 20)
+	if err != nil {
+		return fmt.Errorf("CollectCerts | GetPCAndRPC | %w", err)
+	}
+
+	_, err = UpdateDomainEntriesUsingRPCAndPC(rpcList, pcList, mapUpdator.dbConn, 10)
+	if err != nil {
+		return fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingRPCAndPC | %w", err)
+	}
+
+	updatedDomainHash, err := mapUpdator.fetchUpdatedDomainHash()
+	if err != nil {
+		return fmt.Errorf("CollectCerts | fetchUpdatedDomainHash | %w", err)
+	}
+
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
+	keyValuePairs, err := mapUpdator.dbConn.RetrieveKeyValuePairMultiThread(ctx, updatedDomainHash, 10, db.DomainEntries)
+	if err != nil {
+		return fmt.Errorf("CollectCerts | RetrieveKeyValuePairMultiThread | %w", err)
+	}
+
+	keyInput, valueInput, err := keyValuePairToSMTInput(keyValuePairs)
+	if err != nil {
+		return fmt.Errorf("CollectCerts | keyValuePairToSMTInput | %w", err)
+	}
+
+	_, err = mapUpdator.smt.Update(keyInput, valueInput)
+	if err != nil {
+		return fmt.Errorf("CollectCerts | Update | %w", err)
+	}
+
+	return nil
+}
+
+func (mapUpdator *MapUpdater) CommitChanges() error {
+	err := mapUpdator.smt.Commit()
+	if err != nil {
+		return fmt.Errorf("CommitChanges | Commit | %w", err)
+	}
+	return nil
+}
+
+func (mapUpdator *MapUpdater) fetchUpdatedDomainHash() ([]string, error) {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
+	keys, err := mapUpdator.dbConn.RetrieveUpdatedDomainMultiThread(ctx, 100000)
+	if err != nil {
+		return nil, fmt.Errorf("fetchUpdatedDomainHash | RetrieveUpdatedDomainMultiThread | %w", err)
+	}
+	return keys, nil
+}
+
+func keyValuePairToSMTInput(keyValuePair []db.KeyValuePair) ([][]byte, [][]byte, error) {
+	updateInput := []UpdateInput{}
+
+	for _, pair := range keyValuePair {
+		keyBytes, err := hex.DecodeString(pair.Key)
+		if err != nil {
+			return nil, nil, fmt.Errorf("keyValuePairToSMTInput | DecodeString | %w", err)
+		}
+		updateInput = append(updateInput, UpdateInput{Key: keyBytes, Value: trie.Hasher(pair.Value)})
+	}
+
+	sort.Slice(updateInput, func(i, j int) bool {
+		return bytes.Compare(updateInput[i].Key, updateInput[j].Key) == -1
+	})
+
+	keyResult := [][]byte{}
+	valueResult := [][]byte{}
+
+	for _, pair := range updateInput {
+		keyResult = append(keyResult, pair.Key)
+		valueResult = append(valueResult, pair.Value)
+	}
+
+	return keyResult, valueResult, nil
+}
+
+// GetRoot: get current root
+func (mapUpdater *MapUpdater) GetRoot() []byte {
+	return mapUpdater.smt.Root
+}
+
+// Close: close connection
+func (mapUpdater *MapUpdater) Close() error {
+	return mapUpdater.smt.Close()
+}
+
+/*
 func (mapUpdator *MapUpdater) CollectCertsAndUpdate(ctUrl string, startIdx, endIdx int64) error {
 	numOfAffectedDomains, numOfUpdatedCerts, err := mapUpdator.logpicker.UpdateDomainFromLog(ctUrl, startIdx, endIdx, 30, 600)
 	if err != nil {
@@ -170,3 +304,4 @@ func (mapUpdater *MapUpdater) GetRoot() []byte {
 func (mapUpdater *MapUpdater) Close() error {
 	return mapUpdater.smt.Close()
 }
+*/

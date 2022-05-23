@@ -20,6 +20,7 @@ type CAEntry struct {
 	CAHash           []byte
 	CurrentRPC       common.RPC
 	FutureRPC        common.RPC
+	CurrentPC        common.PC
 	Revocation       [][]byte
 	FutureRevocation [][]byte
 	DomainCerts      [][]byte

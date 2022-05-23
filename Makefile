@@ -36,7 +36,8 @@ build_integration_test:
 	@go build -o ./bin/domainowner_pca_policlog_interaction  ./tests/intergration_tests/domainowner_pca_policlog_interaction
 	@go build -o ./bin/mapserver  ./tests/intergration_tests/mapserver
 	@go build -o ./bin/smt  ./tests/intergration_tests/smt
-	@go build -o ./bin/log_picker  ./tests/intergration_tests/log_picker
+	@go build -o ./bin/updater  ./tests/intergration_tests/updater
+	@go build -o ./bin/db  ./tests/intergration_tests/db
 
 drop_cacheTable:
 	@mysql -u root -e "DROP TABLE map.deleteTest;"
