@@ -43,7 +43,7 @@ func Connect(config *Configuration) (Conn, error) {
 		}
 	}
 
-	return &mysqlDB{db: db}, nil
+	return NewMysqlDB(db)
 }
 
 func Connect_old() (Conn, error) {
@@ -63,8 +63,8 @@ func Connect_old() (Conn, error) {
 
 	db.SetMaxOpenConns(512) // TODO(juagargi) set higher for production
 	db.SetMaxIdleConns(512)
-	db.SetConnMaxLifetime(2 * time.Second)
-	db.SetConnMaxIdleTime(1 * time.Second) // lower or equal than above
+	db.SetConnMaxLifetime(-1)
+	db.SetConnMaxIdleTime(-1) // lower or equal than above
 	// check schema
 	initVars.Do(func() {
 		if err := checkSchema(db); err != nil {

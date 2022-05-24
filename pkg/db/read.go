@@ -186,6 +186,7 @@ func fetchKeyWorker(resultChan chan ReadKeyResult, start, end int, ctx context.C
 		}
 		result = append(result, key)
 	}
+	stmt.Close()
 
 	resultChan <- ReadKeyResult{Keys: result}
 }
@@ -201,5 +202,6 @@ func (c *mysqlDB) RetrieveTableRowsCount(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("RetrieveTableRowsCount | Scan | %w", err)
 	}
+	stmt.Close()
 	return number, nil
 }

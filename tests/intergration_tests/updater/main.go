@@ -67,8 +67,13 @@ func runCertsTest() {
 		panic(err)
 	}
 
+	mapUpdater, err := updater.NewMapUpdater(nil, 233)
+	if err != nil {
+		panic(err)
+	}
+
 	start = time.Now()
-	_, err = updater.UpdateDomainEntriesUsingCerts(certs, dnConn, 10)
+	_, err = mapUpdater.UpdateDomainEntriesUsingCerts(certs, 10)
 	if err != nil {
 		panic(err)
 	}
@@ -108,7 +113,7 @@ func runCertsTest() {
 	fmt.Println("time to retrive updated domains ", end.Sub(start))
 
 	// insert same certs again
-	_, err = updater.UpdateDomainEntriesUsingCerts(certs, dnConn, 10)
+	_, err = mapUpdater.UpdateDomainEntriesUsingCerts(certs, 10)
 	if err != nil {
 		panic(err)
 	}
@@ -166,6 +171,11 @@ func runCertsTest() {
 }
 
 func runPCAndRPCTest() {
+
+	mapUpdater, err := updater.NewMapUpdater(nil, 233)
+	if err != nil {
+		panic(err)
+	}
 	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/fpki?maxAllowedPacket=1073741824")
 	defer db.Close()
 	if err != nil {
@@ -196,7 +206,7 @@ func runPCAndRPCTest() {
 	}
 
 	start := time.Now()
-	_, err = updater.UpdateDomainEntriesUsingRPCAndPC(rpcList, pcList, dnConn, 10)
+	_, err = mapUpdater.UpdateDomainEntriesUsingRPCAndPC(rpcList, pcList, 10)
 	if err != nil {
 		panic(err)
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/db"
@@ -13,7 +14,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
-func UpdateDomainEntriesUsingCerts(certs []*x509.Certificate, dbConn db.Conn, readerNum int) (int, error) {
+func (mapUpdator *MapUpdater) UpdateDomainEntriesUsingCerts(certs []*x509.Certificate, readerNum int) (int, error) {
 	if len(certs) == 0 {
 		return 0, nil
 	}
@@ -24,37 +25,51 @@ func UpdateDomainEntriesUsingCerts(certs []*x509.Certificate, dbConn db.Conn, re
 		return 0, nil
 	}
 
+	fmt.Println("number of effected domains: ", len(affectedDomainsMap))
+
+	start := time.Now()
 	// retrieve (possibly)affected domain entries from db
 	// It's possible that no records will be changed, because the certs are already recorded.
-	domainEntriesMap, err := retrieveAffectedDomainFromDB(affectedDomainsMap, dbConn, readerNum)
+	domainEntriesMap, err := mapUpdator.retrieveAffectedDomainFromDB(affectedDomainsMap, readerNum)
 	if err != nil {
-		return 0, fmt.Errorf("UpdateDomainEntries | retrieveAffectedDomainFromDB | %w", err)
+		return 0, fmt.Errorf("UpdateDomainEntriesUsingCerts | retrieveAffectedDomainFromDB | %w", err)
 	}
+	end := time.Now()
+	fmt.Println("---time to retrieveAffectedDomainFromDB:   ", end.Sub(start))
 
+	start = time.Now()
 	// update the domain entries
 	updatedDomains, err := updateDomainEntries(domainEntriesMap, domainCertMap)
 	if err != nil {
-		return 0, fmt.Errorf("UpdateDomainEntries | updateDomainEntries | %w", err)
+		return 0, fmt.Errorf("UpdateDomainEntriesUsingCerts | updateDomainEntries | %w", err)
 	}
+	end = time.Now()
+	fmt.Println("---time to updateDomainEntries:   ", end.Sub(start))
 
 	if len(updatedDomains) == 0 {
 		return 0, nil
 	}
 
+	start = time.Now()
 	// get the domain entries only if they are updated
 	domainEntriesToWrite, err := getDomainEntriesToWrite(updatedDomains, domainEntriesMap)
 	if err != nil {
-		return 0, fmt.Errorf("writeChangesToDB | domainEntriesToWrite | %w", err)
+		return 0, fmt.Errorf("UpdateDomainEntriesUsingCerts | domainEntriesToWrite | %w", err)
 	}
+	end = time.Now()
+	fmt.Println("---time to getDomainEntriesToWrite:   ", end.Sub(start))
 
 	// serialise the domainEntry -> key-value pair
+	start = time.Now()
 	keyValuePairs, updatedDomainNames, err := serialiseUpdatedDomainEntries(domainEntriesToWrite)
 	if err != nil {
-		return 0, fmt.Errorf("writeChangesToDB | serialiseUpdatedDomainEntries | %w", err)
+		return 0, fmt.Errorf("UpdateDomainEntriesUsingCerts | serialiseUpdatedDomainEntries | %w", err)
 	}
+	end = time.Now()
+	fmt.Println("---time to serialiseUpdatedDomainEntries:   ", end.Sub(start))
 
 	// commit changes to db
-	return writeChangesToDB(keyValuePairs, updatedDomainNames, dbConn)
+	return mapUpdator.writeChangesToDB(keyValuePairs, updatedDomainNames)
 }
 
 func getAffectedDomainAndCertMap(certs []*x509.Certificate) (map[string]byte, map[string][]*x509.Certificate) {
@@ -119,6 +134,7 @@ func updateDomainEntries(domainEntries map[string]*common.DomainEntry, certDomai
 	// the map records: domain - certs pair
 	// Which domain will be affected by which certificates
 	for domainName, certs := range certDomainMap {
+		//iterStart := time.Now()
 		for _, cert := range certs {
 			domainNameHash := hex.EncodeToString(trie.Hasher([]byte(domainName)))
 			// get domian entries
@@ -140,8 +156,20 @@ func updateDomainEntries(domainEntries map[string]*common.DomainEntry, certDomai
 					updatedDomainHash[domainNameHash] = 1
 				}
 			}
-		}
+		} /*
+			iterEnd := time.Now()
+			if iterEnd.Sub(iterStart) > time.Millisecond {
+				fmt.Println(iterEnd.Sub(iterStart), " ", len(certs), " ", domainName)
+				for _, cert := range certs {
+					fmt.Println()
+					fmt.Println(cert.Subject.CommonName)
+					for _, name := range cert.DNSNames {
+						fmt.Println(name)
+					}
+				}
+			}*/
 	}
+
 	return updatedDomainHash, nil
 }
 
@@ -179,6 +207,7 @@ ca_entry_loop:
 			CAHash:      trie.Hasher([]byte(caName))})
 		isUpdated = true
 	}
+
 	return isUpdated
 }
 

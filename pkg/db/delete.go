@@ -55,6 +55,7 @@ func (c *mysqlDB) DeleteKeyValuePairBatches(ctx context.Context, keys []string, 
 		if err != nil {
 			return fmt.Errorf("DeleteKeyValuePairBatches | Exec remaining | %w", err)
 		}
+		stmt.Close()
 	}
 	return nil
 }

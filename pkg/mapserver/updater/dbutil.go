@@ -10,7 +10,7 @@ import (
 )
 
 // get affected domain entries from db
-func retrieveAffectedDomainFromDB(affectedDomainsMap map[string]byte, dbConn db.Conn, readerNum int) (map[string]*common.DomainEntry, error) {
+func (mapUpdator *MapUpdater) retrieveAffectedDomainFromDB(affectedDomainsMap map[string]byte, readerNum int) (map[string]*common.DomainEntry, error) {
 	// list of domain hashes to fetch the domain entries from db
 	affectedDomainHash := []string{}
 	for k := range affectedDomainsMap {
@@ -21,7 +21,7 @@ func retrieveAffectedDomainFromDB(affectedDomainsMap map[string]byte, dbConn db.
 	defer cancelF()
 
 	// read key-value pair from DB
-	domainPair, err := dbConn.RetrieveKeyValuePairMultiThread(ctx, affectedDomainHash, readerNum, db.DomainEntries)
+	domainPair, err := mapUpdator.dbConn.RetrieveKeyValuePairMultiThread(ctx, affectedDomainHash, readerNum, db.DomainEntries)
 	if err != nil {
 		return nil, fmt.Errorf("UpdateDomainEntries | RetrieveKeyValuePairMultiThread | %w", err)
 	}
@@ -35,52 +35,73 @@ func retrieveAffectedDomainFromDB(affectedDomainsMap map[string]byte, dbConn db.
 }
 
 // commit changes to db
-func writeChangesToDB(updatesToDomainEntriesTable []db.KeyValuePair, updatesToUpdatesTable []string, dbConn db.Conn) (int, error) {
+func (mapUpdator *MapUpdater) writeChangesToDB(updatesToDomainEntriesTable []db.KeyValuePair, updatesToUpdatesTable []string) (int, error) {
 
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	start := time.Now()
-	// write to db, multi-thread
-	resultChan := make(chan error)
-	// write changes to domainEntries table
-	go writeToDomainEntriesTable(ctx, dbConn, updatesToDomainEntriesTable, resultChan)
-	// write changes to updates table
-	go writeToUpdateTable(ctx, dbConn, updatesToUpdatesTable, resultChan)
-
-	writeErr := <-resultChan
-	if writeErr != nil {
-		return 0, fmt.Errorf("writeChangesToDB | Write DB error | %w", writeErr)
-	}
-	writeErr = <-resultChan
-	if writeErr != nil {
-		return 0, fmt.Errorf("writeChangesToDB | Write DB error | %w", writeErr)
+	err, _ := mapUpdator.dbConn.UpdateKeyValuePairBatches(ctx, updatesToDomainEntriesTable, db.DomainEntries)
+	if err != nil {
+		return 0, fmt.Errorf("writeToDomainEntriesTable | UpdateKeyValuePairBatches | %w", err)
 	}
 
-	end := time.Now()
-	fmt.Println("time to write to db ", end.Sub(start))
+	_, err = mapUpdator.dbConn.InsertIgnoreKeyBatches(ctx, updatesToUpdatesTable)
+	if err != nil {
+		return 0, fmt.Errorf("writeToUpdateTable | InsertIgnoreKeyBatches | %w", err)
+	}
+	/*
+		fmt.Println()
+		start := time.Now()
+		// write to db, multi-thread
+		resultChan := make(chan error)
+		// write changes to domainEntries table
+		go writeToDomainEntriesTable(ctx, dbConn, updatesToDomainEntriesTable, resultChan)
+		// write changes to updates table
+		go writeToUpdateTable(ctx, dbConn, updatesToUpdatesTable, resultChan)
 
+		writeErr := <-resultChan
+		if writeErr != nil {
+			return 0, fmt.Errorf("writeChangesToDB | Write DB error | %w", writeErr)
+		}
+		writeErr = <-resultChan
+		if writeErr != nil {
+			return 0, fmt.Errorf("writeChangesToDB | Write DB error | %w", writeErr)
+		}
+
+		end := time.Now()
+		fmt.Println("time to write to db                       ", end.Sub(start), " num of writes: ", len(updatesToDomainEntriesTable)+len(updatesToUpdatesTable))
+		fmt.Println()
+
+		return len(updatesToUpdatesTable), nil
+	*/
 	return len(updatesToUpdatesTable), nil
 }
 
+/*
 // write to domainEntries table
 func writeToDomainEntriesTable(ctx context.Context, dbConn db.Conn, input []db.KeyValuePair, resultChan chan error) {
+	start := time.Now()
 	err, _ := dbConn.UpdateKeyValuePairBatches(ctx, input, db.DomainEntries)
 	if err != nil {
 		resultChan <- fmt.Errorf("writeToDomainEntriesTable | UpdateKeyValuePairBatches | %w", err)
 	}
+	end := time.Now()
+	fmt.Println("time to update domain entry table: ", end.Sub(start))
 	resultChan <- nil
 }
 
 // write to updates table
 func writeToUpdateTable(ctx context.Context, dbConn db.Conn, input []string, resultChan chan error) {
+	start := time.Now()
 	_, err := dbConn.InsertIgnoreKeyBatches(ctx, input)
 	if err != nil {
 		resultChan <- fmt.Errorf("writeToUpdateTable | InsertIgnoreKeyBatches | %w", err)
 	}
+	end := time.Now()
+	fmt.Println("time to update updateds table: ", end.Sub(start))
 	resultChan <- nil
 }
-
+*/
 // domain bytes -> domain entries
 func parseDomainBytes(keyValuePairs []db.KeyValuePair) (map[string]*common.DomainEntry, error) {
 	result := make(map[string]*common.DomainEntry)

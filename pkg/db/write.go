@@ -57,6 +57,7 @@ func (c *mysqlDB) UpdateKeyValuePairBatches(ctx context.Context, keyValuePairs [
 		if err != nil {
 			return fmt.Errorf("UpdateKeyValuePairBatches | Exec | %w", err), 0
 		}
+		stmt.Close()
 	}
 	return nil, dataLen
 }
@@ -100,6 +101,7 @@ func (c *mysqlDB) InsertIgnoreKeyBatches(ctx context.Context, keys []string) (in
 		if err != nil {
 			return 0, fmt.Errorf("InsertIgnoreKeyBatches | Exec | %w", err)
 		}
+		stmt.Close()
 	}
 	return dataLen, nil
 }

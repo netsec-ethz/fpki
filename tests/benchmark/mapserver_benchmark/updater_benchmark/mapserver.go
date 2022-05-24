@@ -39,12 +39,17 @@ func main() {
 	}
 
 	mapUpdater, err := updater.NewMapUpdater(nil, 233)
+	if err != nil {
+		panic(err)
+	}
 
 	updateStart := time.Now()
 	for i := 0; i < 100; i++ {
+		fmt.Println()
+		fmt.Println()
 		fmt.Println(" ---------------------- Iteration ", i, " ---------------------------")
 		start := time.Now()
-		err = mapUpdater.UpdateFromCT("https://ct.googleapis.com/logs/argon2021", int64(2000000+i*10000), int64(2000999+i*10000))
+		err = mapUpdater.UpdateFromCT("https://ct.googleapis.com/logs/argon2021", int64(2000000+i*10000), int64(2009999+i*10000))
 		if err != nil {
 			panic(err)
 		}

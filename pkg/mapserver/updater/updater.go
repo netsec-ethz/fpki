@@ -22,9 +22,18 @@ type MapUpdater struct {
 
 // NewMapUpdater: return a new map updator. Input paras is similiar to NewMapResponder
 func NewMapUpdater(root []byte, cacheHeight int) (*MapUpdater, error) {
-	dbConn, err := db.Connect_old()
+
+	config := db.Configuration{
+		Dsn: "root@tcp(localhost)/fpki",
+		Values: map[string]string{
+			"interpolateParams": "true", // 1 round trip per query
+			"collation":         "binary",
+		},
+	}
+
+	dbConn, err := db.Connect(&config)
 	if err != nil {
-		return nil, fmt.Errorf("NewMapUpdater | db.Connect_old | %w", err)
+		return nil, fmt.Errorf("NewMapUpdater | db.Connect | %w", err)
 	}
 
 	smt, err := trie.NewTrie(root, trie.Hasher, dbConn)
@@ -37,41 +46,62 @@ func NewMapUpdater(root []byte, cacheHeight int) (*MapUpdater, error) {
 }
 
 func (mapUpdator *MapUpdater) UpdateFromCT(ctUrl string, startIdx, endIdx int64) error {
+	fmt.Println("****** UpdateFromCT ******")
 	start := time.Now()
+	fmt.Println(startIdx, endIdx)
 	certs, _, err := logpicker.GetCertMultiThread(ctUrl, startIdx, endIdx, 20)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | GetCertMultiThread | %w", err)
 	}
 	end := time.Now()
-	fmt.Println("time to fetch certs from internet ", end.Sub(start))
+	fmt.Println("time to fetch certs from internet         ", end.Sub(start), " ", len(certs))
 
-	_, err = UpdateDomainEntriesUsingCerts(certs, mapUpdator.dbConn, 10)
+	start = time.Now()
+	fmt.Println()
+	fmt.Println(" ------UpdateDomainEntriesUsingCerts -----")
+	_, err = mapUpdator.UpdateDomainEntriesUsingCerts(certs, 10)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingCerts | %w", err)
 	}
+	end = time.Now()
+	fmt.Println("time to UpdateDomainEntriesUsingCerts     ", end.Sub(start))
+	fmt.Println()
 
+	start = time.Now()
 	updatedDomainHash, err := mapUpdator.fetchUpdatedDomainHash()
 	if err != nil {
 		return fmt.Errorf("CollectCerts | fetchUpdatedDomainHash | %w", err)
 	}
+	end = time.Now()
+	fmt.Println("time to fetchUpdatedDomainHash            ", end.Sub(start))
 
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
+	start = time.Now()
 	keyValuePairs, err := mapUpdator.dbConn.RetrieveKeyValuePairMultiThread(ctx, updatedDomainHash, 10, db.DomainEntries)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | RetrieveKeyValuePairMultiThread | %w", err)
 	}
+	end = time.Now()
+	fmt.Println("time to RetrieveKeyValuePairMultiThread   ", end.Sub(start))
 
+	start = time.Now()
 	keyInput, valueInput, err := keyValuePairToSMTInput(keyValuePairs)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | keyValuePairToSMTInput | %w", err)
 	}
+	end = time.Now()
+	fmt.Println("time to keyValuePairToSMTInput            ", end.Sub(start))
 
+	start = time.Now()
 	_, err = mapUpdator.smt.Update(keyInput, valueInput)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | Update | %w", err)
 	}
+	end = time.Now()
+	fmt.Println("time to Update SMT                        ", end.Sub(start))
+	fmt.Println("****** UpdateFromCT End ******")
 
 	return nil
 }
@@ -82,7 +112,7 @@ func (mapUpdator *MapUpdater) UpdateRPCAndPC(ctUrl string, startIdx, endIdx int6
 		return fmt.Errorf("CollectCerts | GetPCAndRPC | %w", err)
 	}
 
-	_, err = UpdateDomainEntriesUsingRPCAndPC(rpcList, pcList, mapUpdator.dbConn, 10)
+	_, err = mapUpdator.UpdateDomainEntriesUsingRPCAndPC(rpcList, pcList, 10)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingRPCAndPC | %w", err)
 	}
