@@ -11,6 +11,7 @@ type mysqlDB struct {
 	prepNodePath       *sql.Stmt // returns the node path
 	prepValueProofPath *sql.Stmt // returns the value and the complete proof path
 	prepGetValue       *sql.Stmt // returns the value for a node
+	prepFlattenSubtree *sql.Stmt // flattens a subtree at id with proofchain
 }
 
 // NewMysqlDB is called to create a new instance of the mysqlDB, initializing certain values,
@@ -28,12 +29,21 @@ func NewMysqlDB(db *sql.DB) (*mysqlDB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("preparing statement: %w", err)
 	}
+	prepFlattenSubtree, err := db.Prepare("CALL flatten_subtree(?,?)")
+	if err != nil {
+		return nil, fmt.Errorf("preparing statement: %w", err)
+	}
 	return &mysqlDB{
 		db:                 db,
 		prepNodePath:       prepNodePath,
 		prepValueProofPath: prepValueProofPath,
 		prepGetValue:       prepGetValue,
+		prepFlattenSubtree: prepFlattenSubtree,
 	}, nil
+}
+
+func (c *mysqlDB) DB() *sql.DB {
+	return c.db
 }
 
 func (c *mysqlDB) Close() error {
@@ -60,4 +70,10 @@ func (c *mysqlDB) RetrieveNode(ctx context.Context, id FullID) ([]byte, []byte, 
 		return nil, nil, err
 	}
 	return val, proofPath, nil
+}
+
+// FlattenSubtree flattens a subtee. It uses the flatten_subtree stored procedure for this.
+func (c *mysqlDB) FlattenSubtree(ctx context.Context, id [33]byte, proofChain []byte) error {
+	_, err := c.prepFlattenSubtree.ExecContext(ctx, id[:], proofChain)
+	return err
 }

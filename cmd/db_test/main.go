@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/db"
@@ -11,15 +13,17 @@ import (
 func main() {
 	truncateFlag := flag.Bool("truncate", false, "insert values")
 	insertFlag := flag.Bool("insert", false, "insert values")
+	flattenFlag := flag.Bool("flatten", false, "flatten tree to leaves (slow)")
 	queryFlag := flag.Bool("query", false, "perform a query")
+	testFlag := flag.Bool("test", false, "test insertion parallelism (connCount leavesCount)")
 	flag.Parse()
 
 	config := db.Configuration{
 		Dsn: "root@tcp(localhost)/fpki",
 		Values: map[string]string{
-			"interpolateParams":      "true", // 1 round trip per query
-			"collation":              "binary",
-			"max_sp_recursion_depth": "255", // recursion to build the leaves table
+			"interpolateParams": "true", // 1 round trip per query
+			"collation":         "binary",
+			// "max_sp_recursion_depth": "255", // recursion to build the leaves table
 		},
 	}
 	createConn := func() (db.Conn, error) { // define a function that creates connections
@@ -27,6 +31,8 @@ func main() {
 	}
 
 	var err error
+	ctx, cancelF := context.WithTimeout(context.Background(), 2*time.Hour)
+	defer cancelF()
 	t0 := time.Now()
 
 	if *truncateFlag {
@@ -42,14 +48,44 @@ func main() {
 		// err = db.DeletemeCreateNodes2(c, 100*1000)
 		// err = db.DeletemeCreateNodes2(c, 1000*1000) // 5m7.557550068s !!!
 
-		// err = db.DeletemeCreateNodes3(c, 1000*1000) // 2m25.822974156s
-		err = db.DeletemeCreateNodes3(c, 10*1000*1000) //
+		// err = db.DeletemeCreateNodes3(c, 100*1000) // 16.733069201s
+		// err = db.DeletemeCreateNodes3(c, 1000*1000) // 2m25.8229174156s
+		// err = db.DeletemeCreateNodes3(c, 10*1000*1000) //
+
+		// err = db.DeletemeCreateCSV(c, 10) // 0m0.269s
+		// err = db.DeletemeCreateCSV(c, 1000) // 73.882003ms
+		// err = db.DeletemeCreateCSV(c, 100*1000) // 0m2.386s
+		// err = db.DeletemeCreateCSV(c, 1000*1000) // 0m24.743s
+		err = db.DeletemeCreateCSV(c, 10*1000*1000) // 7m25.885s
+		check(err)
+	}
+	if *flattenFlag {
+		// we need to flatten 500M in 2 hours -> 1M in 14.4 seconds
+		// 2^6 = 64 routines in parallel
+		// err = db.Flatten(ctx, createConn, 6) // 100K leaves = 0m11.724s
+		// err = db.Flatten(ctx, createConn, 6) // 1M leaves = 0m26.616s
+		err = db.Flatten(ctx, createConn, 6) // 10M leaves = 6m29.343s
 		check(err)
 	}
 	if *queryFlag {
 		// t0, err = db.DeletemeSelectLeavesStoredFunc3(createConn, 100*1000+96, 8, 8) // 3.085243872s
 		// t0, err = db.DeletemeSelectLeavesStoredFunc3(createConn, 100*1000+96, 16, 1) // 4.289929758s
 		t0, err = db.DeletemeSelectLeavesStoredFunc3(createConn, 100*1000+96, 1, 16) // 4.305125693s
+		check(err)
+	}
+	if *testFlag {
+		if flag.NArg() != 2 {
+			panic("two integers are required: connectionCount and leavesCount")
+		}
+		connCount, err := strconv.Atoi(flag.Arg(0))
+		if err != nil {
+			panic(err)
+		}
+		leavesCount, err := strconv.Atoi(flag.Arg(1))
+		if err != nil {
+			panic(err)
+		}
+		err = db.DeletemeTestInsert(createConn, connCount, leavesCount) // 10M = 0m22.502s
 		check(err)
 	}
 	fmt.Printf("time: %s\n", time.Since(t0))

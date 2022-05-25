@@ -3,10 +3,18 @@ package db
 import (
 	"context"
 	"database/sql"
+	"encoding/csv"
 	"encoding/hex"
 	"fmt"
+	"os"
 	"strings"
+
+	"github.com/go-sql-driver/mysql"
 )
+
+func toSlice(id [33]byte) []byte {
+	return id[:]
+}
 
 func repeatStmt(N int, noOfComponents int) string {
 	components := make([]string, noOfComponents)
@@ -148,14 +156,19 @@ func insertIntoDB(c *mysqlDB, root *node) error {
 func insertIntoDB2(c *mysqlDB, root *node) error {
 	N := 1000
 
+	err := replaceRoot(c, root)
+	if err != nil {
+		return err
+	}
+
 	repeatedStmt := "INSERT INTO nodes (idhash,parentnode,leftnode,rightnode,value,proof) VALUES " + repeatStmt(N, 6)
 	stmt, err := c.db.Prepare(repeatedStmt)
 	if err != nil {
 		panic(err)
 	}
-	pending := make([]*node, 0) // XXX(juagargi) !!!! this queue is not memory efficient
-	// the root node will not be inserted into the table (performance reasons), and thus, its
+	// the root node is not inserted into the nodes table (performance reasons), and thus, its
 	// two children cannot point to it. They will point to null.
+	pending := make([]*node, 0) // XXX(juagargi) !!!! this queue is not memory efficient
 	if root.left != nil {
 		root.left.parent = nil
 		pending = append(pending, root.left)
@@ -206,6 +219,105 @@ func insertIntoDB2(c *mysqlDB, root *node) error {
 	return nil
 }
 
+// createCSVFile returns the path of the CSV file
+func createCSVFile(root *node) (string, error) {
+	// function to convert a node into a row in a CSV:
+	nodeToStringSlice := func(n *node) []string {
+		var xleft, xright, xparent []byte
+		if n.parent != nil {
+			xparent = toSlice(n.parent.FullID())
+		}
+		if n.left != nil {
+			xleft = toSlice(n.left.FullID())
+		}
+		if n.right != nil {
+			xright = toSlice(n.right.FullID())
+		}
+		xvalue := []byte{0xde, 0xad, 0xbe, 0xef}
+		xproof := n.FullID()
+		return []string{
+			hex.EncodeToString(toSlice(n.FullID())),
+			hex.EncodeToString(xparent),
+			hex.EncodeToString(xleft),
+			hex.EncodeToString(xright),
+			hex.EncodeToString(xvalue),
+			hex.EncodeToString(xproof[:]),
+		}
+	}
+
+	// initialize CSV with the header
+	f, err := os.CreateTemp("", "fpki_nodes")
+	if err != nil {
+		panic(err)
+	}
+	w := csv.NewWriter(f)
+	err = w.Write([]string{"idhash", "parentnode", "leftnode", "rightnode", "value", "proof"})
+	if err != nil {
+		panic(err)
+	}
+
+	// do the rest of nodes
+	pending := []*node{}
+	if root.left != nil {
+		// avoid the root from being present at all in the nodes table by removing all references:
+		root.left.parent = nil
+		// add the child
+		pending = append(pending, root.left)
+	}
+	if root.right != nil {
+		// avoid the root from being present at all in the nodes table by removing all references:
+		root.right.parent = nil
+		// add the child
+		pending = append(pending, root.right)
+	}
+	for len(pending) > 0 {
+		current := pending[0]
+		pending = pending[1:]
+		if current.left != nil {
+			pending = append(pending, current.left)
+		}
+		if current.right != nil {
+			pending = append(pending, current.right)
+		}
+		err := w.Write(nodeToStringSlice(current))
+		if err != nil {
+			panic(err)
+		}
+	}
+	w.Flush()
+	if err := f.Close(); err != nil {
+		panic(err)
+	}
+	return f.Name(), nil
+}
+
+func insertIntoDBWithFile(c *mysqlDB, filepath string) error {
+	// send to DB
+	mysql.RegisterLocalFile(filepath)
+	_, err := c.DB().Exec("SET GLOBAL local_infile=1")
+	if err != nil {
+		panic(err)
+	}
+	_, err = c.DB().Exec(`LOAD DATA LOCAL INFILE ? INTO TABLE nodes `+
+		`FIELDS TERMINATED BY ',' ENCLOSED BY '"' `+
+		`LINES TERMINATED BY '\n' `+
+		`IGNORE 1 ROWS `+
+		`(@idhash,@parentnode,@leftnode,@rightnode,@value,@proof) `+
+		`SET idhash = UNHEX(@idhash),`+
+		`parentnode = UNHEX(@parentnode),`+
+		`leftnode = UNHEX(@leftnode),`+
+		`rightnode = UNHEX(@rightnode),`+
+		`value = UNHEX(@value),`+
+		`proof = UNHEX(@proof)`, filepath)
+	if err != nil {
+		panic(err)
+	}
+
+	// remove temp file only if the insertion finished without errors:
+	os.Remove(filepath)
+	return nil
+}
+
 // nodeBatchToDB creates the data structure to be pushed to the DB, from a slice of nodes.
 // It expects the root node not to be present in the collection.
 func nodeBatchToDB(c *mysqlDB, stmt *sql.Stmt, nodes []*node) error {
@@ -237,9 +349,6 @@ func nodeBatchToDB(c *mysqlDB, stmt *sql.Stmt, nodes []*node) error {
 
 // nodeBatchToDB2 uses 6 columns.
 func nodeBatchToDB2(c *mysqlDB, stmt *sql.Stmt, nodes []*node) error {
-	toSlice := func(id [33]byte) []byte {
-		return id[:]
-	}
 	cryptoMaterialMock, _ := hex.DecodeString("deadbeef")
 	data := make([]interface{}, 6*len(nodes))
 	for i := 0; i < len(nodes); i++ {
@@ -298,4 +407,26 @@ func getPathFromLeaf(ctx context.Context, c *mysqlDB, leafId [33]byte) ([][33]by
 		id = parentID
 	}
 	return path, nil
+}
+
+func replaceRoot(c *mysqlDB, root *node) error {
+	// insert the root node apart (see below)
+	_, err := c.db.Exec("TRUNCATE root")
+	if err != nil {
+		return err
+	}
+	var xleft, xright []byte
+	if root.left != nil {
+		xleft = toSlice(root.left.FullID())
+	}
+	if root.right != nil {
+		xright = toSlice(root.right.FullID())
+	}
+	_, err = c.db.Exec("INSERT INTO root (leftnode,rightnode,value,proof) VALUES (?,?,?,?)",
+		xleft,
+		xright,
+		[]byte("root value"),
+		[]byte("root proof"))
+
+	return err
 }

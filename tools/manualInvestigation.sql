@@ -1,3 +1,65 @@
+-- debug performance:
+-- SHOW ENGINE INNODB STATUS;
+
+
+-- Variables system wide:
+-- /etc/sysctl.conf:
+-- fs.aio-max-nr = 1048576
+
+-- Variables that need to change in the mysql configuration file:
+-- $ cat conf.d/fpki.cnf
+-- # optimize fpki
+
+-- [mysqld]
+
+-- innodb_buffer_pool_size = 8589934592  # 8 GB
+-- innodb_buffer_pool_instances = 64  # one per thread/connection
+
+-- innodb_write_io_threads = 64
+-- innodb_read_io_threads = 64
+
+-- sync_binlog = 0  # disable syncing the binary log to disk (better performance). The kernel will flush it from time to time.
+
+-- innodb_flush_method = "O_DIRECT"
+
+
+-- important variables taken into account:
+
+-- SHOW GLOBAL VARIABLES LIKE "max_sp_recursion_depth";  -- shoult be 255
+-- SHOW GLOBAL VARIABLES LIKE "innodb_file_per_table"; -- should be "ON"
+-- SHOW GLOBAL VARIABLES LIKE "innodb_write_io_threads";
+-- SHOW GLOBAL VARIABLES LIKE "innodb_read_io_threads";
+-- SHOW GLOBAL VARIABLES LIKE "sync_binlog"; -- should be 0 (no sync)
+-- SHOW GLOBAL VARIABLES LIKE "innodb_buffer_pool_size";
+-- SHOW GLOBAL VARIABLES LIKE "innodb_thread_concurrency"; -- should be 0 (no limit)
+-- SHOW GLOBAL VARIABLES LIKE "innodb_log_buffer_size";
+-- maybe set the IO scheduler to deadline. Difference of < 1% with an SSD
+-- SHOW GLOBAL VARIABLES LIKE "innodb_flush_method";  -- should be O_DIRECT
+-- SHOW GLOBAL VARIABLES LIKE "innodb_use_fdatasync"; -- should be ON
+-- SHOW GLOBAL VARIABLES LIKE "innodb_use_native_aio";   -- should be ON
+-- SHOW GLOBAL VARIABLES LIKE "innodb_table_locks"; -- should be 0 (don't lock tables with autocommit=0)
+-- SHOW GLOBAL VARIABLES LIKE "innodb_flush_log_at_trx_commit";  -- doesn't help
+
+-- Test table used to test parallel inserts performance:
+
+USE fpki;
+DROP TABLE IF EXISTS test;
+CREATE TABLE test (
+  autoid      BIGINT NOT NULL AUTO_INCREMENT,
+  idhash      VARBINARY(32) NOT NULL,
+  id          BIGINT NOT NULL,
+  value       BLOB DEFAULT NULL,
+  proof       BLOB DEFAULT NULL,
+  -- UNIQUE KEY idhash (idhash),
+  -- UNIQUE KEY id (id)
+  PRIMARY KEY(autoid)
+) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
+
+
+
+
+
+
 -- Some commands used during the investigation, for reference:
 
 -- Queries
@@ -111,19 +173,28 @@ CREATE TABLE leaves (
   idhash      VARBINARY(32) NOT NULL,
   value       BLOB DEFAULT NULL,
   proof       BLOB DEFAULT NULL,
-  UNIQUE KEY idhash (idhash)
+--   UNIQUE KEY idhash (idhash)
+  autoid      BIGINT NOT NULL AUTO_INCREMENT,
+  PRIMARY KEY(autoid)
 ) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
+
+
+-- Create a new index on the leaves table after computing the leaves:
+USE fpki;
+ALTER TABLE leaves
+ADD UNIQUE INDEX idhash (idhash ASC);
+;
 
 
 
 
 
 USE fpki;
-DROP PROCEDURE IF EXISTS _flatten_subtree;
+DROP PROCEDURE IF EXISTS flatten_subtree;
 
 DELIMITER $$
 -- recursive procedure that flattens a subtree into simple leaf records
-CREATE PROCEDURE _flatten_subtree(
+CREATE PROCEDURE flatten_subtree(
 	IN nodeid VARBINARY(33),
 	IN proofchain BLOB
 )
@@ -142,10 +213,10 @@ BEGIN
     ELSE
 		-- this is an intermediate node
 		IF xleft IS NOT NULL THEN
-			CALL _flatten_subtree(xleft,CONCAT(proofchain,xproof));
+			CALL flatten_subtree(xleft,CONCAT(proofchain,xproof));
 		END IF;
 		IF xright IS NOT NULL THEN
-			CALL _flatten_subtree(xright,CONCAT(proofchain,xproof));
+			CALL flatten_subtree(xright,CONCAT(proofchain,xproof));
 		END IF;
 	END IF;
 END$$
@@ -157,11 +228,20 @@ DROP PROCEDURE IF EXISTS create_leaves;
 DELIMITER $$
 CREATE PROCEDURE create_leaves()
 BEGIN
+		DECLARE xleft  VARBINARY(33);
+        DECLARE xright VARBINARY(33);
+        DECLARE xproof BLOB;
+
+	SELECT leftnode,rightnode,proof INTO xleft,xright,xproof FROM root;
 	TRUNCATE leaves;
+    -- OPTIMIZE TABLE leaves;
     SET autocommit=0;
+
+    CALL flatten_subtree(xleft,xproof);
+    CALL flatten_subtree(xright,xproof);
 	-- TODO(juagargi) obtain the values of the proofs for the left and right nodes
-    CALL _flatten_subtree(UNHEX("000000000000000000000000000000000000000000000000000000000000000000"),''); -- left node
-    CALL _flatten_subtree(UNHEX("008000000000000000000000000000000000000000000000000000000000000000"),''); -- right node
+--     CALL flatten_subtree(UNHEX("000000000000000000000000000000000000000000000000000000000000000000"),''); -- left node
+--     CALL flatten_subtree(UNHEX("008000000000000000000000000000000000000000000000000000000000000000"),''); -- right node
     COMMIT;
 END$$
 DELIMITER ;

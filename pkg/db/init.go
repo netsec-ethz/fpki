@@ -43,7 +43,7 @@ func Connect(config *Configuration) (Conn, error) {
 		}
 	}
 
-	return &mysqlDB{db: db}, nil
+	return NewMysqlDB(db)
 }
 
 func Connect_old() (Conn, error) {

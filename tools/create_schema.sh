@@ -40,6 +40,37 @@ echo "$CMD" | mysql -u root
 
 CMD=$(cat <<EOF
 USE fpki;
+DROP TABLE IF EXISTS root;
+-- the root table should contain only one record: the root node
+CREATE TABLE root (
+  leftnode    VARBINARY(33) DEFAULT NULL,
+  rightnode   VARBINARY(33) DEFAULT NULL,
+  value       blob,
+  proof       VARBINARY(32) DEFAULT NULL
+) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
+EOF
+)
+echo "$CMD" | mysql -u root
+
+
+CMD=$(cat <<EOF
+USE fpki;
+DROP TABLE IF EXISTS leaves;
+CREATE TABLE leaves (
+  idhash      VARBINARY(32) NOT NULL,
+  value       BLOB DEFAULT NULL,
+  proof       BLOB DEFAULT NULL,
+  autoid      BIGINT NOT NULL AUTO_INCREMENT,
+  PRIMARY KEY(autoid),
+  UNIQUE KEY idhash (idhash)
+) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
+EOF
+)
+echo "$CMD" | mysql -u root
+
+
+CMD=$(cat <<EOF
+USE fpki;
 DROP FUNCTION IF EXISTS node_path;
 
 DELIMITER $$
@@ -91,6 +122,65 @@ WHILE nodehash IS NOT NULL DO
     SET nodehash = parent;
 END WHILE;
     SELECT nodevalue,proofs;
+END$$
+DELIMITER ;
+EOF
+)
+echo "$CMD" | mysql -u root
+
+
+CMD=$(cat <<EOF
+USE fpki;
+DROP PROCEDURE IF EXISTS flatten_subtree;
+
+DELIMITER $$
+-- recursive procedure that flattens a subtree into simple leaf records
+CREATE PROCEDURE flatten_subtree(
+	IN nodeid VARBINARY(33),
+	IN proofchain BLOB
+)
+BEGIN
+		DECLARE xleft  VARBINARY(33);
+        DECLARE xright VARBINARY(33);
+        DECLARE xproof BLOB;
+        DECLARE xvalue BLOB;
+
+	SELECT leftnode,rightnode,proof,value INTO xleft,xright,xproof,xvalue FROM nodes WHERE idhash=nodeid;
+    -- SELECT HEX(LEFT(nodeid, 1)),HEX(xproof);
+	IF LEFT(nodeid, 1) = UNHEX("FF") THEN
+		-- this is a leaf. End recursion
+        REPLACE INTO leaves(idhash,proof,value) VALUES (RIGHT(nodeid,32), CONCAT(proofchain,xproof),xvalue);
+        -- SET proofchain = CONCAT(proofchain,xproof);
+    ELSE
+		-- this is an intermediate node
+		IF xleft IS NOT NULL THEN
+			CALL flatten_subtree(xleft,CONCAT(proofchain,xproof));
+		END IF;
+		IF xright IS NOT NULL THEN
+			CALL flatten_subtree(xright,CONCAT(proofchain,xproof));
+		END IF;
+	END IF;
+END$$
+DELIMITER ;
+
+USE fpki;
+DROP PROCEDURE IF EXISTS create_leaves;
+
+DELIMITER $$
+CREATE PROCEDURE create_leaves()
+BEGIN
+		DECLARE xleft  VARBINARY(33);
+        DECLARE xright VARBINARY(33);
+        DECLARE xproof BLOB;
+
+	SELECT leftnode,rightnode,proof INTO xleft,xright,xproof FROM root;
+	TRUNCATE leaves;
+    -- OPTIMIZE TABLE leaves;
+    SET autocommit=0;
+
+    CALL flatten_subtree(xleft,xproof);
+    CALL flatten_subtree(xright,xproof);
+    COMMIT;
 END$$
 DELIMITER ;
 EOF
