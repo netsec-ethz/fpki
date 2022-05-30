@@ -12,12 +12,14 @@ import (
 
 var initVars sync.Once
 
+// Configuration for the db connection
 type Configuration struct {
 	Dsn         string
 	Values      map[string]string
 	CheckSchema bool // indicates if opening the connection checks the health of the schema
 }
 
+// Connect: connect to db, using the config file
 func Connect(config *Configuration) (Conn, error) {
 	dsn, err := url.Parse(config.Dsn)
 	if err != nil {
@@ -46,6 +48,7 @@ func Connect(config *Configuration) (Conn, error) {
 	return NewMysqlDB(db)
 }
 
+// Connect_old: connect to a old db connection
 func Connect_old() (Conn, error) {
 	dsn, err := url.Parse("root@tcp(localhost)/fpki?maxAllowedPacket=1073741824")
 	if err != nil {

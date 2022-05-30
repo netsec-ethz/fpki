@@ -14,13 +14,16 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
+// UpdateDomainEntriesUsingCerts: Update the domain entries using the domain certificates
 func (mapUpdator *MapUpdater) UpdateDomainEntriesUsingCerts(certs []*x509.Certificate, readerNum int) (int, error) {
 	if len(certs) == 0 {
 		return 0, nil
 	}
 
+	// get the unique list of affected domains
 	affectedDomainsMap, domainCertMap := getAffectedDomainAndCertMap(certs)
 
+	// if no domain to update
 	if len(affectedDomainsMap) == 0 {
 		return 0, nil
 	}
@@ -46,12 +49,13 @@ func (mapUpdator *MapUpdater) UpdateDomainEntriesUsingCerts(certs []*x509.Certif
 	end = time.Now()
 	fmt.Println("---time to updateDomainEntries:   ", end.Sub(start))
 
+	// if during this updates, no cert is added, directly return
 	if len(updatedDomains) == 0 {
 		return 0, nil
 	}
 
 	start = time.Now()
-	// get the domain entries only if they are updated
+	// get the domain entries only if they are updated, from DB
 	domainEntriesToWrite, err := getDomainEntriesToWrite(updatedDomains, domainEntriesMap)
 	if err != nil {
 		return 0, fmt.Errorf("UpdateDomainEntriesUsingCerts | domainEntriesToWrite | %w", err)
@@ -156,7 +160,8 @@ func updateDomainEntries(domainEntries map[string]*common.DomainEntry, certDomai
 					updatedDomainHash[domainNameHash] = 1
 				}
 			}
-		} /*
+		}
+		/*
 			iterEnd := time.Now()
 			if iterEnd.Sub(iterStart) > time.Millisecond {
 				fmt.Println(iterEnd.Sub(iterStart), " ", len(certs), " ", domainName)

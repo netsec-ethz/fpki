@@ -35,7 +35,7 @@ func main() {
 		responderGroup = append(responderGroup, newResponder)
 	}
 
-	// re-collect the added certs
+	// collect 10,000 certs, for proof fetching
 	collectedCerts := []ctX509.Certificate{}
 	for i := 0; i < 500; i++ {
 		certList, err := getCerts("https://ct.googleapis.com/logs/argon2021", int64(2500000+i*20), int64(2500000+i*20+19))
@@ -64,6 +64,7 @@ func main() {
 
 }
 
+// collect proof for every domain's Common Name
 func worker(certs []ctX509.Certificate, responder *responder.MapResponder, ctx context.Context) {
 	start := time.Now()
 	for _, cert := range certs {

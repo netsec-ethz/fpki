@@ -6,10 +6,12 @@ import (
 	"fmt"
 )
 
+// DeleteKeyValuePairBatches: Delete a list of key-value store
 func (c *mysqlDB) DeleteKeyValuePairBatches(ctx context.Context, keys []string, tableName TableName) error {
 	dataLen := len(keys)
 	remainingDataLen := dataLen
 
+	// parse the prepared statement and table name
 	var stmt *sql.Stmt
 	var tableNameString string
 	switch {
@@ -38,7 +40,7 @@ func (c *mysqlDB) DeleteKeyValuePairBatches(ctx context.Context, keys []string, 
 		remainingDataLen = remainingDataLen - 1000
 	}
 
-	// if remaining data is less than 1000
+	// if remaining data is less than 1000, finish the remaining deleting
 	if remainingDataLen > 0 {
 		// insert updated domains' entries
 		repeatedStmt := repeatStmtForDelete(tableNameString, remainingDataLen)
@@ -60,6 +62,7 @@ func (c *mysqlDB) DeleteKeyValuePairBatches(ctx context.Context, keys []string, 
 	return nil
 }
 
+// TruncateUpdatesTable: truncate updates table
 func (c *mysqlDB) TruncateUpdatesTable(ctx context.Context) error {
 	_, err := c.db.Exec("TRUNCATE `fpki`.`updates`;")
 	if err != nil {

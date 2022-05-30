@@ -158,9 +158,7 @@ func testTrieLoadCache() {
 	keys := getFreshData(10, 32)
 	values = getFreshData(10, 32)
 	smt.Update(keys, values)
-	fmt.Println("hi")
 	err = smt.Commit()
-	fmt.Println("hi")
 	if err != nil {
 		panic(err)
 	}
@@ -168,10 +166,8 @@ func testTrieLoadCache() {
 	// Simulate node restart by deleting and loading cache
 	cacheSize := smt.GetLiveCacheSize()
 	smt.ResetLiveCache()
-	fmt.Println("hi")
 
 	err = smt.LoadCache(smt.Root)
-	fmt.Println("hi")
 	if err != nil {
 		panic(err)
 	}

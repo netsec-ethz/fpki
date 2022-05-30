@@ -4,16 +4,17 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"math/rand"
 	"strconv"
-	"time"
+	//"time"
 )
 
-type ReadKeyResult struct {
+// used during main thread and worker thread
+type readKeyResult struct {
 	Keys []string
 	Err  error
 }
 
+// RetrieveOneKeyValuePair: Retrieve one single key-value pair
 func (c *mysqlDB) RetrieveOneKeyValuePair(ctx context.Context, id string, tableName TableName) (*KeyValuePair, error) {
 	var value []byte
 	var stmt *sql.Stmt
@@ -27,24 +28,25 @@ func (c *mysqlDB) RetrieveOneKeyValuePair(ctx context.Context, id string, tableN
 		return nil, fmt.Errorf("RetrieveOneKeyValuePair : Table name not supported")
 	}
 
-	start := time.Now()
+	//start := time.Now()
 	result := stmt.QueryRow(id)
-	end := time.Now()
-	fmt.Println("db read: ", end.Sub(start))
+	//end := time.Now()
+	//fmt.Println("db read time: ", end.Sub(start))
 	err := result.Scan(&value)
 	if err != nil {
 		switch {
 		case err != sql.ErrNoRows:
-			return nil, err
+			return nil, fmt.Errorf("RetrieveOneKeyValuePair | Scan | %w", err)
 		case err == sql.ErrNoRows:
-			return &KeyValuePair{}, nil
+			return nil, nil
 		}
 	}
 
 	return &KeyValuePair{Key: id, Value: value}, nil
 }
 
-func (c *mysqlDB) RetrieveKeyValuePairMultiThread(ctx context.Context, id []string, numOfRoutine int, tableName TableName) ([]KeyValuePair, error) {
+// RetrieveKeyValuePairMultiThread: Retrieve a list of key-value pair from DB
+func (c *mysqlDB) RetrieveKeyValuePairMultiThread(ctx context.Context, id []string, numOfWorker int, tableName TableName) ([]KeyValuePair, error) {
 	var stmt *sql.Stmt
 	switch {
 	case tableName == DomainEntries:
@@ -55,24 +57,25 @@ func (c *mysqlDB) RetrieveKeyValuePairMultiThread(ctx context.Context, id []stri
 		return nil, fmt.Errorf("RetrieveKeyValuePairMultiThread : Table name not supported")
 	}
 
-	if len(id) < numOfRoutine {
-		numOfRoutine = len(id)
+	// if work is less than number of worker
+	if len(id) < numOfWorker {
+		numOfWorker = len(id)
 	}
 
 	count := len(id)
-	step := count / numOfRoutine
+	step := count / numOfWorker
 
-	resultChan := make(chan KeyValueResult)
-	for r := 0; r < numOfRoutine-1; r++ {
+	resultChan := make(chan keyValueResult)
+	for r := 0; r < numOfWorker-1; r++ {
 		go fetchKeyValuePairWorker(resultChan, id[r*step:r*step+step], stmt, ctx)
 	}
 	// let the final one do the rest of the work
-	go fetchKeyValuePairWorker(resultChan, id[(numOfRoutine-1)*step:count], stmt, ctx)
+	go fetchKeyValuePairWorker(resultChan, id[(numOfWorker-1)*step:count], stmt, ctx)
 
 	finishedWorker := 0
 	keyValuePairs := []KeyValuePair{}
 
-	for numOfRoutine > finishedWorker {
+	for numOfWorker > finishedWorker {
 		newResult := <-resultChan
 		if newResult.Err != nil {
 			return nil, fmt.Errorf("RetrieveKeyValuePairMultiThread | %w", newResult.Err)
@@ -84,7 +87,7 @@ func (c *mysqlDB) RetrieveKeyValuePairMultiThread(ctx context.Context, id []stri
 	return keyValuePairs, nil
 }
 
-func fetchKeyValuePairWorker(resultChan chan KeyValueResult, keys []string, stmt *sql.Stmt, ctx context.Context) {
+func fetchKeyValuePairWorker(resultChan chan keyValueResult, keys []string, stmt *sql.Stmt, ctx context.Context) {
 	numOfWork := len(keys)
 	pairs := []KeyValuePair{}
 	var value []byte
@@ -96,7 +99,7 @@ work_loop:
 		if err != nil {
 			switch {
 			case err != sql.ErrNoRows:
-				resultChan <- KeyValueResult{Err: err}
+				resultChan <- keyValueResult{Err: fmt.Errorf("fetchKeyValuePairWorker | result.Scan | %w", err)}
 				return
 			case err == sql.ErrNoRows:
 				continue work_loop
@@ -105,19 +108,17 @@ work_loop:
 		pairs = append(pairs, KeyValuePair{Key: keys[i], Value: value})
 	}
 
-	resultChan <- KeyValueResult{Pairs: pairs}
+	resultChan <- keyValueResult{Pairs: pairs}
 }
 
-func getRandomInt() int {
-	return rand.Intn(50)
-}
-
+// RetrieveUpdatedDomainMultiThread: Get updated domains from updates table
 func (c *mysqlDB) RetrieveUpdatedDomainMultiThread(ctx context.Context, perQueryLimit int) ([]string, error) {
 	count, err := c.RetrieveTableRowsCount(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("RetrieveUpdatedDomainMultiThread | RetrieveTableRowsCount | %w", err)
 	}
 
+	// if work is less than number of worker
 	numberOfWorker := 1
 	if count > perQueryLimit {
 		numberOfWorker = count/perQueryLimit + 1
@@ -130,7 +131,7 @@ func (c *mysqlDB) RetrieveUpdatedDomainMultiThread(ctx context.Context, perQuery
 		step = count / numberOfWorker
 	}
 
-	resultChan := make(chan ReadKeyResult)
+	resultChan := make(chan readKeyResult)
 	for r := 0; r < numberOfWorker-1; r++ {
 		go fetchKeyWorker(resultChan, r*step, r*step+step, ctx, c.db)
 	}
@@ -140,6 +141,7 @@ func (c *mysqlDB) RetrieveUpdatedDomainMultiThread(ctx context.Context, perQuery
 	finishedWorker := 0
 	keys := []string{}
 
+	// get response
 	for numberOfWorker > finishedWorker {
 		newResult := <-resultChan
 		if newResult.Err != nil {
@@ -166,31 +168,32 @@ func (c *mysqlDB) RetrieveUpdatedDomainMultiThread(ctx context.Context, perQuery
 	return keys, nil
 }
 
-func fetchKeyWorker(resultChan chan ReadKeyResult, start, end int, ctx context.Context, db *sql.DB) {
+func fetchKeyWorker(resultChan chan readKeyResult, start, end int, ctx context.Context, db *sql.DB) {
 	var key string
 	result := []string{}
 
 	stmt, err := db.Prepare("SELECT * FROM updates LIMIT " + strconv.Itoa(start) + "," + strconv.Itoa(end-start))
 	if err != nil {
-		resultChan <- ReadKeyResult{Err: fmt.Errorf("fetchKeyWorker | SELECT * | %w", err)}
+		resultChan <- readKeyResult{Err: fmt.Errorf("fetchKeyWorker | SELECT * | %w", err)}
 	}
 	resultRows, err := stmt.Query()
 	if err != nil {
-		resultChan <- ReadKeyResult{Err: fmt.Errorf("fetchKeyWorker | Query | %w", err)}
+		resultChan <- readKeyResult{Err: fmt.Errorf("fetchKeyWorker | Query | %w", err)}
 	}
 	defer resultRows.Close()
 	for resultRows.Next() {
 		err = resultRows.Scan(&key)
 		if err != nil {
-			resultChan <- ReadKeyResult{Err: fmt.Errorf("fetchKeyWorker | Scan | %w", err)}
+			resultChan <- readKeyResult{Err: fmt.Errorf("fetchKeyWorker | Scan | %w", err)}
 		}
 		result = append(result, key)
 	}
 	stmt.Close()
 
-	resultChan <- ReadKeyResult{Keys: result}
+	resultChan <- readKeyResult{Keys: result}
 }
 
+// RetrieveTableRowsCount: Get number of entries in updates table
 func (c *mysqlDB) RetrieveTableRowsCount(ctx context.Context) (int, error) {
 	stmt, err := c.db.Prepare("SELECT COUNT(*) FROM updates")
 	if err != nil {

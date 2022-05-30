@@ -13,6 +13,7 @@ import (
 
 var wg sync.WaitGroup
 
+// collect 1M certs, and update them
 func main() {
 	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/fpki?maxAllowedPacket=1073741824")
 	defer db.Close()
@@ -20,30 +21,32 @@ func main() {
 		panic(err)
 	}
 
-	// trancate domain entries table
+	// trancate table
 	_, err = db.Exec("TRUNCATE `fpki`.`domainEntries`;")
 	if err != nil {
 		panic(err)
 	}
 
-	// trancate domain entries table
+	// trancate table
 	_, err = db.Exec("TRUNCATE `fpki`.`tree`;")
 	if err != nil {
 		panic(err)
 	}
 
-	// trancate domain entries table
+	// trancate table
 	_, err = db.Exec("TRUNCATE `fpki`.`updates`;")
 	if err != nil {
 		panic(err)
 	}
 
+	// new updater
 	mapUpdater, err := updater.NewMapUpdater(nil, 233)
 	if err != nil {
 		panic(err)
 	}
 
 	updateStart := time.Now()
+	// collect 1M certs
 	for i := 0; i < 100; i++ {
 		fmt.Println()
 		fmt.Println()

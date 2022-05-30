@@ -17,8 +17,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	// insert 50M node first
 
+	// insert 10M node first
 	for i := 0; i < 1000; i++ {
 		newKVPair := getKeyValuePair(i*1000, i*1000+999, generateRandomBytes())
 		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)

@@ -54,6 +54,8 @@ func (mapResponder *MapResponder) GetDomainProof(ctx context.Context, domainName
 		return nil, fmt.Errorf("GetDomainProof | parseDomainName | %w", err)
 	}
 
+	// var for benchmark
+	// TODO(yongzhe): delete this later
 	var merStart time.Time
 	var merEnd time.Time
 	var newStart time.Time
@@ -88,6 +90,7 @@ func (mapResponder *MapResponder) GetDomainProof(ctx context.Context, domainName
 		newStart = time.Now()
 		var proofType common.ProofType
 		domainBytes := []byte{}
+		// If it is PoP, query the domain entry. If it is PoA, directly return the PoA
 		switch {
 		case isPoP:
 			proofType = common.PoP
@@ -119,6 +122,7 @@ func (mapResponder *MapResponder) GetDomainProof(ctx context.Context, domainName
 		})
 	}
 	end := time.Now()
+	// print the slow query
 	if end.Sub(start) > time.Millisecond {
 		fmt.Println("time to fetch: ", end.Sub(start))
 		fmt.Println(domainName)

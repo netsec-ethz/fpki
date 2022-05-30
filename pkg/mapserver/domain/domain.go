@@ -88,6 +88,7 @@ func findShortestLength(domainNames [][]string) int {
 	return length
 }
 
+// SplitE2LD: return the E2LD and the rest of the domain names
 func SplitE2LD(domain string) ([]string, error) {
 	// remove wildcard
 	if len(domain) > 2 && domain[:2] == "*." {
@@ -123,6 +124,7 @@ func SplitE2LD(domain string) ([]string, error) {
 	return subdomains, nil
 }
 
+// IsTLD: whether the domain name is TLD
 func IsTLD(domainName string) bool {
 	// remove "*."
 	if len(domainName) > 2 && domainName[:2] == "*." {

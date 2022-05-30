@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+//TestEffectedDomains: test the func of ExtractEffectedDomains()
 func TestEffectedDomains(t *testing.T) {
 
 	result := ExtractEffectedDomains([]string{"a.b.com", "b.com", "c.net", "a.b.c.net", "1.a.b.com", "a.apple"})

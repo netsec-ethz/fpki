@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+//Test_RPCAndPC: test if PC and RPC are correctly added
 func Test_RPCAndPC(t *testing.T) {
 	start := time.Now()
 	pcList, rpcList, err := logpicker.GetPCAndRPC("./testdata/domain_list/domains.txt", 0, 0, 0)
@@ -87,6 +88,7 @@ func Test_RPCAndPC(t *testing.T) {
 	require.NoError(t, err, "updateDomainEntriesWithRPCAndPC error")
 	assert.Equal(t, len(updatedDomains), len(domainEntriesMap), "size of domainEntriesMap should be the size of updatedDomains")
 
+	// check PC
 	for _, pc := range pcList {
 		subjectName := pc.Subject
 		caName := pc.CAName
@@ -113,6 +115,7 @@ func Test_RPCAndPC(t *testing.T) {
 		}
 	}
 
+	// check RPC
 	for _, rpc := range rpcList {
 		subjectName := rpc.Subject
 		caName := rpc.CAName
@@ -140,6 +143,7 @@ func Test_RPCAndPC(t *testing.T) {
 	}
 }
 
+// Test_Certs: test if certs are correctly added
 func Test_Certs(t *testing.T) {
 	certs := []*ctX509.Certificate{}
 	// check if
@@ -228,6 +232,7 @@ func Test_Certs(t *testing.T) {
 	}
 }
 
+// Test_UpdateSameCertTwice: update the same certs twice, number of updates should be zero
 func Test_UpdateSameCertTwice(t *testing.T) {
 	certs := []*ctX509.Certificate{}
 	// check if
@@ -253,6 +258,7 @@ func Test_UpdateSameCertTwice(t *testing.T) {
 	assert.Equal(t, 0, len(updatedDomains), "updated domain should be 0")
 }
 
+// Test_UpdateSameRPCTwice: update the same RPC twice, number of updates should be zero
 func Test_UpdateSameRPCTwice(t *testing.T) {
 	pcList, rpcList, err := logpicker.GetPCAndRPC("./testdata/domain_list/domains.txt", 0, 0, 0)
 	require.NoError(t, err, "GetPCAndRPC error")

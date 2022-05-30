@@ -26,30 +26,6 @@ type CAEntry struct {
 	DomainCerts      [][]byte
 }
 
-/*
-// SerialiseDomainEnrty: DomainEntry -> bytes. Use gob
-func SerialiseDomainEnrty(domainEntry *DomainEntry) ([]byte, error) {
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-	if err := enc.Encode(*domainEntry); err != nil {
-		return nil, fmt.Errorf("SerialiseDomainEnrty | Encode | %w", err)
-	}
-	return buf.Bytes(), nil
-}
-
-// DesrialiseDomainEnrty: bytes -> DomainEntry. Use gob
-func DesrialiseDomainEnrty(input []byte) (*DomainEntry, error) {
-	buf := bytes.NewBuffer(input)
-	dec := gob.NewDecoder(buf)
-
-	result := &DomainEntry{}
-	if err := dec.Decode(result); err != nil {
-		return nil, fmt.Errorf("DesrialiseDomainEnrty | Decode | %w", err)
-	}
-	return result, nil
-}
-*/
-
 // SerialiseDomainEnrty: DomainEntry -> bytes. Use json
 func SerialiseDomainEnrty(domainEntry *DomainEntry) ([]byte, error) {
 	result, err := json.Marshal(domainEntry)

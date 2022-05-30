@@ -6,6 +6,7 @@ import (
 	"fmt"
 )
 
+// UpdateKeyValuePairBatches: Update a list of key-value store
 func (c *mysqlDB) UpdateKeyValuePairBatches(ctx context.Context, keyValuePairs []KeyValuePair, tableName TableName) (error, int) {
 	dataLen := len(keyValuePairs)
 	remainingDataLen := dataLen
@@ -62,6 +63,7 @@ func (c *mysqlDB) UpdateKeyValuePairBatches(ctx context.Context, keyValuePairs [
 	return nil, dataLen
 }
 
+// InsertIgnoreKeyBatches: Insert a list of keys into the updates table. If key exists, ignore it.
 func (c *mysqlDB) InsertIgnoreKeyBatches(ctx context.Context, keys []string) (int, error) {
 	dataLen := len(keys)
 	remainingDataLen := dataLen

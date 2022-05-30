@@ -2,6 +2,7 @@ package db
 
 import "fmt"
 
+// DisableKeys: Disable keys
 func (c *mysqlDB) DisableKeys() error {
 	_, err := c.db.Exec("ALTER TABLE `tree` DISABLE KEYS")
 	if err != nil {
@@ -16,6 +17,7 @@ func (c *mysqlDB) DisableKeys() error {
 	return nil
 }
 
+// EnableKeys: Enable keys
 func (c *mysqlDB) EnableKeys() error {
 	_, err := c.db.Exec("ALTER TABLE `tree` ENABLE KEYS")
 	if err != nil {

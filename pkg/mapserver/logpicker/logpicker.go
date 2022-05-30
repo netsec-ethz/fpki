@@ -30,16 +30,16 @@ type CertLog struct {
 	Entries []CertData
 }
 
-type CertResult struct {
+// certResult: Used in worker threads
+type certResult struct {
 	Err   error
 	Certs []*x509.Certificate
 }
 
-// TODO(yongzhe): modify the error handling
-// UpdateDomainFromLog: Fetch certificates from log,
+// UpdateDomainFromLog: Fetch certificates from CT log
 func GetCertMultiThread(ctURL string, startIndex int64, endIndex int64, numOfWorker int) ([]*x509.Certificate, int, error) {
 	gap := (endIndex - startIndex) / int64(numOfWorker)
-	resultChan := make(chan CertResult)
+	resultChan := make(chan certResult)
 	for i := 0; i < numOfWorker-1; i++ {
 		go workerThread(ctURL, startIndex+int64(i)*gap, startIndex+int64(i+1)*gap-1, resultChan)
 	}
@@ -61,7 +61,7 @@ func GetCertMultiThread(ctURL string, startIndex int64, endIndex int64, numOfWor
 }
 
 // workerThread: worker thread for log picker
-func workerThread(ctURL string, start, end int64, resultChan chan CertResult) {
+func workerThread(ctURL string, start, end int64, resultChan chan certResult) {
 	var certs []*x509.Certificate
 	for i := start; i < end; i += 20 {
 		var newCerts []*x509.Certificate
@@ -70,19 +70,19 @@ func workerThread(ctURL string, start, end int64, resultChan chan CertResult) {
 		if end-i > 20 {
 			newCerts, err = getCerts(ctURL, i, i+19)
 			if err != nil {
-				resultChan <- CertResult{Err: err}
+				resultChan <- certResult{Err: err}
 				continue
 			}
 		} else {
 			newCerts, err = getCerts(ctURL, i, i+end-i)
 			if err != nil {
-				resultChan <- CertResult{Err: err}
+				resultChan <- certResult{Err: err}
 				continue
 			}
 		}
 		certs = append(certs, newCerts...)
 	}
-	resultChan <- CertResult{Certs: certs}
+	resultChan <- certResult{Certs: certs}
 }
 
 // get certificate from CT log
@@ -90,7 +90,7 @@ func getCerts(ctURL string, start int64, end int64) ([]*ctX509.Certificate, erro
 	url := fmt.Sprintf(ctURL+"/ct/v1/get-entries?start=%d&end=%d&quot", start, end)
 	resp, err := http.Get(url)
 	if err != nil {
-		return nil, fmt.Errorf("http.Get %w", err)
+		return nil, fmt.Errorf("getCerts | http.Get %w", err)
 	}
 
 	buf := new(bytes.Buffer)
@@ -142,6 +142,7 @@ func GetPCAndRPC(ctURL string, startIndex int64, endIndex int64, numOfWorker int
 	defer f.Close()
 
 	scanner := bufio.NewScanner(f)
+	// read domain names from files
 	for scanner.Scan() {
 		domainName := scanner.Text()
 		// no policy for TLD

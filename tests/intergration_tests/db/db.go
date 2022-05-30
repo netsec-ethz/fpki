@@ -17,6 +17,8 @@ func main() {
 	fmt.Println("succeed")
 }
 
+// testUpdateTable: test if RetrieveTableRowsCount return correct number of entries.
+// TODO(yongzhe): need to insert some data first
 func testUpdateTable() {
 	conn, err := db.Connect_old()
 	if err != nil {
@@ -40,6 +42,7 @@ func testUpdateTable() {
 
 }
 
+// testKeyValueStore: test insert and read, with arbitrary indexes
 func testKeyValueStore() {
 	conn, err := db.Connect_old()
 	if err != nil {
@@ -50,23 +53,27 @@ func testKeyValueStore() {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
+	// update key-value pair from 1511 to 2012
 	err, _ = conn.UpdateKeyValuePairBatches(ctx, newKVPair, db.DomainEntries)
 	if err != nil {
 		panic(err)
 	}
 
+	// update key-value pair from 2013 to 2055
 	newKVPair = getKeyValuePair(2013, 2055, []byte("hi this is a test"))
 	err, _ = conn.UpdateKeyValuePairBatches(ctx, newKVPair, db.DomainEntries)
 	if err != nil {
 		panic(err)
 	}
 
+	// update key-value pair from 2056 to 2155
 	newKVPair = getKeyValuePair(2056, 2155, []byte("hi this is a test"))
 	err, _ = conn.UpdateKeyValuePairBatches(ctx, newKVPair, db.DomainEntries)
 	if err != nil {
 		panic(err)
 	}
 
+	// update key-value pair from 2056 to 4555
 	newKVPair = getKeyValuePair(2056, 4555, []byte("hi this is a test"))
 	err, _ = conn.UpdateKeyValuePairBatches(ctx, newKVPair, db.DomainEntries)
 	if err != nil {
@@ -76,6 +83,7 @@ func testKeyValueStore() {
 	keys := getKeys(1511, 4555)
 	keySize := len(keys)
 
+	// retrieve previously stored key-value pairs
 	result, err := conn.RetrieveKeyValuePairMultiThread(ctx, keys, 10, db.DomainEntries)
 	if err != nil {
 		panic(err)
@@ -87,6 +95,7 @@ func testKeyValueStore() {
 	keys = getKeys(1511, 1511)
 	keySize = len(keys)
 
+	// test to retrieve only one key
 	result, err = conn.RetrieveKeyValuePairMultiThread(ctx, keys, 10, db.DomainEntries)
 	if err != nil {
 		panic(err)
@@ -98,6 +107,7 @@ func testKeyValueStore() {
 	keys = getKeys(1542, 1673)
 	keySize = len(keys)
 
+	// test to retrieve keys
 	result, err = conn.RetrieveKeyValuePairMultiThread(ctx, keys, 10, db.DomainEntries)
 	if err != nil {
 		panic(err)

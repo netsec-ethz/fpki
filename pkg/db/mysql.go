@@ -18,11 +18,11 @@ type mysqlDB struct {
 	prepUpdateValueDomainEntries    *sql.Stmt // update the DomainEntries table
 	prepDeleteKeyValueDomainEntries *sql.Stmt // delete key value pair from DomainEntries table
 
-	prepUpdateValueTree    *sql.Stmt
-	prepGetValueTree       *sql.Stmt
-	prepDeleteKeyValueTree *sql.Stmt
+	prepUpdateValueTree    *sql.Stmt // update tree table
+	prepGetValueTree       *sql.Stmt // get key-value pair from tree table
+	prepDeleteKeyValueTree *sql.Stmt // delete key-value pair from tree table
 
-	prepInsertKeysUpdates *sql.Stmt
+	prepInsertKeysUpdates *sql.Stmt // update updates table
 }
 
 func repeatStmt(N int, noOfComponents int) string {
@@ -58,17 +58,17 @@ func repeatStmtForDelete(tableName string, N int) string {
 func NewMysqlDB(db *sql.DB) (*mysqlDB, error) {
 	prepNodePath, err := db.Prepare("SELECT node_path(?)")
 	if err != nil {
-		return nil, fmt.Errorf("preparing statement: %w", err)
+		return nil, fmt.Errorf("preparing statement prepNodePath: %w", err)
 	}
 
 	prepValueProofPath, err := db.Prepare("CALL val_and_proof_path(?)")
 	if err != nil {
-		return nil, fmt.Errorf("preparing statement: %w", err)
+		return nil, fmt.Errorf("preparing statement prepValueProofPath: %w", err)
 	}
 
 	prepGetValue, err := db.Prepare("SELECT value from nodes WHERE idhash=?")
 	if err != nil {
-		return nil, fmt.Errorf("preparing statement: %w", err)
+		return nil, fmt.Errorf("preparing statement prepGetValue: %w", err)
 	}
 
 	prepGetValueDomainEntries, err := db.Prepare("SELECT `value` from `domainEntries` WHERE `key`=?")
@@ -103,7 +103,7 @@ func NewMysqlDB(db *sql.DB) (*mysqlDB, error) {
 
 	prepInsertKeysUpdates, err := db.Prepare("INSERT IGNORE into `updates` (`key`) VALUES " + repeatStmt(1000, 1))
 	if err != nil {
-		return nil, fmt.Errorf("preparing statement prepDeleteKeyValueTree: %w", err)
+		return nil, fmt.Errorf("preparing statement prepInsertKeysUpdates: %w", err)
 	}
 
 	return &mysqlDB{
@@ -121,6 +121,7 @@ func NewMysqlDB(db *sql.DB) (*mysqlDB, error) {
 	}, nil
 }
 
+// Close: close connection
 func (c *mysqlDB) Close() error {
 	return c.db.Close()
 }

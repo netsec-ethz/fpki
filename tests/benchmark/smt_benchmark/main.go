@@ -12,9 +12,10 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
+// benchmark for sparse merkle tree
 func main() {
 	BenchmarkCacheHeightLimit233()
-	fmt.Println("bench mark for 300,000 updating and fetching finished")
+	fmt.Println("benchmark for 50M updating and fetching finished")
 }
 
 func benchmark10MAccounts10Ktps(smt *trie.Trie) ([][]byte, [][]byte) {

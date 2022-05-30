@@ -10,11 +10,13 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
+// newUpdates: structure for updates
 type newUpdates struct {
 	rpc []*projectCommon.RPC
 	pc  []*projectCommon.PC
 }
 
+// UpdateDomainEntriesUsingRPCAndPC: update the domain entries table, given RPC and PC
 func (mapUpdator *MapUpdater) UpdateDomainEntriesUsingRPCAndPC(rpc []*projectCommon.RPC, pc []*projectCommon.PC, readerNum int) (int, error) {
 	if len(rpc) == 0 && len(pc) == 0 {
 		return 0, nil
@@ -54,19 +56,23 @@ func (mapUpdator *MapUpdater) UpdateDomainEntriesUsingRPCAndPC(rpc []*projectCom
 	return mapUpdator.writeChangesToDB(keyValuePairs, updatedDomainNames)
 }
 
+// getAffectedDomainAndCertMapPCAndRPC: return a map of affected domains, and cert map
 func getAffectedDomainAndCertMapPCAndRPC(rpc []*projectCommon.RPC, pc []*projectCommon.PC) (map[string]byte, map[string]*newUpdates) {
 	// unique list of the updated domains
 	affectedDomainsMap := make(map[string]byte)
 	domainCertMap := make(map[string]*newUpdates)
 
+	// deal with RPC
 	for _, newRPC := range rpc {
 		domainName := newRPC.Subject
+		// do not record RPC for TLD
 		if domain.IsTLD(domainName) {
 			continue
 		}
 
 		domainNameHash := hex.EncodeToString(trie.Hasher([]byte(domainName)))
 
+		// attach domain hash to unique map
 		affectedDomainsMap[domainNameHash] = 1
 		certMapElement, ok := domainCertMap[domainName]
 		if ok {
@@ -76,6 +82,7 @@ func getAffectedDomainAndCertMapPCAndRPC(rpc []*projectCommon.RPC, pc []*project
 		}
 	}
 
+	// deal with PC
 	for _, newPC := range pc {
 		domainName := newPC.Subject
 		if domain.IsTLD(domainName) {

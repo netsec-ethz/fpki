@@ -22,7 +22,6 @@ type MapUpdater struct {
 
 // NewMapUpdater: return a new map updator. Input paras is similiar to NewMapResponder
 func NewMapUpdater(root []byte, cacheHeight int) (*MapUpdater, error) {
-
 	config := db.Configuration{
 		Dsn: "root@tcp(localhost)/fpki",
 		Values: map[string]string{
@@ -45,6 +44,8 @@ func NewMapUpdater(root []byte, cacheHeight int) (*MapUpdater, error) {
 	return &MapUpdater{smt: smt, dbConn: dbConn}, nil
 }
 
+// UpdateFromCT: download certs from ct log, update the domain entries and update the updates table, and SMT;
+// SMT not commited yet
 func (mapUpdator *MapUpdater) UpdateFromCT(ctUrl string, startIdx, endIdx int64) error {
 	fmt.Println("****** UpdateFromCT ******")
 	start := time.Now()
@@ -106,12 +107,15 @@ func (mapUpdator *MapUpdater) UpdateFromCT(ctUrl string, startIdx, endIdx int64)
 	return nil
 }
 
+// UpdateRPCAndPC: update RPC and PC from url. Currently just download
 func (mapUpdator *MapUpdater) UpdateRPCAndPC(ctUrl string, startIdx, endIdx int64) error {
+	// get PC and RPC first
 	pcList, rpcList, err := logpicker.GetPCAndRPC(ctUrl, startIdx, endIdx, 20)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | GetPCAndRPC | %w", err)
 	}
 
+	// update the domain and
 	_, err = mapUpdator.UpdateDomainEntriesUsingRPCAndPC(rpcList, pcList, 10)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingRPCAndPC | %w", err)
@@ -125,6 +129,7 @@ func (mapUpdator *MapUpdater) UpdateRPCAndPC(ctUrl string, startIdx, endIdx int6
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
+	// fetch domains from DB
 	keyValuePairs, err := mapUpdator.dbConn.RetrieveKeyValuePairMultiThread(ctx, updatedDomainHash, 10, db.DomainEntries)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | RetrieveKeyValuePairMultiThread | %w", err)
@@ -135,6 +140,7 @@ func (mapUpdator *MapUpdater) UpdateRPCAndPC(ctUrl string, startIdx, endIdx int6
 		return fmt.Errorf("CollectCerts | keyValuePairToSMTInput | %w", err)
 	}
 
+	// update Sparse Merkle Tree
 	_, err = mapUpdator.smt.Update(keyInput, valueInput)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | Update | %w", err)
@@ -143,6 +149,7 @@ func (mapUpdator *MapUpdater) UpdateRPCAndPC(ctUrl string, startIdx, endIdx int6
 	return nil
 }
 
+// CommitChanges: commit changes to DB
 func (mapUpdator *MapUpdater) CommitChanges() error {
 	err := mapUpdator.smt.Commit()
 	if err != nil {
