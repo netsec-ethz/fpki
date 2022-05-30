@@ -155,7 +155,7 @@ func Test_Certs(t *testing.T) {
 		certs = append(certs, cert)
 	}
 
-	assert.Equal(t, 1000, len(certs), "number of certs should be 1000")
+	assert.Equal(t, 10, len(certs), "number of certs should be 10")
 
 	affectedDomainsMap, domainCertMap := getAffectedDomainAndCertMap(certs)
 
@@ -244,7 +244,7 @@ func Test_UpdateSameCertTwice(t *testing.T) {
 		certs = append(certs, cert)
 	}
 
-	assert.Equal(t, 1000, len(certs), "number of certs should be 1000")
+	assert.Equal(t, 10, len(certs), "number of certs should be 10")
 
 	_, domainCertMap := getAffectedDomainAndCertMap(certs)
 
