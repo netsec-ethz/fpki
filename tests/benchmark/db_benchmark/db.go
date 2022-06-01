@@ -52,6 +52,7 @@ func main() {
 		fmt.Println("READ ", i*1000, "time ", end.Sub(start))
 	}
 
+	// read one value, single-threaded
 	for i := 0; i < 100; i++ {
 		keys := getKeys(i*1000, i*1000+999)
 		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
@@ -88,7 +89,7 @@ func main() {
 		fmt.Println("DELETE ", i*1000, "time ", end.Sub(start))
 	}
 
-	// read ramdomly
+	// read ramdomly; should return nil
 	for i := 0; i < 1000; i++ {
 		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 		defer cancelF()

@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"os"
 	"sync"
 	"time"
 
@@ -71,14 +70,9 @@ func main() {
 	fmt.Println("************************ Update finished ******************************")
 	fmt.Println("time to get and update 1,000,000 certs: ", updateEnd.Sub(updateStart))
 
-	root := mapUpdater.GetRoot()
 	err = mapUpdater.Close()
 	if err != nil {
 		panic(err)
 	}
 
-	err = os.WriteFile("root", root, 0644)
-	if err != nil {
-		panic(err)
-	}
 }
