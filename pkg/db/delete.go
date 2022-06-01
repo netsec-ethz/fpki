@@ -6,8 +6,8 @@ import (
 	"fmt"
 )
 
-// DeleteKeyValuePairBatches: Delete a list of key-value store
-func (c *mysqlDB) DeleteKeyValuePairBatches(ctx context.Context, keys []string, tableName TableName) error {
+// DeleteKeyValues: Delete a list of key-value store
+func (c *mysqlDB) DeleteKeyValues(ctx context.Context, keys []string, tableName TableName) error {
 	dataLen := len(keys)
 	remainingDataLen := dataLen
 
@@ -22,31 +22,31 @@ func (c *mysqlDB) DeleteKeyValuePairBatches(ctx context.Context, keys []string, 
 		stmt = c.prepDeleteKeyValueTree
 		tableNameString = "tree"
 	default:
-		return fmt.Errorf("DeleteKeyValuePairBatches : Table name not supported")
+		return fmt.Errorf("DeleteKeyValues : Table name not supported")
 	}
 
-	// write in batch of 1000
-	for i := 0; i*1000 <= dataLen-1000; i++ {
-		data := make([]interface{}, 1000)
+	// write in batch of batchSize
+	for i := 0; i*batchSize <= dataLen-batchSize; i++ {
+		data := make([]interface{}, batchSize)
 
-		for j := 0; j < 1000; j++ {
-			data[j] = keys[i*1000+j]
+		for j := 0; j < batchSize; j++ {
+			data[j] = keys[i*batchSize+j]
 		}
 
 		_, err := stmt.Exec(data...)
 		if err != nil {
-			return fmt.Errorf("DeleteKeyValuePairBatches | Exec | %w", err)
+			return fmt.Errorf("DeleteKeyValues | Exec | %w", err)
 		}
-		remainingDataLen = remainingDataLen - 1000
+		remainingDataLen = remainingDataLen - batchSize
 	}
 
-	// if remaining data is less than 1000, finish the remaining deleting
+	// if remaining data is less than batchSize, finish the remaining deleting
 	if remainingDataLen > 0 {
 		// insert updated domains' entries
 		repeatedStmt := repeatStmtForDelete(tableNameString, remainingDataLen)
 		stmt, err := c.db.Prepare(repeatedStmt)
 		if err != nil {
-			return fmt.Errorf("DeleteKeyValuePairBatches | db.Prepare | %w", err)
+			return fmt.Errorf("DeleteKeyValues | db.Prepare | %w", err)
 		}
 		data := make([]interface{}, remainingDataLen)
 
@@ -55,7 +55,7 @@ func (c *mysqlDB) DeleteKeyValuePairBatches(ctx context.Context, keys []string, 
 		}
 		_, err = stmt.Exec(data...)
 		if err != nil {
-			return fmt.Errorf("DeleteKeyValuePairBatches | Exec remaining | %w", err)
+			return fmt.Errorf("DeleteKeyValues | Exec remaining | %w", err)
 		}
 		stmt.Close()
 	}

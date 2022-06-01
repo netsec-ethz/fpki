@@ -4,15 +4,6 @@ import (
 	"context"
 )
 
-// NOTE
-// The project contains three tables:
-// * Domain entries tables: the table to store domain materials.
-// -- Key: hex-encoded of domain name hash: hex.EncodeToString(SHA256(domain name))
-// -- Value: Serialised data of domain materials. Use Json to serialise the data structure.
-// * Tree table: contains the Sparse Merkle Tree. Store the nodes of Sparse Merkle Tree
-// * updates table: contains the domain hashes of the changed domains during this update.
-//   updates table will be truncated after the Sparse Merkle Tree is updated.
-
 // FullID: Juan's data structure
 type FullID [33]byte // first byte is depth -1 (root not allowed)
 
@@ -29,17 +20,6 @@ type KeyValuePair struct {
 	Key   string
 	Value []byte
 }
-
-// TableName: enum type of tables
-// Currently two tables:
-// - DomainEntries table: used to store domain materials(certificates, PC, RPC, etc.)
-// - Tree table: store the SMT tree structure
-type TableName int
-
-const (
-	DomainEntries TableName = iota
-	Tree          TableName = iota
-)
 
 // Conn: interface for db connection
 type Conn interface {
@@ -63,24 +43,18 @@ type Conn interface {
 	// RetrieveUpdatedDomainMultiThread: Retrieve all updated domain hashes from update table
 	RetrieveUpdatedDomainMultiThread(ctx context.Context, perQueryLimit int) ([]string, error)
 
-	// RetrieveTableRowsCount: Retrieve number of entries in updates table
-	RetrieveTableRowsCount(ctx context.Context) (int, error)
+	// CountUpdates: Retrieve number of entries in updates table
+	CountUpdates(ctx context.Context) (int, error)
 
 	// UpdateKeyValuePairBatches: Update a list of key-value store
-	UpdateKeyValuePairBatches(ctx context.Context, keyValuePairs []KeyValuePair, tableName TableName) (error, int)
+	UpdateKeyValues(ctx context.Context, keyValuePairs []KeyValuePair, tableName TableName) (error, int)
 
-	// DeleteKeyValuePairBatches: Delete a list of key-value store
-	DeleteKeyValuePairBatches(ctx context.Context, keys []string, tableName TableName) error
+	// DeleteKeyValues: Delete a list of key-value store
+	DeleteKeyValues(ctx context.Context, keys []string, tableName TableName) error
 
-	// InsertIgnoreKeyBatches: Insert a list of keys into the updates table. If key exists, ignore it.
-	InsertIgnoreKeyBatches(ctx context.Context, keys []string) (int, error)
+	// ReplaceKeys: Insert a list of keys into the updates table. If key exists, ignore it.
+	ReplaceKeys(ctx context.Context, keys []string) (int, error)
 
 	// TruncateUpdatesTable: Truncate updates table
 	TruncateUpdatesTable(ctx context.Context) error
-
-	// DisableKeys: Disable keys for a table.
-	DisableKeys() error
-
-	//EnableKeys: Enable keys for a table.
-	EnableKeys() error
 }

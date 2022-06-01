@@ -28,7 +28,7 @@ func testUpdateTable() {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	numOfUpdates, err := conn.RetrieveTableRowsCount(ctx)
+	numOfUpdates, err := conn.CountUpdates(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -54,28 +54,28 @@ func testKeyValueStore() {
 	defer cancelF()
 
 	// update key-value pair from 1511 to 2012
-	err, _ = conn.UpdateKeyValuePairBatches(ctx, newKVPair, db.DomainEntries)
+	err, _ = conn.UpdateKeyValues(ctx, newKVPair, db.DomainEntries)
 	if err != nil {
 		panic(err)
 	}
 
 	// update key-value pair from 2013 to 2055
 	newKVPair = getKeyValuePair(2013, 2055, []byte("hi this is a test"))
-	err, _ = conn.UpdateKeyValuePairBatches(ctx, newKVPair, db.DomainEntries)
+	err, _ = conn.UpdateKeyValues(ctx, newKVPair, db.DomainEntries)
 	if err != nil {
 		panic(err)
 	}
 
 	// update key-value pair from 2056 to 2155
 	newKVPair = getKeyValuePair(2056, 2155, []byte("hi this is a test"))
-	err, _ = conn.UpdateKeyValuePairBatches(ctx, newKVPair, db.DomainEntries)
+	err, _ = conn.UpdateKeyValues(ctx, newKVPair, db.DomainEntries)
 	if err != nil {
 		panic(err)
 	}
 
 	// update key-value pair from 2056 to 4555
 	newKVPair = getKeyValuePair(2056, 4555, []byte("hi this is a test"))
-	err, _ = conn.UpdateKeyValuePairBatches(ctx, newKVPair, db.DomainEntries)
+	err, _ = conn.UpdateKeyValues(ctx, newKVPair, db.DomainEntries)
 	if err != nil {
 		panic(err)
 	}
@@ -136,14 +136,14 @@ func testKeyValueStore() {
 
 	keys = getKeys(1511, 2155)
 
-	err = conn.DeleteKeyValuePairBatches(ctx, keys, db.DomainEntries)
+	err = conn.DeleteKeyValues(ctx, keys, db.DomainEntries)
 	if err != nil {
 		panic(err)
 	}
 
 	keys = getKeys(2056, 4555)
 
-	err = conn.DeleteKeyValuePairBatches(ctx, keys, db.DomainEntries)
+	err = conn.DeleteKeyValues(ctx, keys, db.DomainEntries)
 	if err != nil {
 		panic(err)
 	}
@@ -154,25 +154,25 @@ func testKeyValueStore() {
 	ctx, cancelF = context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	err, _ = conn.UpdateKeyValuePairBatches(ctx, newKVPair, db.Tree)
+	err, _ = conn.UpdateKeyValues(ctx, newKVPair, db.Tree)
 	if err != nil {
 		panic(err)
 	}
 
 	newKVPair = getKeyValuePair(2013, 2055, []byte("hi this is a test"))
-	err, _ = conn.UpdateKeyValuePairBatches(ctx, newKVPair, db.Tree)
+	err, _ = conn.UpdateKeyValues(ctx, newKVPair, db.Tree)
 	if err != nil {
 		panic(err)
 	}
 
 	newKVPair = getKeyValuePair(2056, 2155, []byte("hi this is a test"))
-	err, _ = conn.UpdateKeyValuePairBatches(ctx, newKVPair, db.Tree)
+	err, _ = conn.UpdateKeyValues(ctx, newKVPair, db.Tree)
 	if err != nil {
 		panic(err)
 	}
 
 	newKVPair = getKeyValuePair(2056, 4555, []byte("hi this is a test"))
-	err, _ = conn.UpdateKeyValuePairBatches(ctx, newKVPair, db.Tree)
+	err, _ = conn.UpdateKeyValues(ctx, newKVPair, db.Tree)
 	if err != nil {
 		panic(err)
 	}
@@ -230,14 +230,14 @@ func testKeyValueStore() {
 
 	keys = getKeys(1511, 2155)
 
-	err = conn.DeleteKeyValuePairBatches(ctx, keys, db.Tree)
+	err = conn.DeleteKeyValues(ctx, keys, db.Tree)
 	if err != nil {
 		panic(err)
 	}
 
 	keys = getKeys(2056, 4555)
 
-	err = conn.DeleteKeyValuePairBatches(ctx, keys, db.Tree)
+	err = conn.DeleteKeyValues(ctx, keys, db.Tree)
 	if err != nil {
 		panic(err)
 	}

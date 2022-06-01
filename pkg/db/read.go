@@ -36,7 +36,7 @@ func (c *mysqlDB) RetrieveOneKeyValuePair(ctx context.Context, id string, tableN
 	if err != nil {
 		switch {
 		case err != sql.ErrNoRows:
-			return nil, fmt.Errorf("RetrieveOneKeyValuePair | Scan | %w", err)
+			return nil, fmt.Errorf("RetrieveOneKeyValuePair | Scan |%w", err)
 		case err == sql.ErrNoRows:
 			return nil, nil
 		}
@@ -113,7 +113,7 @@ work_loop:
 
 // RetrieveUpdatedDomainMultiThread: Get updated domains from updates table
 func (c *mysqlDB) RetrieveUpdatedDomainMultiThread(ctx context.Context, perQueryLimit int) ([]string, error) {
-	count, err := c.RetrieveTableRowsCount(ctx)
+	count, err := c.CountUpdates(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("RetrieveUpdatedDomainMultiThread | RetrieveTableRowsCount | %w", err)
 	}
@@ -193,17 +193,17 @@ func fetchKeyWorker(resultChan chan readKeyResult, start, end int, ctx context.C
 	resultChan <- readKeyResult{Keys: result}
 }
 
-// RetrieveTableRowsCount: Get number of entries in updates table
-func (c *mysqlDB) RetrieveTableRowsCount(ctx context.Context) (int, error) {
+// CountUpdates: Get number of entries in updates table
+func (c *mysqlDB) CountUpdates(ctx context.Context) (int, error) {
 	stmt, err := c.db.Prepare("SELECT COUNT(*) FROM updates")
 	if err != nil {
-		return 0, fmt.Errorf("RetrieveTableRowsCount | Prepare | %w", err)
+		return 0, fmt.Errorf("CountUpdates | Prepare | %w", err)
 	}
 
 	var number int
 	err = stmt.QueryRow().Scan(&number)
 	if err != nil {
-		return 0, fmt.Errorf("RetrieveTableRowsCount | Scan | %w", err)
+		return 0, fmt.Errorf("CountUpdates | Scan | %w", err)
 	}
 	stmt.Close()
 	return number, nil

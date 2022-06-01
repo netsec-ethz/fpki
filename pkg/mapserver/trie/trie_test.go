@@ -341,17 +341,17 @@ func (d *MockDB) RetrieveUpdatedDomainMultiThread(ctx context.Context, perQueryL
 	return nil, nil
 }
 
-func (d *MockDB) RetrieveTableRowsCount(ctx context.Context) (int, error) { return 0, nil }
+func (d *MockDB) CountUpdates(ctx context.Context) (int, error) { return 0, nil }
 
-func (d *MockDB) UpdateKeyValuePairBatches(ctx context.Context, keyValuePairs []db.KeyValuePair, tableName db.TableName) (error, int) {
+func (d *MockDB) UpdateKeyValues(ctx context.Context, keyValuePairs []db.KeyValuePair, tableName db.TableName) (error, int) {
 	return nil, 0
 }
 
-func (d *MockDB) DeleteKeyValuePairBatches(ctx context.Context, keys []string, tableName db.TableName) error {
+func (d *MockDB) DeleteKeyValues(ctx context.Context, keys []string, tableName db.TableName) error {
 	return nil
 }
 
-func (d *MockDB) InsertIgnoreKeyBatches(ctx context.Context, keys []string) (int, error) {
+func (d *MockDB) ReplaceKeys(ctx context.Context, keys []string) (int, error) {
 	return 0, nil
 }
 

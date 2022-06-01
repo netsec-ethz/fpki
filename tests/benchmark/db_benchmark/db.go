@@ -24,7 +24,7 @@ func main() {
 		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 		defer cancelF()
 		start := time.Now()
-		err, _ = conn.UpdateKeyValuePairBatches(ctx, newKVPair, db.Tree)
+		err, _ = conn.UpdateKeyValues(ctx, newKVPair, db.Tree)
 		if err != nil {
 			panic(err)
 		}
@@ -79,7 +79,7 @@ func main() {
 		keys := getKeys(i*1000, i*1000+999)
 
 		start := time.Now()
-		err := conn.DeleteKeyValuePairBatches(ctx, keys, db.Tree)
+		err := conn.DeleteKeyValues(ctx, keys, db.Tree)
 		if err != nil {
 			panic(err)
 		}

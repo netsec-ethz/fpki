@@ -9,6 +9,26 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
+// NOTE
+// The project contains three tables:
+// * Domain entries tables: the table to store domain materials.
+// -- Key: hex-encoded of domain name hash: hex.EncodeToString(SHA256(domain name))
+// -- Value: Serialised data of domain materials. Use Json to serialise the data structure.
+// * Tree table: contains the Sparse Merkle Tree. Store the nodes of Sparse Merkle Tree
+// * updates table: contains the domain hashes of the changed domains during this update.
+//   updates table will be truncated after the Sparse Merkle Tree is updated.
+
+// TableName: enum type of tables
+// Currently two tables:
+// - DomainEntries table: used to store domain materials(certificates, PC, RPC, etc.)
+// - Tree table: store the SMT tree structure
+type TableName int
+
+const (
+	DomainEntries TableName = iota
+	Tree          TableName = iota
+)
+
 type mysqlDB struct {
 	db                              *sql.DB
 	prepNodePath                    *sql.Stmt // returns the node path
@@ -76,17 +96,17 @@ func NewMysqlDB(db *sql.DB) (*mysqlDB, error) {
 		return nil, fmt.Errorf("preparing statement prepGetValueDomainEntries: %w", err)
 	}
 
-	prepUpdateValueDomainEntries, err := db.Prepare("REPLACE into domainEntries (`key`, `value`) values " + repeatStmt(1000, 2))
+	prepUpdateValueDomainEntries, err := db.Prepare("REPLACE into domainEntries (`key`, `value`) values " + repeatStmt(batchSize, 2))
 	if err != nil {
 		return nil, fmt.Errorf("preparing statement prepUpdateValueDomainEntries: %w", err)
 	}
 
-	prepDeleteKeyValueDomainEntries, err := db.Prepare(repeatStmtForDelete("domainEntries", 1000))
+	prepDeleteKeyValueDomainEntries, err := db.Prepare(repeatStmtForDelete("domainEntries", batchSize))
 	if err != nil {
 		return nil, fmt.Errorf("preparing statement prepDeleteKeyValueDomainEntries: %w", err)
 	}
 
-	prepUpdateValueTree, err := db.Prepare("REPLACE into tree (`key`, `value`) values " + repeatStmt(1000, 2))
+	prepUpdateValueTree, err := db.Prepare("REPLACE into tree (`key`, `value`) values " + repeatStmt(batchSize, 2))
 	if err != nil {
 		return nil, fmt.Errorf("preparing statement prepUpdateValueTree: %w", err)
 	}
@@ -96,12 +116,12 @@ func NewMysqlDB(db *sql.DB) (*mysqlDB, error) {
 		return nil, fmt.Errorf("preparing statement prepGetValueTree: %w", err)
 	}
 
-	prepDeleteKeyValueTree, err := db.Prepare(repeatStmtForDelete("tree", 1000))
+	prepDeleteKeyValueTree, err := db.Prepare(repeatStmtForDelete("tree", batchSize))
 	if err != nil {
 		return nil, fmt.Errorf("preparing statement prepDeleteKeyValueTree: %w", err)
 	}
 
-	prepInsertKeysUpdates, err := db.Prepare("INSERT IGNORE into `updates` (`key`) VALUES " + repeatStmt(1000, 1))
+	prepInsertKeysUpdates, err := db.Prepare("INSERT IGNORE into `updates` (`key`) VALUES " + repeatStmt(batchSize, 1))
 	if err != nil {
 		return nil, fmt.Errorf("preparing statement prepInsertKeysUpdates: %w", err)
 	}

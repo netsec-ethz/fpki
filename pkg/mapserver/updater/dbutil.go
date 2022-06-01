@@ -40,12 +40,12 @@ func (mapUpdator *MapUpdater) writeChangesToDB(updatesToDomainEntriesTable []db.
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	err, _ := mapUpdator.dbConn.UpdateKeyValuePairBatches(ctx, updatesToDomainEntriesTable, db.DomainEntries)
+	err, _ := mapUpdator.dbConn.UpdateKeyValues(ctx, updatesToDomainEntriesTable, db.DomainEntries)
 	if err != nil {
 		return 0, fmt.Errorf("writeToDomainEntriesTable | UpdateKeyValuePairBatches | %w", err)
 	}
 
-	_, err = mapUpdator.dbConn.InsertIgnoreKeyBatches(ctx, updatesToUpdatesTable)
+	_, err = mapUpdator.dbConn.ReplaceKeys(ctx, updatesToUpdatesTable)
 	if err != nil {
 		return 0, fmt.Errorf("writeToUpdateTable | InsertIgnoreKeyBatches | %w", err)
 	}

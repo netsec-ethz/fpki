@@ -7,17 +7,17 @@
 sleep 2
 # run tests
 echo "#################    Running domainowner_pca_policlog_interaction     ###################"
-./bin/domainowner_pca_policlog_interaction 
+./bin/test_domainowner_pca_policlog_interaction 
 echo "#################         Running policylog_interaction               ###################"
-./bin/policylog_interaction
+./bin/test_policylog_interaction
 echo "#################         Running mapserver   test                 ###################"
-./bin/mapserver
+./bin/test_mapserver
 echo "#################         Running smt test                    ###################"
-./bin/smt
+./bin/test_smt
 echo "#################         Running updater test                    ###################"
-./bin/updater
+./bin/test_updater
 echo "#################         Running db test                    ###################"
-./bin/db
+./bin/test_db
 
 
 # stop log

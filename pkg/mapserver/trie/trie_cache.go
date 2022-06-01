@@ -75,11 +75,6 @@ func (cacheDB *CacheDB) commitChangesToDB() error {
 	cacheDB.updatedMux.Lock()
 	defer cacheDB.updatedMux.Unlock()
 
-	err := cacheDB.Store.DisableKeys()
-	if err != nil {
-		return fmt.Errorf("commitChangesToDB | DisableKeys")
-	}
-
 	updates := []db.KeyValuePair{}
 	for k, v := range cacheDB.updatedNodes {
 		updates = append(updates, db.KeyValuePair{Key: hex.EncodeToString(k[:]), Value: serializeBatch(v)})
@@ -88,7 +83,7 @@ func (cacheDB *CacheDB) commitChangesToDB() error {
 	defer cancelF()
 
 	updateStart := time.Now()
-	err, numOfWrites := cacheDB.Store.UpdateKeyValuePairBatches(ctx, updates, db.Tree)
+	err, numOfWrites := cacheDB.Store.UpdateKeyValues(ctx, updates, db.Tree)
 	if err != nil {
 		return fmt.Errorf("commitChangesToDB | UpdateKeyValuePairBatches | %w", err)
 	}
@@ -97,16 +92,7 @@ func (cacheDB *CacheDB) commitChangesToDB() error {
 	// clear update nodes
 	cacheDB.updatedNodes = make(map[Hash][][]byte)
 
-	err = cacheDB.Store.EnableKeys()
-	if err != nil {
-		return fmt.Errorf("commitChangesToDB | EnableKeys")
-	}
-
 	if len(cacheDB.removedNode) != 0 {
-		err := cacheDB.Store.DisableKeys()
-		if err != nil {
-			return fmt.Errorf("commitChangesToDB | DisableKeys")
-		}
 
 		keys := []string{}
 		for k := range cacheDB.removedNode {
@@ -116,7 +102,7 @@ func (cacheDB *CacheDB) commitChangesToDB() error {
 		defer cancelF()
 
 		start := time.Now()
-		err = cacheDB.Store.DeleteKeyValuePairBatches(ctx, keys, db.Tree)
+		err = cacheDB.Store.DeleteKeyValues(ctx, keys, db.Tree)
 		if err != nil {
 			return fmt.Errorf("commitChangesToDB | DeleteKeyValuePairBatches | %w", err)
 		}
@@ -125,10 +111,6 @@ func (cacheDB *CacheDB) commitChangesToDB() error {
 		fmt.Println("Delete : takes ", end.Sub(start), " | delete ", len(cacheDB.removedNode))
 		cacheDB.removedNode = make(map[Hash][]byte)
 
-		err = cacheDB.Store.EnableKeys()
-		if err != nil {
-			return fmt.Errorf("commitChangesToDB | EnableKeys")
-		}
 	}
 
 	return nil

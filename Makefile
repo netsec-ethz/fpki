@@ -14,19 +14,18 @@ build_policy_log:
 
 setup_db: create_log_database create_fpki_table
 
-create_fpki_table:
+create_fpki_schema_replace_old:
 	@./tools/create_schema.sh
 
 create_log_database:
 	@./scripts/reset_db/resetdb.sh
 
 build_integration_test:
-	@go build -o ./bin/policylog_interaction  ./tests/intergration_tests/policylog_interaction
-	@go build -o ./bin/domainowner_pca_policlog_interaction  ./tests/intergration_tests/domainowner_pca_policlog_interaction
-	@go build -o ./bin/mapserver  ./tests/intergration_tests/mapserver
-	@go build -o ./bin/smt  ./tests/intergration_tests/smt
-	@go build -o ./bin/updater  ./tests/intergration_tests/updater
-	@go build -o ./bin/db  ./tests/intergration_tests/db
+	@go build -o ./bin/test_policylog_interaction  ./tests/intergration_tests/policylog_interaction
+	@go build -o ./bin/test_domainowner_pca_policlog_interaction  ./tests/intergration_tests/domainowner_pca_policlog_interaction
+	@go build -o ./bin/test_mapserver  ./tests/intergration_tests/mapserver
+	@go build -o ./bin/test_smt  ./tests/intergration_tests/smt
+	@go build -o ./bin/test_db  ./tests/intergration_tests/db
 
 drop_cacheTable:
 	@mysql -u root -e "DROP TABLE map.deleteTest;"

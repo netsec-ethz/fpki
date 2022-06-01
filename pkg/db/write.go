@@ -6,8 +6,10 @@ import (
 	"fmt"
 )
 
+const batchSize = 1000
+
 // UpdateKeyValuePairBatches: Update a list of key-value store
-func (c *mysqlDB) UpdateKeyValuePairBatches(ctx context.Context, keyValuePairs []KeyValuePair, tableName TableName) (error, int) {
+func (c *mysqlDB) UpdateKeyValues(ctx context.Context, keyValuePairs []KeyValuePair, tableName TableName) (error, int) {
 	dataLen := len(keyValuePairs)
 	remainingDataLen := dataLen
 
@@ -24,23 +26,23 @@ func (c *mysqlDB) UpdateKeyValuePairBatches(ctx context.Context, keyValuePairs [
 		return fmt.Errorf("UpdateKeyValuePairBatches : Table name not supported"), 0
 	}
 
-	// write in batch of 1000
-	for i := 0; i*1000 <= dataLen-1000; i++ {
-		data := make([]interface{}, 2*1000) // 2 elements per record ()
+	// write in batch of batchSize
+	for i := 0; i*batchSize <= dataLen-batchSize; i++ {
+		data := make([]interface{}, 2*batchSize) // 2 elements per record ()
 
-		for j := 0; j < 1000; j++ {
-			data[2*j] = keyValuePairs[i*1000+j].Key
-			data[2*j+1] = keyValuePairs[i*1000+j].Value
+		for j := 0; j < batchSize; j++ {
+			data[2*j] = keyValuePairs[i*batchSize+j].Key
+			data[2*j+1] = keyValuePairs[i*batchSize+j].Value
 		}
 		_, err := stmt.Exec(data...)
 		if err != nil {
 			return fmt.Errorf("UpdateKeyValuePairBatches | Exec | %w", err), 0
 		}
 
-		remainingDataLen = remainingDataLen - 1000
+		remainingDataLen = remainingDataLen - batchSize
 	}
 
-	// if remaining data is less than 1000
+	// if remaining data is less than batchSize
 	if remainingDataLen > 0 {
 		// insert updated domains' entries
 		repeatedStmt := "REPLACE into " + tableNameString + " (`key`, `value`) values " + repeatStmt(remainingDataLen, 2)
@@ -64,34 +66,34 @@ func (c *mysqlDB) UpdateKeyValuePairBatches(ctx context.Context, keyValuePairs [
 }
 
 // InsertIgnoreKeyBatches: Insert a list of keys into the updates table. If key exists, ignore it.
-func (c *mysqlDB) InsertIgnoreKeyBatches(ctx context.Context, keys []string) (int, error) {
+func (c *mysqlDB) ReplaceKeys(ctx context.Context, keys []string) (int, error) {
 	dataLen := len(keys)
 	remainingDataLen := dataLen
 
 	stmt := c.prepInsertKeysUpdates
 
-	// write in batch of 1000
-	for i := 0; i*1000 <= dataLen-1000; i++ {
-		data := make([]interface{}, 1000) // 2 elements per record ()
+	// write in batch of batchSize
+	for i := 0; i*batchSize <= dataLen-batchSize; i++ {
+		data := make([]interface{}, batchSize) // 2 elements per record ()
 
-		for j := 0; j < 1000; j++ {
-			data[j] = keys[i*1000+j]
+		for j := 0; j < batchSize; j++ {
+			data[j] = keys[i*batchSize+j]
 		}
 
 		_, err := stmt.Exec(data...)
 		if err != nil {
-			return 0, fmt.Errorf("InsertIgnoreKeyBatches | Exec | %w", err)
+			return 0, fmt.Errorf("ReplaceKeys | Exec | %w", err)
 		}
 
-		remainingDataLen = remainingDataLen - 1000
+		remainingDataLen = remainingDataLen - batchSize
 	}
 
-	// if remaining data is less than 1000
+	// if remaining data is less than batchSize
 	if remainingDataLen > 0 {
 		// insert updated domains' entries
 		stmt, err := c.db.Prepare("INSERT IGNORE into `updates` (`key`) VALUES " + repeatStmt(remainingDataLen, 1))
 		if err != nil {
-			return 0, fmt.Errorf("InsertIgnoreKeyBatches | db.Prepare | %w", err)
+			return 0, fmt.Errorf("ReplaceKeys | db.Prepare | %w", err)
 		}
 		data := make([]interface{}, remainingDataLen) // 2 elements per record ()
 
@@ -101,7 +103,7 @@ func (c *mysqlDB) InsertIgnoreKeyBatches(ctx context.Context, keys []string) (in
 
 		_, err = stmt.Exec(data...)
 		if err != nil {
-			return 0, fmt.Errorf("InsertIgnoreKeyBatches | Exec | %w", err)
+			return 0, fmt.Errorf("ReplaceKeys | Exec | %w", err)
 		}
 		stmt.Close()
 	}
