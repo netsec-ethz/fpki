@@ -22,6 +22,8 @@
 
 -- innodb_flush_method = "O_DIRECT"
 
+-- innodb_use_fdatasync = "ON"
+
 
 -- important variables taken into account:
 
