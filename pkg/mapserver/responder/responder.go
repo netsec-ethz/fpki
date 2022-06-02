@@ -26,7 +26,15 @@ type MapResponder struct {
 //   --root: for a new tree, it can be nil. To load a non-empty tree, root should be the latest root of the tree.
 //   --cacheHeight: Maximum height of the cached tree (in memory). 256 means no cache, 0 means cache the whole tree. 0-256
 func NewMapResponder(root []byte, cacheHeight int) (*MapResponder, error) {
-	dbConn, err := db.Connect_old()
+	config := db.Configuration{
+		Dsn: "root@tcp(localhost)/fpki",
+		Values: map[string]string{
+			"interpolateParams": "true", // 1 round trip per query
+			//"collation":         "binary",
+		},
+	}
+
+	dbConn, err := db.Connect(&config)
 	if err != nil {
 		return nil, fmt.Errorf("NewMapResponder | Connect_old | %w", err)
 	}
@@ -62,8 +70,8 @@ func (mapResponder *MapResponder) GetDomainProof(ctx context.Context, domainName
 	var newEnd time.Time
 	var hashStart time.Time
 	var hashEnd time.Time
-	var hexStart time.Time
-	var hexEnd time.Time
+	var dbReadTime []time.Duration
+	var resultSize []int
 
 	durationList := []time.Duration{}
 
@@ -94,15 +102,17 @@ func (mapResponder *MapResponder) GetDomainProof(ctx context.Context, domainName
 		switch {
 		case isPoP:
 			proofType = common.PoP
-			hexStart = time.Now()
 			domainHashString := hex.EncodeToString(domainHash)
-			hexEnd = time.Now()
-			fmt.Println("hex time:", hexEnd.Sub(hexStart))
+			dbStart := time.Now()
 			result, err := mapResponder.dbConn.RetrieveOneKeyValuePair(ctx, domainHashString, db.DomainEntries)
 			if err != nil {
 				return nil, fmt.Errorf("GetDomainProof | QueryRow | %w", err)
 			}
+			dbEnd := time.Now()
+			dbReadTime = append(dbReadTime, dbEnd.Sub(dbStart))
+			resultSize = append(resultSize, len(result.Value))
 			domainBytes = result.Value
+
 		case !isPoP:
 			proofType = common.PoA
 		}
@@ -132,10 +142,101 @@ func (mapResponder *MapResponder) GetDomainProof(ctx context.Context, domainName
 				fmt.Println()
 			}
 		}
+		fmt.Println("db read time")
+		for _, dbTime := range dbReadTime {
+			fmt.Println(dbTime)
+		}
+
+		for _, domain := range domainList {
+			fmt.Println("key", hex.EncodeToString(trie.Hasher([]byte(domain))))
+		}
+
+		for _, resultSize := range resultSize {
+			fmt.Println("size: ", resultSize)
+		}
+
 		fmt.Println("--------------------------------------")
 	}
 
 	return proofsResult, nil
+}
+
+func (mapResponder *MapResponder) GetDomainProofs(ctx context.Context, domainNames []string) (map[string][]*common.MapServerResponse, error) {
+	domainResultMap, domainProofMap, err := getMapping(domainNames)
+	if err != nil {
+		return nil, fmt.Errorf("GetDomainProofs | getMapping | %w", err)
+	}
+
+	domainToFetch, err := mapResponder.getProofFromSMT(domainProofMap)
+	if err != nil {
+		return nil, fmt.Errorf("GetDomainProofs | getProofFromSMT | %w", err)
+	}
+
+	result, err := mapResponder.dbConn.RetrieveKeyValuePairMultiThread(ctx, domainToFetch, 10, db.DomainEntries)
+	if err != nil {
+		return nil, fmt.Errorf("GetDomainProofs | RetrieveKeyValuePairMultiThread | %w", err)
+	}
+
+	for _, keyValuePair := range result {
+		domainProofMap[keyValuePair.Key].DomainEntryBytes = keyValuePair.Value
+	}
+
+	return domainResultMap, nil
+}
+
+func getMapping(domainNames []string) (map[string][]*common.MapServerResponse, map[string]*common.MapServerResponse, error) {
+	domainResultMap := make(map[string][]*common.MapServerResponse)
+	domainProofMap := make(map[string]*common.MapServerResponse)
+
+	for _, domainName := range domainNames {
+		_, ok := domainResultMap[domainName]
+		if !ok {
+			// list of proofs for this domain
+			resultsList := []*common.MapServerResponse{}
+			subDomainNames, err := parseDomainName(domainName)
+			if err != nil {
+				return nil, nil, fmt.Errorf("getMapping | parseDomainName | %w", err)
+			}
+			for _, subDomainName := range subDomainNames {
+				domainHash := hex.EncodeToString(trie.Hasher([]byte(subDomainName)))
+				subDomainResult, ok := domainProofMap[domainHash]
+				if ok {
+					resultsList = append(resultsList, subDomainResult)
+				} else {
+					domainProofMap[domainHash] = &common.MapServerResponse{Domain: subDomainName}
+				}
+			}
+			domainResultMap[domainName] = resultsList
+		}
+	}
+	return domainResultMap, domainProofMap, nil
+}
+
+func (mapResponder *MapResponder) getProofFromSMT(domainMap map[string]*common.MapServerResponse) ([]string, error) {
+	domainNameToFetchFromDB := []string{}
+	for key, value := range domainMap {
+		domainHash, err := hex.DecodeString(key)
+		if err != nil {
+			return nil, fmt.Errorf("getProofFromSMT | DecodeString | %w", err)
+		}
+
+		proof, isPoP, proofKey, ProofValue, err := mapResponder.smt.MerkleProof(domainHash)
+		if err != nil {
+			return nil, fmt.Errorf("getProofFromSMT | MerkleProof | %w", err)
+		}
+
+		value.PoI = common.PoI{Proof: proof, ProofKey: proofKey, ProofValue: ProofValue}
+
+		switch {
+		case isPoP:
+			value.PoI.ProofType = common.PoP
+			domainNameToFetchFromDB = append(domainNameToFetchFromDB, hex.EncodeToString(domainHash))
+
+		case !isPoP:
+			value.PoI.ProofType = common.PoA
+		}
+	}
+	return domainNameToFetchFromDB, nil
 }
 
 // parseDomainName: get the parent domain until E2LD, return a list of domains(remove the www. and *.)

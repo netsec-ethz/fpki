@@ -92,7 +92,7 @@ func main() {
 	collectedCerts := []ctX509.Certificate{}
 	for i := 0; i < 500; i++ {
 		certList, err := getCerts("https://ct.googleapis.com/logs/argon2021", int64(2500000+i*20), int64(2500000+i*20+19))
-		fmt.Println("doanloading : ", int64(1120000+i*20), " - ", int64(1120000+i*20+19))
+		fmt.Println("doanloading : ", int64(2500000+i*20), " - ", int64(2500000+i*20+19))
 		if err != nil {
 			panic(err)
 		}
@@ -119,7 +119,7 @@ func main() {
 // collect proof for every domain's Common Name
 func worker(certs []ctX509.Certificate, responder *responder.MapResponder, ctx context.Context) {
 	for _, cert := range certs {
-		_, err := responder.GetDomainProof(ctx, cert.Subject.String())
+		_, err := responder.GetDomainProof(ctx, cert.Subject.CommonName)
 		if err != nil {
 			panic(err)
 		}
