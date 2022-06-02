@@ -1,4 +1,6 @@
+#!/bin/bash
 # Start log server
+
 ./bin/logserver_exec >/dev/null& 
 
 # Start log signer
@@ -14,8 +16,6 @@ echo "#################         Running mapserver   test                 #######
 ./bin/test_mapserver
 echo "#################         Running smt test                    ###################"
 ./bin/test_smt
-echo "#################         Running updater test                    ###################"
-./bin/test_updater
 echo "#################         Running db test                    ###################"
 ./bin/test_db
 

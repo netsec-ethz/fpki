@@ -111,7 +111,7 @@ func updateDomainEntriesWithRPCAndPC(domainEntries map[string]*common.DomainEntr
 	for domainName, updates := range certDomainMap {
 		for _, rpc := range updates.rpc {
 			domainNameHash := hex.EncodeToString(trie.Hasher([]byte(domainName)))
-			// get domian entries
+			// get domain entries
 			domainEntry, ok := domainEntries[domainNameHash]
 			// if domain entry exists in the db
 			if ok {

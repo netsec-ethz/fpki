@@ -10,7 +10,9 @@ import (
 )
 
 // retrieveAffectedDomainFromDB: get affected domain entries from db
-func (mapUpdator *MapUpdater) retrieveAffectedDomainFromDB(affectedDomainsMap map[string]byte, readerNum int) (map[string]*common.DomainEntry, error) {
+func (mapUpdator *MapUpdater) retrieveAffectedDomainFromDB(affectedDomainsMap map[string]byte,
+	readerNum int) (map[string]*common.DomainEntry, error) {
+
 	// list of domain hashes to fetch the domain entries from db
 	affectedDomainHash := []string{}
 	for k := range affectedDomainsMap {
@@ -35,7 +37,8 @@ func (mapUpdator *MapUpdater) retrieveAffectedDomainFromDB(affectedDomainsMap ma
 }
 
 // commit changes to db
-func (mapUpdator *MapUpdater) writeChangesToDB(updatesToDomainEntriesTable []db.KeyValuePair, updatesToUpdatesTable []string) (int, error) {
+func (mapUpdator *MapUpdater) writeChangesToDB(updatesToDomainEntriesTable []db.KeyValuePair,
+	updatesToUpdatesTable []string) (int, error) {
 
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()

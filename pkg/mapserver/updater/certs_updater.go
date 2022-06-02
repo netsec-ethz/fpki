@@ -118,10 +118,9 @@ func extractCertDomains(cert *x509.Certificate) []string {
 	if len(cert.Subject.CommonName) != 0 {
 		domains[cert.Subject.CommonName] = 1
 	}
-	if len(cert.DNSNames) != 0 {
-		for _, dnsName := range cert.DNSNames {
-			domains[dnsName] = 1
-		}
+
+	for _, dnsName := range cert.DNSNames {
+		domains[dnsName] = 1
 	}
 
 	result := []string{}
@@ -132,7 +131,9 @@ func extractCertDomains(cert *x509.Certificate) []string {
 }
 
 // update domain entries
-func updateDomainEntries(domainEntries map[string]*common.DomainEntry, certDomainMap map[string][]*x509.Certificate) (map[string]byte, error) {
+func updateDomainEntries(domainEntries map[string]*common.DomainEntry,
+	certDomainMap map[string][]*x509.Certificate) (map[string]byte, error) {
+
 	updatedDomainHash := make(map[string]byte)
 	// read from previous map
 	// the map records: domain - certs pair
@@ -141,7 +142,7 @@ func updateDomainEntries(domainEntries map[string]*common.DomainEntry, certDomai
 		//iterStart := time.Now()
 		for _, cert := range certs {
 			domainNameHash := hex.EncodeToString(trie.Hasher([]byte(domainName)))
-			// get domian entries
+			// get domain entries
 			domainEntry, ok := domainEntries[domainNameHash]
 			// if domain entry exists in the db
 			if ok {
@@ -216,8 +217,10 @@ ca_entry_loop:
 	return isUpdated
 }
 
-// get updated domains, and extract the cooresponding domain bytes
-func getDomainEntriesToWrite(updatedDomain map[string]byte, domainEntries map[string]*common.DomainEntry) (map[string]*common.DomainEntry, error) {
+// get updated domains, and extract the corresponding domain bytes
+func getDomainEntriesToWrite(updatedDomain map[string]byte,
+	domainEntries map[string]*common.DomainEntry) (map[string]*common.DomainEntry, error) {
+
 	result := make(map[string]*common.DomainEntry)
 	for k := range updatedDomain {
 		domainEntry, ok := domainEntries[k]
@@ -260,14 +263,14 @@ func sortDomainEntry(domainEntry *common.DomainEntry) {
 // serialise the updated domains
 func serialiseUpdatedDomainEntries(input map[string]*common.DomainEntry) ([]db.KeyValuePair, []string, error) {
 	result := []db.KeyValuePair{}
-	updatedDomainName := []string{}
+	updatedDomainNames := []string{}
 	for k, v := range input {
 		domainBytes, err := common.SerialiseDomainEnrty(v)
 		if err != nil {
 			return nil, nil, fmt.Errorf("serialiseUpdatedDomainEntries | SerialiseDomainEnrty | %w", err)
 		}
 		result = append(result, db.KeyValuePair{Key: k, Value: domainBytes})
-		updatedDomainName = append(updatedDomainName, k)
+		updatedDomainNames = append(updatedDomainNames, k)
 	}
-	return result, updatedDomainName, nil
+	return result, updatedDomainNames, nil
 }

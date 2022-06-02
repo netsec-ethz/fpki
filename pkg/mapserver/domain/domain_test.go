@@ -7,7 +7,7 @@ import (
 )
 
 //TestEffectedDomains: test the func of ExtractEffectedDomains()
-func Test_AffectedDomains(t *testing.T) {
+func TestAffectedDomains(t *testing.T) {
 
 	result := ExtractAffectedDomains([]string{"a.b.com", "b.com", "c.net", "a.b.c.net", "1.a.b.com", "a.apple"})
 	assert.Equal(t, 3, len(result), "length error")
@@ -76,7 +76,7 @@ func Test_AffectedDomains(t *testing.T) {
 }
 
 // TestfindLongestMatch: test for findLongestMatch
-func Test_findLongestMatch(t *testing.T) {
+func TestFindLongestMatch(t *testing.T) {
 	result := findLongestSuffix([][]string{{"a", "b"}, {"c", "b"}})
 	assert.Equal(t, "b.", result, "findLongestMatch error")
 

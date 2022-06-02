@@ -1,3 +1,4 @@
+#!/bin/bash
 # Start log server
 ./bin/logserver_exec >/dev/null& 
 

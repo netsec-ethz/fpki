@@ -19,8 +19,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-//Test_RPCAndPC: test if PC and RPC are correctly added
-func Test_RPCAndPC(t *testing.T) {
+//TestRPCAndPC: test if PC and RPC are correctly added
+func TestRPCAndPC(t *testing.T) {
 	start := time.Now()
 	pcList, rpcList, err := logpicker.GetPCAndRPC("./testdata/domain_list/domains.txt", 0, 0, 0)
 	require.NoError(t, err, "GetPCAndRPC error")
@@ -39,8 +39,7 @@ func Test_RPCAndPC(t *testing.T) {
 		assert.True(t, ok, "domain not found")
 
 		for domainHash, newUpdate := range domainCertMap {
-			switch {
-			case domainHash == subjectName:
+			if domainHash == subjectName {
 				isFound := false
 				for _, newPc := range newUpdate.pc {
 					if newPc.Equal(*pc) {
@@ -48,12 +47,13 @@ func Test_RPCAndPC(t *testing.T) {
 					}
 				}
 				assert.True(t, isFound, "new PC not included in domainCertMap")
-			case domainHash != subjectName:
+			} else {
 				for _, newPc := range newUpdate.pc {
 					assert.False(t, newPc.Equal(*pc), "PC shouldn't be included in the map")
 				}
 			}
 		}
+
 	}
 
 	for _, rpc := range rpcList {
@@ -63,8 +63,7 @@ func Test_RPCAndPC(t *testing.T) {
 		assert.True(t, ok, "domain not found")
 
 		for domainHash, newUpdate := range domainCertMap {
-			switch {
-			case domainHash == subjectName:
+			if domainHash == subjectName {
 				isFound := false
 				for _, newRPC := range newUpdate.rpc {
 					if newRPC.Equal(rpc) {
@@ -72,7 +71,7 @@ func Test_RPCAndPC(t *testing.T) {
 					}
 				}
 				assert.True(t, isFound, "new RPC not included in domainCertMap")
-			case domainHash != subjectName:
+			} else {
 				for _, neRPC := range newUpdate.rpc {
 					assert.False(t, neRPC.Equal(rpc), "RPC shouldn't be included in the map")
 				}
@@ -82,7 +81,6 @@ func Test_RPCAndPC(t *testing.T) {
 	assert.True(t, len(affectedDomainsMap) == len(domainCertMap))
 
 	domainEntriesMap := make(map[string]*common.DomainEntry)
-	assert.Equal(t, 0, len(domainEntriesMap), "domainEntriesMap should be zero")
 
 	updatedDomains, err := updateDomainEntriesWithRPCAndPC(domainEntriesMap, domainCertMap)
 	require.NoError(t, err, "updateDomainEntriesWithRPCAndPC error")
@@ -143,8 +141,8 @@ func Test_RPCAndPC(t *testing.T) {
 	}
 }
 
-// Test_Certs: test if certs are correctly added
-func Test_Certs(t *testing.T) {
+// TestCerts: test if certs are correctly added
+func TestCerts(t *testing.T) {
 	certs := []*ctX509.Certificate{}
 	// check if
 	files, err := ioutil.ReadDir("./testdata/certs/")
@@ -154,8 +152,6 @@ func Test_Certs(t *testing.T) {
 		require.NoError(t, err, "projectCommon.CTX509CertFromFile")
 		certs = append(certs, cert)
 	}
-
-	assert.Equal(t, 10, len(certs), "number of certs should be 10")
 
 	affectedDomainsMap, domainCertMap := getAffectedDomainAndCertMap(certs)
 
@@ -232,8 +228,8 @@ func Test_Certs(t *testing.T) {
 	}
 }
 
-// Test_UpdateSameCertTwice: update the same certs twice, number of updates should be zero
-func Test_UpdateSameCertTwice(t *testing.T) {
+// TestUpdateSameCertTwice: update the same certs twice, number of updates should be zero
+func TestUpdateSameCertTwice(t *testing.T) {
 	certs := []*ctX509.Certificate{}
 	// check if
 	files, err := ioutil.ReadDir("./testdata/certs/")
@@ -243,8 +239,6 @@ func Test_UpdateSameCertTwice(t *testing.T) {
 		require.NoError(t, err, "projectCommon.CTX509CertFromFile")
 		certs = append(certs, cert)
 	}
-
-	assert.Equal(t, 10, len(certs), "number of certs should be 10")
 
 	_, domainCertMap := getAffectedDomainAndCertMap(certs)
 
@@ -258,15 +252,14 @@ func Test_UpdateSameCertTwice(t *testing.T) {
 	assert.Equal(t, 0, len(updatedDomains), "updated domain should be 0")
 }
 
-// Test_UpdateSameRPCTwice: update the same RPC twice, number of updates should be zero
-func Test_UpdateSameRPCTwice(t *testing.T) {
+// TestUpdateSameRPCTwice: update the same RPC twice, number of updates should be zero
+func TestUpdateSameRPCTwice(t *testing.T) {
 	pcList, rpcList, err := logpicker.GetPCAndRPC("./testdata/domain_list/domains.txt", 0, 0, 0)
 	require.NoError(t, err, "GetPCAndRPC error")
 
 	_, domainCertMap := getAffectedDomainAndCertMapPCAndRPC(rpcList, pcList)
 
 	domainEntriesMap := make(map[string]*common.DomainEntry)
-	assert.Equal(t, 0, len(domainEntriesMap), "domainEntriesMap should be zero")
 
 	updatedDomains, err := updateDomainEntriesWithRPCAndPC(domainEntriesMap, domainCertMap)
 	require.NoError(t, err, "updateDomainEntriesWithRPCAndPC error")

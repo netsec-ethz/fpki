@@ -45,7 +45,7 @@ func NewMapUpdater(root []byte, cacheHeight int) (*MapUpdater, error) {
 }
 
 // UpdateFromCT: download certs from ct log, update the domain entries and update the updates table, and SMT;
-// SMT not commited yet
+// SMT not committed yet
 func (mapUpdator *MapUpdater) UpdateFromCT(ctUrl string, startIdx, endIdx int64) error {
 	fmt.Println("****** UpdateFromCT ******")
 	start := time.Now()
