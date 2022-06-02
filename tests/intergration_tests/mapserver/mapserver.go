@@ -94,12 +94,32 @@ func main() {
 		}
 	}
 
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
+	domainToFetch := []string{}
+	for _, cert := range collectedCertMap {
+		if cert.Subject.CommonName != "" {
+			domainToFetch = append(domainToFetch, cert.Subject.CommonName)
+		}
+		for _, name := range cert.DNSNames {
+			if name != "" {
+				domainToFetch = append(domainToFetch, name)
+			}
+		}
+	}
+
+	if len(domainToFetch) == 0 {
+		panic("no valid domain names in certs")
+	}
+
+	resultMap, err := mapResponder.GetDomainProofs(ctx, domainToFetch)
+	if err != nil {
+		panic("GetDomainProofs error" + err.Error())
+	}
+
 	// check whether the certificate is correctly added to the tree
 	for _, cert := range collectedCertMap {
-		fmt.Println()
-		fmt.Println("----------------------- new cert -------------------------")
-		fmt.Println("checking cert: ", cert.Subject.CommonName, ":", cert.SerialNumber)
-
 		// load the common name and SANs
 		caName := cert.Issuer.CommonName
 		domainNameMap := make(map[string]byte)
@@ -112,27 +132,12 @@ func main() {
 			}
 		}
 
-		fmt.Println("contains domain:")
-		for domainName, _ := range domainNameMap {
-			fmt.Println(domainName)
-		}
-		fmt.Println("----------------checking-------------------")
-
 		// check individual domains
 		for domainName, _ := range domainNameMap {
-			ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
-			defer cancelF()
-
-			mapResponses, err := mapResponder.GetDomainProof(ctx, domainName)
-			if err != nil {
-				panic(err)
-			}
 			isContained := false
 		map_response_loop:
-			for _, mapResponse := range mapResponses {
-				fmt.Println("---checking domain: ", mapResponse.Domain)
-				proofType, isCorrect, err := prover.VerifyProofByDomain(mapResponse)
-				fmt.Println("---proof type: ", proofType)
+			for _, mapResponse := range resultMap[domainName] {
+				proofType, isCorrect, err := prover.VerifyProofByDomain(*mapResponse)
 				if err != nil {
 					panic(err)
 				}
@@ -152,7 +157,6 @@ func main() {
 							for _, certRaw := range caEntry.DomainCerts {
 								if bytes.Equal(certRaw, cert.Raw) {
 									isContained = true
-									fmt.Println("-------------------------checked")
 									break map_response_loop
 								}
 							}
