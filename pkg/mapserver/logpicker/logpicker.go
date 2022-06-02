@@ -37,7 +37,7 @@ type certResult struct {
 }
 
 // UpdateDomainFromLog: Fetch certificates from CT log
-func GetCertMultiThread(ctURL string, startIndex int64, endIndex int64, numOfWorker int) ([]*x509.Certificate, int, error) {
+func GetCertMultiThread(ctURL string, startIndex int64, endIndex int64, numOfWorker int) ([]*x509.Certificate, error) {
 	gap := (endIndex - startIndex) / int64(numOfWorker)
 	resultChan := make(chan certResult)
 	for i := 0; i < numOfWorker-1; i++ {
@@ -51,13 +51,13 @@ func GetCertMultiThread(ctURL string, startIndex int64, endIndex int64, numOfWor
 	for i := 0; i < numOfWorker; i++ {
 		newResult := <-resultChan
 		if newResult.Err != nil {
-			return nil, 0, fmt.Errorf("UpdateDomainFromLog | %w", newResult.Err)
+			return nil, fmt.Errorf("UpdateDomainFromLog | %w", newResult.Err)
 		}
 		certResult = append(certResult, newResult.Certs...)
 	}
 
 	close(resultChan)
-	return certResult, len(certResult), nil
+	return certResult, nil
 }
 
 // workerThread: worker thread for log picker
@@ -102,7 +102,6 @@ func getCerts(ctURL string, start int64, end int64) ([]*ctX509.Certificate, erro
 	certList := []*ctX509.Certificate{}
 
 	// parse merkle leaves and append it to the result
-parse_cert_loop:
 	for _, entry := range resultsCerLog.Entries {
 		leafBytes, _ := base64.RawStdEncoding.DecodeString(entry.LeafInput)
 		var merkelLeaf ct.MerkleTreeLeaf
@@ -114,13 +113,13 @@ parse_cert_loop:
 			certificate, err = ctX509.ParseCertificate(merkelLeaf.TimestampedEntry.X509Entry.Data)
 			if err != nil {
 				fmt.Println("ERROR: ParseCertificate ", err)
-				continue parse_cert_loop
+				continue
 			}
 		case ct.PrecertLogEntryType:
 			certificate, err = ctX509.ParseTBSCertificate(merkelLeaf.TimestampedEntry.PrecertEntry.TBSCertificate)
 			if err != nil {
 				fmt.Println("ERROR: ParseTBSCertificate ", err)
-				continue parse_cert_loop
+				continue
 			}
 		}
 		certList = append(certList, certificate)

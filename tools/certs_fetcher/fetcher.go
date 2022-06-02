@@ -16,7 +16,7 @@ func main() {
 	endIdx := 1120999
 
 	start := time.Now()
-	certs, _, err := logpicker.GetCertMultiThread("https://ct.googleapis.com/logs/argon2021", int64(startIdx), int64(endIdx), 20)
+	certs, err := logpicker.GetCertMultiThread("https://ct.googleapis.com/logs/argon2021", int64(startIdx), int64(endIdx), 20)
 	if err != nil {
 		panic(err)
 	}

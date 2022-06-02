@@ -92,8 +92,7 @@ func (cacheDB *CacheDB) commitChangesToDB() error {
 	// clear update nodes
 	cacheDB.updatedNodes = make(map[Hash][][]byte)
 
-	if len(cacheDB.removedNode) != 0 {
-
+	if len(cacheDB.removedNode) > 0 {
 		keys := []string{}
 		for k := range cacheDB.removedNode {
 			keys = append(keys, hex.EncodeToString(k[:]))

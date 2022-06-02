@@ -50,7 +50,7 @@ func (mapUpdator *MapUpdater) UpdateFromCT(ctUrl string, startIdx, endIdx int64)
 	fmt.Println("****** UpdateFromCT ******")
 	start := time.Now()
 	fmt.Println(startIdx, endIdx)
-	certs, _, err := logpicker.GetCertMultiThread(ctUrl, startIdx, endIdx, 20)
+	certs, err := logpicker.GetCertMultiThread(ctUrl, startIdx, endIdx, 20)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | GetCertMultiThread | %w", err)
 	}

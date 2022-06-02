@@ -49,16 +49,16 @@ func ExtractAffectedDomains(domainNames []string) []string {
 	affectedDomains := []string{}
 	for k, v := range result {
 		// find the longest match of a list of domain names.
-		newDomain := findLongestMatch(v) + k
+		newDomain := findLongestSuffix(v) + k
 		affectedDomains = append(affectedDomains, newDomain)
 	}
 	return affectedDomains
 }
 
 // find longest match
-func findLongestMatch(domainNames [][]string) string {
+func findLongestSuffix(domainNames [][]string) string {
 	result := ""
-	// shorest length of all the strings
+	// shortest length of all the strings
 	shortestLength := findShortestLength(domainNames)
 
 main_loop:

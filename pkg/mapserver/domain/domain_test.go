@@ -77,16 +77,16 @@ func Test_AffectedDomains(t *testing.T) {
 
 // TestfindLongestMatch: test for findLongestMatch
 func Test_findLongestMatch(t *testing.T) {
-	result := findLongestMatch([][]string{{"a", "b"}, {"c", "b"}})
+	result := findLongestSuffix([][]string{{"a", "b"}, {"c", "b"}})
 	assert.Equal(t, "b.", result, "findLongestMatch error")
 
-	result = findLongestMatch([][]string{{"a", "b", "a"}, {"c", "b"}})
+	result = findLongestSuffix([][]string{{"a", "b", "a"}, {"c", "b"}})
 	assert.Equal(t, "", result, "findLongestMatch error")
 
-	result = findLongestMatch([][]string{{"a", "b", "f"}, {"c", "b", "f"}})
+	result = findLongestSuffix([][]string{{"a", "b", "f"}, {"c", "b", "f"}})
 	assert.Equal(t, "b.f.", result, "findLongestMatch error")
 
-	result = findLongestMatch([][]string{{"a", "123", "b", "f"}, {"c", "123", "b", "f"}})
+	result = findLongestSuffix([][]string{{"a", "123", "b", "f"}, {"c", "123", "b", "f"}})
 	assert.Equal(t, "123.b.f.", result, "findLongestMatch error")
 }
 
