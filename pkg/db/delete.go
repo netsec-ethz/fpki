@@ -2,28 +2,16 @@ package db
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 )
 
 // DeleteKeyValues: Delete a list of key-value store
-func (c *mysqlDB) DeleteKeyValues(ctx context.Context, keys []string, tableName TableName) error {
+func (c *mysqlDB) DeleteKeyValues_TreeStruc(ctx context.Context, keys []string) error {
 	dataLen := len(keys)
 	remainingDataLen := dataLen
 
 	// parse the prepared statement and table name
-	var stmt *sql.Stmt
-	var tableNameString string
-	switch {
-	case tableName == DomainEntries:
-		stmt = c.prepDeleteKeyValueDomainEntries
-		tableNameString = "domainEntries"
-	case tableName == Tree:
-		stmt = c.prepDeleteKeyValueTree
-		tableNameString = "tree"
-	default:
-		return fmt.Errorf("DeleteKeyValues : Table name not supported")
-	}
+	stmt := c.prepDeleteKeyValueTree
 
 	// write in batch of batchSize
 	for i := 0; i*batchSize <= dataLen-batchSize; i++ {
@@ -43,7 +31,7 @@ func (c *mysqlDB) DeleteKeyValues(ctx context.Context, keys []string, tableName 
 	// if remaining data is less than batchSize, finish the remaining deleting
 	if remainingDataLen > 0 {
 		// insert updated domains' entries
-		repeatedStmt := repeatStmtForDelete(tableNameString, remainingDataLen)
+		repeatedStmt := repeatStmtForDelete("tree", remainingDataLen)
 		stmt, err := c.db.Prepare(repeatedStmt)
 		if err != nil {
 			return fmt.Errorf("DeleteKeyValues | db.Prepare | %w", err)
@@ -63,7 +51,7 @@ func (c *mysqlDB) DeleteKeyValues(ctx context.Context, keys []string, tableName 
 }
 
 // TruncateUpdatesTable: truncate updates table
-func (c *mysqlDB) TruncateUpdatesTable(ctx context.Context) error {
+func (c *mysqlDB) TruncateUpdatesTable_Updates(ctx context.Context) error {
 	_, err := c.db.Exec("TRUNCATE `fpki`.`updates`;")
 	if err != nil {
 		return fmt.Errorf("TruncateUpdatesTable | TRUNCATE | %w", err)

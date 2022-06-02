@@ -80,7 +80,7 @@ func (mapUpdator *MapUpdater) UpdateFromCT(ctUrl string, startIdx, endIdx int64)
 	defer cancelF()
 
 	start = time.Now()
-	keyValuePairs, err := mapUpdator.dbConn.RetrieveKeyValuePairFromDomainEntries(ctx, updatedDomainHash, 10)
+	keyValuePairs, err := mapUpdator.dbConn.RetrieveKeyValuePair_DomainEntries(ctx, updatedDomainHash, 10)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | RetrieveKeyValuePairMultiThread | %w", err)
 	}
@@ -130,7 +130,7 @@ func (mapUpdator *MapUpdater) UpdateRPCAndPC(ctUrl string, startIdx, endIdx int6
 	defer cancelF()
 
 	// fetch domains from DB
-	keyValuePairs, err := mapUpdator.dbConn.RetrieveKeyValuePairFromDomainEntries(ctx, updatedDomainHash, 10)
+	keyValuePairs, err := mapUpdator.dbConn.RetrieveKeyValuePair_DomainEntries(ctx, updatedDomainHash, 10)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | RetrieveKeyValuePairMultiThread | %w", err)
 	}
@@ -162,7 +162,7 @@ func (mapUpdator *MapUpdater) fetchUpdatedDomainHash() ([]string, error) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	keys, err := mapUpdator.dbConn.RetrieveUpdatedDomainMultiThread(ctx, 100000)
+	keys, err := mapUpdator.dbConn.RetrieveUpdatedDomainHashes_Updates(ctx, 100000)
 	if err != nil {
 		return nil, fmt.Errorf("fetchUpdatedDomainHash | RetrieveUpdatedDomainMultiThread | %w", err)
 	}

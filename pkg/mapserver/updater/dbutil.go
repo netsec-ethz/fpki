@@ -21,7 +21,7 @@ func (mapUpdator *MapUpdater) retrieveAffectedDomainFromDB(affectedDomainsMap ma
 	defer cancelF()
 
 	// read key-value pair from DB
-	domainPair, err := mapUpdator.dbConn.RetrieveKeyValuePairFromDomainEntries(ctx, affectedDomainHash, readerNum)
+	domainPair, err := mapUpdator.dbConn.RetrieveKeyValuePair_DomainEntries(ctx, affectedDomainHash, readerNum)
 	if err != nil {
 		return nil, fmt.Errorf("UpdateDomainEntries | RetrieveKeyValuePairMultiThread | %w", err)
 	}
@@ -40,40 +40,16 @@ func (mapUpdator *MapUpdater) writeChangesToDB(updatesToDomainEntriesTable []db.
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	err, _ := mapUpdator.dbConn.UpdateKeyValues(ctx, updatesToDomainEntriesTable, db.DomainEntries)
+	err, _ := mapUpdator.dbConn.UpdateKeyValues_DomainEntries(ctx, updatesToDomainEntriesTable)
 	if err != nil {
 		return 0, fmt.Errorf("writeToDomainEntriesTable | UpdateKeyValuePairBatches | %w", err)
 	}
 
-	_, err = mapUpdator.dbConn.ReplaceKeys(ctx, updatesToUpdatesTable)
+	_, err = mapUpdator.dbConn.AddUpdatedDomainHashes_Updates(ctx, updatesToUpdatesTable)
 	if err != nil {
 		return 0, fmt.Errorf("writeToUpdateTable | InsertIgnoreKeyBatches | %w", err)
 	}
-	/* multi-thread version of writing; not useful. Bottleneck is the updating of domain entries
-	fmt.Println()
-	start := time.Now()
-	// write to db, multi-thread
-	resultChan := make(chan error)
-	// write changes to domainEntries table
-	go writeToDomainEntriesTable(ctx, dbConn, updatesToDomainEntriesTable, resultChan)
-	// write changes to updates table
-	go writeToUpdateTable(ctx, dbConn, updatesToUpdatesTable, resultChan)
 
-	writeErr := <-resultChan
-	if writeErr != nil {
-		return 0, fmt.Errorf("writeChangesToDB | Write DB error | %w", writeErr)
-	}
-	writeErr = <-resultChan
-	if writeErr != nil {
-		return 0, fmt.Errorf("writeChangesToDB | Write DB error | %w", writeErr)
-	}
-
-	end := time.Now()
-	fmt.Println("time to write to db                       ", end.Sub(start), " num of writes: ", len(updatesToDomainEntriesTable)+len(updatesToUpdatesTable))
-	fmt.Println()
-
-	return len(updatesToUpdatesTable), nil
-	*/
 	return len(updatesToUpdatesTable), nil
 }
 
@@ -89,29 +65,3 @@ func parseDomainBytes(keyValuePairs []db.KeyValuePair) (map[string]*common.Domai
 	}
 	return result, nil
 }
-
-/*
-// write to domainEntries table
-func writeToDomainEntriesTable(ctx context.Context, dbConn db.Conn, input []db.KeyValuePair, resultChan chan error) {
-	start := time.Now()
-	err, _ := dbConn.UpdateKeyValuePairBatches(ctx, input, db.DomainEntries)
-	if err != nil {
-		resultChan <- fmt.Errorf("writeToDomainEntriesTable | UpdateKeyValuePairBatches | %w", err)
-	}
-	end := time.Now()
-	fmt.Println("time to update domain entry table: ", end.Sub(start))
-	resultChan <- nil
-}
-
-// write to updates table
-func writeToUpdateTable(ctx context.Context, dbConn db.Conn, input []string, resultChan chan error) {
-	start := time.Now()
-	_, err := dbConn.InsertIgnoreKeyBatches(ctx, input)
-	if err != nil {
-		resultChan <- fmt.Errorf("writeToUpdateTable | InsertIgnoreKeyBatches | %w", err)
-	}
-	end := time.Now()
-	fmt.Println("time to update updateds table: ", end.Sub(start))
-	resultChan <- nil
-}
-*/

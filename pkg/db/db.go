@@ -26,6 +26,52 @@ type Conn interface {
 	// Close closes the connection.
 	Close() error
 
+	// ************************************************************
+	//              Function for Tree table
+	// ************************************************************
+
+	// RetrieveOneKeyValuePair_TreeStruc: Retrieve one key-value pair from Tree table.
+	RetrieveOneKeyValuePair_TreeStruc(ctx context.Context, id string) (*KeyValuePair, error)
+
+	// RetrieveKeyValuePair_TreeStruc: Retrieve a list of key-value pairs from Tree tables.
+	RetrieveKeyValuePair_TreeStruc(ctx context.Context, id []string, numOfRoutine int) ([]KeyValuePair, error)
+
+	// UpdateKeyValues_TreeStruc: Update a list of key-value pairs in Tree table
+	UpdateKeyValues_TreeStruc(ctx context.Context, keyValuePairs []KeyValuePair) (error, int)
+
+	// DeleteKeyValues_TreeStruc: Delete a list of key-value pairs in Tree table
+	DeleteKeyValues_TreeStruc(ctx context.Context, keys []string) error
+
+	// ************************************************************
+	//             Function for DomainEntries table
+	// ************************************************************
+
+	// RetrieveKeyValuePair_DomainEntries: Retrieve a list of domain entries table
+	RetrieveKeyValuePair_DomainEntries(ctx context.Context, id []string, numOfRoutine int) ([]KeyValuePair, error)
+
+	// UpdateKeyValues_DomainEntries: Update a list of key-value pairs in domain entries table
+	UpdateKeyValues_DomainEntries(ctx context.Context, keyValuePairs []KeyValuePair) (error, int)
+
+	// ************************************************************
+	//           Function for Updates table
+	// ************************************************************
+
+	// GetCountOfUpdatesDomains_Updates: Retrieve number of updated domains during this updates.
+	GetCountOfUpdatesDomains_Updates(ctx context.Context) (int, error)
+
+	// AddUpdatedDomainHashes_Updates: Add a list of hashes of updated domain into the updates table. If key exists, ignore it.
+	AddUpdatedDomainHashes_Updates(ctx context.Context, keys []string) (int, error)
+
+	// RetrieveUpdatedDomainHashes_Updates: Retrieve all updated domain hashes from update table
+	RetrieveUpdatedDomainHashes_Updates(ctx context.Context, perQueryLimit int) ([]string, error)
+
+	// TruncateUpdatesTable_Updates: Truncate updates table; Called after updating is finished
+	TruncateUpdatesTable_Updates(ctx context.Context) error
+
+	// ************************************************************
+	//         Not used functions; Used for flatten tree
+	// ************************************************************
+
 	// RetrieveValue returns the value associated with the node.
 	RetrieveValue(ctx context.Context, id FullID) ([]byte, error)
 
@@ -33,31 +79,4 @@ type Conn interface {
 	// Since each one of the steps of the proof path has a fixed size, returning the path
 	// as a slice is sufficient to know how many steps there were in the proof path.
 	RetrieveNode(ctx context.Context, id FullID) ([]byte, []byte, error)
-
-	// RetrieveOneKeyValuePair: Retrieve one key-value pair from table
-	RetrieveOneKeyValuePair(ctx context.Context, id string, tableName TableName) (*KeyValuePair, error)
-
-	// RetrieveKeyValuePairFromTreeStruc: Retrieve a list of key-value pairs from Tree tables. Used by SMT lib.
-	RetrieveKeyValuePairFromTreeStruc(ctx context.Context, id []string, numOfRoutine int) ([]KeyValuePair, error)
-
-	// RetrieveKeyValuePairFromDomainEntries: Retrieve a list of domain entries
-	RetrieveKeyValuePairFromDomainEntries(ctx context.Context, id []string, numOfRoutine int) ([]KeyValuePair, error)
-
-	// RetrieveUpdatedDomainMultiThread: Retrieve all updated domain hashes from update table
-	RetrieveUpdatedDomainMultiThread(ctx context.Context, perQueryLimit int) ([]string, error)
-
-	// CountUpdates: Retrieve number of entries in updates table
-	CountUpdates(ctx context.Context) (int, error)
-
-	// UpdateKeyValuePairBatches: Update a list of key-value store
-	UpdateKeyValues(ctx context.Context, keyValuePairs []KeyValuePair, tableName TableName) (error, int)
-
-	// DeleteKeyValues: Delete a list of key-value store
-	DeleteKeyValues(ctx context.Context, keys []string, tableName TableName) error
-
-	// ReplaceKeys: Insert a list of keys into the updates table. If key exists, ignore it.
-	ReplaceKeys(ctx context.Context, keys []string) (int, error)
-
-	// TruncateUpdatesTable: Truncate updates table
-	TruncateUpdatesTable(ctx context.Context) error
 }

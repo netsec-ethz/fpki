@@ -83,7 +83,7 @@ func (cacheDB *CacheDB) commitChangesToDB() error {
 	defer cancelF()
 
 	updateStart := time.Now()
-	err, numOfWrites := cacheDB.Store.UpdateKeyValues(ctx, updates, db.Tree)
+	err, numOfWrites := cacheDB.Store.UpdateKeyValues_TreeStruc(ctx, updates)
 	if err != nil {
 		return fmt.Errorf("commitChangesToDB | UpdateKeyValuePairBatches | %w", err)
 	}
@@ -102,7 +102,7 @@ func (cacheDB *CacheDB) commitChangesToDB() error {
 		defer cancelF()
 
 		start := time.Now()
-		err = cacheDB.Store.DeleteKeyValues(ctx, keys, db.Tree)
+		err = cacheDB.Store.DeleteKeyValues_TreeStruc(ctx, keys)
 		if err != nil {
 			return fmt.Errorf("commitChangesToDB | DeleteKeyValuePairBatches | %w", err)
 		}
@@ -120,7 +120,7 @@ func (cacheDB *CacheDB) getValue(key []byte) ([]byte, error) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	result, err := cacheDB.Store.RetrieveOneKeyValuePair(ctx, hex.EncodeToString(key[:]), db.Tree)
+	result, err := cacheDB.Store.RetrieveOneKeyValuePair_TreeStruc(ctx, hex.EncodeToString(key[:]))
 	if err != nil {
 		return nil, fmt.Errorf("getValue | RetrieveOneKeyValuePair | %w", err)
 	}

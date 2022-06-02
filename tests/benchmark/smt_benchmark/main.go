@@ -22,6 +22,7 @@ func benchmark10MAccounts10Ktps(smt *trie.Trie) ([][]byte, [][]byte) {
 	allKeys := [][]byte{}
 	allValues := [][]byte{}
 	for i := 0; i < 500; i++ {
+		fmt.Println("Iteration ", i, " ------------------------------")
 		newkeys := getFreshData(100000, 32)
 		newvalues := getFreshData(100000, 32)
 		allKeys = append(allKeys, newkeys...)
@@ -47,11 +48,13 @@ func benchmark10MAccounts10Ktps(smt *trie.Trie) ([][]byte, [][]byte) {
 		elapsed3 := end3.Sub(end2)
 		var m runtime.MemStats
 		runtime.ReadMemStats(&m)
-		fmt.Println(i, " : update time : ", elapsed, "commit time : ", elapsed2,
-			"\n1000 Get time : ", elapsed3,
-			"\ndb read : ", smt.LoadDbCounter, "    cache read : ", smt.LoadCacheCounter,
+		fmt.Println("update time for 100,000 leaves in memory: ", elapsed,
+			"\ntime to commit changes to db : ", elapsed2,
+			"\nTime to get new keys : ", elapsed3,
 			"\ncache size : ", smt.GetLiveCacheSize(),
 			"\nRAM : ", m.Sys/1024/1024, " MiB")
+		fmt.Println()
+		fmt.Println()
 	}
 	return allKeys, allValues
 }

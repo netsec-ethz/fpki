@@ -15,23 +15,12 @@ type readKeyResult struct {
 }
 
 // RetrieveOneKeyValuePair: Retrieve one single key-value pair
-func (c *mysqlDB) RetrieveOneKeyValuePair(ctx context.Context, id string, tableName TableName) (*KeyValuePair, error) {
+func (c *mysqlDB) RetrieveOneKeyValuePair_TreeStruc(ctx context.Context, id string) (*KeyValuePair, error) {
 	var value []byte
-	var stmt *sql.Stmt
+	stmt := c.prepGetValueTree
 
-	switch {
-	case tableName == DomainEntries:
-		stmt = c.prepGetValueDomainEntries
-	case tableName == Tree:
-		stmt = c.prepGetValueTree
-	default:
-		return nil, fmt.Errorf("RetrieveOneKeyValuePair : Table name not supported")
-	}
-
-	//start := time.Now()
 	result := stmt.QueryRow(id)
-	//end := time.Now()
-	//fmt.Println("db read time: ", end.Sub(start))
+
 	err := result.Scan(&value)
 	if err != nil {
 		switch {
@@ -46,7 +35,7 @@ func (c *mysqlDB) RetrieveOneKeyValuePair(ctx context.Context, id string, tableN
 }
 
 // RetrieveKeyValuePairFromTreeStruc: Retrieve a list of key-value pairs from DB. Multi-threaded
-func (c *mysqlDB) RetrieveKeyValuePairFromTreeStruc(ctx context.Context, id []string, numOfWorker int) ([]KeyValuePair, error) {
+func (c *mysqlDB) RetrieveKeyValuePair_TreeStruc(ctx context.Context, id []string, numOfWorker int) ([]KeyValuePair, error) {
 	stmt := c.prepGetValueTree
 
 	// if work is less than number of worker
@@ -79,7 +68,7 @@ func (c *mysqlDB) RetrieveKeyValuePairFromTreeStruc(ctx context.Context, id []st
 	return keyValuePairs, nil
 }
 
-func (c *mysqlDB) RetrieveKeyValuePairFromDomainEntries(ctx context.Context, id []string, numOfWorker int) ([]KeyValuePair, error) {
+func (c *mysqlDB) RetrieveKeyValuePair_DomainEntries(ctx context.Context, id []string, numOfWorker int) ([]KeyValuePair, error) {
 	stmt := c.prepGetValueDomainEntries
 
 	// if work is less than number of worker
@@ -136,11 +125,11 @@ work_loop:
 	resultChan <- keyValueResult{Pairs: pairs}
 }
 
-// RetrieveUpdatedDomainMultiThread: Get updated domains from updates table
-func (c *mysqlDB) RetrieveUpdatedDomainMultiThread(ctx context.Context, perQueryLimit int) ([]string, error) {
-	count, err := c.CountUpdates(ctx)
+// RetrieveUpdatedDomainHashes: Get updated domains name hashes from updates table
+func (c *mysqlDB) RetrieveUpdatedDomainHashes_Updates(ctx context.Context, perQueryLimit int) ([]string, error) {
+	count, err := c.GetCountOfUpdatesDomains_Updates(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("RetrieveUpdatedDomainMultiThread | RetrieveTableRowsCount | %w", err)
+		return nil, fmt.Errorf("RetrieveUpdatedDomainHashes | RetrieveTableRowsCount | %w", err)
 	}
 
 	// if work is less than number of worker
@@ -174,7 +163,7 @@ func (c *mysqlDB) RetrieveUpdatedDomainMultiThread(ctx context.Context, perQuery
 			case newResult.Err == sql.ErrNoRows:
 				continue
 			case newResult.Err != sql.ErrNoRows:
-				return nil, fmt.Errorf("RetrieveKeyValuePairMultiThread | %w", newResult.Err)
+				return nil, fmt.Errorf("RetrieveUpdatedDomainHashes | %w", newResult.Err)
 			}
 		}
 		keys = append(keys, newResult.Keys...)
@@ -182,12 +171,12 @@ func (c *mysqlDB) RetrieveUpdatedDomainMultiThread(ctx context.Context, perQuery
 	}
 
 	if count != len(keys) {
-		return nil, fmt.Errorf("RetrieveUpdatedDomainMultiThread | incomplete fetching")
+		return nil, fmt.Errorf("RetrieveUpdatedDomainName | incomplete fetching")
 	}
 
-	err = c.TruncateUpdatesTable(ctx)
+	err = c.TruncateUpdatesTable_Updates(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("RetrieveUpdatedDomainMultiThread | TruncateUpdatesTable | %w", err)
+		return nil, fmt.Errorf("RetrieveUpdatedDomainName | TruncateUpdatesTable | %w", err)
 	}
 
 	return keys, nil
@@ -219,7 +208,7 @@ func fetchKeyWorker(resultChan chan readKeyResult, start, end int, ctx context.C
 }
 
 // CountUpdates: Get number of entries in updates table
-func (c *mysqlDB) CountUpdates(ctx context.Context) (int, error) {
+func (c *mysqlDB) GetCountOfUpdatesDomains_Updates(ctx context.Context) (int, error) {
 	stmt, err := c.db.Prepare("SELECT COUNT(*) FROM updates")
 	if err != nil {
 		return 0, fmt.Errorf("CountUpdates | Prepare | %w", err)
