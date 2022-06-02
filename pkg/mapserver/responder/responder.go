@@ -208,6 +208,7 @@ func getMapping(domainNames []string) (map[string][]*common.MapServerResponse, m
 					resultsList = append(resultsList, subDomainResult)
 				} else {
 					domainProofMap[domainHash] = &common.MapServerResponse{Domain: subDomainName}
+					resultsList = append(resultsList, domainProofMap[domainHash])
 				}
 			}
 			domainResultMap[domainName] = resultsList
@@ -229,7 +230,7 @@ func (mapResponder *MapResponder) getProofFromSMT(domainMap map[string]*common.M
 			return nil, fmt.Errorf("getProofFromSMT | MerkleProof | %w", err)
 		}
 
-		value.PoI = common.PoI{Proof: proof, ProofKey: proofKey, ProofValue: ProofValue}
+		value.PoI = common.PoI{Proof: proof, ProofKey: proofKey, ProofValue: ProofValue, Root: mapResponder.smt.Root}
 
 		switch {
 		case isPoP:

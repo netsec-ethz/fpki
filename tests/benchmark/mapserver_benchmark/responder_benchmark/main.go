@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 	"sync"
 	"time"
 
@@ -114,7 +113,7 @@ func main() {
 	wg.Wait()
 
 	fetchEndTime := time.Now()
-	fmt.Println("time to fetch "+strconv.Itoa(len(collectedCerts))+" certs: ", fetchEndTime.Sub(fetchStartTime))
+	fmt.Println("time to fetch proofs: ", fetchEndTime.Sub(fetchStartTime))
 }
 
 // collect proof for every domain's Common Name
@@ -122,15 +121,18 @@ func worker(certs []ctX509.Certificate, responder *responder.MapResponder, ctx c
 	domainName := []string{}
 
 	for _, cert := range certs {
-		domainName = append(domainName, cert.Subject.CommonName)
+		if cert.Subject.CommonName != "" {
+			domainName = append(domainName, cert.Subject.CommonName)
+		}
 	}
 	proofMap, err := responder.GetDomainProofs(ctx, domainName)
 	if err != nil {
 		panic(err)
 	}
 
+	fmt.Println("number of domains to fetch: ", len(proofMap))
+
 	for _, proofs := range proofMap {
-		fmt.Println("---------------------------")
 		isPoP := false
 		for _, proof := range proofs {
 			if proof.PoI.ProofType == common.PoP {

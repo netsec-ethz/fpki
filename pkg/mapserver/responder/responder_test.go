@@ -3,6 +3,7 @@ package responder
 import (
 	"testing"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,4 +28,6 @@ func TestGetMapping(t *testing.T) {
 	assert.Equal(t, 2, len(proofs), "proofs length error")
 
 	assert.Equal(t, 6, len(domainProofMap), "domainProofMap length error")
+
+	spew.Dump(domainResultMap)
 }
