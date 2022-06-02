@@ -41,7 +41,7 @@ func main() {
 		keys := getKeys(i*1000, i*1000+999)
 
 		start := time.Now()
-		result, err := conn.RetrieveKeyValuePairMultiThread(ctx, keys, 10, db.Tree)
+		result, err := conn.RetrieveKeyValuePairFromTreeStruc(ctx, keys, 10)
 		if err != nil {
 			panic(err)
 		}
@@ -97,7 +97,7 @@ func main() {
 		keys := getKeys(i*1000, i*1000+999)
 
 		start := time.Now()
-		result, err := conn.RetrieveKeyValuePairMultiThread(ctx, keys, 10, db.Tree)
+		result, err := conn.RetrieveKeyValuePairFromTreeStruc(ctx, keys, 10)
 		if err != nil {
 			panic(err)
 		}

@@ -80,7 +80,7 @@ func (mapUpdator *MapUpdater) UpdateFromCT(ctUrl string, startIdx, endIdx int64)
 	defer cancelF()
 
 	start = time.Now()
-	keyValuePairs, err := mapUpdator.dbConn.RetrieveKeyValuePairMultiThread(ctx, updatedDomainHash, 10, db.DomainEntries)
+	keyValuePairs, err := mapUpdator.dbConn.RetrieveKeyValuePairFromDomainEntries(ctx, updatedDomainHash, 10)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | RetrieveKeyValuePairMultiThread | %w", err)
 	}
@@ -130,7 +130,7 @@ func (mapUpdator *MapUpdater) UpdateRPCAndPC(ctUrl string, startIdx, endIdx int6
 	defer cancelF()
 
 	// fetch domains from DB
-	keyValuePairs, err := mapUpdator.dbConn.RetrieveKeyValuePairMultiThread(ctx, updatedDomainHash, 10, db.DomainEntries)
+	keyValuePairs, err := mapUpdator.dbConn.RetrieveKeyValuePairFromDomainEntries(ctx, updatedDomainHash, 10)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | RetrieveKeyValuePairMultiThread | %w", err)
 	}

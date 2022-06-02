@@ -333,10 +333,15 @@ func (d *MockDB) RetrieveOneKeyValuePair(ctx context.Context, id string, tableNa
 	return nil, nil
 }
 
-func (d *MockDB) RetrieveKeyValuePairMultiThread(ctx context.Context, id []string, numOfRoutine int, tableName db.TableName) ([]db.KeyValuePair, error) {
+// RetrieveKeyValuePairFromTreeStruc: Retrieve a list of key-value pairs from Tree tables. Used by SMT lib.
+func (d *MockDB) RetrieveKeyValuePairFromTreeStruc(ctx context.Context, id []string, numOfRoutine int) ([]db.KeyValuePair, error) {
 	return nil, nil
 }
 
+// RetrieveKeyValuePairFromDomainEntries: Retrieve a list of domain entries
+func (d *MockDB) RetrieveKeyValuePairFromDomainEntries(ctx context.Context, id []string, numOfRoutine int) ([]db.KeyValuePair, error) {
+	return nil, nil
+}
 func (d *MockDB) RetrieveUpdatedDomainMultiThread(ctx context.Context, perQueryLimit int) ([]string, error) {
 	return nil, nil
 }

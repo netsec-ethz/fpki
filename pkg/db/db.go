@@ -4,7 +4,7 @@ import (
 	"context"
 )
 
-// FullID: Juan's data structure
+// FullID: Key for faltten tree investigation
 type FullID [33]byte // first byte is depth -1 (root not allowed)
 
 // keyValueResult: used in worker thread; in multi-thread read
@@ -37,8 +37,11 @@ type Conn interface {
 	// RetrieveOneKeyValuePair: Retrieve one key-value pair from table
 	RetrieveOneKeyValuePair(ctx context.Context, id string, tableName TableName) (*KeyValuePair, error)
 
-	// RetrieveKeyValuePairMultiThread: Retrieve a list of key-value pairs from DB. Multi-threaded
-	RetrieveKeyValuePairMultiThread(ctx context.Context, id []string, numOfRoutine int, tableName TableName) ([]KeyValuePair, error)
+	// RetrieveKeyValuePairFromTreeStruc: Retrieve a list of key-value pairs from Tree tables. Used by SMT lib.
+	RetrieveKeyValuePairFromTreeStruc(ctx context.Context, id []string, numOfRoutine int) ([]KeyValuePair, error)
+
+	// RetrieveKeyValuePairFromDomainEntries: Retrieve a list of domain entries
+	RetrieveKeyValuePairFromDomainEntries(ctx context.Context, id []string, numOfRoutine int) ([]KeyValuePair, error)
 
 	// RetrieveUpdatedDomainMultiThread: Retrieve all updated domain hashes from update table
 	RetrieveUpdatedDomainMultiThread(ctx context.Context, perQueryLimit int) ([]string, error)

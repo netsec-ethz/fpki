@@ -21,7 +21,7 @@ func (mapUpdator *MapUpdater) retrieveAffectedDomainFromDB(affectedDomainsMap ma
 	defer cancelF()
 
 	// read key-value pair from DB
-	domainPair, err := mapUpdator.dbConn.RetrieveKeyValuePairMultiThread(ctx, affectedDomainHash, readerNum, db.DomainEntries)
+	domainPair, err := mapUpdator.dbConn.RetrieveKeyValuePairFromDomainEntries(ctx, affectedDomainHash, readerNum)
 	if err != nil {
 		return nil, fmt.Errorf("UpdateDomainEntries | RetrieveKeyValuePairMultiThread | %w", err)
 	}

@@ -45,17 +45,42 @@ func (c *mysqlDB) RetrieveOneKeyValuePair(ctx context.Context, id string, tableN
 	return &KeyValuePair{Key: id, Value: value}, nil
 }
 
-// RetrieveKeyValuePairMultiThread: Retrieve a list of key-value pair from DB
-func (c *mysqlDB) RetrieveKeyValuePairMultiThread(ctx context.Context, id []string, numOfWorker int, tableName TableName) ([]KeyValuePair, error) {
-	var stmt *sql.Stmt
-	switch {
-	case tableName == DomainEntries:
-		stmt = c.prepGetValueDomainEntries
-	case tableName == Tree:
-		stmt = c.prepGetValueTree
-	default:
-		return nil, fmt.Errorf("RetrieveKeyValuePairMultiThread : Table name not supported")
+// RetrieveKeyValuePairFromTreeStruc: Retrieve a list of key-value pairs from DB. Multi-threaded
+func (c *mysqlDB) RetrieveKeyValuePairFromTreeStruc(ctx context.Context, id []string, numOfWorker int) ([]KeyValuePair, error) {
+	stmt := c.prepGetValueTree
+
+	// if work is less than number of worker
+	if len(id) < numOfWorker {
+		numOfWorker = len(id)
 	}
+
+	count := len(id)
+	step := count / numOfWorker
+
+	resultChan := make(chan keyValueResult)
+	for r := 0; r < numOfWorker-1; r++ {
+		go fetchKeyValuePairWorker(resultChan, id[r*step:r*step+step], stmt, ctx)
+	}
+	// let the final one do the rest of the work
+	go fetchKeyValuePairWorker(resultChan, id[(numOfWorker-1)*step:count], stmt, ctx)
+
+	finishedWorker := 0
+	keyValuePairs := []KeyValuePair{}
+
+	for numOfWorker > finishedWorker {
+		newResult := <-resultChan
+		if newResult.Err != nil {
+			return nil, fmt.Errorf("RetrieveKeyValuePairMultiThread | %w", newResult.Err)
+		}
+		keyValuePairs = append(keyValuePairs, newResult.Pairs...)
+		finishedWorker++
+	}
+
+	return keyValuePairs, nil
+}
+
+func (c *mysqlDB) RetrieveKeyValuePairFromDomainEntries(ctx context.Context, id []string, numOfWorker int) ([]KeyValuePair, error) {
+	stmt := c.prepGetValueDomainEntries
 
 	// if work is less than number of worker
 	if len(id) < numOfWorker {

@@ -84,7 +84,7 @@ func testKeyValueStore() {
 	keySize := len(keys)
 
 	// retrieve previously stored key-value pairs
-	result, err := conn.RetrieveKeyValuePairMultiThread(ctx, keys, 10, db.DomainEntries)
+	result, err := conn.RetrieveKeyValuePairFromDomainEntries(ctx, keys, 10)
 	if err != nil {
 		panic(err)
 	}
@@ -96,7 +96,7 @@ func testKeyValueStore() {
 	keySize = len(keys)
 
 	// test to retrieve only one key
-	result, err = conn.RetrieveKeyValuePairMultiThread(ctx, keys, 10, db.DomainEntries)
+	result, err = conn.RetrieveKeyValuePairFromDomainEntries(ctx, keys, 10)
 	if err != nil {
 		panic(err)
 	}
@@ -108,7 +108,7 @@ func testKeyValueStore() {
 	keySize = len(keys)
 
 	// test to retrieve keys
-	result, err = conn.RetrieveKeyValuePairMultiThread(ctx, keys, 10, db.DomainEntries)
+	result, err = conn.RetrieveKeyValuePairFromDomainEntries(ctx, keys, 10)
 	if err != nil {
 		panic(err)
 	}
@@ -117,7 +117,7 @@ func testKeyValueStore() {
 	}
 
 	keys = getKeys(4555, 6000)
-	result, err = conn.RetrieveKeyValuePairMultiThread(ctx, keys, 10, db.DomainEntries)
+	result, err = conn.RetrieveKeyValuePairFromDomainEntries(ctx, keys, 10)
 	if err != nil {
 		panic(err)
 	}
@@ -126,7 +126,7 @@ func testKeyValueStore() {
 	}
 
 	keys = getKeys(4575, 6000)
-	result, err = conn.RetrieveKeyValuePairMultiThread(ctx, keys, 10, db.DomainEntries)
+	result, err = conn.RetrieveKeyValuePairFromDomainEntries(ctx, keys, 10)
 	if err != nil {
 		panic(err)
 	}
@@ -180,7 +180,7 @@ func testKeyValueStore() {
 	keys = getKeys(1511, 4555)
 	keySize = len(keys)
 
-	result, err = conn.RetrieveKeyValuePairMultiThread(ctx, keys, 10, db.Tree)
+	result, err = conn.RetrieveKeyValuePairFromTreeStruc(ctx, keys, 10)
 	if err != nil {
 		panic(err)
 	}
@@ -191,7 +191,7 @@ func testKeyValueStore() {
 	keys = getKeys(1511, 1511)
 	keySize = len(keys)
 
-	result, err = conn.RetrieveKeyValuePairMultiThread(ctx, keys, 10, db.Tree)
+	result, err = conn.RetrieveKeyValuePairFromTreeStruc(ctx, keys, 10)
 	if err != nil {
 		panic(err)
 	}
@@ -202,7 +202,7 @@ func testKeyValueStore() {
 	keys = getKeys(1542, 1673)
 	keySize = len(keys)
 
-	result, err = conn.RetrieveKeyValuePairMultiThread(ctx, keys, 10, db.Tree)
+	result, err = conn.RetrieveKeyValuePairFromTreeStruc(ctx, keys, 10)
 	if err != nil {
 		panic(err)
 	}
@@ -211,7 +211,7 @@ func testKeyValueStore() {
 	}
 
 	keys = getKeys(4555, 6000)
-	result, err = conn.RetrieveKeyValuePairMultiThread(ctx, keys, 10, db.Tree)
+	result, err = conn.RetrieveKeyValuePairFromTreeStruc(ctx, keys, 10)
 	if err != nil {
 		panic(err)
 	}
@@ -220,7 +220,7 @@ func testKeyValueStore() {
 	}
 
 	keys = getKeys(4575, 6000)
-	result, err = conn.RetrieveKeyValuePairMultiThread(ctx, keys, 10, db.Tree)
+	result, err = conn.RetrieveKeyValuePairFromTreeStruc(ctx, keys, 10)
 	if err != nil {
 		panic(err)
 	}

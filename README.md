@@ -84,18 +84,18 @@ There are some integration tests and benchmark under the tests folders.
 For map server, you might be interested in the following tests:
 ### Benchmark/db_benchmark
 
-This benchmark evaluate the inserting speed, reading speed and deleting speed of a key-value store.
+This benchmark evaluates the inserting speed, reading speed and deleting speed of a key-value store.
 
 ### Benchmark/smt_benchmark
 
-This benchmark evaluate the speed of Sparse Merkle Tree. For example, the updating speed of SMT, and time to commit the changes to the DB. 
+This benchmark evaluates the speed of Sparse Merkle Tree. For example, the updating speed of SMT, and time to commit the changes to the DB. 
 
 ### Benchmark/mapserver_benchmark
  
-This folder contains two folder, one for updater and one for responder. The updater is responsible for updating the SMT and changing the domain entries table. The responder is responsible for generating the proof, and distributing the proof to client. Currently, the updater and responder are evaluated seperately. If you want to conbine the benchmark together, please send me a message and I can do some modification on it. It's trivial. 
+This folder contains two folders, one for updater and one for responder. The updater is responsible for updating the SMT and changing the domain entries table. The responder is responsible for generating the proof, and distributing the proof to client. Currently, the updater and responder are evaluated seperately. If you want to combine the two benchmarks together, please send me a message and I can do some modification. It's trivial. 
 
 ### integration_tests/mapserver
 
-domain materials: Bytes which contains all the certificates which are related to this domain name.
+domain materials: Bytes which contain all the certificates which are related to this domain name.
 
-This test is the integration test for mapserver. The test first start a updater, fetch 1000 certificates from CT log, and add them to the SMT and domain entries tables. Then the test starts a responder, re-collect the previously-added certificates, and query the corresponding domain name. Then the proof is checked(whether the certificate is included in the domain materials, and whether SMT proof is correct). 
+This test is the integration test for mapserver. The test first starts an updater, fetches 1000 certificates from CT log, and adds them to the SMT and domain entries tables. Then the test starts a responder, re-collects the previously-added certificates, and queries the proof for corresponding domain name. Then the proof is checked against individual certificate(whether the certificate is included in the domain materials, and whether SMT proof is correct). 
