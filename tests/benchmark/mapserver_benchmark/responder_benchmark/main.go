@@ -22,7 +22,6 @@ import (
 
 var wg sync.WaitGroup
 
-// NOTE: this benchmark should be ran after the updater_benchmark is finished. Because responder needs the updater
 func main() {
 	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/fpki?maxAllowedPacket=1073741824")
 	defer db.Close()
