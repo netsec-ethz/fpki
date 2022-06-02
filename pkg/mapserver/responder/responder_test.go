@@ -14,6 +14,7 @@ func TestDomainName(t *testing.T) {
 	assert.Equal(t, 1, len(result), "length error")
 }
 
+// TestDomainName: getMapping
 func TestGetMapping(t *testing.T) {
 	testDomains := []string{"a.google.com", "b.google.com", "c.google.com", "a.baidu.com"}
 	domainResultMap, domainProofMap, err := getMapping(testDomains)

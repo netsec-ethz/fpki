@@ -16,6 +16,7 @@ import (
 	ct "github.com/google/certificate-transparency-go"
 	ctTls "github.com/google/certificate-transparency-go/tls"
 	ctX509 "github.com/google/certificate-transparency-go/x509"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/responder"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 )
@@ -118,12 +119,29 @@ func main() {
 
 // collect proof for every domain's Common Name
 func worker(certs []ctX509.Certificate, responder *responder.MapResponder, ctx context.Context) {
+	domainName := []string{}
+
 	for _, cert := range certs {
-		_, err := responder.GetDomainProof(ctx, cert.Subject.CommonName)
-		if err != nil {
-			panic(err)
+		domainName = append(domainName, cert.Subject.CommonName)
+	}
+	proofMap, err := responder.GetDomainProofs(ctx, domainName)
+	if err != nil {
+		panic(err)
+	}
+
+	for _, proofs := range proofMap {
+		fmt.Println("---------------------------")
+		isPoP := false
+		for _, proof := range proofs {
+			if proof.PoI.ProofType == common.PoP {
+				isPoP = true
+			}
+		}
+		if !isPoP {
+			panic("no PoP")
 		}
 	}
+
 	wg.Done()
 }
 

@@ -172,10 +172,14 @@ func (mapResponder *MapResponder) GetDomainProofs(ctx context.Context, domainNam
 		return nil, fmt.Errorf("GetDomainProofs | getProofFromSMT | %w", err)
 	}
 
+	fmt.Println("domain to fetch: ", len(domainToFetch))
+	start := time.Now()
 	result, err := mapResponder.dbConn.RetrieveKeyValuePairMultiThread(ctx, domainToFetch, 10, db.DomainEntries)
 	if err != nil {
 		return nil, fmt.Errorf("GetDomainProofs | RetrieveKeyValuePairMultiThread | %w", err)
 	}
+	end := time.Now()
+	fmt.Println("Read from DB: ", end.Sub(start))
 
 	for _, keyValuePair := range result {
 		domainProofMap[keyValuePair.Key].DomainEntryBytes = keyValuePair.Value
