@@ -61,7 +61,14 @@ func benchmark10MAccounts10Ktps(smt *trie.Trie) ([][]byte, [][]byte) {
 
 //go test -run=xxx -bench=BenchmarkCacheHeightLimit233
 func BenchmarkCacheHeightLimit233() {
-	conn, err := db.Connect_old()
+	config := db.Configuration{
+		Dsn: "root@tcp(localhost)/fpki",
+		Values: map[string]string{
+			"interpolateParams": "true", // 1 round trip per query
+			"collation":         "binary",
+		},
+	}
+	conn, err := db.Connect(&config)
 	if err != nil {
 		panic(err)
 	}

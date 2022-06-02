@@ -20,7 +20,14 @@ func main() {
 // testUpdateTable: test if RetrieveTableRowsCount return correct number of entries.
 // TODO(yongzhe): need to insert some data first
 func testUpdateTable() {
-	conn, err := db.Connect_old()
+	config := db.Configuration{
+		Dsn: "root@tcp(localhost)/fpki",
+		Values: map[string]string{
+			"interpolateParams": "true", // 1 round trip per query
+			"collation":         "binary",
+		},
+	}
+	conn, err := db.Connect(&config)
 	if err != nil {
 		panic(err)
 	}
@@ -44,7 +51,14 @@ func testUpdateTable() {
 
 // testKeyValueStore: test insert and read, with arbitrary indexes
 func testKeyValueStore() {
-	conn, err := db.Connect_old()
+	config := db.Configuration{
+		Dsn: "root@tcp(localhost)/fpki",
+		Values: map[string]string{
+			"interpolateParams": "true", // 1 round trip per query
+			"collation":         "binary",
+		},
+	}
+	conn, err := db.Connect(&config)
 	if err != nil {
 		panic(err)
 	}

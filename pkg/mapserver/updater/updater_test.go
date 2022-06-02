@@ -162,7 +162,7 @@ func Test_Certs(t *testing.T) {
 	for _, cert := range certs {
 		domainNames := extractCertDomains(cert)
 
-		affectedDomains := domain.ExtractEffectedDomains(domainNames)
+		affectedDomains := domain.ExtractAffectedDomains(domainNames)
 		if len(affectedDomains) == 0 {
 			continue
 		}
@@ -200,7 +200,7 @@ func Test_Certs(t *testing.T) {
 		domainNames := extractCertDomains(cert)
 		caName := cert.Issuer.CommonName
 
-		affectedDomains := domain.ExtractEffectedDomains(domainNames)
+		affectedDomains := domain.ExtractAffectedDomains(domainNames)
 		if len(affectedDomains) == 0 {
 			continue
 		}

@@ -24,7 +24,15 @@ func main() {
 }
 
 func testUpdateWithSameKeys() {
-	db, err := db.Connect_old()
+	config := db.Configuration{
+		Dsn: "root@tcp(localhost)/fpki",
+		Values: map[string]string{
+			"interpolateParams": "true", // 1 round trip per query
+			"collation":         "binary",
+		},
+	}
+
+	db, err := db.Connect(&config)
 
 	smt, err := trie.NewTrie(nil, trie.Hasher, db)
 
@@ -69,7 +77,14 @@ func testUpdateWithSameKeys() {
 }
 
 func testTrieMerkleProofAndReloadTree() {
-	dbConn, err := db.Connect_old()
+	config := db.Configuration{
+		Dsn: "root@tcp(localhost)/fpki",
+		Values: map[string]string{
+			"interpolateParams": "true", // 1 round trip per query
+			"collation":         "binary",
+		},
+	}
+	dbConn, err := db.Connect(&config)
 	if err != nil {
 		panic(err)
 	}
@@ -103,7 +118,7 @@ func testTrieMerkleProofAndReloadTree() {
 		panic("failed to verify non inclusion proof")
 	}
 
-	dbConn1, err := db.Connect_old()
+	dbConn1, err := db.Connect(&config)
 	if err != nil {
 		panic(err)
 	}
@@ -132,7 +147,14 @@ func testTrieMerkleProofAndReloadTree() {
 }
 
 func testTrieLoadCache() {
-	dbConn, err := db.Connect_old()
+	config := db.Configuration{
+		Dsn: "root@tcp(localhost)/fpki",
+		Values: map[string]string{
+			"interpolateParams": "true", // 1 round trip per query
+			"collation":         "binary",
+		},
+	}
+	dbConn, err := db.Connect(&config)
 	if err != nil {
 		panic(err)
 	}

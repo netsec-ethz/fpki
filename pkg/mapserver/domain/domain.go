@@ -29,8 +29,8 @@ import (
 //     SANs: a.example.com email.example.com hotmail.example.com b.helloworld.com hotmail.helloworld.com
 // Output: Effectived domain: example.com, helloworld.com
 
-// extract the effected domain, given a list of domain name (common name + SANs)
-func ExtractEffectedDomains(domainNames []string) []string {
+// extract the affected domain, given a list of domain name (common name + SANs)
+func ExtractAffectedDomains(domainNames []string) []string {
 	result := make(map[string][][]string)
 	for _, domainName := range domainNames {
 		// split the domain name into: E2LD + child domains
@@ -46,13 +46,13 @@ func ExtractEffectedDomains(domainNames []string) []string {
 		result[e2ld] = append(result[e2ld], prefix)
 	}
 
-	effectedDomains := []string{}
+	affectedDomains := []string{}
 	for k, v := range result {
 		// find the longest match of a list of domain names.
 		newDomain := findLongestMatch(v) + k
-		effectedDomains = append(effectedDomains, newDomain)
+		affectedDomains = append(affectedDomains, newDomain)
 	}
-	return effectedDomains
+	return affectedDomains
 }
 
 // find longest match

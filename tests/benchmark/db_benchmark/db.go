@@ -13,7 +13,15 @@ import (
 )
 
 func main() {
-	conn, err := db.Connect_old()
+	config := db.Configuration{
+		Dsn: "root@tcp(localhost)/fpki",
+		Values: map[string]string{
+			"interpolateParams": "true", // 1 round trip per query
+			"collation":         "binary",
+		},
+	}
+
+	conn, err := db.Connect(&config)
 	if err != nil {
 		panic(err)
 	}

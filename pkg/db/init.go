@@ -48,36 +48,6 @@ func Connect(config *Configuration) (Conn, error) {
 	return NewMysqlDB(db)
 }
 
-// Connect_old: connect to a old db connection
-func Connect_old() (Conn, error) {
-	dsn, err := url.Parse("root@tcp(localhost)/fpki?maxAllowedPacket=1073741824")
-	if err != nil {
-		panic(err) // logic error
-	}
-	val := dsn.Query()
-	val.Add("interpolateParams", "true") // 1 round trip per query
-	val.Add("collation", "binary")
-	dsn.RawQuery = val.Encode()
-
-	db, err := sql.Open("mysql", dsn.String()) // TODO(juagargi) DSN should be a parameter
-	if err != nil {
-		return nil, err
-	}
-
-	db.SetMaxOpenConns(512) // TODO(juagargi) set higher for production
-	db.SetMaxIdleConns(512)
-	db.SetConnMaxLifetime(-1)
-	db.SetConnMaxIdleTime(-1) // lower or equal than above
-	// check schema
-	initVars.Do(func() {
-		if err := checkSchema(db); err != nil {
-			panic(err)
-		}
-	})
-
-	return NewMysqlDB(db)
-}
-
 func checkSchema(c *sql.DB) error {
 	_, err := c.Query("SELECT COUNT(*) FROM nodes")
 	if err != nil {

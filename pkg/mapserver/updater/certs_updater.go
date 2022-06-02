@@ -28,7 +28,7 @@ func (mapUpdator *MapUpdater) UpdateDomainEntriesUsingCerts(certs []*x509.Certif
 		return 0, nil
 	}
 
-	fmt.Println("number of effected domains: ", len(affectedDomainsMap))
+	fmt.Println("number of affected domains: ", len(affectedDomainsMap))
 
 	start := time.Now()
 	// retrieve (possibly)affected domain entries from db
@@ -90,7 +90,7 @@ func getAffectedDomainAndCertMap(certs []*x509.Certificate) (map[string]byte, ma
 		}
 
 		// get affected domains
-		affectedDomains := domain.ExtractEffectedDomains(domains)
+		affectedDomains := domain.ExtractAffectedDomains(domains)
 		if len(affectedDomains) == 0 {
 			continue
 		}

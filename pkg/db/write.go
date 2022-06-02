@@ -5,8 +5,6 @@ import (
 	"fmt"
 )
 
-const batchSize = 1000
-
 // UpdateKeyValues_DomainEntries: Update a list of key-value store
 func (c *mysqlDB) UpdateKeyValues_DomainEntries(ctx context.Context, keyValuePairs []KeyValuePair) (error, int) {
 	dataLen := len(keyValuePairs)

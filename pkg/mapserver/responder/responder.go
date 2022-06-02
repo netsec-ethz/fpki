@@ -30,7 +30,7 @@ func NewMapResponder(root []byte, cacheHeight int) (*MapResponder, error) {
 		Dsn: "root@tcp(localhost)/fpki",
 		Values: map[string]string{
 			"interpolateParams": "true", // 1 round trip per query
-			//"collation":         "binary",
+			"collation":         "binary",
 		},
 	}
 
