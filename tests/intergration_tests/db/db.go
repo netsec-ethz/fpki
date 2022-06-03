@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
 func main() {
@@ -248,7 +248,7 @@ func testKeyValueStore() {
 func getKeyValuePair(startIdx, endIdx int, content []byte) []db.KeyValuePair {
 	result := []db.KeyValuePair{}
 	for i := startIdx; i <= endIdx; i++ {
-		keyHash := trie.Hasher([]byte(strconv.Itoa(i)))
+		keyHash := common.SHA256Hash([]byte(strconv.Itoa(i)))
 		keyHash32Bytes := [32]byte{}
 		copy(keyHash32Bytes[:], keyHash)
 		result = append(result, db.KeyValuePair{Key: keyHash32Bytes, Value: content})
@@ -259,7 +259,7 @@ func getKeyValuePair(startIdx, endIdx int, content []byte) []db.KeyValuePair {
 func getKeys(startIdx, endIdx int) []db.DomainHash {
 	result := []db.DomainHash{}
 	for i := startIdx; i <= endIdx; i++ {
-		keyHash := trie.Hasher([]byte(strconv.Itoa(i)))
+		keyHash := common.SHA256Hash([]byte(strconv.Itoa(i)))
 		keyHash32Bytes := [32]byte{}
 		copy(keyHash32Bytes[:], keyHash)
 		result = append(result, keyHash32Bytes)

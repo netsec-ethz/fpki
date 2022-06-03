@@ -14,7 +14,6 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/domain"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/logpicker"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -35,7 +34,7 @@ func TestRPCAndPC(t *testing.T) {
 	for _, pc := range pcList {
 		subjectName := pc.Subject
 		var subjectNameHash db.DomainHash
-		copy(subjectNameHash[:], trie.Hasher([]byte(subjectName)))
+		copy(subjectNameHash[:], projectCommon.SHA256Hash([]byte(subjectName)))
 		_, ok := affectedDomainsMap[subjectNameHash]
 		assert.True(t, ok, "domain not found")
 
@@ -60,7 +59,7 @@ func TestRPCAndPC(t *testing.T) {
 	for _, rpc := range rpcList {
 		subjectName := rpc.Subject
 		var subjectNameHash db.DomainHash
-		copy(subjectNameHash[:], trie.Hasher([]byte(subjectName)))
+		copy(subjectNameHash[:], projectCommon.SHA256Hash([]byte(subjectName)))
 
 		_, ok := affectedDomainsMap[subjectNameHash]
 		assert.True(t, ok, "domain not found")
@@ -94,7 +93,7 @@ func TestRPCAndPC(t *testing.T) {
 		subjectName := pc.Subject
 		caName := pc.CAName
 		var subjectNameHash db.DomainHash
-		copy(subjectNameHash[:], trie.Hasher([]byte(subjectName)))
+		copy(subjectNameHash[:], projectCommon.SHA256Hash([]byte(subjectName)))
 
 		for domainHash, domainEntry := range domainEntriesMap {
 			switch {
@@ -122,7 +121,7 @@ func TestRPCAndPC(t *testing.T) {
 		subjectName := rpc.Subject
 		caName := rpc.CAName
 		var subjectNameHash db.DomainHash
-		copy(subjectNameHash[:], trie.Hasher([]byte(subjectName)))
+		copy(subjectNameHash[:], projectCommon.SHA256Hash([]byte(subjectName)))
 
 		for domainHash, domainEntry := range domainEntriesMap {
 			switch {
@@ -171,7 +170,7 @@ func TestCerts(t *testing.T) {
 		// check the correctness of affectedDomains
 		for _, affectedDomain := range affectedDomains {
 			var affectedNameHash db.DomainHash
-			copy(affectedNameHash[:], trie.Hasher([]byte(affectedDomain)))
+			copy(affectedNameHash[:], projectCommon.SHA256Hash([]byte(affectedDomain)))
 
 			_, ok := affectedDomainsMap[affectedNameHash]
 			assert.True(t, ok, "domain not found in affectedDomainsMap")
@@ -211,7 +210,7 @@ func TestCerts(t *testing.T) {
 
 		for _, domainName := range affectedDomains {
 			var domainHash db.DomainHash
-			copy(domainHash[:], trie.Hasher([]byte(domainName)))
+			copy(domainHash[:], projectCommon.SHA256Hash([]byte(domainName)))
 
 			for newDomainHash, domainEntry := range domainEntriesMap {
 				if newDomainHash == domainHash {

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/logpicker"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
@@ -34,7 +35,7 @@ func NewMapUpdater(root []byte, cacheHeight int) (*MapUpdater, error) {
 		return nil, fmt.Errorf("NewMapUpdater | db.Connect | %w", err)
 	}
 
-	smt, err := trie.NewTrie(root, trie.Hasher, dbConn)
+	smt, err := trie.NewTrie(root, common.SHA256Hash, dbConn)
 	if err != nil {
 		return nil, fmt.Errorf("NewMapServer | NewTrie | %w", err)
 	}
@@ -177,7 +178,7 @@ func keyValuePairToSMTInput(keyValuePair []db.KeyValuePair) ([][]byte, [][]byte,
 	updateInput := []UpdateInput{}
 
 	for _, pair := range keyValuePair {
-		updateInput = append(updateInput, UpdateInput{Key: pair.Key, Value: trie.Hasher(pair.Value)})
+		updateInput = append(updateInput, UpdateInput{Key: pair.Key, Value: common.SHA256Hash(pair.Value)})
 	}
 
 	sort.Slice(updateInput, func(i, j int) bool {

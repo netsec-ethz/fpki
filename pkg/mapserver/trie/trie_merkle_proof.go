@@ -7,6 +7,8 @@ package trie
 
 import (
 	"bytes"
+
+	"github.com/netsec-ethz/fpki/pkg/common"
 )
 
 // MerkleProof generates a Merke proof of inclusion or non-inclusion
@@ -118,7 +120,7 @@ func (s *Trie) merkleProof(root, key []byte, batch [][]byte, height, iBatch int)
 
 // VerifyInclusion verifies that key/value is included in the trie with latest root
 func VerifyInclusion(root []byte, ap [][]byte, key, value []byte) bool {
-	leafHash := Hasher(key, value, []byte{byte(256 - len(ap))})
+	leafHash := common.SHA256Hash(key, value, []byte{byte(256 - len(ap))})
 	return bytes.Equal(root, verifyInclusion(ap, 0, key, leafHash))
 }
 
@@ -128,9 +130,9 @@ func verifyInclusion(ap [][]byte, keyIndex int, key, leafHash []byte) []byte {
 		return leafHash
 	}
 	if bitIsSet(key, keyIndex) {
-		return Hasher(ap[len(ap)-keyIndex-1], verifyInclusion(ap, keyIndex+1, key, leafHash))
+		return common.SHA256Hash(ap[len(ap)-keyIndex-1], verifyInclusion(ap, keyIndex+1, key, leafHash))
 	}
-	return Hasher(verifyInclusion(ap, keyIndex+1, key, leafHash), ap[len(ap)-keyIndex-1])
+	return common.SHA256Hash(verifyInclusion(ap, keyIndex+1, key, leafHash), ap[len(ap)-keyIndex-1])
 }
 
 // VerifyNonInclusion verifies a proof of non inclusion,

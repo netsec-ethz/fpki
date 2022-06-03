@@ -6,8 +6,9 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
+	mapCommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/domain"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
@@ -37,7 +38,7 @@ func NewMapResponder(root []byte, cacheHeight int) (*MapResponder, error) {
 	if err != nil {
 		return nil, fmt.Errorf("NewMapResponder | Connect_old | %w", err)
 	}
-	smt, err := trie.NewTrie(root, trie.Hasher, dbConn)
+	smt, err := trie.NewTrie(root, common.SHA256Hash, dbConn)
 	if err != nil {
 		return nil, fmt.Errorf("NewMapResponder | NewTrie | %w", err)
 	}
@@ -51,7 +52,7 @@ func NewMapResponder(root []byte, cacheHeight int) (*MapResponder, error) {
 	}, nil
 }
 
-func (mapResponder *MapResponder) GetDomainProofs(ctx context.Context, domainNames []string) (map[string][]*common.MapServerResponse, error) {
+func (mapResponder *MapResponder) GetDomainProofs(ctx context.Context, domainNames []string) (map[string][]*mapCommon.MapServerResponse, error) {
 	domainResultMap, domainProofMap, err := getMapping(domainNames)
 	if err != nil {
 		return nil, fmt.Errorf("GetDomainProofs | getMapping | %w", err)
@@ -78,15 +79,15 @@ func (mapResponder *MapResponder) GetDomainProofs(ctx context.Context, domainNam
 	return domainResultMap, nil
 }
 
-func getMapping(domainNames []string) (map[string][]*common.MapServerResponse, map[db.DomainHash]*common.MapServerResponse, error) {
-	domainResultMap := make(map[string][]*common.MapServerResponse)
-	domainProofMap := make(map[db.DomainHash]*common.MapServerResponse)
+func getMapping(domainNames []string) (map[string][]*mapCommon.MapServerResponse, map[db.DomainHash]*mapCommon.MapServerResponse, error) {
+	domainResultMap := make(map[string][]*mapCommon.MapServerResponse)
+	domainProofMap := make(map[db.DomainHash]*mapCommon.MapServerResponse)
 
 	for _, domainName := range domainNames {
 		_, ok := domainResultMap[domainName]
 		if !ok {
 			// list of proofs for this domain
-			resultsList := []*common.MapServerResponse{}
+			resultsList := []*mapCommon.MapServerResponse{}
 			subDomainNames, err := parseDomainName(domainName)
 
 			if err != nil {
@@ -94,12 +95,12 @@ func getMapping(domainNames []string) (map[string][]*common.MapServerResponse, m
 			}
 			for _, subDomainName := range subDomainNames {
 				var domainHash32Bytes db.DomainHash
-				copy(domainHash32Bytes[:], trie.Hasher([]byte(subDomainName)))
+				copy(domainHash32Bytes[:], common.SHA256Hash([]byte(subDomainName)))
 				subDomainResult, ok := domainProofMap[domainHash32Bytes]
 				if ok {
 					resultsList = append(resultsList, subDomainResult)
 				} else {
-					domainProofMap[domainHash32Bytes] = &common.MapServerResponse{Domain: subDomainName}
+					domainProofMap[domainHash32Bytes] = &mapCommon.MapServerResponse{Domain: subDomainName}
 					resultsList = append(resultsList, domainProofMap[domainHash32Bytes])
 				}
 			}
@@ -109,7 +110,7 @@ func getMapping(domainNames []string) (map[string][]*common.MapServerResponse, m
 	return domainResultMap, domainProofMap, nil
 }
 
-func (mapResponder *MapResponder) getProofFromSMT(domainMap map[db.DomainHash]*common.MapServerResponse) ([]db.DomainHash, error) {
+func (mapResponder *MapResponder) getProofFromSMT(domainMap map[db.DomainHash]*mapCommon.MapServerResponse) ([]db.DomainHash, error) {
 	domainNameToFetchFromDB := []db.DomainHash{}
 	for key, value := range domainMap {
 		proof, isPoP, proofKey, ProofValue, err := mapResponder.smt.MerkleProof(key[:])
@@ -117,15 +118,15 @@ func (mapResponder *MapResponder) getProofFromSMT(domainMap map[db.DomainHash]*c
 			return nil, fmt.Errorf("getProofFromSMT | MerkleProof | %w", err)
 		}
 
-		value.PoI = common.PoI{Proof: proof, ProofKey: proofKey, ProofValue: ProofValue, Root: mapResponder.smt.Root}
+		value.PoI = mapCommon.PoI{Proof: proof, ProofKey: proofKey, ProofValue: ProofValue, Root: mapResponder.smt.Root}
 
 		switch {
 		case isPoP:
-			value.PoI.ProofType = common.PoP
+			value.PoI.ProofType = mapCommon.PoP
 			domainNameToFetchFromDB = append(domainNameToFetchFromDB, key)
 
 		case !isPoP:
-			value.PoI.ProofType = common.PoA
+			value.PoI.ProofType = mapCommon.PoA
 		}
 	}
 	return domainNameToFetchFromDB, nil
@@ -166,10 +167,10 @@ func (mapResponder *MapResponder) Close() error {
 /* GetDomainProof: Single-thread non-batching DB read really SLOW! Switch to multi-thread batch reading.
 
 // GetMapResponse: Query the proofs and materials for a list of domains. Return type: MapServerResponse
-func (mapResponder *MapResponder) GetDomainProof(ctx context.Context, domainName string) ([]common.MapServerResponse, error) {
+func (mapResponder *MapResponder) GetDomainProof(ctx context.Context, domainName string) ([]mapCommon.MapServerResponse, error) {
 
 	start := time.Now()
-	proofsResult := []common.MapServerResponse{}
+	proofsResult := []mapCommon.MapServerResponse{}
 	domainList, err := parseDomainName(domainName)
 	if err != nil {
 		return nil, fmt.Errorf("GetDomainProof | parseDomainName | %w", err)
@@ -209,12 +210,12 @@ func (mapResponder *MapResponder) GetDomainProof(ctx context.Context, domainName
 		durationList = append(durationList, merEnd.Sub(merStart))
 
 		newStart = time.Now()
-		var proofType common.ProofType
+		var proofType mapCommon.ProofType
 		domainBytes := []byte{}
 		// If it is PoP, query the domain entry. If it is PoA, directly return the PoA
 		switch {
 		case isPoP:
-			proofType = common.PoP
+			proofType = mapCommon.PoP
 			domainHashString := hex.EncodeToString(domainHash)
 			dbStart := time.Now()
 			result, err := mapResponder.dbConn.RetrieveOneKeyValuePair(ctx, domainHashString, db.DomainEntries)
@@ -227,15 +228,15 @@ func (mapResponder *MapResponder) GetDomainProof(ctx context.Context, domainName
 			domainBytes = result.Value
 
 		case !isPoP:
-			proofType = common.PoA
+			proofType = mapCommon.PoA
 		}
 		newEnd = time.Now()
 
 		durationList = append(durationList, newEnd.Sub(newStart))
 
-		proofsResult = append(proofsResult, common.MapServerResponse{
+		proofsResult = append(proofsResult, mapCommon.MapServerResponse{
 			Domain: domain,
-			PoI: common.PoI{
+			PoI: mapCommon.PoI{
 				Proof:      proof,
 				Root:       mapResponder.smt.Root,
 				ProofType:  proofType,

@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
 func main() {
@@ -126,7 +126,7 @@ func generateRandomBytes() []byte {
 func getRandomKeys() []string {
 	result := []string{}
 	for i := 0; i < 1000; i++ {
-		keyHash := trie.Hasher([]byte(strconv.Itoa(rand.Intn(900000))))
+		keyHash := common.SHA256Hash([]byte(strconv.Itoa(rand.Intn(900000))))
 		keyString := hex.EncodeToString(keyHash)
 		result = append(result, keyString)
 	}
@@ -136,7 +136,7 @@ func getRandomKeys() []string {
 func getKeys(startIdx, endIdx int) []db.DomainHash {
 	result := []db.DomainHash{}
 	for i := startIdx; i <= endIdx; i++ {
-		keyHash := trie.Hasher([]byte(strconv.Itoa(i)))
+		keyHash := common.SHA256Hash([]byte(strconv.Itoa(i)))
 		keyHash32Bytes := [32]byte{}
 		copy(keyHash32Bytes[:], keyHash)
 		result = append(result, keyHash32Bytes)
@@ -147,7 +147,7 @@ func getKeys(startIdx, endIdx int) []db.DomainHash {
 func getKeyValuePair(startIdx, endIdx int, content []byte) []db.KeyValuePair {
 	result := []db.KeyValuePair{}
 	for i := startIdx; i <= endIdx; i++ {
-		keyHash := trie.Hasher([]byte(strconv.Itoa(i)))
+		keyHash := common.SHA256Hash([]byte(strconv.Itoa(i)))
 		keyHash32Bytes := [32]byte{}
 		copy(keyHash32Bytes[:], keyHash)
 		result = append(result, db.KeyValuePair{Key: keyHash32Bytes, Value: content})

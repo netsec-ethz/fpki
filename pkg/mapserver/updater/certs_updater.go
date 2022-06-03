@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/google/certificate-transparency-go/x509"
+	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
+	mapCommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/domain"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
 // UpdateDomainEntriesUsingCerts: Update the domain entries using the domain certificates
@@ -102,7 +102,7 @@ func getAffectedDomainAndCertMap(certs []*x509.Certificate) (map[db.DomainHash]b
 
 		for _, domainName := range affectedDomains {
 			var domainNameHash db.DomainHash
-			copy(domainNameHash[:], trie.Hasher([]byte(domainName)))
+			copy(domainNameHash[:], common.SHA256Hash([]byte(domainName)))
 
 			affectedDomainsMap[domainNameHash] = 1
 			_, ok := domainCertMap[domainName]
@@ -137,7 +137,7 @@ func extractCertDomains(cert *x509.Certificate) []string {
 }
 
 // update domain entries
-func updateDomainEntries(domainEntries map[db.DomainHash]*common.DomainEntry,
+func updateDomainEntries(domainEntries map[db.DomainHash]*mapCommon.DomainEntry,
 	certDomainMap map[string][]*x509.Certificate) (map[db.DomainHash]byte, error) {
 
 	updatedDomainHash := make(map[db.DomainHash]byte)
@@ -148,7 +148,7 @@ func updateDomainEntries(domainEntries map[db.DomainHash]*common.DomainEntry,
 		//iterStart := time.Now()
 		for _, cert := range certs {
 			var domainNameHash db.DomainHash
-			copy(domainNameHash[:], trie.Hasher([]byte(domainName)))
+			copy(domainNameHash[:], common.SHA256Hash([]byte(domainName)))
 			// get domain entries
 			domainEntry, ok := domainEntries[domainNameHash]
 			// if domain entry exists in the db
@@ -160,7 +160,7 @@ func updateDomainEntries(domainEntries map[db.DomainHash]*common.DomainEntry,
 				}
 			} else {
 				// create an empty domain entry
-				newDomainEntry := &common.DomainEntry{DomainName: domainName}
+				newDomainEntry := &mapCommon.DomainEntry{DomainName: domainName}
 				domainEntries[domainNameHash] = newDomainEntry
 				isUpdated := updateDomainEntry(newDomainEntry, cert)
 				if isUpdated {
@@ -187,7 +187,7 @@ func updateDomainEntries(domainEntries map[db.DomainHash]*common.DomainEntry,
 }
 
 // insert certificate into correct CAEntry
-func updateDomainEntry(domainEntry *common.DomainEntry, cert *x509.Certificate) bool {
+func updateDomainEntry(domainEntry *mapCommon.DomainEntry, cert *x509.Certificate) bool {
 	caName := cert.Issuer.CommonName
 	isFound := false
 	isUpdated := false
@@ -214,10 +214,10 @@ ca_entry_loop:
 	// if CA list is not found
 	if !isFound {
 		// add a new CA list
-		domainEntry.CAEntry = append(domainEntry.CAEntry, common.CAEntry{
+		domainEntry.CAEntry = append(domainEntry.CAEntry, mapCommon.CAEntry{
 			DomainCerts: [][]byte{cert.Raw},
 			CAName:      caName,
-			CAHash:      trie.Hasher([]byte(caName))})
+			CAHash:      common.SHA256Hash([]byte(caName))})
 		isUpdated = true
 	}
 
@@ -226,9 +226,9 @@ ca_entry_loop:
 
 // get updated domains, and extract the corresponding domain bytes
 func getDomainEntriesToWrite(updatedDomain map[db.DomainHash]byte,
-	domainEntries map[db.DomainHash]*common.DomainEntry) (map[db.DomainHash]*common.DomainEntry, error) {
+	domainEntries map[db.DomainHash]*mapCommon.DomainEntry) (map[db.DomainHash]*mapCommon.DomainEntry, error) {
 
-	result := make(map[db.DomainHash]*common.DomainEntry)
+	result := make(map[db.DomainHash]*mapCommon.DomainEntry)
 	for k := range updatedDomain {
 		domainEntry, ok := domainEntries[k]
 		if !ok {
@@ -241,11 +241,11 @@ func getDomainEntriesToWrite(updatedDomain map[db.DomainHash]byte,
 }
 
 // serialise the updated domains
-func serialiseUpdatedDomainEntries(domainEntriesMap map[db.DomainHash]*common.DomainEntry) ([]db.KeyValuePair, []db.DomainHash, error) {
+func serialiseUpdatedDomainEntries(domainEntriesMap map[db.DomainHash]*mapCommon.DomainEntry) ([]db.KeyValuePair, []db.DomainHash, error) {
 	result := []db.KeyValuePair{}
 	updatedDomainNameHashes := []db.DomainHash{}
 	for domainNameHash, domainEntryBytes := range domainEntriesMap {
-		domainBytes, err := common.SerialiseDomainEntry(domainEntryBytes)
+		domainBytes, err := mapCommon.SerialiseDomainEntry(domainEntryBytes)
 		if err != nil {
 			return nil, nil, fmt.Errorf("serialiseUpdatedDomainEntries | SerialiseDomainEntry | %w", err)
 		}
@@ -257,7 +257,7 @@ func serialiseUpdatedDomainEntries(domainEntriesMap map[db.DomainHash]*common.Do
 }
 
 // sort domain entries
-func sortDomainEntry(domainEntry *common.DomainEntry) {
+func sortDomainEntry(domainEntry *mapCommon.DomainEntry) {
 	// sort CA entries
 	sort.Slice(domainEntry.CAEntry, func(j, k int) bool {
 		switch {

@@ -13,13 +13,14 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/stretchr/testify/require"
 )
 
 func TestTrieEmpty(t *testing.T) {
 	db := &MockDB{}
-	smt, err := NewTrie(nil, Hasher, db)
+	smt, err := NewTrie(nil, common.SHA256Hash, db)
 	require.NoError(t, err)
 
 	if len(smt.Root) != 0 {
@@ -29,7 +30,7 @@ func TestTrieEmpty(t *testing.T) {
 
 func TestTrieUpdateAndGet(t *testing.T) {
 	db := &MockDB{}
-	smt, err := NewTrie(nil, Hasher, db)
+	smt, err := NewTrie(nil, common.SHA256Hash, db)
 	require.NoError(t, err)
 
 	smt.atomicUpdate = false
@@ -70,7 +71,7 @@ func TestTrieUpdateAndGet(t *testing.T) {
 
 func TestTrieAtomicUpdate(t *testing.T) {
 	db := &MockDB{}
-	smt, err := NewTrie(nil, Hasher, db)
+	smt, err := NewTrie(nil, common.SHA256Hash, db)
 	require.NoError(t, err)
 
 	smt.CacheHeightLimit = 0
@@ -101,7 +102,7 @@ func TestTrieAtomicUpdate(t *testing.T) {
 
 func TestTriePublicUpdateAndGet(t *testing.T) {
 	db := &MockDB{}
-	smt, err := NewTrie(nil, Hasher, db)
+	smt, err := NewTrie(nil, common.SHA256Hash, db)
 	require.NoError(t, err)
 
 	smt.CacheHeightLimit = 0
@@ -144,7 +145,7 @@ func TestTriePublicUpdateAndGet(t *testing.T) {
 // test updating and deleting at the same time
 func TestTrieUpdateAndDelete(t *testing.T) {
 	db := &MockDB{}
-	smt, err := NewTrie(nil, Hasher, db)
+	smt, err := NewTrie(nil, common.SHA256Hash, db)
 	require.NoError(t, err)
 
 	smt.CacheHeightLimit = 0
@@ -182,7 +183,7 @@ func TestTrieUpdateAndDelete(t *testing.T) {
 
 func TestTrieMerkleProof(t *testing.T) {
 	db := &MockDB{}
-	smt, err := NewTrie(nil, Hasher, db)
+	smt, err := NewTrie(nil, common.SHA256Hash, db)
 	require.NoError(t, err)
 
 	// Add data to empty trie
@@ -199,7 +200,7 @@ func TestTrieMerkleProof(t *testing.T) {
 			t.Fatalf("merkle proof didnt return the correct key-value pair")
 		}
 	}
-	emptyKey := Hasher([]byte("non-member"))
+	emptyKey := common.SHA256Hash([]byte("non-member"))
 	ap, included, proofKey, proofValue, _ := smt.MerkleProof(emptyKey)
 	if included {
 		t.Fatalf("failed to verify non inclusion proof")
@@ -211,7 +212,7 @@ func TestTrieMerkleProof(t *testing.T) {
 
 func TestTrieMerkleProofCompressed(t *testing.T) {
 	db := &MockDB{}
-	smt, err := NewTrie(nil, Hasher, db)
+	smt, err := NewTrie(nil, common.SHA256Hash, db)
 	require.NoError(t, err)
 
 	// Add data to empty trie
@@ -228,7 +229,7 @@ func TestTrieMerkleProofCompressed(t *testing.T) {
 			t.Fatalf("merkle proof didnt return the correct key-value pair")
 		}
 	}
-	emptyKey := Hasher([]byte("non-member"))
+	emptyKey := common.SHA256Hash([]byte("non-member"))
 	bitmap, ap, length, included, proofKey, proofValue, _ := smt.MerkleProofCompressed(emptyKey)
 	if included {
 		t.Fatalf("failed to verify non inclusion proof")
@@ -241,7 +242,7 @@ func TestTrieMerkleProofCompressed(t *testing.T) {
 func TestHeight0LeafShortcut(t *testing.T) {
 	keySize := 32
 	db := &MockDB{}
-	smt, err := NewTrie(nil, Hasher, db)
+	smt, err := NewTrie(nil, common.SHA256Hash, db)
 	require.NoError(t, err)
 
 	// Add 2 sibling keys that will be stored at height 0
@@ -308,7 +309,7 @@ func getFreshData(size, length int) [][]byte {
 		if err != nil {
 			panic(err)
 		}
-		data = append(data, Hasher(key)[:length])
+		data = append(data, common.SHA256Hash(key)[:length])
 	}
 	sort.Sort(DataArray(data))
 	return data

@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
+	mapCommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
 )
 
 // UpdateInput: key-value pair for updating
@@ -19,18 +19,18 @@ type UpdateInput struct {
 }
 
 // HashDomainEntriesThenSort: hash the DomainEntry, then sort them according to key
-func HashDomainEntriesThenSort(domainEntries []common.DomainEntry) ([]UpdateInput, error) {
+func HashDomainEntriesThenSort(domainEntries []mapCommon.DomainEntry) ([]UpdateInput, error) {
 	result := []UpdateInput{}
 	for _, v := range domainEntries {
-		domainEntryBytes, err := common.SerialiseDomainEntry(&v)
+		domainEntryBytes, err := mapCommon.SerialiseDomainEntry(&v)
 		if err != nil {
 			return nil, fmt.Errorf("HashDomainEntriesThenSort | SerialiseDomainEnrty | %w", err)
 		}
 		var domainHash db.DomainHash
-		copy(domainHash[:], trie.Hasher([]byte(v.DomainName)))
+		copy(domainHash[:], common.SHA256Hash([]byte(v.DomainName)))
 		hashInput := UpdateInput{
 			Key:   domainHash,
-			Value: trie.Hasher(domainEntryBytes),
+			Value: common.SHA256Hash(domainEntryBytes),
 		}
 		result = append(result, hashInput)
 	}

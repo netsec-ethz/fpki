@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
@@ -34,7 +35,7 @@ func testUpdateWithSameKeys() {
 
 	db, err := db.Connect(&config)
 
-	smt, err := trie.NewTrie(nil, trie.Hasher, db)
+	smt, err := trie.NewTrie(nil, common.SHA256Hash, db)
 
 	smt.CacheHeightLimit = 0
 	// Add 10000 key-value pair
@@ -89,7 +90,7 @@ func testTrieMerkleProofAndReloadTree() {
 		panic(err)
 	}
 
-	smt, err := trie.NewTrie(nil, trie.Hasher, dbConn)
+	smt, err := trie.NewTrie(nil, common.SHA256Hash, dbConn)
 	if err != nil {
 		panic(err)
 	}
@@ -106,10 +107,10 @@ func testTrieMerkleProofAndReloadTree() {
 			panic("failed to verify inclusion proof")
 		}
 		if !bytes.Equal(key, k) && !bytes.Equal(values[i], v) {
-			panic("merkle proof didnt return the correct key-value pair")
+			panic("merkle proof didn't return the correct key-value pair")
 		}
 	}
-	emptyKey := trie.Hasher([]byte("non-memvqbdqwdqwdqber"))
+	emptyKey := common.SHA256Hash([]byte("non-memvqbdqwdqwdqber"))
 	ap_, included_, proofKey_, proofValue_, _ := smt.MerkleProof(emptyKey)
 	if included_ {
 		panic("failed to verify non inclusion proof")
@@ -123,7 +124,7 @@ func testTrieMerkleProofAndReloadTree() {
 		panic(err)
 	}
 
-	smt1, err := trie.NewTrie(smt.Root, trie.Hasher, dbConn1)
+	smt1, err := trie.NewTrie(smt.Root, common.SHA256Hash, dbConn1)
 
 	for i, key_ := range keys {
 		ap_, included_, k_, v_, _ := smt1.MerkleProof(key_)
@@ -134,11 +135,11 @@ func testTrieMerkleProofAndReloadTree() {
 			panic("PoP failed")
 		}
 		if !bytes.Equal(key_, k_) && !bytes.Equal(values[i], v_) {
-			panic("new merkle proof didnt return the correct key-value pair")
+			panic("new merkle proof didn't return the correct key-value pair")
 		}
 	}
 
-	emptyKey = trie.Hasher([]byte("non-member"))
+	emptyKey = common.SHA256Hash([]byte("non-member"))
 	ap_, included_, proofKey_, proofValue_, _ = smt1.MerkleProof(emptyKey)
 	if included_ {
 		panic("failed to verify new non inclusion proof")
@@ -162,7 +163,7 @@ func testTrieLoadCache() {
 		panic(err)
 	}
 
-	smt, err := trie.NewTrie(nil, trie.Hasher, dbConn)
+	smt, err := trie.NewTrie(nil, common.SHA256Hash, dbConn)
 	if err != nil {
 		panic(err)
 	}
@@ -227,7 +228,7 @@ func getFreshData(size, length int) [][]byte {
 		if err != nil {
 			panic(err)
 		}
-		data = append(data, trie.Hasher(key)[:length])
+		data = append(data, common.SHA256Hash(key)[:length])
 	}
 	sort.Sort(trie.DataArray(data))
 	return data

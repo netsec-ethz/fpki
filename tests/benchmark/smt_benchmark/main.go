@@ -8,6 +8,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
@@ -73,7 +74,7 @@ func BenchmarkCacheHeightLimit233() {
 		panic(err)
 	}
 
-	smt, err := trie.NewTrie(nil, trie.Hasher, conn)
+	smt, err := trie.NewTrie(nil, common.SHA256Hash, conn)
 	if err != nil {
 		panic(err)
 	}
@@ -106,7 +107,7 @@ func getFreshData(size, length int) [][]byte {
 		if err != nil {
 			panic(err)
 		}
-		data = append(data, trie.Hasher(key)[:length])
+		data = append(data, common.SHA256Hash(key)[:length])
 	}
 	sort.Sort(trie.DataArray(data))
 	return data

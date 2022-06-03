@@ -7,7 +7,6 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/domain"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
 // newUpdates: structure for updates
@@ -71,7 +70,7 @@ func getAffectedDomainAndCertMapPCAndRPC(rpc []*projectCommon.RPC, pc []*project
 		}
 
 		var domainNameHash db.DomainHash
-		copy(domainNameHash[:], trie.Hasher([]byte(domainName)))
+		copy(domainNameHash[:], projectCommon.SHA256Hash([]byte(domainName)))
 
 		// attach domain hash to unique map
 		affectedDomainsMap[domainNameHash] = 1
@@ -91,7 +90,7 @@ func getAffectedDomainAndCertMapPCAndRPC(rpc []*projectCommon.RPC, pc []*project
 		}
 
 		var domainNameHash db.DomainHash
-		copy(domainNameHash[:], trie.Hasher([]byte(domainName)))
+		copy(domainNameHash[:], projectCommon.SHA256Hash([]byte(domainName)))
 
 		affectedDomainsMap[domainNameHash] = 1
 		certMapElement, ok := domainCertMap[domainName]
@@ -113,7 +112,7 @@ func updateDomainEntriesWithRPCAndPC(domainEntries map[db.DomainHash]*common.Dom
 	for domainName, updates := range certDomainMap {
 		for _, rpc := range updates.rpc {
 			var domainNameHash db.DomainHash
-			copy(domainNameHash[:], trie.Hasher([]byte(domainName)))
+			copy(domainNameHash[:], projectCommon.SHA256Hash([]byte(domainName)))
 
 			// get domain entries
 			domainEntry, ok := domainEntries[domainNameHash]
@@ -138,7 +137,7 @@ func updateDomainEntriesWithRPCAndPC(domainEntries map[db.DomainHash]*common.Dom
 
 		for _, pc := range updates.pc {
 			var domainNameHash db.DomainHash
-			copy(domainNameHash[:], trie.Hasher([]byte(domainName)))
+			copy(domainNameHash[:], projectCommon.SHA256Hash([]byte(domainName)))
 
 			// get domian entries
 			domainEntry, ok := domainEntries[domainNameHash]
@@ -188,7 +187,7 @@ func updateDomainEntryWithRPC(domainEntry *common.DomainEntry, rpc *projectCommo
 		// add a new CA list
 		domainEntry.CAEntry = append(domainEntry.CAEntry, common.CAEntry{
 			CAName:     caName,
-			CAHash:     trie.Hasher([]byte(caName)),
+			CAHash:     projectCommon.SHA256Hash([]byte(caName)),
 			CurrentRPC: *rpc,
 		})
 		isUpdated = true
@@ -220,7 +219,7 @@ func updateDomainEntryWithPC(domainEntry *common.DomainEntry, pc *projectCommon.
 		// add a new CA list
 		domainEntry.CAEntry = append(domainEntry.CAEntry, common.CAEntry{
 			CAName:    caName,
-			CAHash:    trie.Hasher([]byte(caName)),
+			CAHash:    projectCommon.SHA256Hash([]byte(caName)),
 			CurrentPC: *pc,
 		})
 		isUpdated = true
