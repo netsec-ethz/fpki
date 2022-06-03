@@ -6,7 +6,7 @@ import (
 )
 
 // UpdateKeyValues_DomainEntries: Update a list of key-value store
-func (c *mysqlDB) UpdateKeyValues_DomainEntries(ctx context.Context, keyValuePairs []KeyValuePair) (error, int) {
+func (c *mysqlDB) UpdateKeyValuesDomainEntries(ctx context.Context, keyValuePairs []KeyValuePair) (error, int) {
 	dataLen := len(keyValuePairs)
 	remainingDataLen := dataLen
 
@@ -54,7 +54,7 @@ func (c *mysqlDB) UpdateKeyValues_DomainEntries(ctx context.Context, keyValuePai
 }
 
 // UpdateKeyValues_TreeStruc: Update a list of key-value store
-func (c *mysqlDB) UpdateKeyValues_TreeStruc(ctx context.Context, keyValuePairs []KeyValuePair) (error, int) {
+func (c *mysqlDB) UpdateKeyValuesTreeStruc(ctx context.Context, keyValuePairs []KeyValuePair) (error, int) {
 	dataLen := len(keyValuePairs)
 	remainingDataLen := dataLen
 
@@ -100,7 +100,7 @@ func (c *mysqlDB) UpdateKeyValues_TreeStruc(ctx context.Context, keyValuePairs [
 }
 
 // InsertIgnoreKeyBatches: Insert a list of keys into the updates table. If key exists, ignore it.
-func (c *mysqlDB) AddUpdatedDomainHashes_Updates(ctx context.Context, keys []DomainHash) (int, error) {
+func (c *mysqlDB) AddUpdatedDomainHashesUpdates(ctx context.Context, keys []DomainHash) (int, error) {
 	dataLen := len(keys)
 	remainingDataLen := dataLen
 

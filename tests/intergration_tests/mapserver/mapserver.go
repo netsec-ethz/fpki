@@ -146,7 +146,7 @@ func main() {
 				}
 				// if this proof is a Proof of Presence, check whether the target cert is correctly added
 				if proofType == mapCommon.PoP {
-					domainEntry, err := mapCommon.DesrialiseDomainEnrty(mapResponse.DomainEntryBytes)
+					domainEntry, err := mapCommon.DesrialiseDomainEntry(mapResponse.DomainEntryBytes)
 					if err != nil {
 						panic(err)
 					}

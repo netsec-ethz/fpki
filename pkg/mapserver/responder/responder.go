@@ -65,7 +65,7 @@ func (mapResponder *MapResponder) GetDomainProofs(ctx context.Context, domainNam
 
 	fmt.Println("domain to fetch: ", len(domainToFetch))
 	start := time.Now()
-	result, err := mapResponder.dbConn.RetrieveKeyValuePair_DomainEntries(ctx, domainToFetch, 10)
+	result, err := mapResponder.dbConn.RetrieveKeyValuePairDomainEntries(ctx, domainToFetch, 10)
 	if err != nil {
 		return nil, fmt.Errorf("GetDomainProofs | RetrieveKeyValuePairMultiThread | %w", err)
 	}

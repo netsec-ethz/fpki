@@ -6,7 +6,7 @@ import (
 )
 
 // DeleteKeyValues: Delete a list of key-value store
-func (c *mysqlDB) DeleteKeyValues_TreeStruc(ctx context.Context, keys []DomainHash) error {
+func (c *mysqlDB) DeleteKeyValuesTreeStruc(ctx context.Context, keys []DomainHash) error {
 	dataLen := len(keys)
 	remainingDataLen := dataLen
 
@@ -51,7 +51,7 @@ func (c *mysqlDB) DeleteKeyValues_TreeStruc(ctx context.Context, keys []DomainHa
 }
 
 // TruncateUpdatesTable: truncate updates table
-func (c *mysqlDB) TruncateUpdatesTable_Updates(ctx context.Context) error {
+func (c *mysqlDB) TruncateUpdatesTableUpdates(ctx context.Context) error {
 	_, err := c.db.Exec("TRUNCATE `fpki`.`updates`;")
 	if err != nil {
 		return fmt.Errorf("TruncateUpdatesTable | TRUNCATE | %w", err)

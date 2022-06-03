@@ -23,7 +23,7 @@ func (mapUpdater *MapUpdater) retrieveAffectedDomainFromDB(affectedDomainsMap ma
 	defer cancelF()
 
 	// read key-value pair from DB
-	domainPair, err := mapUpdater.dbConn.RetrieveKeyValuePair_DomainEntries(ctx, affectedDomainHash, readerNum)
+	domainPair, err := mapUpdater.dbConn.RetrieveKeyValuePairDomainEntries(ctx, affectedDomainHash, readerNum)
 	if err != nil {
 		return nil, fmt.Errorf("UpdateDomainEntries | RetrieveKeyValuePairMultiThread | %w", err)
 	}
@@ -43,12 +43,12 @@ func (mapUpdater *MapUpdater) writeChangesToDB(updatesToDomainEntriesTable []db.
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	err, _ := mapUpdater.dbConn.UpdateKeyValues_DomainEntries(ctx, updatesToDomainEntriesTable)
+	err, _ := mapUpdater.dbConn.UpdateKeyValuesDomainEntries(ctx, updatesToDomainEntriesTable)
 	if err != nil {
 		return 0, fmt.Errorf("writeToDomainEntriesTable | UpdateKeyValuePairBatches | %w", err)
 	}
 
-	_, err = mapUpdater.dbConn.AddUpdatedDomainHashes_Updates(ctx, updatesToUpdatesTable)
+	_, err = mapUpdater.dbConn.AddUpdatedDomainHashesUpdates(ctx, updatesToUpdatesTable)
 	if err != nil {
 		return 0, fmt.Errorf("writeToUpdateTable | InsertIgnoreKeyBatches | %w", err)
 	}
@@ -60,9 +60,9 @@ func (mapUpdater *MapUpdater) writeChangesToDB(updatesToDomainEntriesTable []db.
 func parseDomainBytes(keyValuePairs []db.KeyValuePair) (map[db.DomainHash]*common.DomainEntry, error) {
 	result := make(map[db.DomainHash]*common.DomainEntry)
 	for _, pair := range keyValuePairs {
-		newPair, err := common.DesrialiseDomainEnrty(pair.Value)
+		newPair, err := common.DesrialiseDomainEntry(pair.Value)
 		if err != nil {
-			return nil, fmt.Errorf("parseDomainBytes | DesrialiseDomainEnrty | %w", err)
+			return nil, fmt.Errorf("parseDomainBytes | DesrialiseDomainEntry | %w", err)
 		}
 		result[pair.Key] = newPair
 	}

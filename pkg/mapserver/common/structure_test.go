@@ -40,7 +40,7 @@ func TestSerialisingDomainEntry(t *testing.T) {
 	fmt.Println(end.Sub(start))
 
 	start = time.Now()
-	testDomainEntryDeserialised, err := DesrialiseDomainEnrty(domainBytes)
+	testDomainEntryDeserialised, err := DesrialiseDomainEntry(domainBytes)
 	require.NoError(t, err, "DesrialiseDomainEnrty error")
 	end = time.Now()
 	fmt.Println(end.Sub(start))

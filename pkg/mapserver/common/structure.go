@@ -35,8 +35,8 @@ func SerialiseDomainEntry(domainEntry *DomainEntry) ([]byte, error) {
 	return result, nil
 }
 
-// DesrialiseDomainEnrty: bytes -> DomainEntry. Use json
-func DesrialiseDomainEnrty(input []byte) (*DomainEntry, error) {
+// DesrialiseDomainEntry: bytes -> DomainEntry. Use json
+func DesrialiseDomainEntry(input []byte) (*DomainEntry, error) {
 	result := &DomainEntry{}
 
 	err := json.Unmarshal(input, result)

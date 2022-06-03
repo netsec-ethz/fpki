@@ -15,7 +15,7 @@ type readKeyResult struct {
 }
 
 // RetrieveOneKeyValuePair: Retrieve one single key-value pair
-func (c *mysqlDB) RetrieveOneKeyValuePair_TreeStruc(ctx context.Context, key DomainHash) (*KeyValuePair, error) {
+func (c *mysqlDB) RetrieveOneKeyValuePairTreeStruc(ctx context.Context, key DomainHash) (*KeyValuePair, error) {
 	var value []byte
 	stmt := c.prepGetValueTree
 
@@ -35,7 +35,7 @@ func (c *mysqlDB) RetrieveOneKeyValuePair_TreeStruc(ctx context.Context, key Dom
 }
 
 // RetrieveKeyValuePairFromTreeStruc: Retrieve a list of key-value pairs from DB. Multi-threaded
-func (c *mysqlDB) RetrieveKeyValuePair_TreeStruc(ctx context.Context, key []DomainHash, numOfWorker int) ([]KeyValuePair, error) {
+func (c *mysqlDB) RetrieveKeyValuePairTreeStruc(ctx context.Context, key []DomainHash, numOfWorker int) ([]KeyValuePair, error) {
 	stmt := c.prepGetValueTree
 
 	// if work is less than number of worker
@@ -68,7 +68,7 @@ func (c *mysqlDB) RetrieveKeyValuePair_TreeStruc(ctx context.Context, key []Doma
 	return keyValuePairs, nil
 }
 
-func (c *mysqlDB) RetrieveKeyValuePair_DomainEntries(ctx context.Context, key []DomainHash, numOfWorker int) ([]KeyValuePair, error) {
+func (c *mysqlDB) RetrieveKeyValuePairDomainEntries(ctx context.Context, key []DomainHash, numOfWorker int) ([]KeyValuePair, error) {
 	stmt := c.prepGetValueDomainEntries
 
 	// if work is less than number of worker
@@ -126,8 +126,8 @@ work_loop:
 }
 
 // RetrieveUpdatedDomainHashes: Get updated domains name hashes from updates table
-func (c *mysqlDB) RetrieveUpdatedDomainHashes_Updates(ctx context.Context, perQueryLimit int) ([]DomainHash, error) {
-	count, err := c.GetCountOfUpdatesDomains_Updates(ctx)
+func (c *mysqlDB) RetrieveUpdatedDomainHashesUpdates(ctx context.Context, perQueryLimit int) ([]DomainHash, error) {
+	count, err := c.GetCountOfUpdatesDomainsUpdates(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("RetrieveUpdatedDomainHashes_Updates | RetrieveTableRowsCount | %w", err)
 	}
@@ -174,7 +174,7 @@ func (c *mysqlDB) RetrieveUpdatedDomainHashes_Updates(ctx context.Context, perQu
 		return nil, fmt.Errorf("RetrieveUpdatedDomainHashes_Updates | incomplete fetching")
 	}
 
-	err = c.TruncateUpdatesTable_Updates(ctx)
+	err = c.TruncateUpdatesTableUpdates(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("RetrieveUpdatedDomainHashes_Updates | TruncateUpdatesTable | %w", err)
 	}
@@ -210,7 +210,7 @@ func fetchKeyWorker(resultChan chan readKeyResult, start, end int, ctx context.C
 }
 
 // CountUpdates: Get number of entries in updates table
-func (c *mysqlDB) GetCountOfUpdatesDomains_Updates(ctx context.Context) (int, error) {
+func (c *mysqlDB) GetCountOfUpdatesDomainsUpdates(ctx context.Context) (int, error) {
 	stmt, err := c.db.Prepare("SELECT COUNT(*) FROM updates")
 	if err != nil {
 		return 0, fmt.Errorf("CountUpdates | Prepare | %w", err)

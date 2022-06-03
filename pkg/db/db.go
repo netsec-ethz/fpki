@@ -35,43 +35,43 @@ type Conn interface {
 	// ************************************************************
 
 	// RetrieveOneKeyValuePair_TreeStruc: Retrieve one key-value pair from Tree table.
-	RetrieveOneKeyValuePair_TreeStruc(ctx context.Context, id DomainHash) (*KeyValuePair, error)
+	RetrieveOneKeyValuePairTreeStruc(ctx context.Context, id DomainHash) (*KeyValuePair, error)
 
 	// RetrieveKeyValuePair_TreeStruc: Retrieve a list of key-value pairs from Tree tables.
-	RetrieveKeyValuePair_TreeStruc(ctx context.Context, id []DomainHash, numOfRoutine int) ([]KeyValuePair, error)
+	RetrieveKeyValuePairTreeStruc(ctx context.Context, id []DomainHash, numOfRoutine int) ([]KeyValuePair, error)
 
 	// UpdateKeyValues_TreeStruc: Update a list of key-value pairs in Tree table
-	UpdateKeyValues_TreeStruc(ctx context.Context, keyValuePairs []KeyValuePair) (error, int)
+	UpdateKeyValuesTreeStruc(ctx context.Context, keyValuePairs []KeyValuePair) (error, int)
 
 	// DeleteKeyValues_TreeStruc: Delete a list of key-value pairs in Tree table
-	DeleteKeyValues_TreeStruc(ctx context.Context, keys []DomainHash) error
+	DeleteKeyValuesTreeStruc(ctx context.Context, keys []DomainHash) error
 
 	// ************************************************************
 	//             Function for DomainEntries table
 	// ************************************************************
 
 	// RetrieveKeyValuePair_DomainEntries: Retrieve a list of domain entries table
-	RetrieveKeyValuePair_DomainEntries(ctx context.Context, id []DomainHash, numOfRoutine int) ([]KeyValuePair, error)
+	RetrieveKeyValuePairDomainEntries(ctx context.Context, id []DomainHash, numOfRoutine int) ([]KeyValuePair, error)
 
 	// UpdateKeyValues_DomainEntries: Update a list of key-value pairs in domain entries table
-	UpdateKeyValues_DomainEntries(ctx context.Context, keyValuePairs []KeyValuePair) (error, int)
+	UpdateKeyValuesDomainEntries(ctx context.Context, keyValuePairs []KeyValuePair) (error, int)
 
 	// ************************************************************
 	//           Function for Updates table
 	// ************************************************************
 
 	// GetCountOfUpdatesDomains_Updates: Retrieve number of updated domains during this updates.
-	GetCountOfUpdatesDomains_Updates(ctx context.Context) (int, error)
+	GetCountOfUpdatesDomainsUpdates(ctx context.Context) (int, error)
 
 	// AddUpdatedDomainHashes_Updates: Add a list of hashes of updated domain into the updates table. If key exists, ignore it.
-	AddUpdatedDomainHashes_Updates(ctx context.Context, keys []DomainHash) (int, error)
+	AddUpdatedDomainHashesUpdates(ctx context.Context, keys []DomainHash) (int, error)
 
 	// TODO(yongzhe): investigate whether perQueryLimit is necessary
 	// RetrieveUpdatedDomainHashes_Updates: Retrieve all updated domain hashes from update table
-	RetrieveUpdatedDomainHashes_Updates(ctx context.Context, perQueryLimit int) ([]DomainHash, error)
+	RetrieveUpdatedDomainHashesUpdates(ctx context.Context, perQueryLimit int) ([]DomainHash, error)
 
 	// TruncateUpdatesTable_Updates: Truncate updates table; Called after updating is finished
-	TruncateUpdatesTable_Updates(ctx context.Context) error
+	TruncateUpdatesTableUpdates(ctx context.Context) error
 
 	// ************************************************************
 	//         Not used functions; Used for flatten tree
