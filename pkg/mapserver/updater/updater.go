@@ -162,7 +162,7 @@ func (mapUpdator *MapUpdater) fetchUpdatedDomainHash() ([]string, error) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	keys, err := mapUpdator.dbConn.RetrieveUpdatedDomainHashes_Updates(ctx, 100000)
+	keys, err := mapUpdator.dbConn.RetrieveUpdatedDomainHashes_Updates(ctx, readBatchSize)
 	if err != nil {
 		return nil, fmt.Errorf("fetchUpdatedDomainHash | RetrieveUpdatedDomainMultiThread | %w", err)
 	}
