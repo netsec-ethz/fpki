@@ -112,7 +112,6 @@ func getMapping(domainNames []string) (map[string][]*common.MapServerResponse, m
 func (mapResponder *MapResponder) getProofFromSMT(domainMap map[db.DomainHash]*common.MapServerResponse) ([]db.DomainHash, error) {
 	domainNameToFetchFromDB := []db.DomainHash{}
 	for key, value := range domainMap {
-		fmt.Println(key[:])
 		proof, isPoP, proofKey, ProofValue, err := mapResponder.smt.MerkleProof(key[:])
 		if err != nil {
 			return nil, fmt.Errorf("getProofFromSMT | MerkleProof | %w", err)
