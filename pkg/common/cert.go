@@ -26,7 +26,7 @@ func RsaPublicKeyToPemBytes(pubkey *rsa.PublicKey) ([]byte, error) {
 	), nil
 }
 
-// PemBytesToRsaPublicKey: unmarshall bytes to public key
+// PemBytesToRsaPublicKey: unmarshal bytes to public key
 func PemBytesToRsaPublicKey(pubkey []byte) (*rsa.PublicKey, error) {
 	block, _ := pem.Decode(pubkey)
 	if block == nil {

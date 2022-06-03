@@ -12,7 +12,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/policylog/client"
 )
 
-// TestPCAPolocyLog: Domain owner generate RCSR -> PCA sign RCSR and send RPC to policy log ->
+// TestPCAPolicyLog: Domain owner generate RCSR -> PCA sign RCSR and send RPC to policy log ->
 // Policy log adds the RPC, and return SPT -> PCA receives SPT and verifies the SPT
 func main() {
 	flag.Parse()
@@ -104,7 +104,7 @@ func main() {
 		panic(err)
 	}
 
-	if len(result.AddLeavesErrs) != 0 || len(result.RetriveLeavesErrs) != 0 {
+	if len(result.AddLeavesErrs) != 0 || len(result.RetrieveLeavesErrs) != 0 {
 		panic("queue error")
 	}
 

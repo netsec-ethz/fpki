@@ -97,7 +97,7 @@ func TestIssuanceOfPC(t *testing.T) {
 		Policies: []Policy{
 			{
 				TrustedCA: []string{
-					"hihihih", "I'm the test",
+					"hihihihi", "I'm the test",
 				},
 			},
 		},
@@ -113,8 +113,8 @@ func TestIssuanceOfPC(t *testing.T) {
 	domainRPC, err := X509CertFromFile("./testdata/clientcert.pem")
 	require.NoError(t, err, "X509CertFromFile error")
 
-	signedPC, err := CAVefiryPCAndSign(domainRPC, pc, pcaPrivKey, "pca", 16)
-	require.NoError(t, err, "CAVefiryPCAndSign error")
+	signedPC, err := CAVerifyPCAndSign(domainRPC, pc, pcaPrivKey, "pca", 16)
+	require.NoError(t, err, "CAVerifyPCAndSign error")
 
 	pcaCert, err := X509CertFromFile("./testdata/servercert.pem")
 	require.NoError(t, err, "X509CertFromFile error")

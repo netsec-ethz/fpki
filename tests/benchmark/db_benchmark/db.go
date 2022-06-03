@@ -96,7 +96,7 @@ func main() {
 		fmt.Println("DELETE ", i*1000, "time ", end.Sub(start))
 	}
 
-	// read ramdomly; should return nil
+	// read randomly; should return nil
 	for i := 0; i < 1000; i++ {
 		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 		defer cancelF()

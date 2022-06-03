@@ -24,22 +24,22 @@ func benchmark10MAccounts10Ktps(smt *trie.Trie) ([][]byte, [][]byte) {
 	allValues := [][]byte{}
 	for i := 0; i < 500; i++ {
 		fmt.Println("Iteration ", i, " ------------------------------")
-		newkeys := getFreshData(100000, 32)
-		newvalues := getFreshData(100000, 32)
-		allKeys = append(allKeys, newkeys...)
-		allValues = append(allValues, newvalues...)
+		newKeys := getFreshData(100000, 32)
+		newValues := getFreshData(100000, 32)
+		allKeys = append(allKeys, newKeys...)
+		allValues = append(allValues, newValues...)
 
 		start := time.Now()
-		smt.Update(newkeys, newvalues)
+		smt.Update(newKeys, newValues)
 		end := time.Now()
 		err := smt.Commit()
 		if err != nil {
 			panic(err)
 		}
 		end2 := time.Now()
-		for j, key := range newkeys {
+		for j, key := range newKeys {
 			val, _ := smt.Get(key)
-			if !bytes.Equal(val, newvalues[j]) {
+			if !bytes.Equal(val, newValues[j]) {
 				panic("new key not included")
 			}
 		}

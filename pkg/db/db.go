@@ -6,7 +6,7 @@ import (
 
 const batchSize = 1000
 
-// FullID: Key for faltten tree investigation
+// FullID: Key for flatten tree investigation
 type FullID [33]byte // first byte is depth -1 (root not allowed)
 
 // keyValueResult: used in worker thread; in multi-thread read

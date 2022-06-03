@@ -16,7 +16,7 @@ type newUpdates struct {
 }
 
 // UpdateDomainEntriesUsingRPCAndPC: update the domain entries table, given RPC and PC
-func (mapUpdator *MapUpdater) UpdateDomainEntriesUsingRPCAndPC(rpc []*projectCommon.RPC, pc []*projectCommon.PC, readerNum int) (int, error) {
+func (mapUpdater *MapUpdater) UpdateDomainEntriesUsingRPCAndPC(rpc []*projectCommon.RPC, pc []*projectCommon.PC, readerNum int) (int, error) {
 	if len(rpc) == 0 && len(pc) == 0 {
 		return 0, nil
 	}
@@ -28,7 +28,7 @@ func (mapUpdator *MapUpdater) UpdateDomainEntriesUsingRPCAndPC(rpc []*projectCom
 
 	// retrieve (possibly)affected domain entries from db
 	// It's possible that no records will be changed, because the certs are already recorded.
-	domainEntriesMap, err := mapUpdator.retrieveAffectedDomainFromDB(affectedDomainsMap, readerNum)
+	domainEntriesMap, err := mapUpdater.retrieveAffectedDomainFromDB(affectedDomainsMap, readerNum)
 	if err != nil {
 		return 0, fmt.Errorf("UpdateDomainEntriesUsingRPCAndPC | retrieveAffectedDomainFromDB | %w", err)
 	}
@@ -45,14 +45,14 @@ func (mapUpdator *MapUpdater) UpdateDomainEntriesUsingRPCAndPC(rpc []*projectCom
 		return 0, fmt.Errorf("UpdateDomainEntriesUsingRPCAndPC | getDomainEntriesToWrite | %w", err)
 	}
 
-	// serialise the domainEntry -> key-value pair
-	keyValuePairs, updatedDomainNames, err := serialiseUpdatedDomainEntries(domainEntriesToWrite)
+	// serialize the domainEntry -> key-value pair
+	keyValuePairs, updatedDomainNames, err := serializeUpdatedDomainEntries(domainEntriesToWrite)
 	if err != nil {
-		return 0, fmt.Errorf("UpdateDomainEntriesUsingRPCAndPC | serialiseUpdatedDomainEntries | %w", err)
+		return 0, fmt.Errorf("UpdateDomainEntriesUsingRPCAndPC | serializeUpdatedDomainEntries | %w", err)
 	}
 
 	// commit changes to db
-	return mapUpdator.writeChangesToDB(keyValuePairs, updatedDomainNames)
+	return mapUpdater.writeChangesToDB(keyValuePairs, updatedDomainNames)
 }
 
 // getAffectedDomainAndCertMapPCAndRPC: return a map of affected domains, and cert map
@@ -139,7 +139,7 @@ func updateDomainEntriesWithRPCAndPC(domainEntries map[db.DomainHash]*common.Dom
 			var domainNameHash db.DomainHash
 			copy(domainNameHash[:], projectCommon.SHA256Hash([]byte(domainName)))
 
-			// get domian entries
+			// get domain entries
 			domainEntry, ok := domainEntries[domainNameHash]
 			// if domain entry exists in the db
 			if ok {

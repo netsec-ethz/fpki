@@ -29,19 +29,19 @@ func main() {
 		panic(err)
 	}
 
-	// trancate table
+	// truncate table
 	_, err = db.Exec("TRUNCATE `fpki`.`domainEntries`;")
 	if err != nil {
 		panic(err)
 	}
 
-	// trancate table
+	// truncate table
 	_, err = db.Exec("TRUNCATE `fpki`.`tree`;")
 	if err != nil {
 		panic(err)
 	}
 
-	// trancate table
+	// truncate table
 	_, err = db.Exec("TRUNCATE `fpki`.`updates`;")
 	if err != nil {
 		panic(err)
@@ -91,7 +91,7 @@ func main() {
 	collectedCerts := []ctX509.Certificate{}
 	for i := 0; i < 500; i++ {
 		certList, err := getCerts("https://ct.googleapis.com/logs/argon2021", int64(2500000+i*20), int64(2500000+i*20+19))
-		fmt.Println("doanloading : ", int64(2500000+i*20), " - ", int64(2500000+i*20+19))
+		fmt.Println("downloading : ", int64(2500000+i*20), " - ", int64(2500000+i*20+19))
 		if err != nil {
 			panic(err)
 		}
@@ -177,19 +177,19 @@ func getCerts(ctURL string, start int64, end int64) ([]ctX509.Certificate, error
 parse_cert_loop:
 	for _, entry := range resultsCerLog.Entries {
 		leafBytes, _ := base64.RawStdEncoding.DecodeString(entry.LeafInput)
-		var merkelLeaf ct.MerkleTreeLeaf
-		ctTls.Unmarshal(leafBytes, &merkelLeaf)
+		var merkleLeaf ct.MerkleTreeLeaf
+		ctTls.Unmarshal(leafBytes, &merkleLeaf)
 
 		var certificate *ctX509.Certificate
-		switch entryType := merkelLeaf.TimestampedEntry.EntryType; entryType {
+		switch entryType := merkleLeaf.TimestampedEntry.EntryType; entryType {
 		case ct.X509LogEntryType:
-			certificate, err = ctX509.ParseCertificate(merkelLeaf.TimestampedEntry.X509Entry.Data)
+			certificate, err = ctX509.ParseCertificate(merkleLeaf.TimestampedEntry.X509Entry.Data)
 			if err != nil {
 				fmt.Println("ERROR: ParseCertificate ", err)
 				continue parse_cert_loop
 			}
 		case ct.PrecertLogEntryType:
-			certificate, err = ctX509.ParseTBSCertificate(merkelLeaf.TimestampedEntry.PrecertEntry.TBSCertificate)
+			certificate, err = ctX509.ParseTBSCertificate(merkleLeaf.TimestampedEntry.PrecertEntry.TBSCertificate)
 			if err != nil {
 				fmt.Println("ERROR: ParseTBSCertificate ", err)
 				continue parse_cert_loop

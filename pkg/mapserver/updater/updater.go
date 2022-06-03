@@ -153,19 +153,19 @@ func (mapUpdater *MapUpdater) UpdateRPCAndPC(ctUrl string, startIdx, endIdx int6
 }
 
 // CommitChanges: commit changes to DB
-func (mapUpdator *MapUpdater) CommitChanges() error {
-	err := mapUpdator.smt.Commit()
+func (mapUpdater *MapUpdater) CommitChanges() error {
+	err := mapUpdater.smt.Commit()
 	if err != nil {
 		return fmt.Errorf("CommitChanges | Commit | %w", err)
 	}
 	return nil
 }
 
-func (mapUpdator *MapUpdater) fetchUpdatedDomainHash() ([]db.DomainHash, error) {
+func (mapUpdater *MapUpdater) fetchUpdatedDomainHash() ([]db.DomainHash, error) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	keys, err := mapUpdator.dbConn.RetrieveUpdatedDomainHashesUpdates(ctx, readBatchSize)
+	keys, err := mapUpdater.dbConn.RetrieveUpdatedDomainHashesUpdates(ctx, readBatchSize)
 	if err != nil {
 		return nil, fmt.Errorf("fetchUpdatedDomainHash | RetrieveUpdatedDomainMultiThread | %w", err)
 	}
@@ -215,15 +215,15 @@ func (mapUpdater *MapUpdater) Close() error {
 }
 
 /*
-func (mapUpdator *MapUpdater) CollectCertsAndUpdate(ctUrl string, startIdx, endIdx int64) error {
-	numOfAffectedDomains, numOfUpdatedCerts, err := mapUpdator.logpicker.UpdateDomainFromLog(ctUrl, startIdx, endIdx, 30, 600)
+func (mapUpdater *MapUpdater) CollectCertsAndUpdate(ctUrl string, startIdx, endIdx int64) error {
+	numOfAffectedDomains, numOfUpdatedCerts, err := mapUpdater.logpicker.UpdateDomainFromLog(ctUrl, startIdx, endIdx, 30, 600)
 	if err != nil {
 		return fmt.Errorf("CollectCertsAndUpdate | UpdateDomainFromLog | %w", err)
 	}
 	fmt.Println("number of affected domains: ", numOfAffectedDomains)
 	fmt.Println("number of updated certs: ", numOfUpdatedCerts)
 
-	effectedDomains, err := mapUpdator.fetchUpdatedDomainIndex()
+	effectedDomains, err := mapUpdater.fetchUpdatedDomainIndex()
 	if err != nil {
 		return fmt.Errorf("CollectCertsAndUpdate | fetchUpdatedDomainIndex | %w", err)
 	}
@@ -233,7 +233,7 @@ func (mapUpdator *MapUpdater) CollectCertsAndUpdate(ctUrl string, startIdx, endI
 		return nil
 	}
 
-	updateInputs, err := mapUpdator.fetchDomainContent(effectedDomains)
+	updateInputs, err := mapUpdater.fetchDomainContent(effectedDomains)
 
 	keys := [][]byte{}
 	values := [][]byte{}
@@ -243,23 +243,23 @@ func (mapUpdator *MapUpdater) CollectCertsAndUpdate(ctUrl string, startIdx, endI
 		values = append(values, v.Value)
 	}
 
-	_, err = mapUpdator.smt.Update(keys, values)
+	_, err = mapUpdater.smt.Update(keys, values)
 	if err != nil {
 		return fmt.Errorf("CollectCertsAndUpdate | Update | %w", err)
 	}
 
 	// commit the changes to db
-	err = mapUpdator.smt.Commit()
+	err = mapUpdater.smt.Commit()
 	if err != nil {
 		return fmt.Errorf("CollectCertsAndUpdate | StoreUpdatedNode | %w", err)
 	}
-	// TODO(yongzhe): remove it later. for debuging onlu
-	mapUpdator.smt.PrintCacheSize()
+	// TODO(yongzhe): remove it later. for debugging only
+	mapUpdater.smt.PrintCacheSize()
 
 	return nil
 }
 
-func (mapUpdator *MapUpdater) fetchDomainContent(domainNames []string) ([]UpdateInput, error) {
+func (mapUpdater *MapUpdater) fetchDomainContent(domainNames []string) ([]UpdateInput, error) {
 	updateInputs := []UpdateInput{}
 
 	var querySB strings.Builder
@@ -309,7 +309,7 @@ func (mapUpdator *MapUpdater) fetchDomainContent(domainNames []string) ([]Update
 	return updateInputs, nil
 }
 
-func (mapUpdator *MapUpdater) fetchUpdatedDomainIndex() ([]string, error) {
+func (mapUpdater *MapUpdater) fetchUpdatedDomainIndex() ([]string, error) {
 	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/map?maxAllowedPacket=1073741824")
 	defer db.Close()
 	if err != nil {
@@ -335,7 +335,7 @@ func (mapUpdator *MapUpdater) fetchUpdatedDomainIndex() ([]string, error) {
 	// clear the table
 	_, err = db.Exec("TRUNCATE `map`.`updatedDomains`;")
 	if err != nil {
-		return nil, fmt.Errorf("fetchUpdatedDomainIndex | db.Exec TRANCATE | %w", err)
+		return nil, fmt.Errorf("fetchUpdatedDomainIndex | db.Exec TRUNCATE | %w", err)
 	}
 
 	return domainList, nil

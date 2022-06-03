@@ -22,9 +22,9 @@ type UpdateInput struct {
 func HashDomainEntriesThenSort(domainEntries []mapCommon.DomainEntry) ([]UpdateInput, error) {
 	result := []UpdateInput{}
 	for _, v := range domainEntries {
-		domainEntryBytes, err := mapCommon.SerialiseDomainEntry(&v)
+		domainEntryBytes, err := mapCommon.SerialisedDomainEntry(&v)
 		if err != nil {
-			return nil, fmt.Errorf("HashDomainEntriesThenSort | SerialiseDomainEnrty | %w", err)
+			return nil, fmt.Errorf("HashDomainEntriesThenSort | SerialisedDomainEntry | %w", err)
 		}
 		var domainHash db.DomainHash
 		copy(domainHash[:], common.SHA256Hash([]byte(v.DomainName)))

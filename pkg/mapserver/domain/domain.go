@@ -8,7 +8,7 @@ import (
 )
 
 // This go file includes the func for domain-related funcs
-// Motivation for this go file is to minimise the number of modifications of the domain entries in the db.
+// Motivation for this go file is to minimize the number of modifications of the domain entries in the db.
 // Some certificates have a large number of SANs, some even have 100 (maximum number of SANs for certificates) SAN.
 // But most of the SANs have a common prefix.
 
@@ -22,12 +22,12 @@ import (
 //  Example:
 //     common name:   example.com
 //     SANs: a.example.com email.example.com hotmail.example.com pki.example.com chat.example.com video.example.com ...
-// Output: Effectived domain: example.com
+// Output: Effective domain: example.com
 
 //  Example:
 //     common name:   example.com
 //     SANs: a.example.com email.example.com hotmail.example.com b.helloworld.com hotmail.helloworld.com
-// Output: Effectived domain: example.com, helloworld.com
+// Output: Effective domain: example.com, helloworld.com
 
 // extract the affected domain, given a list of domain name (common name + SANs)
 func ExtractAffectedDomains(domainNames []string) []string {

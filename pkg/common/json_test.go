@@ -35,12 +35,12 @@ func TestEncodeAndDecodeOfSPT(t *testing.T) {
 	err := JsonStrucToFile(spt, tempFile)
 	require.NoError(t, err, "Json Struc To File error")
 
-	deserlialisedSPT := &SPT{}
+	deserialisedSPT := &SPT{}
 
-	err = JsonFileToSPT(deserlialisedSPT, tempFile)
+	err = JsonFileToSPT(deserialisedSPT, tempFile)
 	require.NoError(t, err, "Json File To SPT error")
 
-	assert.True(t, deserlialisedSPT.Equal(*spt), "SPT serialise and deserialise error")
+	assert.True(t, deserialisedSPT.Equal(*spt), "SPT serialised and deserialised error")
 }
 
 // TestEncodeAndDecodeOfRPC: RPC -> files -> RPC
@@ -93,12 +93,12 @@ func TestEncodeAndDecodeOfRPC(t *testing.T) {
 	err := JsonStrucToFile(rpc, tempFile)
 	require.NoError(t, err, "Json Struc To File error")
 
-	deserlialisedSPT := &RPC{}
+	deserialisedSPT := &RPC{}
 
-	err = JsonFileToRPC(deserlialisedSPT, tempFile)
+	err = JsonFileToRPC(deserialisedSPT, tempFile)
 	require.NoError(t, err, "Json File To RPC error")
 
-	assert.True(t, deserlialisedSPT.Equal(rpc), "RPC serialise and deserialise error")
+	assert.True(t, deserialisedSPT.Equal(rpc), "RPC serialised and deserialised error")
 }
 
 // TestEncodeAndDecodeOfPC: PC -> file -> PC
@@ -137,10 +137,10 @@ func TestEncodeAndDecodeOfPC(t *testing.T) {
 	err := JsonStrucToFile(&pc, tempFile)
 	require.NoError(t, err, "Json Struc To File error")
 
-	deserlialisedPC := &PC{}
+	deserialisedPC := &PC{}
 
-	err = JsonFileToPC(deserlialisedPC, tempFile)
+	err = JsonFileToPC(deserialisedPC, tempFile)
 	require.NoError(t, err, "Json File To SPT error")
 
-	assert.True(t, deserlialisedPC.Equal(pc), "PC serialise and deserialise error")
+	assert.True(t, deserialisedPC.Equal(pc), "PC serialised and deserialised error")
 }

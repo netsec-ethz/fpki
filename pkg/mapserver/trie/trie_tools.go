@@ -11,7 +11,7 @@ import (
 )
 
 // LoadCache loads the first layers of the merkle tree given a root
-// This is called after a node restarts so that it doesnt become slow with db reads
+// This is called after a node restarts so that it doesn't become slow with db reads
 // LoadCache also updates the Root with the given root.
 func (s *Trie) LoadCache(root []byte) error {
 	if s.db.Store == nil {

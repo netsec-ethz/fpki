@@ -62,14 +62,14 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesUsingCerts(certs []*x509.Certif
 	end = time.Now()
 	fmt.Println("---time to getDomainEntriesToWrite:   ", end.Sub(start))
 
-	// serialise the domainEntry -> key-value pair
+	// serialised the domainEntry -> key-value pair
 	start = time.Now()
-	keyValuePairs, updatedDomainNameHashes, err := serialiseUpdatedDomainEntries(domainEntriesToWrite)
+	keyValuePairs, updatedDomainNameHashes, err := serializeUpdatedDomainEntries(domainEntriesToWrite)
 	if err != nil {
-		return 0, fmt.Errorf("UpdateDomainEntriesUsingCerts | serialiseUpdatedDomainEntries | %w", err)
+		return 0, fmt.Errorf("UpdateDomainEntriesUsingCerts | serializeUpdatedDomainEntries | %w", err)
 	}
 	end = time.Now()
-	fmt.Println("---time to serialiseUpdatedDomainEntries:   ", end.Sub(start))
+	fmt.Println("---time to serializeUpdatedDomainEntries:   ", end.Sub(start))
 
 	// commit changes to db
 	return mapUpdater.writeChangesToDB(keyValuePairs, updatedDomainNameHashes)
@@ -240,14 +240,14 @@ func getDomainEntriesToWrite(updatedDomain map[db.DomainHash]byte,
 	return result, nil
 }
 
-// serialise the updated domains
-func serialiseUpdatedDomainEntries(domainEntriesMap map[db.DomainHash]*mapCommon.DomainEntry) ([]db.KeyValuePair, []db.DomainHash, error) {
+// serialize the updated domains
+func serializeUpdatedDomainEntries(domainEntriesMap map[db.DomainHash]*mapCommon.DomainEntry) ([]db.KeyValuePair, []db.DomainHash, error) {
 	result := []db.KeyValuePair{}
 	updatedDomainNameHashes := []db.DomainHash{}
 	for domainNameHash, domainEntryBytes := range domainEntriesMap {
-		domainBytes, err := mapCommon.SerialiseDomainEntry(domainEntryBytes)
+		domainBytes, err := mapCommon.SerialisedDomainEntry(domainEntryBytes)
 		if err != nil {
-			return nil, nil, fmt.Errorf("serialiseUpdatedDomainEntries | SerialiseDomainEntry | %w", err)
+			return nil, nil, fmt.Errorf("serializeUpdatedDomainEntries | SerializeDomainEntry | %w", err)
 		}
 
 		result = append(result, db.KeyValuePair{Key: domainNameHash, Value: domainBytes})

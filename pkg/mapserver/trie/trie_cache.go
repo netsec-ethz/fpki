@@ -131,7 +131,7 @@ func (cacheDB *CacheDB) getValue(key []byte) ([]byte, error) {
 	return result.Value, nil
 }
 
-// serializeBatch serialises the 2D [][]byte into a []byte for db
+// serializeBatch serializes the 2D [][]byte into a []byte for db
 func serializeBatch(batch [][]byte) []byte {
 	serialized := make([]byte, 4) //, 30*33)
 	if batch[0][0] == 1 {

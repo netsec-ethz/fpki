@@ -108,8 +108,8 @@ func RCSRVerifySignature(rcsr *RCSR) error {
 	return nil
 }
 
-// RCSRVerifyRPCSIgnature: verify the RCSR using RPC; verify the RPC signature
-func RCSRVerifyRPCSIgnature(rcsr *RCSR, rpc *RPC) error {
+// RCSRVerifyRPCSignature: verify the RCSR using RPC; verify the RPC signature
+func RCSRVerifyRPCSignature(rcsr *RCSR, rpc *RPC) error {
 	rcsrCopy := &RCSR{
 		Subject:            rcsr.Subject,
 		Version:            rcsr.Version,
@@ -123,18 +123,18 @@ func RCSRVerifyRPCSIgnature(rcsr *RCSR, rpc *RPC) error {
 
 	serialisedStruc, err := JsonStrucToBytes(rcsrCopy)
 	if err != nil {
-		return fmt.Errorf("RCSRVerifyRPCSIgnature | JsonStrucToBytes | %w", err)
+		return fmt.Errorf("RCSRVerifyRPCSignature | JsonStrucToBytes | %w", err)
 	}
 
 	pubKey, err := PemBytesToRsaPublicKey(rpc.PublicKey)
 	if err != nil {
-		return fmt.Errorf("RCSRVerifyRPCSIgnature | PemBytesToRsaPublicKey | %w", err)
+		return fmt.Errorf("RCSRVerifyRPCSignature | PemBytesToRsaPublicKey | %w", err)
 	}
 
 	hashOutput := sha256.Sum256(serialisedStruc)
 	err = rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, hashOutput[:], rcsr.PRCSignature)
 	if err != nil {
-		return fmt.Errorf("RCSRVerifyRPCSIgnature | VerifyPKCS1v15 | %w", err)
+		return fmt.Errorf("RCSRVerifyRPCSignature | VerifyPKCS1v15 | %w", err)
 	}
 	return nil
 }
@@ -207,7 +207,7 @@ func RPCVerifyCASignature(caCert *x509.Certificate, rpc *RPC) error {
 //                               functions on PC
 // ----------------------------------------------------------------------------------
 // DomainOwnerSignPC: Used by domain owner to sign the PC
-func DomainOwnerSignPC(domainOnwerPrivKey *rsa.PrivateKey, pc *PC) error {
+func DomainOwnerSignPC(domainOwnerPrivKey *rsa.PrivateKey, pc *PC) error {
 	pc.SPTs = []SPT{}
 	pc.RootCertSignature = []byte{}
 	pc.CASignature = []byte{}
@@ -215,7 +215,7 @@ func DomainOwnerSignPC(domainOnwerPrivKey *rsa.PrivateKey, pc *PC) error {
 	pc.CAName = ""
 	pc.TimeStamp = time.Time{}
 
-	signature, err := SignStrucRSASHA256(pc, domainOnwerPrivKey)
+	signature, err := SignStrucRSASHA256(pc, domainOwnerPrivKey)
 	if err != nil {
 		return fmt.Errorf("DomainOwnerSignPC | SignStrucRSASHA256 | %w", err)
 	}
@@ -224,10 +224,10 @@ func DomainOwnerSignPC(domainOnwerPrivKey *rsa.PrivateKey, pc *PC) error {
 	return nil
 }
 
-//CAVefiryPCAndSign: verify the signature and sign the signature
-func CAVefiryPCAndSign(domainOnwerCert *x509.Certificate, pc PC, caPrivKey *rsa.PrivateKey, caName string, serialNum int) (PC, error) {
+//CAVerifyPCAndSign: verify the signature and sign the signature
+func CAVerifyPCAndSign(domainOwnerCert *x509.Certificate, pc PC, caPrivKey *rsa.PrivateKey, caName string, serialNum int) (PC, error) {
 	if len(pc.RootCertSignature) == 0 {
-		return PC{}, fmt.Errorf("CAVefiryPCAndSign | no valid signature")
+		return PC{}, fmt.Errorf("CAVerifyPCAndSign | no valid signature")
 	}
 
 	pcCopy := PC{
@@ -237,13 +237,13 @@ func CAVefiryPCAndSign(domainOnwerCert *x509.Certificate, pc PC, caPrivKey *rsa.
 
 	serialisedStruc, err := JsonStrucToBytes(&pcCopy)
 	if err != nil {
-		return PC{}, fmt.Errorf("CAVefiryPCAndSign | JsonStrucToBytes | %w", err)
+		return PC{}, fmt.Errorf("CAVerifyPCAndSign | JsonStrucToBytes | %w", err)
 	}
 
 	hashOutput := sha256.Sum256(serialisedStruc)
-	err = rsa.VerifyPKCS1v15(domainOnwerCert.PublicKey.(*rsa.PublicKey), crypto.SHA256, hashOutput[:], pc.RootCertSignature)
+	err = rsa.VerifyPKCS1v15(domainOwnerCert.PublicKey.(*rsa.PublicKey), crypto.SHA256, hashOutput[:], pc.RootCertSignature)
 	if err != nil {
-		return PC{}, fmt.Errorf("CAVefiryPCAndSign | VerifyPKCS1v15 | %w", err)
+		return PC{}, fmt.Errorf("CAVerifyPCAndSign | VerifyPKCS1v15 | %w", err)
 	}
 
 	pcCopy.RootCertSignature = pc.RootCertSignature
@@ -253,7 +253,7 @@ func CAVefiryPCAndSign(domainOnwerCert *x509.Certificate, pc PC, caPrivKey *rsa.
 
 	caSignature, err := SignStrucRSASHA256(&pcCopy, caPrivKey)
 	if err != nil {
-		return PC{}, fmt.Errorf("CAVefiryPCAndSign | SignStrucRSASHA256 | %w", err)
+		return PC{}, fmt.Errorf("CAVerifyPCAndSign | SignStrucRSASHA256 | %w", err)
 	}
 
 	pcCopy.CASignature = caSignature

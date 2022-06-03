@@ -26,11 +26,11 @@ type CAEntry struct {
 	DomainCerts      [][]byte
 }
 
-// SerialiseDomainEntry: DomainEntry -> bytes. Use json
-func SerialiseDomainEntry(domainEntry *DomainEntry) ([]byte, error) {
+// SerialisedDomainEntry: DomainEntry -> bytes. Use json
+func SerialisedDomainEntry(domainEntry *DomainEntry) ([]byte, error) {
 	result, err := json.Marshal(domainEntry)
 	if err != nil {
-		return nil, fmt.Errorf("SerialiseDomainEnrty | Marshal | %w", err)
+		return nil, fmt.Errorf("SerialisedDomainEntry | Marshal | %w", err)
 	}
 	return result, nil
 }
@@ -41,7 +41,7 @@ func DesrialiseDomainEntry(input []byte) (*DomainEntry, error) {
 
 	err := json.Unmarshal(input, result)
 	if err != nil {
-		return nil, fmt.Errorf("DesrialiseDomainEnrty | Unmarshal | %w", err)
+		return nil, fmt.Errorf("DesrialiseDomainEntry | Unmarshal | %w", err)
 	}
 	return result, nil
 }

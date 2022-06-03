@@ -38,7 +38,7 @@ func TestTrieUpdateAndGet(t *testing.T) {
 	// Add data to empty trie
 	keys := getFreshData(10, 32)
 	values := getFreshData(10, 32)
-	ch := make(chan mresult, 1)
+	ch := make(chan mResult, 1)
 	smt.update(smt.Root, keys, values, nil, 0, smt.TrieHeight, ch)
 	res := <-ch
 	root := res.update
@@ -54,7 +54,7 @@ func TestTrieUpdateAndGet(t *testing.T) {
 	// Append to the trie
 	newKeys := getFreshData(5, 32)
 	newValues := getFreshData(5, 32)
-	ch = make(chan mresult, 1)
+	ch = make(chan mResult, 1)
 	smt.update(root, newKeys, newValues, nil, 0, smt.TrieHeight, ch)
 	res = <-ch
 	newRoot := res.update
@@ -80,10 +80,10 @@ func TestTrieAtomicUpdate(t *testing.T) {
 	root, _ := smt.AtomicUpdate(keys, values)
 	updatedNb := len(smt.db.updatedNodes)
 	cacheNb := len(smt.db.liveCache)
-	newvalues := getFreshData(1, 32)
-	smt.AtomicUpdate(keys, newvalues)
+	newValues := getFreshData(1, 32)
+	smt.AtomicUpdate(keys, newValues)
 	if len(smt.db.updatedNodes) != 2*updatedNb {
-		t.Fatal("Atomic update doesnt store all tries")
+		t.Fatal("Atomic update doesn't store all tries")
 	}
 	if len(smt.db.liveCache) != cacheNb {
 		t.Fatal("Cache size should remain the same")
@@ -128,10 +128,10 @@ func TestTriePublicUpdateAndGet(t *testing.T) {
 	smt.Update(keys, newValues)
 
 	if len(smt.db.updatedNodes) != updatedNb {
-		t.Fatal("multiple updates don't actualise updated nodes")
+		t.Fatal("multiple updates don't actualize updated nodes")
 	}
 	if len(smt.db.liveCache) != cacheNb {
-		t.Fatal("multiple updates don't actualise liveCache")
+		t.Fatal("multiple updates don't actualize liveCache")
 	}
 	// Check all keys have been modified
 	for i, key := range keys {
@@ -197,7 +197,7 @@ func TestTrieMerkleProof(t *testing.T) {
 			t.Fatalf("failed to verify inclusion proof")
 		}
 		if !bytes.Equal(key, k) && !bytes.Equal(values[i], v) {
-			t.Fatalf("merkle proof didnt return the correct key-value pair")
+			t.Fatalf("merkle proof didn't return the correct key-value pair")
 		}
 	}
 	emptyKey := common.SHA256Hash([]byte("non-member"))
@@ -226,7 +226,7 @@ func TestTrieMerkleProofCompressed(t *testing.T) {
 			t.Fatalf("failed to verify inclusion proof")
 		}
 		if !bytes.Equal(key, k) && !bytes.Equal(values[i], v) {
-			t.Fatalf("merkle proof didnt return the correct key-value pair")
+			t.Fatalf("merkle proof didn't return the correct key-value pair")
 		}
 	}
 	emptyKey := common.SHA256Hash([]byte("non-member"))
@@ -266,7 +266,7 @@ func TestHeight0LeafShortcut(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(key1, k) && !bytes.Equal(values[1], v) {
-		t.Fatalf("merkle proof didnt return the correct key-value pair")
+		t.Fatalf("merkle proof didn't return the correct key-value pair")
 	}
 	if length != smt.TrieHeight {
 		t.Fatal("proof should have length equal to trie height for a leaf shortcut")
@@ -297,7 +297,7 @@ func TestHeight0LeafShortcut(t *testing.T) {
 		t.Fatal("proof should have length equal to trie height for a leaf shortcut")
 	}
 	if !bytes.Equal(key1, k) && !bytes.Equal(values[1], v) {
-		t.Fatalf("merkle proof didnt return the correct key-value pair")
+		t.Fatalf("merkle proof didn't return the correct key-value pair")
 	}
 }
 

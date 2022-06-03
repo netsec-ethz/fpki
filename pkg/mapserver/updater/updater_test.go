@@ -215,17 +215,17 @@ func TestCerts(t *testing.T) {
 			for newDomainHash, domainEntry := range domainEntriesMap {
 				if newDomainHash == domainHash {
 					assert.True(t, domainEntry.DomainName == domainName)
-					for _, calist := range domainEntry.CAEntry {
-						if calist.CAName == caName {
+					for _, caList := range domainEntry.CAEntry {
+						if caList.CAName == caName {
 							isFound := false
-							for _, newCert := range calist.DomainCerts {
+							for _, newCert := range caList.DomainCerts {
 								if bytes.Equal(newCert, cert.Raw) {
 									isFound = true
 								}
 							}
 							assert.True(t, isFound, "cert not found")
 						} else {
-							for _, newCert := range calist.DomainCerts {
+							for _, newCert := range caList.DomainCerts {
 								assert.False(t, bytes.Equal(newCert, cert.Raw), "cert should not be here")
 							}
 						}

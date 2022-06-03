@@ -11,7 +11,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/common"
 )
 
-// MerkleProof generates a Merke proof of inclusion or non-inclusion
+// MerkleProof generates a Merkle proof of inclusion or non-inclusion
 // for the current trie root
 // returns the audit path, bool (key included), key, value, error
 // (key,value) can be 1- (nil, value), value of the included key, 2- the kv of a LeafNode
@@ -20,11 +20,11 @@ import (
 func (s *Trie) MerkleProof(key []byte) ([][]byte, bool, []byte, []byte, error) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
-	s.atomicUpdate = false // so loadChildren doesnt return a copy
+	s.atomicUpdate = false // so loadChildren doesn't return a copy
 	return s.merkleProof(s.Root, key, nil, s.TrieHeight, 0)
 }
 
-// MerkleProofPast generates a Merke proof of inclusion or non-inclusion
+// MerkleProofPast generates a Merkle proof of inclusion or non-inclusion
 // for a given past trie root
 // returns the audit path, bool (key included), key, value, error
 // (key,value) can be 1- (nil, value), value of the included key, 2- the kv of a LeafNode
@@ -33,7 +33,7 @@ func (s *Trie) MerkleProof(key []byte) ([][]byte, bool, []byte, []byte, error) {
 func (s *Trie) MerkleProofR(key, root []byte) ([][]byte, bool, []byte, []byte, error) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
-	s.atomicUpdate = false // so loadChildren doesnt return a copy
+	s.atomicUpdate = false // so loadChildren doesn't return a copy
 	return s.merkleProof(root, key, nil, s.TrieHeight, 0)
 }
 
@@ -50,7 +50,7 @@ func (s *Trie) MerkleProofCompressed(key []byte) ([]byte, [][]byte, int, bool, [
 func (s *Trie) merkleProofCompressed(key, root []byte) ([]byte, [][]byte, int, bool, []byte, []byte, error) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
-	s.atomicUpdate = false // so loadChildren doesnt return a copy
+	s.atomicUpdate = false // so loadChildren doesn't return a copy
 	// create a regular merkle proof and then compress it
 	mpFull, included, proofKey, proofVal, err := s.merkleProof(root, key, nil, s.TrieHeight, 0)
 	if err != nil {
@@ -69,7 +69,7 @@ func (s *Trie) merkleProofCompressed(key, root []byte) ([]byte, [][]byte, int, b
 	return bitmap, mp, height, included, proofKey, proofVal, nil
 }
 
-// merkleProof generates a Merke proof of inclusion or non-inclusion
+// merkleProof generates a Merkle proof of inclusion or non-inclusion
 // for a given trie root.
 // returns the audit path, bool (key included), key, value, error
 // (key,value) can be 1- (nil, value), value of the included key, 2- the kv of a LeafNode
@@ -77,7 +77,7 @@ func (s *Trie) merkleProofCompressed(key, root []byte) ([]byte, [][]byte, int, b
 // with a DefaultLeaf on the path
 func (s *Trie) merkleProof(root, key []byte, batch [][]byte, height, iBatch int) ([][]byte, bool, []byte, []byte, error) {
 	if len(root) == 0 {
-		// proove that an empty subtree is on the path of the key
+		// prove that an empty subtree is on the path of the key
 		return nil, false, nil, nil, nil
 	}
 	// Fetch the children of the node

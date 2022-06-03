@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-//TestSerialisingDomainEntry: Serialising and deserialising of DomainEntry
-func TestSerialisingDomainEntry(t *testing.T) {
+//TestSerializingDomainEntry: Serializing and deserializing of DomainEntry
+func TestSerializingDomainEntry(t *testing.T) {
 	cert, err := common.X509CertFromFile("./testdata/cert.pem")
 	require.NoError(t, err, "X509CertFromFile error")
 
@@ -34,14 +34,14 @@ func TestSerialisingDomainEntry(t *testing.T) {
 	}
 
 	start := time.Now()
-	domainBytes, err := SerialiseDomainEntry(testDomainEntry)
-	require.NoError(t, err, "SerialiseDomainEnrty error")
+	domainBytes, err := SerialisedDomainEntry(testDomainEntry)
+	require.NoError(t, err, "SerialisedDomainEntry error")
 	end := time.Now()
 	fmt.Println(end.Sub(start))
 
 	start = time.Now()
 	testDomainEntryDeserialised, err := DesrialiseDomainEntry(domainBytes)
-	require.NoError(t, err, "DesrialiseDomainEnrty error")
+	require.NoError(t, err, "SerialisedDomainEntry error")
 	end = time.Now()
 	fmt.Println(end.Sub(start))
 

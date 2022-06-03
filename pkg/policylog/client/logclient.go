@@ -49,13 +49,13 @@ type QueueRPCResult struct {
 	// error list
 	AddLeavesErrs []error
 	// how many proofs are appended successfully
-	NumOfRetrivedLeaves int
-	// the bytes of leaves which are not retrived
-	FailToRetriveLeaves [][]byte
+	NumOfRetrievedLeaves int
+	// the bytes of leaves which are not retrieved
+	FailToRetrievedLeaves [][]byte
 	// name of the failed leaf; name is an identical name for every rpc; name = base64URLencode(hash(rpc))
-	FailToRetriveLeavesName []string
+	FailToRetrieveLeavesName []string
 	// error list
-	RetriveLeavesErrs []error
+	RetrieveLeavesErrs []error
 }
 
 // NewLogClient: creates a new LogClient given a tree ID.
@@ -193,10 +193,10 @@ func (c *LogClient) QueueRPCs(ctx context.Context, fileNames []string) (*QueueRP
 	fetchInclusionResult := c.FetchInclusions(ctx, data)
 
 	// precess fetch inclusion errors
-	queueRPCResult.NumOfRetrivedLeaves = len(fetchInclusionResult.PoIs)
-	queueRPCResult.FailToRetriveLeaves = fetchInclusionResult.FailedLeaves
-	queueRPCResult.FailToRetriveLeavesName = fetchInclusionResult.FailedLeavesName
-	queueRPCResult.RetriveLeavesErrs = fetchInclusionResult.Errs
+	queueRPCResult.NumOfRetrievedLeaves = len(fetchInclusionResult.PoIs)
+	queueRPCResult.FailToRetrievedLeaves = fetchInclusionResult.FailedLeaves
+	queueRPCResult.FailToRetrieveLeavesName = fetchInclusionResult.FailedLeavesName
+	queueRPCResult.RetrieveLeavesErrs = fetchInclusionResult.Errs
 
 	elapsed = time.Since(start)
 	fmt.Println("fetch proofs succeed!")
@@ -222,7 +222,7 @@ func (c *LogClient) QueueRPCs(ctx context.Context, fileNames []string) (*QueueRP
 // file -> RPC -> bytes
 func (c *LogClient) readRPCFromFileToBytes(fileNames []string) ([][]byte, error) {
 	data := [][]byte{}
-	// read SPT from "fileTranfer" folder
+	// read SPT from "fileTransfer" folder
 	for _, filaName := range fileNames {
 		filaPath := c.config.RPCPath + "/" + filaName
 
@@ -233,7 +233,7 @@ func (c *LogClient) readRPCFromFileToBytes(fileNames []string) ([][]byte, error)
 			return nil, fmt.Errorf("readRPCFromFileToBytes | JsonFileToRPC %w", err)
 		}
 
-		// serialise rpc
+		// serialize rpc
 		bytes, err := common.JsonStrucToBytes(rpc)
 		if err != nil {
 			return nil, fmt.Errorf("readRPCFromFileToBytes | JsonStrucToBytes: %w", err)
@@ -250,7 +250,7 @@ func (c *LogClient) storeProofMapToSPT(proofMap map[string]*PoIAndSTH) error {
 	for k, v := range proofMap {
 		proofBytes := [][]byte{}
 
-		// serialise proof to bytes
+		// serialize proof to bytes
 		for _, proof := range v.PoIs {
 			bytes, err := common.JsonStrucToBytes(proof)
 			if err != nil {
@@ -259,7 +259,7 @@ func (c *LogClient) storeProofMapToSPT(proofMap map[string]*PoIAndSTH) error {
 			proofBytes = append(proofBytes, bytes)
 		}
 
-		// serialise log root (signed tree head) to bytes
+		// serialize log root (signed tree head) to bytes
 		sth, err := common.JsonStrucToBytes(&v.STH)
 		if err != nil {
 			return fmt.Errorf("storeProofMapToSPT | JsonStrucToBytes: %w", err)
