@@ -53,7 +53,7 @@ func main() {
 
 	start := time.Now()
 	// download the certs and update the domain entries
-	err = mapUpdater.UpdateFromCT("https://ct.googleapis.com/logs/argon2021", 1120000, 1120999)
+	err = mapUpdater.UpdateFromCT("https://ct.googleapis.com/logs/argon2021", 1120000, 1120019)
 	if err != nil {
 		panic(err)
 	}
@@ -83,9 +83,9 @@ func main() {
 
 	// re-collect the added certs
 	collectedCertMap := []ctX509.Certificate{}
-	for i := 0; i < 50; i++ {
+	for i := 0; i < 1; i++ {
 		certList, err := getCerts("https://ct.googleapis.com/logs/argon2021", int64(1120000+i*20), int64(1120000+i*20+19))
-		fmt.Println("doanloading : ", int64(1120000+i*20), " - ", int64(1120000+i*20+19))
+		fmt.Println("downloading : ", int64(1120000+i*20), " - ", int64(1120000+i*20+19))
 		if err != nil {
 			panic(err)
 		}

@@ -83,6 +83,7 @@ func (mapUpdater *MapUpdater) UpdateFromCT(ctUrl string, startIdx, endIdx int64)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | RetrieveKeyValuePairMultiThread | %w", err)
 	}
+
 	end = time.Now()
 	fmt.Println("time to RetrieveKeyValuePairMultiThread   ", end.Sub(start))
 
@@ -93,6 +94,8 @@ func (mapUpdater *MapUpdater) UpdateFromCT(ctUrl string, startIdx, endIdx int64)
 	}
 	end = time.Now()
 	fmt.Println("time to keyValuePairToSMTInput            ", end.Sub(start))
+
+	//fmt.Println(len(keyInput))
 
 	start = time.Now()
 	_, err = mapUpdater.smt.Update(keyInput, valueInput)
@@ -107,7 +110,7 @@ func (mapUpdater *MapUpdater) UpdateFromCT(ctUrl string, startIdx, endIdx int64)
 }
 
 // UpdateRPCAndPC: update RPC and PC from url. Currently just download
-func (mapUpdator *MapUpdater) UpdateRPCAndPC(ctUrl string, startIdx, endIdx int64) error {
+func (mapUpdater *MapUpdater) UpdateRPCAndPC(ctUrl string, startIdx, endIdx int64) error {
 	// get PC and RPC first
 	pcList, rpcList, err := logpicker.GetPCAndRPC(ctUrl, startIdx, endIdx, 20)
 	if err != nil {
@@ -115,12 +118,12 @@ func (mapUpdator *MapUpdater) UpdateRPCAndPC(ctUrl string, startIdx, endIdx int6
 	}
 
 	// update the domain and
-	_, err = mapUpdator.UpdateDomainEntriesUsingRPCAndPC(rpcList, pcList, 10)
+	_, err = mapUpdater.UpdateDomainEntriesUsingRPCAndPC(rpcList, pcList, 10)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingRPCAndPC | %w", err)
 	}
 
-	updatedDomainHash, err := mapUpdator.fetchUpdatedDomainHash()
+	updatedDomainHash, err := mapUpdater.fetchUpdatedDomainHash()
 	if err != nil {
 		return fmt.Errorf("CollectCerts | fetchUpdatedDomainHash | %w", err)
 	}
@@ -129,7 +132,7 @@ func (mapUpdator *MapUpdater) UpdateRPCAndPC(ctUrl string, startIdx, endIdx int6
 	defer cancelF()
 
 	// fetch domains from DB
-	keyValuePairs, err := mapUpdator.dbConn.RetrieveKeyValuePair_DomainEntries(ctx, updatedDomainHash, 10)
+	keyValuePairs, err := mapUpdater.dbConn.RetrieveKeyValuePair_DomainEntries(ctx, updatedDomainHash, 10)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | RetrieveKeyValuePairMultiThread | %w", err)
 	}
@@ -140,7 +143,7 @@ func (mapUpdator *MapUpdater) UpdateRPCAndPC(ctUrl string, startIdx, endIdx int6
 	}
 
 	// update Sparse Merkle Tree
-	_, err = mapUpdator.smt.Update(keyInput, valueInput)
+	_, err = mapUpdater.smt.Update(keyInput, valueInput)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | Update | %w", err)
 	}
@@ -165,10 +168,12 @@ func (mapUpdator *MapUpdater) fetchUpdatedDomainHash() ([]db.DomainHash, error) 
 	if err != nil {
 		return nil, fmt.Errorf("fetchUpdatedDomainHash | RetrieveUpdatedDomainMultiThread | %w", err)
 	}
+
 	return keys, nil
 }
 
 func keyValuePairToSMTInput(keyValuePair []db.KeyValuePair) ([][]byte, [][]byte, error) {
+
 	updateInput := []UpdateInput{}
 
 	for _, pair := range keyValuePair {
@@ -183,8 +188,16 @@ func keyValuePairToSMTInput(keyValuePair []db.KeyValuePair) ([][]byte, [][]byte,
 	valueResult := [][]byte{}
 
 	for _, pair := range updateInput {
-		keyResult = append(keyResult, pair.Key[:])
+		// TODO(yongzhe): strange error
+		// if I do : append(keyResult, pair.Key[:]), the other elements in the slice will be affected
+		// Looks like the slice is storing the pointer of the value.
+		// However, append(valueResult, pair.Value) also works. I will have a look later
+		var newKey [32]byte
+		copy(newKey[:], pair.Key[:])
+		keyResult = append(keyResult, newKey[:])
+
 		valueResult = append(valueResult, pair.Value)
+
 	}
 
 	return keyResult, valueResult, nil

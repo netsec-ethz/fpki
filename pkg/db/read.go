@@ -183,7 +183,7 @@ func (c *mysqlDB) RetrieveUpdatedDomainHashes_Updates(ctx context.Context, perQu
 }
 
 func fetchKeyWorker(resultChan chan readKeyResult, start, end int, ctx context.Context, db *sql.DB) {
-	var key DomainHash
+	var key []byte
 	result := []DomainHash{}
 
 	stmt, err := db.Prepare("SELECT * FROM updates LIMIT " + strconv.Itoa(start) + "," + strconv.Itoa(end-start))
@@ -200,7 +200,9 @@ func fetchKeyWorker(resultChan chan readKeyResult, start, end int, ctx context.C
 		if err != nil {
 			resultChan <- readKeyResult{Err: fmt.Errorf("fetchKeyWorker | Scan | %w", err)}
 		}
-		result = append(result, key)
+		var key32bytes DomainHash
+		copy(key32bytes[:], key)
+		result = append(result, key32bytes)
 	}
 	stmt.Close()
 

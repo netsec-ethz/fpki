@@ -126,9 +126,12 @@ func testTrieMerkleProofAndReloadTree() {
 	smt1, err := trie.NewTrie(smt.Root, trie.Hasher, dbConn1)
 
 	for i, key_ := range keys {
-		ap_, _, k_, v_, _ := smt1.MerkleProof(key_)
+		ap_, included_, k_, v_, _ := smt1.MerkleProof(key_)
 		if !trie.VerifyInclusion(smt1.Root, ap_, key_, values[i]) {
 			panic("failed to verify new inclusion proof")
+		}
+		if !included_ {
+			panic("PoP failed")
 		}
 		if !bytes.Equal(key_, k_) && !bytes.Equal(values[i], v_) {
 			panic("new merkle proof didnt return the correct key-value pair")

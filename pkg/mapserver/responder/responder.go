@@ -88,13 +88,13 @@ func getMapping(domainNames []string) (map[string][]*common.MapServerResponse, m
 			// list of proofs for this domain
 			resultsList := []*common.MapServerResponse{}
 			subDomainNames, err := parseDomainName(domainName)
+
 			if err != nil {
 				return nil, nil, fmt.Errorf("getMapping | parseDomainName | %w", err)
 			}
 			for _, subDomainName := range subDomainNames {
-				domainHash := trie.Hasher([]byte(subDomainName))
-				domainHash32Bytes := db.DomainHash{}
-				copy(domainHash32Bytes[:], domainHash)
+				var domainHash32Bytes db.DomainHash
+				copy(domainHash32Bytes[:], trie.Hasher([]byte(subDomainName)))
 				subDomainResult, ok := domainProofMap[domainHash32Bytes]
 				if ok {
 					resultsList = append(resultsList, subDomainResult)
@@ -112,6 +112,7 @@ func getMapping(domainNames []string) (map[string][]*common.MapServerResponse, m
 func (mapResponder *MapResponder) getProofFromSMT(domainMap map[db.DomainHash]*common.MapServerResponse) ([]db.DomainHash, error) {
 	domainNameToFetchFromDB := []db.DomainHash{}
 	for key, value := range domainMap {
+		fmt.Println(key[:])
 		proof, isPoP, proofKey, ProofValue, err := mapResponder.smt.MerkleProof(key[:])
 		if err != nil {
 			return nil, fmt.Errorf("getProofFromSMT | MerkleProof | %w", err)

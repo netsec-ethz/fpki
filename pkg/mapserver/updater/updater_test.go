@@ -159,7 +159,6 @@ func TestCerts(t *testing.T) {
 	}
 
 	affectedDomainsMap, domainCertMap := getAffectedDomainAndCertMap(certs)
-	fmt.Println(affectedDomainsMap)
 
 	for _, cert := range certs {
 		domainNames := extractCertDomains(cert)
@@ -173,7 +172,6 @@ func TestCerts(t *testing.T) {
 		for _, affectedDomain := range affectedDomains {
 			var affectedNameHash db.DomainHash
 			copy(affectedNameHash[:], trie.Hasher([]byte(affectedDomain)))
-			fmt.Println(affectedNameHash)
 
 			_, ok := affectedDomainsMap[affectedNameHash]
 			assert.True(t, ok, "domain not found in affectedDomainsMap")
