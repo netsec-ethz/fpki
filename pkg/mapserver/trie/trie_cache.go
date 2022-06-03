@@ -7,7 +7,6 @@ package trie
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"sync"
@@ -77,7 +76,7 @@ func (cacheDB *CacheDB) commitChangesToDB() error {
 
 	updates := []db.KeyValuePair{}
 	for k, v := range cacheDB.updatedNodes {
-		updates = append(updates, db.KeyValuePair{Key: hex.EncodeToString(k[:]), Value: serializeBatch(v)})
+		updates = append(updates, db.KeyValuePair{Key: k, Value: serializeBatch(v)})
 	}
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
@@ -93,9 +92,9 @@ func (cacheDB *CacheDB) commitChangesToDB() error {
 	cacheDB.updatedNodes = make(map[Hash][][]byte)
 
 	if len(cacheDB.removedNode) > 0 {
-		keys := []string{}
+		keys := []db.DomainHash{}
 		for k := range cacheDB.removedNode {
-			keys = append(keys, hex.EncodeToString(k[:]))
+			keys = append(keys, k)
 		}
 		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 		defer cancelF()
@@ -119,7 +118,10 @@ func (cacheDB *CacheDB) getValue(key []byte) ([]byte, error) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	result, err := cacheDB.Store.RetrieveOneKeyValuePair_TreeStruc(ctx, hex.EncodeToString(key[:]))
+	key32Bytes := Hash{}
+	copy(key32Bytes[:], key)
+
+	result, err := cacheDB.Store.RetrieveOneKeyValuePair_TreeStruc(ctx, key32Bytes)
 	if err != nil {
 		return nil, fmt.Errorf("getValue | RetrieveOneKeyValuePair | %w", err)
 	}
@@ -159,17 +161,7 @@ func (db *CacheDB) Start() {
 	workerDistributor(db.ClientInput, workerChan)
 }
 
-// worker distributor func
-func workerDistributor(clientInpuht chan ReadRequest, workerChan chan ReadRequest) {
-	for {
-		select {
-		case newRequest := <-clientInpuht:
-			{
-				workerChan <- newRequest
-			}
-		}
-	}
-}
+
 
 // queries the data, and return the result to the client
 func workerThread(workerChan chan ReadRequest, db db.Conn, tableName string) {

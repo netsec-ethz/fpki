@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
@@ -13,7 +14,7 @@ import (
 // key: hash of domain name
 // value: hash of serilised DomainEntry
 type UpdateInput struct {
-	Key   []byte
+	Key   [32]byte
 	Value []byte
 }
 
@@ -21,12 +22,14 @@ type UpdateInput struct {
 func HashDomainEntriesThenSort(domainEntries []common.DomainEntry) ([]UpdateInput, error) {
 	result := []UpdateInput{}
 	for _, v := range domainEntries {
-		domainEntryBytes, err := common.SerialiseDomainEnrty(&v)
+		domainEntryBytes, err := common.SerialiseDomainEntry(&v)
 		if err != nil {
 			return nil, fmt.Errorf("HashDomainEntriesThenSort | SerialiseDomainEnrty | %w", err)
 		}
+		var domainHash db.DomainHash
+		copy(domainHash[:], trie.Hasher([]byte(v.DomainName)))
 		hashInput := UpdateInput{
-			Key:   trie.Hasher([]byte(v.DomainName)),
+			Key:   domainHash,
 			Value: trie.Hasher(domainEntryBytes),
 		}
 		result = append(result, hashInput)
@@ -34,7 +37,7 @@ func HashDomainEntriesThenSort(domainEntries []common.DomainEntry) ([]UpdateInpu
 
 	// sort according to key
 	sort.Slice(result, func(i, j int) bool {
-		return bytes.Compare(result[i].Key, result[j].Key) == -1
+		return bytes.Compare(result[i].Key[:], result[j].Key[:]) == -1
 	})
 
 	return result, nil

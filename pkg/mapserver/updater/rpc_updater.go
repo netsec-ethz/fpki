@@ -1,10 +1,10 @@
 package updater
 
 import (
-	"encoding/hex"
 	"fmt"
 
 	projectCommon "github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/domain"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
@@ -57,9 +57,9 @@ func (mapUpdator *MapUpdater) UpdateDomainEntriesUsingRPCAndPC(rpc []*projectCom
 }
 
 // getAffectedDomainAndCertMapPCAndRPC: return a map of affected domains, and cert map
-func getAffectedDomainAndCertMapPCAndRPC(rpc []*projectCommon.RPC, pc []*projectCommon.PC) (map[string]byte, map[string]*newUpdates) {
+func getAffectedDomainAndCertMapPCAndRPC(rpc []*projectCommon.RPC, pc []*projectCommon.PC) (map[db.DomainHash]byte, map[string]*newUpdates) {
 	// unique list of the updated domains
-	affectedDomainsMap := make(map[string]byte)
+	affectedDomainsMap := make(map[db.DomainHash]byte)
 	domainCertMap := make(map[string]*newUpdates)
 
 	// deal with RPC
@@ -70,7 +70,8 @@ func getAffectedDomainAndCertMapPCAndRPC(rpc []*projectCommon.RPC, pc []*project
 			continue
 		}
 
-		domainNameHash := hex.EncodeToString(trie.Hasher([]byte(domainName)))
+		var domainNameHash db.DomainHash
+		copy(domainNameHash[:], trie.Hasher([]byte(domainName)))
 
 		// attach domain hash to unique map
 		affectedDomainsMap[domainNameHash] = 1
@@ -89,7 +90,8 @@ func getAffectedDomainAndCertMapPCAndRPC(rpc []*projectCommon.RPC, pc []*project
 			continue
 		}
 
-		domainNameHash := hex.EncodeToString(trie.Hasher([]byte(domainName)))
+		var domainNameHash db.DomainHash
+		copy(domainNameHash[:], trie.Hasher([]byte(domainName)))
 
 		affectedDomainsMap[domainNameHash] = 1
 		certMapElement, ok := domainCertMap[domainName]
@@ -103,14 +105,16 @@ func getAffectedDomainAndCertMapPCAndRPC(rpc []*projectCommon.RPC, pc []*project
 }
 
 // update domain entries
-func updateDomainEntriesWithRPCAndPC(domainEntries map[string]*common.DomainEntry, certDomainMap map[string]*newUpdates) (map[string]byte, error) {
-	updatedDomainHash := make(map[string]byte)
+func updateDomainEntriesWithRPCAndPC(domainEntries map[db.DomainHash]*common.DomainEntry, certDomainMap map[string]*newUpdates) (map[db.DomainHash]byte, error) {
+	updatedDomainHash := make(map[db.DomainHash]byte)
 	// read from previous map
 	// the map records: domain - certs pair
 	// Which domain will be affected by which certificates
 	for domainName, updates := range certDomainMap {
 		for _, rpc := range updates.rpc {
-			domainNameHash := hex.EncodeToString(trie.Hasher([]byte(domainName)))
+			var domainNameHash db.DomainHash
+			copy(domainNameHash[:], trie.Hasher([]byte(domainName)))
+
 			// get domain entries
 			domainEntry, ok := domainEntries[domainNameHash]
 			// if domain entry exists in the db
@@ -133,7 +137,9 @@ func updateDomainEntriesWithRPCAndPC(domainEntries map[string]*common.DomainEntr
 		}
 
 		for _, pc := range updates.pc {
-			domainNameHash := hex.EncodeToString(trie.Hasher([]byte(domainName)))
+			var domainNameHash db.DomainHash
+			copy(domainNameHash[:], trie.Hasher([]byte(domainName)))
+
 			// get domian entries
 			domainEntry, ok := domainEntries[domainNameHash]
 			// if domain entry exists in the db

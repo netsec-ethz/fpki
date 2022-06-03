@@ -7,6 +7,8 @@ package trie
 
 import (
 	"bytes"
+
+	"github.com/netsec-ethz/fpki/pkg/db"
 )
 
 var (
@@ -19,7 +21,8 @@ const (
 	maxPastTries = 300
 )
 
-type Hash [HashLength]byte
+//type Hash [HashLength]byte
+type Hash = db.DomainHash
 
 func bitIsSet(bits []byte, i int) bool {
 	return bits[i/8]&(1<<uint(7-i%8)) != 0

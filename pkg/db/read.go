@@ -10,16 +10,16 @@ import (
 
 // used during main thread and worker thread
 type readKeyResult struct {
-	Keys []string
+	Keys []DomainHash
 	Err  error
 }
 
 // RetrieveOneKeyValuePair: Retrieve one single key-value pair
-func (c *mysqlDB) RetrieveOneKeyValuePair_TreeStruc(ctx context.Context, id string) (*KeyValuePair, error) {
+func (c *mysqlDB) RetrieveOneKeyValuePair_TreeStruc(ctx context.Context, key DomainHash) (*KeyValuePair, error) {
 	var value []byte
 	stmt := c.prepGetValueTree
 
-	result := stmt.QueryRow(id)
+	result := stmt.QueryRow(key[:])
 
 	err := result.Scan(&value)
 	if err != nil {
@@ -31,27 +31,27 @@ func (c *mysqlDB) RetrieveOneKeyValuePair_TreeStruc(ctx context.Context, id stri
 		}
 	}
 
-	return &KeyValuePair{Key: id, Value: value}, nil
+	return &KeyValuePair{Key: key, Value: value}, nil
 }
 
 // RetrieveKeyValuePairFromTreeStruc: Retrieve a list of key-value pairs from DB. Multi-threaded
-func (c *mysqlDB) RetrieveKeyValuePair_TreeStruc(ctx context.Context, id []string, numOfWorker int) ([]KeyValuePair, error) {
+func (c *mysqlDB) RetrieveKeyValuePair_TreeStruc(ctx context.Context, key []DomainHash, numOfWorker int) ([]KeyValuePair, error) {
 	stmt := c.prepGetValueTree
 
 	// if work is less than number of worker
-	if len(id) < numOfWorker {
-		numOfWorker = len(id)
+	if len(key) < numOfWorker {
+		numOfWorker = len(key)
 	}
 
-	count := len(id)
+	count := len(key)
 	step := count / numOfWorker
 
 	resultChan := make(chan keyValueResult)
 	for r := 0; r < numOfWorker-1; r++ {
-		go fetchKeyValuePairWorker(resultChan, id[r*step:r*step+step], stmt, ctx)
+		go fetchKeyValuePairWorker(resultChan, key[r*step:r*step+step], stmt, ctx)
 	}
 	// let the final one do the rest of the work
-	go fetchKeyValuePairWorker(resultChan, id[(numOfWorker-1)*step:count], stmt, ctx)
+	go fetchKeyValuePairWorker(resultChan, key[(numOfWorker-1)*step:count], stmt, ctx)
 
 	finishedWorker := 0
 	keyValuePairs := []KeyValuePair{}
@@ -68,23 +68,23 @@ func (c *mysqlDB) RetrieveKeyValuePair_TreeStruc(ctx context.Context, id []strin
 	return keyValuePairs, nil
 }
 
-func (c *mysqlDB) RetrieveKeyValuePair_DomainEntries(ctx context.Context, id []string, numOfWorker int) ([]KeyValuePair, error) {
+func (c *mysqlDB) RetrieveKeyValuePair_DomainEntries(ctx context.Context, key []DomainHash, numOfWorker int) ([]KeyValuePair, error) {
 	stmt := c.prepGetValueDomainEntries
 
 	// if work is less than number of worker
-	if len(id) < numOfWorker {
-		numOfWorker = len(id)
+	if len(key) < numOfWorker {
+		numOfWorker = len(key)
 	}
 
-	count := len(id)
+	count := len(key)
 	step := count / numOfWorker
 
 	resultChan := make(chan keyValueResult)
 	for r := 0; r < numOfWorker-1; r++ {
-		go fetchKeyValuePairWorker(resultChan, id[r*step:r*step+step], stmt, ctx)
+		go fetchKeyValuePairWorker(resultChan, key[r*step:r*step+step], stmt, ctx)
 	}
 	// let the final one do the rest of the work
-	go fetchKeyValuePairWorker(resultChan, id[(numOfWorker-1)*step:count], stmt, ctx)
+	go fetchKeyValuePairWorker(resultChan, key[(numOfWorker-1)*step:count], stmt, ctx)
 
 	finishedWorker := 0
 	keyValuePairs := []KeyValuePair{}
@@ -101,14 +101,14 @@ func (c *mysqlDB) RetrieveKeyValuePair_DomainEntries(ctx context.Context, id []s
 	return keyValuePairs, nil
 }
 
-func fetchKeyValuePairWorker(resultChan chan keyValueResult, keys []string, stmt *sql.Stmt, ctx context.Context) {
+func fetchKeyValuePairWorker(resultChan chan keyValueResult, keys []DomainHash, stmt *sql.Stmt, ctx context.Context) {
 	numOfWork := len(keys)
 	pairs := []KeyValuePair{}
 	var value []byte
 
 work_loop:
 	for i := 0; i < numOfWork; i++ {
-		result := stmt.QueryRow(keys[i])
+		result := stmt.QueryRow(keys[i][:])
 		err := result.Scan(&value)
 		if err != nil {
 			switch {
@@ -126,10 +126,10 @@ work_loop:
 }
 
 // RetrieveUpdatedDomainHashes: Get updated domains name hashes from updates table
-func (c *mysqlDB) RetrieveUpdatedDomainHashes_Updates(ctx context.Context, perQueryLimit int) ([]string, error) {
+func (c *mysqlDB) RetrieveUpdatedDomainHashes_Updates(ctx context.Context, perQueryLimit int) ([]DomainHash, error) {
 	count, err := c.GetCountOfUpdatesDomains_Updates(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("RetrieveUpdatedDomainHashes | RetrieveTableRowsCount | %w", err)
+		return nil, fmt.Errorf("RetrieveUpdatedDomainHashes_Updates | RetrieveTableRowsCount | %w", err)
 	}
 
 	// if work is less than number of worker
@@ -153,7 +153,7 @@ func (c *mysqlDB) RetrieveUpdatedDomainHashes_Updates(ctx context.Context, perQu
 	go fetchKeyWorker(resultChan, (numberOfWorker-1)*step, count+1, ctx, c.db)
 
 	finishedWorker := 0
-	keys := []string{}
+	keys := []DomainHash{}
 
 	// get response
 	for numberOfWorker > finishedWorker {
@@ -163,7 +163,7 @@ func (c *mysqlDB) RetrieveUpdatedDomainHashes_Updates(ctx context.Context, perQu
 			case newResult.Err == sql.ErrNoRows:
 				continue
 			case newResult.Err != sql.ErrNoRows:
-				return nil, fmt.Errorf("RetrieveUpdatedDomainHashes | %w", newResult.Err)
+				return nil, fmt.Errorf("RetrieveUpdatedDomainHashes_Updates | %w", newResult.Err)
 			}
 		}
 		keys = append(keys, newResult.Keys...)
@@ -171,20 +171,20 @@ func (c *mysqlDB) RetrieveUpdatedDomainHashes_Updates(ctx context.Context, perQu
 	}
 
 	if count != len(keys) {
-		return nil, fmt.Errorf("RetrieveUpdatedDomainName | incomplete fetching")
+		return nil, fmt.Errorf("RetrieveUpdatedDomainHashes_Updates | incomplete fetching")
 	}
 
 	err = c.TruncateUpdatesTable_Updates(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("RetrieveUpdatedDomainName | TruncateUpdatesTable | %w", err)
+		return nil, fmt.Errorf("RetrieveUpdatedDomainHashes_Updates | TruncateUpdatesTable | %w", err)
 	}
 
 	return keys, nil
 }
 
 func fetchKeyWorker(resultChan chan readKeyResult, start, end int, ctx context.Context, db *sql.DB) {
-	var key string
-	result := []string{}
+	var key DomainHash
+	result := []DomainHash{}
 
 	stmt, err := db.Prepare("SELECT * FROM updates LIMIT " + strconv.Itoa(start) + "," + strconv.Itoa(end-start))
 	if err != nil {

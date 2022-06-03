@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"strconv"
 	"time"
@@ -250,18 +249,20 @@ func getKeyValuePair(startIdx, endIdx int, content []byte) []db.KeyValuePair {
 	result := []db.KeyValuePair{}
 	for i := startIdx; i <= endIdx; i++ {
 		keyHash := trie.Hasher([]byte(strconv.Itoa(i)))
-		keyString := hex.EncodeToString(keyHash)
-		result = append(result, db.KeyValuePair{Key: keyString, Value: content})
+		keyHash32Bytes := [32]byte{}
+		copy(keyHash32Bytes[:], keyHash)
+		result = append(result, db.KeyValuePair{Key: keyHash32Bytes, Value: content})
 	}
 	return result
 }
 
-func getKeys(startIdx, endIdx int) []string {
-	result := []string{}
+func getKeys(startIdx, endIdx int) []db.DomainHash {
+	result := []db.DomainHash{}
 	for i := startIdx; i <= endIdx; i++ {
 		keyHash := trie.Hasher([]byte(strconv.Itoa(i)))
-		keyString := hex.EncodeToString(keyHash)
-		result = append(result, keyString)
+		keyHash32Bytes := [32]byte{}
+		copy(keyHash32Bytes[:], keyHash)
+		result = append(result, keyHash32Bytes)
 	}
 	return result
 }

@@ -34,7 +34,7 @@ func TestSerialisingDomainEntry(t *testing.T) {
 	}
 
 	start := time.Now()
-	domainBytes, err := SerialiseDomainEnrty(testDomainEntry)
+	domainBytes, err := SerialiseDomainEntry(testDomainEntry)
 	require.NoError(t, err, "SerialiseDomainEnrty error")
 	end := time.Now()
 	fmt.Println(end.Sub(start))

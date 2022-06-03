@@ -3,7 +3,6 @@ package updater
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
 	"fmt"
 	"sort"
 	"time"
@@ -14,13 +13,13 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
-// MapUpdater: map updator. It is responsible for updating the tree, and writing to db
+// MapUpdater: map updater. It is responsible for updating the tree, and writing to db
 type MapUpdater struct {
 	smt    *trie.Trie
 	dbConn db.Conn
 }
 
-// NewMapUpdater: return a new map updator. Input paras is similiar to NewMapResponder
+// NewMapUpdater: return a new map updater. Input paras is similar to NewMapResponder
 func NewMapUpdater(root []byte, cacheHeight int) (*MapUpdater, error) {
 	config := db.Configuration{
 		Dsn: "root@tcp(localhost)/fpki",
@@ -46,7 +45,7 @@ func NewMapUpdater(root []byte, cacheHeight int) (*MapUpdater, error) {
 
 // UpdateFromCT: download certs from ct log, update the domain entries and update the updates table, and SMT;
 // SMT not committed yet
-func (mapUpdator *MapUpdater) UpdateFromCT(ctUrl string, startIdx, endIdx int64) error {
+func (mapUpdater *MapUpdater) UpdateFromCT(ctUrl string, startIdx, endIdx int64) error {
 	fmt.Println("****** UpdateFromCT ******")
 	start := time.Now()
 	fmt.Println(startIdx, endIdx)
@@ -60,7 +59,7 @@ func (mapUpdator *MapUpdater) UpdateFromCT(ctUrl string, startIdx, endIdx int64)
 	start = time.Now()
 	fmt.Println()
 	fmt.Println(" ------UpdateDomainEntriesUsingCerts -----")
-	_, err = mapUpdator.UpdateDomainEntriesUsingCerts(certs, 10)
+	_, err = mapUpdater.UpdateDomainEntriesUsingCerts(certs, 10)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingCerts | %w", err)
 	}
@@ -69,7 +68,7 @@ func (mapUpdator *MapUpdater) UpdateFromCT(ctUrl string, startIdx, endIdx int64)
 	fmt.Println()
 
 	start = time.Now()
-	updatedDomainHash, err := mapUpdator.fetchUpdatedDomainHash()
+	updatedDomainHash, err := mapUpdater.fetchUpdatedDomainHash()
 	if err != nil {
 		return fmt.Errorf("CollectCerts | fetchUpdatedDomainHash | %w", err)
 	}
@@ -80,7 +79,7 @@ func (mapUpdator *MapUpdater) UpdateFromCT(ctUrl string, startIdx, endIdx int64)
 	defer cancelF()
 
 	start = time.Now()
-	keyValuePairs, err := mapUpdator.dbConn.RetrieveKeyValuePair_DomainEntries(ctx, updatedDomainHash, 10)
+	keyValuePairs, err := mapUpdater.dbConn.RetrieveKeyValuePair_DomainEntries(ctx, updatedDomainHash, 10)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | RetrieveKeyValuePairMultiThread | %w", err)
 	}
@@ -96,7 +95,7 @@ func (mapUpdator *MapUpdater) UpdateFromCT(ctUrl string, startIdx, endIdx int64)
 	fmt.Println("time to keyValuePairToSMTInput            ", end.Sub(start))
 
 	start = time.Now()
-	_, err = mapUpdator.smt.Update(keyInput, valueInput)
+	_, err = mapUpdater.smt.Update(keyInput, valueInput)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | Update | %w", err)
 	}
@@ -158,7 +157,7 @@ func (mapUpdator *MapUpdater) CommitChanges() error {
 	return nil
 }
 
-func (mapUpdator *MapUpdater) fetchUpdatedDomainHash() ([]string, error) {
+func (mapUpdator *MapUpdater) fetchUpdatedDomainHash() ([]db.DomainHash, error) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
@@ -173,22 +172,18 @@ func keyValuePairToSMTInput(keyValuePair []db.KeyValuePair) ([][]byte, [][]byte,
 	updateInput := []UpdateInput{}
 
 	for _, pair := range keyValuePair {
-		keyBytes, err := hex.DecodeString(pair.Key)
-		if err != nil {
-			return nil, nil, fmt.Errorf("keyValuePairToSMTInput | DecodeString | %w", err)
-		}
-		updateInput = append(updateInput, UpdateInput{Key: keyBytes, Value: trie.Hasher(pair.Value)})
+		updateInput = append(updateInput, UpdateInput{Key: pair.Key, Value: trie.Hasher(pair.Value)})
 	}
 
 	sort.Slice(updateInput, func(i, j int) bool {
-		return bytes.Compare(updateInput[i].Key, updateInput[j].Key) == -1
+		return bytes.Compare(updateInput[i].Key[:], updateInput[j].Key[:]) == -1
 	})
 
 	keyResult := [][]byte{}
 	valueResult := [][]byte{}
 
 	for _, pair := range updateInput {
-		keyResult = append(keyResult, pair.Key)
+		keyResult = append(keyResult, pair.Key[:])
 		valueResult = append(valueResult, pair.Value)
 	}
 

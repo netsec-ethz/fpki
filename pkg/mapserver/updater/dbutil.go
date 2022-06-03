@@ -10,11 +10,11 @@ import (
 )
 
 // retrieveAffectedDomainFromDB: get affected domain entries from db
-func (mapUpdator *MapUpdater) retrieveAffectedDomainFromDB(affectedDomainsMap map[string]byte,
-	readerNum int) (map[string]*common.DomainEntry, error) {
+func (mapUpdater *MapUpdater) retrieveAffectedDomainFromDB(affectedDomainsMap map[db.DomainHash]byte,
+	readerNum int) (map[db.DomainHash]*common.DomainEntry, error) {
 
 	// list of domain hashes to fetch the domain entries from db
-	affectedDomainHash := []string{}
+	affectedDomainHash := []db.DomainHash{}
 	for k := range affectedDomainsMap {
 		affectedDomainHash = append(affectedDomainHash, k)
 	}
@@ -23,7 +23,7 @@ func (mapUpdator *MapUpdater) retrieveAffectedDomainFromDB(affectedDomainsMap ma
 	defer cancelF()
 
 	// read key-value pair from DB
-	domainPair, err := mapUpdator.dbConn.RetrieveKeyValuePair_DomainEntries(ctx, affectedDomainHash, readerNum)
+	domainPair, err := mapUpdater.dbConn.RetrieveKeyValuePair_DomainEntries(ctx, affectedDomainHash, readerNum)
 	if err != nil {
 		return nil, fmt.Errorf("UpdateDomainEntries | RetrieveKeyValuePairMultiThread | %w", err)
 	}
@@ -37,18 +37,18 @@ func (mapUpdator *MapUpdater) retrieveAffectedDomainFromDB(affectedDomainsMap ma
 }
 
 // commit changes to db
-func (mapUpdator *MapUpdater) writeChangesToDB(updatesToDomainEntriesTable []db.KeyValuePair,
-	updatesToUpdatesTable []string) (int, error) {
+func (mapUpdater *MapUpdater) writeChangesToDB(updatesToDomainEntriesTable []db.KeyValuePair,
+	updatesToUpdatesTable []db.DomainHash) (int, error) {
 
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	err, _ := mapUpdator.dbConn.UpdateKeyValues_DomainEntries(ctx, updatesToDomainEntriesTable)
+	err, _ := mapUpdater.dbConn.UpdateKeyValues_DomainEntries(ctx, updatesToDomainEntriesTable)
 	if err != nil {
 		return 0, fmt.Errorf("writeToDomainEntriesTable | UpdateKeyValuePairBatches | %w", err)
 	}
 
-	_, err = mapUpdator.dbConn.AddUpdatedDomainHashes_Updates(ctx, updatesToUpdatesTable)
+	_, err = mapUpdater.dbConn.AddUpdatedDomainHashes_Updates(ctx, updatesToUpdatesTable)
 	if err != nil {
 		return 0, fmt.Errorf("writeToUpdateTable | InsertIgnoreKeyBatches | %w", err)
 	}
@@ -57,8 +57,8 @@ func (mapUpdator *MapUpdater) writeChangesToDB(updatesToDomainEntriesTable []db.
 }
 
 // domain bytes -> domain entries
-func parseDomainBytes(keyValuePairs []db.KeyValuePair) (map[string]*common.DomainEntry, error) {
-	result := make(map[string]*common.DomainEntry)
+func parseDomainBytes(keyValuePairs []db.KeyValuePair) (map[db.DomainHash]*common.DomainEntry, error) {
+	result := make(map[db.DomainHash]*common.DomainEntry)
 	for _, pair := range keyValuePairs {
 		newPair, err := common.DesrialiseDomainEnrty(pair.Value)
 		if err != nil {

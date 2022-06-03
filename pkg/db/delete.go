@@ -6,7 +6,7 @@ import (
 )
 
 // DeleteKeyValues: Delete a list of key-value store
-func (c *mysqlDB) DeleteKeyValues_TreeStruc(ctx context.Context, keys []string) error {
+func (c *mysqlDB) DeleteKeyValues_TreeStruc(ctx context.Context, keys []DomainHash) error {
 	dataLen := len(keys)
 	remainingDataLen := dataLen
 
@@ -18,7 +18,7 @@ func (c *mysqlDB) DeleteKeyValues_TreeStruc(ctx context.Context, keys []string) 
 		data := make([]interface{}, batchSize)
 
 		for j := 0; j < batchSize; j++ {
-			data[j] = keys[i*batchSize+j]
+			data[j] = keys[i*batchSize+j][:]
 		}
 
 		_, err := stmt.Exec(data...)
@@ -39,7 +39,7 @@ func (c *mysqlDB) DeleteKeyValues_TreeStruc(ctx context.Context, keys []string) 
 		data := make([]interface{}, remainingDataLen)
 
 		for j := 0; j < remainingDataLen; j++ {
-			data[j] = keys[dataLen-remainingDataLen+j]
+			data[j] = keys[dataLen-remainingDataLen+j][:]
 		}
 		_, err = stmt.Exec(data...)
 		if err != nil {

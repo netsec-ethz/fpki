@@ -41,7 +41,7 @@ func main() {
 		fmt.Println("iteration ", i, " current nodes: ", i, "k time ", end.Sub(start))
 	}
 
-	// read ramdomly
+	// read randomly
 	for i := 0; i < 1000; i++ {
 		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 		defer cancelF()
@@ -67,7 +67,6 @@ func main() {
 		defer cancelF()
 		start := time.Now()
 		for _, k := range keys {
-
 			result, err := conn.RetrieveOneKeyValuePair_TreeStruc(ctx, k)
 			if err != nil {
 				panic(err)
@@ -118,30 +117,10 @@ func main() {
 
 }
 
-func getKeyValuePair(startIdx, endIdx int, content []byte) []db.KeyValuePair {
-	result := []db.KeyValuePair{}
-	for i := startIdx; i <= endIdx; i++ {
-		keyHash := trie.Hasher([]byte(strconv.Itoa(i)))
-		keyString := hex.EncodeToString(keyHash)
-		result = append(result, db.KeyValuePair{Key: keyString, Value: content})
-	}
-	return result
-}
-
 func generateRandomBytes() []byte {
 	token := make([]byte, 1000)
 	rand.Read(token)
 	return token
-}
-
-func getKeys(startIdx, endIdx int) []string {
-	result := []string{}
-	for i := startIdx; i <= endIdx; i++ {
-		keyHash := trie.Hasher([]byte(strconv.Itoa(i)))
-		keyString := hex.EncodeToString(keyHash)
-		result = append(result, keyString)
-	}
-	return result
 }
 
 func getRandomKeys() []string {
@@ -150,6 +129,28 @@ func getRandomKeys() []string {
 		keyHash := trie.Hasher([]byte(strconv.Itoa(rand.Intn(900000))))
 		keyString := hex.EncodeToString(keyHash)
 		result = append(result, keyString)
+	}
+	return result
+}
+
+func getKeys(startIdx, endIdx int) []db.DomainHash {
+	result := []db.DomainHash{}
+	for i := startIdx; i <= endIdx; i++ {
+		keyHash := trie.Hasher([]byte(strconv.Itoa(i)))
+		keyHash32Bytes := [32]byte{}
+		copy(keyHash32Bytes[:], keyHash)
+		result = append(result, keyHash32Bytes)
+	}
+	return result
+}
+
+func getKeyValuePair(startIdx, endIdx int, content []byte) []db.KeyValuePair {
+	result := []db.KeyValuePair{}
+	for i := startIdx; i <= endIdx; i++ {
+		keyHash := trie.Hasher([]byte(strconv.Itoa(i)))
+		keyHash32Bytes := [32]byte{}
+		copy(keyHash32Bytes[:], keyHash)
+		result = append(result, db.KeyValuePair{Key: keyHash32Bytes, Value: content})
 	}
 	return result
 }

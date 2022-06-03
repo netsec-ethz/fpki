@@ -2,13 +2,13 @@ package updater
 
 import (
 	"bytes"
-	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"testing"
 	"time"
 
 	projectCommon "github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/db"
 
 	ctX509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
@@ -34,7 +34,8 @@ func TestRPCAndPC(t *testing.T) {
 
 	for _, pc := range pcList {
 		subjectName := pc.Subject
-		subjectNameHash := hex.EncodeToString(trie.Hasher([]byte(subjectName)))
+		var subjectNameHash db.DomainHash
+		copy(subjectNameHash[:], trie.Hasher([]byte(subjectName)))
 		_, ok := affectedDomainsMap[subjectNameHash]
 		assert.True(t, ok, "domain not found")
 
@@ -58,7 +59,9 @@ func TestRPCAndPC(t *testing.T) {
 
 	for _, rpc := range rpcList {
 		subjectName := rpc.Subject
-		subjectNameHash := hex.EncodeToString(trie.Hasher([]byte(subjectName)))
+		var subjectNameHash db.DomainHash
+		copy(subjectNameHash[:], trie.Hasher([]byte(subjectName)))
+
 		_, ok := affectedDomainsMap[subjectNameHash]
 		assert.True(t, ok, "domain not found")
 
@@ -80,7 +83,7 @@ func TestRPCAndPC(t *testing.T) {
 	}
 	assert.True(t, len(affectedDomainsMap) == len(domainCertMap))
 
-	domainEntriesMap := make(map[string]*common.DomainEntry)
+	domainEntriesMap := make(map[db.DomainHash]*common.DomainEntry)
 
 	updatedDomains, err := updateDomainEntriesWithRPCAndPC(domainEntriesMap, domainCertMap)
 	require.NoError(t, err, "updateDomainEntriesWithRPCAndPC error")
@@ -90,7 +93,8 @@ func TestRPCAndPC(t *testing.T) {
 	for _, pc := range pcList {
 		subjectName := pc.Subject
 		caName := pc.CAName
-		subjectNameHash := hex.EncodeToString(trie.Hasher([]byte(subjectName)))
+		var subjectNameHash db.DomainHash
+		copy(subjectNameHash[:], trie.Hasher([]byte(subjectName)))
 
 		for domainHash, domainEntry := range domainEntriesMap {
 			switch {
@@ -117,7 +121,8 @@ func TestRPCAndPC(t *testing.T) {
 	for _, rpc := range rpcList {
 		subjectName := rpc.Subject
 		caName := rpc.CAName
-		subjectNameHash := hex.EncodeToString(trie.Hasher([]byte(subjectName)))
+		var subjectNameHash db.DomainHash
+		copy(subjectNameHash[:], trie.Hasher([]byte(subjectName)))
 
 		for domainHash, domainEntry := range domainEntriesMap {
 			switch {
@@ -154,6 +159,7 @@ func TestCerts(t *testing.T) {
 	}
 
 	affectedDomainsMap, domainCertMap := getAffectedDomainAndCertMap(certs)
+	fmt.Println(affectedDomainsMap)
 
 	for _, cert := range certs {
 		domainNames := extractCertDomains(cert)
@@ -165,7 +171,11 @@ func TestCerts(t *testing.T) {
 
 		// check the correctness of affectedDomains
 		for _, affectedDomain := range affectedDomains {
-			_, ok := affectedDomainsMap[hex.EncodeToString(trie.Hasher([]byte(affectedDomain)))]
+			var affectedNameHash db.DomainHash
+			copy(affectedNameHash[:], trie.Hasher([]byte(affectedDomain)))
+			fmt.Println(affectedNameHash)
+
+			_, ok := affectedDomainsMap[affectedNameHash]
 			assert.True(t, ok, "domain not found in affectedDomainsMap")
 		}
 
@@ -186,7 +196,7 @@ func TestCerts(t *testing.T) {
 		}
 	}
 
-	domainEntriesMap := make(map[string]*common.DomainEntry)
+	domainEntriesMap := make(map[db.DomainHash]*common.DomainEntry)
 	updatedDomains, err := updateDomainEntries(domainEntriesMap, domainCertMap)
 	require.NoError(t, err, "updateDomainEntries")
 
@@ -202,7 +212,8 @@ func TestCerts(t *testing.T) {
 		}
 
 		for _, domainName := range affectedDomains {
-			domainHash := hex.EncodeToString(trie.Hasher([]byte(domainName)))
+			var domainHash db.DomainHash
+			copy(domainHash[:], trie.Hasher([]byte(domainName)))
 
 			for newDomainHash, domainEntry := range domainEntriesMap {
 				if newDomainHash == domainHash {
@@ -242,7 +253,7 @@ func TestUpdateSameCertTwice(t *testing.T) {
 
 	_, domainCertMap := getAffectedDomainAndCertMap(certs)
 
-	domainEntriesMap := make(map[string]*common.DomainEntry)
+	domainEntriesMap := make(map[db.DomainHash]*common.DomainEntry)
 	updatedDomains, err := updateDomainEntries(domainEntriesMap, domainCertMap)
 	require.NoError(t, err, "updateDomainEntries")
 
@@ -259,7 +270,7 @@ func TestUpdateSameRPCTwice(t *testing.T) {
 
 	_, domainCertMap := getAffectedDomainAndCertMapPCAndRPC(rpcList, pcList)
 
-	domainEntriesMap := make(map[string]*common.DomainEntry)
+	domainEntriesMap := make(map[db.DomainHash]*common.DomainEntry)
 
 	updatedDomains, err := updateDomainEntriesWithRPCAndPC(domainEntriesMap, domainCertMap)
 	require.NoError(t, err, "updateDomainEntriesWithRPCAndPC error")
