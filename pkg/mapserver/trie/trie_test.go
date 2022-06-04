@@ -334,6 +334,10 @@ func (d *MockDB) RetrieveOneKeyValuePairTreeStruc(ctx context.Context, id common
 	return nil, nil
 }
 
+func (d *MockDB) RetrieveOneKeyValuePairDomainEntries(ctx context.Context, key common.SHA256Output) (*db.KeyValuePair, error) {
+	return nil, nil
+}
+
 // RetrieveKeyValuePairFromTreeStruc: Retrieve a list of key-value pairs from Tree tables. Used by SMT lib.
 func (d *MockDB) RetrieveKeyValuePairTreeStruc(ctx context.Context, id []common.SHA256Output, numOfRoutine int) ([]db.KeyValuePair, error) {
 	return nil, nil

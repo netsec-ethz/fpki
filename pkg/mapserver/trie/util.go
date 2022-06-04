@@ -21,7 +21,7 @@ const (
 	maxPastTries = 300
 )
 
-//type Hash [HashLength]byte
+// alisa
 type Hash = common.SHA256Output
 
 func bitIsSet(bits []byte, i int) bool {

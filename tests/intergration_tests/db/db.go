@@ -150,7 +150,7 @@ func testKeyValueStore() {
 	keys = getKeys(1511, 2155)
 
 	// test for tree table
-	newKVPair = getKeyValuePair(1511, 2012, []byte("hi this is a test"))
+	newKVPair = getKeyValuePair(11511, 12012, []byte("hi this is a test"))
 	ctx, cancelF = context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
@@ -159,25 +159,25 @@ func testKeyValueStore() {
 		panic(err)
 	}
 
-	newKVPair = getKeyValuePair(2013, 2055, []byte("hi this is a test"))
+	newKVPair = getKeyValuePair(12013, 12055, []byte("hi this is a test"))
 	err, _ = conn.UpdateKeyValuesTreeStruc(ctx, newKVPair)
 	if err != nil {
 		panic(err)
 	}
 
-	newKVPair = getKeyValuePair(2056, 2155, []byte("hi this is a test"))
+	newKVPair = getKeyValuePair(12056, 12155, []byte("hi this is a test"))
 	err, _ = conn.UpdateKeyValuesTreeStruc(ctx, newKVPair)
 	if err != nil {
 		panic(err)
 	}
 
-	newKVPair = getKeyValuePair(2056, 4555, []byte("hi this is a test"))
+	newKVPair = getKeyValuePair(12056, 14555, []byte("hi this is a test"))
 	err, _ = conn.UpdateKeyValuesTreeStruc(ctx, newKVPair)
 	if err != nil {
 		panic(err)
 	}
 
-	keys = getKeys(1511, 4555)
+	keys = getKeys(11511, 14555)
 	keySize = len(keys)
 
 	result, err = conn.RetrieveKeyValuePairTreeStruc(ctx, keys, 10)
@@ -188,7 +188,7 @@ func testKeyValueStore() {
 		panic("key size error 1")
 	}
 
-	keys = getKeys(1511, 1511)
+	keys = getKeys(11511, 11511)
 	keySize = len(keys)
 
 	result, err = conn.RetrieveKeyValuePairTreeStruc(ctx, keys, 10)
@@ -199,7 +199,7 @@ func testKeyValueStore() {
 		panic("key size error 2")
 	}
 
-	keys = getKeys(1542, 1673)
+	keys = getKeys(11542, 11673)
 	keySize = len(keys)
 
 	result, err = conn.RetrieveKeyValuePairTreeStruc(ctx, keys, 10)
@@ -210,7 +210,7 @@ func testKeyValueStore() {
 		panic("key size error 3")
 	}
 
-	keys = getKeys(4555, 6000)
+	keys = getKeys(14555, 16000)
 	result, err = conn.RetrieveKeyValuePairTreeStruc(ctx, keys, 10)
 	if err != nil {
 		panic(err)
@@ -219,23 +219,23 @@ func testKeyValueStore() {
 		panic("key size error 4")
 	}
 
-	keys = getKeys(4575, 6000)
+	keys = getKeys(14575, 16000)
 	result, err = conn.RetrieveKeyValuePairTreeStruc(ctx, keys, 10)
 	if err != nil {
 		panic(err)
 	}
 	if len(result) != 0 {
-		panic("key size error 4")
+		panic("key size error 5")
 	}
 
-	keys = getKeys(1511, 2155)
+	keys = getKeys(11511, 12155)
 
 	err = conn.DeleteKeyValuesTreeStruc(ctx, keys)
 	if err != nil {
 		panic(err)
 	}
 
-	keys = getKeys(2056, 4555)
+	keys = getKeys(12056, 14555)
 
 	err = conn.DeleteKeyValuesTreeStruc(ctx, keys)
 	if err != nil {

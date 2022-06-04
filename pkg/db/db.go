@@ -18,8 +18,6 @@ type keyValueResult struct {
 }
 
 // KeyValuePair: key-value pair;
-// key: hex-encoded of domain name hash: hex.EncodeToString(SHA256(domain name))
-// TODO(yongzhe): change key to bytes
 type KeyValuePair struct {
 	Key   common.SHA256Output
 	Value []byte
@@ -49,6 +47,9 @@ type Conn interface {
 	// ************************************************************
 	//             Function for DomainEntries table
 	// ************************************************************
+
+	// RetrieveOneKeyValuePairDomainEntries: Retrieve one key-value pair from domain entries table
+	RetrieveOneKeyValuePairDomainEntries(ctx context.Context, id common.SHA256Output) (*KeyValuePair, error)
 
 	// RetrieveKeyValuePair_DomainEntries: Retrieve a list of domain entries table
 	RetrieveKeyValuePairDomainEntries(ctx context.Context, id []common.SHA256Output, numOfRoutine int) ([]KeyValuePair, error)
