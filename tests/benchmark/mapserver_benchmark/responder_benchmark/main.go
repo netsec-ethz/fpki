@@ -1,6 +1,5 @@
 package main
 
-/*
 import (
 	"bytes"
 	"context"
@@ -16,7 +15,6 @@ import (
 	ct "github.com/google/certificate-transparency-go"
 	ctTls "github.com/google/certificate-transparency-go/tls"
 	ctX509 "github.com/google/certificate-transparency-go/x509"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/responder"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 )
@@ -75,18 +73,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-
-	// used for multi-responder fetching; not useful...
-	responderGroup := []*responder.MapResponder{}
-
 	// only use one responder
-	for i := 0; i < 1; i++ {
-		newResponder, err := responder.NewMapResponder(root, 233)
-		if err != nil {
-			panic(err)
-		}
-		responderGroup = append(responderGroup, newResponder)
-	}
+	responder, err := responder.NewMapResponder(root, 233, 10)
 
 	// collect 10,000 certs, for proof fetching
 	collectedCerts := []ctX509.Certificate{}
@@ -101,14 +89,14 @@ func main() {
 		}
 	}
 
+	numOfWorker := 20
+
+	step := len(collectedCerts) / numOfWorker
 	fetchStartTime := time.Now()
 
-	wg.Add(1)
-	for i := 0; i < 1; i++ {
-		ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Minute)
-		defer cancelF()
-
-		go worker(collectedCerts[i:], responderGroup[i], ctx)
+	wg.Add(numOfWorker)
+	for i := 0; i < numOfWorker; i++ {
+		go collectProof(responder, collectedCerts[i*step:i*step+step-1])
 	}
 	wg.Wait()
 
@@ -116,34 +104,21 @@ func main() {
 	fmt.Println("time to fetch proofs: ", fetchEndTime.Sub(fetchStartTime))
 }
 
-// collect proof for every domain's Common Name
-func worker(certs []ctX509.Certificate, responder *responder.MapResponder, ctx context.Context) {
-	domainName := []string{}
+func collectProof(responder *responder.MapResponder, certs []ctX509.Certificate) {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
 
+	numOfQuery := 0
 	for _, cert := range certs {
 		if cert.Subject.CommonName != "" {
-			domainName = append(domainName, cert.Subject.CommonName)
-		}
-	}
-	proofMap, err := responder.GetDomainProofs(ctx, domainName)
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println("number of domains to fetch: ", len(proofMap))
-
-	for _, proofs := range proofMap {
-		isPoP := false
-		for _, proof := range proofs {
-			if proof.PoI.ProofType == common.PoP {
-				isPoP = true
+			_, err := responder.GetProof(ctx, cert.Subject.CommonName)
+			if err != nil {
+				panic(err)
 			}
-		}
-		if !isPoP {
-			panic("no PoP")
+			numOfQuery++
 		}
 	}
-
+	fmt.Println(numOfQuery)
 	wg.Done()
 }
 
@@ -200,4 +175,3 @@ parse_cert_loop:
 	}
 	return certList, nil
 }
-*/

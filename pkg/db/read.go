@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	//"time"
@@ -114,7 +115,10 @@ func (c *mysqlDB) RetrieveUpdatedDomainHashesUpdates(ctx context.Context, perQue
 
 func retrieveOneKeyValuePair(ctx context.Context, stmt *sql.Stmt, key common.SHA256Output) (*KeyValuePair, error) {
 	var value []byte
+	start := time.Now()
 	result := stmt.QueryRow(key[:])
+	end := time.Now()
+	fmt.Println(end.Sub(start))
 	err := result.Scan(&value)
 	if err != nil {
 		switch {
