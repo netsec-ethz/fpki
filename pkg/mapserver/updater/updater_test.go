@@ -8,10 +8,10 @@ import (
 	"time"
 
 	projectCommon "github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/domain"
 
 	ctX509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/domain"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/logpicker"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,6 +19,9 @@ import (
 
 //TestRPCAndPC: test if PC and RPC are correctly added
 func TestRPCAndPC(t *testing.T) {
+	parser, err := domain.NewDomainParser()
+	require.NoError(t, err)
+
 	start := time.Now()
 	pcList, rpcList, err := logpicker.GetPCAndRPC("./testdata/domain_list/domains.txt", 0, 0, 0)
 	require.NoError(t, err, "GetPCAndRPC error")
@@ -26,7 +29,7 @@ func TestRPCAndPC(t *testing.T) {
 	fmt.Println(end.Sub(start))
 
 	start = time.Now()
-	affectedDomainsMap, domainCertMap := getAffectedDomainAndCertMapPCAndRPC(rpcList, pcList)
+	affectedDomainsMap, domainCertMap := getAffectedDomainAndCertMapPCAndRPC(rpcList, pcList, parser)
 	end = time.Now()
 	fmt.Println(end.Sub(start))
 
@@ -146,6 +149,9 @@ func TestRPCAndPC(t *testing.T) {
 
 // TestCerts: test if certs are correctly added
 func TestCerts(t *testing.T) {
+	parser, err := domain.NewDomainParser()
+	require.NoError(t, err)
+
 	certs := []*ctX509.Certificate{}
 	// check if
 	files, err := ioutil.ReadDir("./testdata/certs/")
@@ -156,12 +162,12 @@ func TestCerts(t *testing.T) {
 		certs = append(certs, cert)
 	}
 
-	affectedDomainsMap, domainCertMap := getAffectedDomainAndCertMap(certs)
+	affectedDomainsMap, domainCertMap := getAffectedDomainAndCertMap(certs, parser)
 
 	for _, cert := range certs {
 		domainNames := extractCertDomains(cert)
 
-		affectedDomains := domain.ExtractAffectedDomains(domainNames)
+		affectedDomains := parser.ExtractAffectedDomains(domainNames)
 		if len(affectedDomains) == 0 {
 			continue
 		}
@@ -202,7 +208,7 @@ func TestCerts(t *testing.T) {
 		domainNames := extractCertDomains(cert)
 		caName := cert.Issuer.CommonName
 
-		affectedDomains := domain.ExtractAffectedDomains(domainNames)
+		affectedDomains := parser.ExtractAffectedDomains(domainNames)
 		if len(affectedDomains) == 0 {
 			continue
 		}
@@ -237,6 +243,9 @@ func TestCerts(t *testing.T) {
 
 // TestUpdateSameCertTwice: update the same certs twice, number of updates should be zero
 func TestUpdateSameCertTwice(t *testing.T) {
+	parser, err := domain.NewDomainParser()
+	require.NoError(t, err)
+
 	certs := []*ctX509.Certificate{}
 	// check if
 	files, err := ioutil.ReadDir("./testdata/certs/")
@@ -247,7 +256,7 @@ func TestUpdateSameCertTwice(t *testing.T) {
 		certs = append(certs, cert)
 	}
 
-	_, domainCertMap := getAffectedDomainAndCertMap(certs)
+	_, domainCertMap := getAffectedDomainAndCertMap(certs, parser)
 
 	domainEntriesMap := make(map[projectCommon.SHA256Output]*common.DomainEntry)
 	updatedDomains, err := updateDomainEntries(domainEntriesMap, domainCertMap)
@@ -264,7 +273,10 @@ func TestUpdateSameRPCTwice(t *testing.T) {
 	pcList, rpcList, err := logpicker.GetPCAndRPC("./testdata/domain_list/domains.txt", 0, 0, 0)
 	require.NoError(t, err, "GetPCAndRPC error")
 
-	_, domainCertMap := getAffectedDomainAndCertMapPCAndRPC(rpcList, pcList)
+	parser, err := domain.NewDomainParser()
+	require.NoError(t, err)
+
+	_, domainCertMap := getAffectedDomainAndCertMapPCAndRPC(rpcList, pcList, parser)
 
 	domainEntriesMap := make(map[projectCommon.SHA256Output]*common.DomainEntry)
 

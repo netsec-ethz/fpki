@@ -10,18 +10,25 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
+	"github.com/netsec-ethz/fpki/pkg/domain"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/logpicker"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
 // MapUpdater: map updater. It is responsible for updating the tree, and writing to db
 type MapUpdater struct {
-	smt    *trie.Trie
-	dbConn db.Conn
+	smt          *trie.Trie
+	dbConn       db.Conn
+	domainParser *domain.DomainParser
 }
 
 // NewMapUpdater: return a new map updater. Input paras is similar to NewMapResponder
 func NewMapUpdater(root []byte, cacheHeight int) (*MapUpdater, error) {
+	parser, err := domain.NewDomainParser()
+	if err != nil {
+		return nil, fmt.Errorf("NewMapUpdater | NewDomainParser | %w", err)
+	}
+
 	config := db.Configuration{
 		Dsn: "root@tcp(localhost)/fpki",
 		Values: map[string]string{
@@ -41,7 +48,7 @@ func NewMapUpdater(root []byte, cacheHeight int) (*MapUpdater, error) {
 	}
 	smt.CacheHeightLimit = cacheHeight
 
-	return &MapUpdater{smt: smt, dbConn: dbConn}, nil
+	return &MapUpdater{smt: smt, dbConn: dbConn, domainParser: parser}, nil
 }
 
 // UpdateFromCT: download certs from ct log, update the domain entries and update the updates table, and SMT;
@@ -95,8 +102,6 @@ func (mapUpdater *MapUpdater) UpdateFromCT(ctUrl string, startIdx, endIdx int64)
 	}
 	end = time.Now()
 	fmt.Println("time to keyValuePairToSMTInput            ", end.Sub(start))
-
-	//fmt.Println(len(keyInput))
 
 	start = time.Now()
 	_, err = mapUpdater.smt.Update(keyInput, valueInput)

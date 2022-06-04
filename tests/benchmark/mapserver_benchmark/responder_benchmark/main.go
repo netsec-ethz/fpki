@@ -171,6 +171,10 @@ parse_cert_loop:
 				continue parse_cert_loop
 			}
 		}
+
+		fmt.Println("-------------------------------------")
+		fmt.Println(certificate.Subject.CommonName)
+		fmt.Println(certificate.DNSNames)
 		certList = append(certList, *certificate)
 	}
 	return certList, nil

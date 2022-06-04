@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	projectCommon "github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/domain"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/domain"
 )
 
 // newUpdates: structure for updates
@@ -20,7 +20,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesUsingRPCAndPC(rpc []*projectCom
 		return 0, nil
 	}
 
-	affectedDomainsMap, domainCertMap := getAffectedDomainAndCertMapPCAndRPC(rpc, pc)
+	affectedDomainsMap, domainCertMap := getAffectedDomainAndCertMapPCAndRPC(rpc, pc, mapUpdater.domainParser)
 	if len(affectedDomainsMap) == 0 {
 		return 0, nil
 	}
@@ -55,7 +55,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesUsingRPCAndPC(rpc []*projectCom
 }
 
 // getAffectedDomainAndCertMapPCAndRPC: return a map of affected domains, and cert map
-func getAffectedDomainAndCertMapPCAndRPC(rpc []*projectCommon.RPC, pc []*projectCommon.PC) (map[projectCommon.SHA256Output]byte, map[string]*newUpdates) {
+func getAffectedDomainAndCertMapPCAndRPC(rpc []*projectCommon.RPC, pc []*projectCommon.PC, domainParser *domain.DomainParser) (map[projectCommon.SHA256Output]byte, map[string]*newUpdates) {
 	// unique list of the updated domains
 	affectedDomainsMap := make(map[projectCommon.SHA256Output]byte)
 	domainCertMap := make(map[string]*newUpdates)
@@ -63,8 +63,7 @@ func getAffectedDomainAndCertMapPCAndRPC(rpc []*projectCommon.RPC, pc []*project
 	// deal with RPC
 	for _, newRPC := range rpc {
 		domainName := newRPC.Subject
-		// do not record RPC for TLD
-		if domain.IsTLD(domainName) {
+		if !domainParser.IsValidDomain(domainName) {
 			continue
 		}
 
@@ -84,7 +83,7 @@ func getAffectedDomainAndCertMapPCAndRPC(rpc []*projectCommon.RPC, pc []*project
 	// deal with PC
 	for _, newPC := range pc {
 		domainName := newPC.Subject
-		if domain.IsTLD(domainName) {
+		if !domainParser.IsValidDomain(domainName) {
 			continue
 		}
 

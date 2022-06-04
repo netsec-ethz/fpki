@@ -9,8 +9,8 @@ import (
 	"github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
+	"github.com/netsec-ethz/fpki/pkg/domain"
 	mapCommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/domain"
 )
 
 // UpdateDomainEntriesUsingCerts: Update the domain entries using the domain certificates
@@ -20,7 +20,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesUsingCerts(certs []*x509.Certif
 	}
 
 	// get the unique list of affected domains
-	affectedDomainsMap, domainCertMap := getAffectedDomainAndCertMap(certs)
+	affectedDomainsMap, domainCertMap := getAffectedDomainAndCertMap(certs, mapUpdater.domainParser)
 
 	// if no domain to update
 	if len(affectedDomainsMap) == 0 {
@@ -79,7 +79,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesUsingCerts(certs []*x509.Certif
 // First return value: map of hashes of updated domain name. TODO(yongzhe): change this to a list maybe
 // Second return value: "domain name" -> certs. So later, one can look through the map to decide which certs to
 //     added to which domain.
-func getAffectedDomainAndCertMap(certs []*x509.Certificate) (map[common.SHA256Output]byte, map[string][]*x509.Certificate) {
+func getAffectedDomainAndCertMap(certs []*x509.Certificate, parser *domain.DomainParser) (map[common.SHA256Output]byte, map[string][]*x509.Certificate) {
 	// unique list of the updated domains
 	affectedDomainsMap := make(map[common.SHA256Output]byte)
 
@@ -95,7 +95,7 @@ func getAffectedDomainAndCertMap(certs []*x509.Certificate) (map[common.SHA256Ou
 		}
 
 		// get affected domains
-		affectedDomains := domain.ExtractAffectedDomains(domains)
+		affectedDomains := parser.ExtractAffectedDomains(domains)
 		if len(affectedDomains) == 0 {
 			continue
 		}

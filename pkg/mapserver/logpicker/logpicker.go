@@ -16,7 +16,7 @@ import (
 	"github.com/google/certificate-transparency-go/x509"
 	ctX509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/common"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/domain"
+	"github.com/netsec-ethz/fpki/pkg/domain"
 )
 
 // CertData: data structure of leaf from CT log
@@ -131,6 +131,10 @@ func getCerts(ctURL string, start int64, end int64) ([]*ctX509.Certificate, erro
 // GetPCAndRPC: get PC and RPC from url
 // TODO(yongzhe): currently just generate random PC and RPC using top 1k domain names
 func GetPCAndRPC(ctURL string, startIndex int64, endIndex int64, numOfWorker int) ([]*common.PC, []*common.RPC, error) {
+	domainParser, err := domain.NewDomainParser()
+	if err != nil {
+		return nil, nil, fmt.Errorf("GetPCAndRPC | NewDomainParser | %w", err)
+	}
 	resultPC := []*common.PC{}
 	resultRPC := []*common.RPC{}
 
@@ -145,7 +149,8 @@ func GetPCAndRPC(ctURL string, startIndex int64, endIndex int64, numOfWorker int
 	for scanner.Scan() {
 		domainName := scanner.Text()
 		// no policy for TLD
-		if domain.IsTLD(domainName) {
+		if !domainParser.IsValidDomain(domainName) {
+			fmt.Println("invalid domain name: ", domainName)
 			continue
 		}
 		resultPC = append(resultPC, &common.PC{

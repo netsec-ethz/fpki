@@ -6,8 +6,8 @@ import (
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
+	"github.com/netsec-ethz/fpki/pkg/domain"
 	mapCommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/domain"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
@@ -15,6 +15,7 @@ type responderWorker struct {
 	dbConn          db.Conn
 	smt             *trie.Trie
 	clientInputChan chan ClientRequest
+	domainParser    *domain.DomainParser
 }
 
 func (responderWorker *responderWorker) work() {
@@ -32,7 +33,7 @@ func (responderWorker *responderWorker) work() {
 func (responderWorker *responderWorker) getDomainProof(ctx context.Context, domainName string) ([]mapCommon.MapServerResponse, error) {
 	//start := time.Now()
 	proofsResult := []mapCommon.MapServerResponse{}
-	domainList, err := parseDomainName(domainName)
+	domainList, err := responderWorker.domainParser.ParseDomainName(domainName)
 	if err != nil {
 		return nil, fmt.Errorf("GetDomainProof | parseDomainName | %w", err)
 	}
@@ -138,26 +139,4 @@ func (responderWorker *responderWorker) getDomainProof(ctx context.Context, doma
 	*/
 
 	return proofsResult, nil
-}
-
-// parseDomainName: get the parent domain until E2LD, return a list of domains(remove the www. and *.)
-// eg: video.google.com -> video.google.com google.com
-// eg: *.google.com -> google.com
-// eg: www.google.com -> google.com
-func parseDomainName(domainName string) ([]string, error) {
-	result, err := domain.SplitE2LD(domainName)
-	resultString := []string{}
-	var domain string
-	if err != nil {
-		return nil, fmt.Errorf("parseDomainName | SplitE2LD | %w", err)
-	} else if len(result) == 0 {
-		return nil, fmt.Errorf("domain length is zero")
-	}
-	domain = result[len(result)-1]
-	resultString = append(resultString, domain)
-	for i := len(result) - 2; i >= 0; i-- {
-		domain = result[i] + "." + domain
-		resultString = append(resultString, domain)
-	}
-	return resultString, nil
 }
