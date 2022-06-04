@@ -36,7 +36,7 @@ func NewMapResponder(root []byte, cacheHeight int) (*MapResponder, error) {
 
 	dbConn, err := db.Connect(&config)
 	if err != nil {
-		return nil, fmt.Errorf("NewMapResponder | Connect_old | %w", err)
+		return nil, fmt.Errorf("NewMapResponder | Connect | %w", err)
 	}
 	smt, err := trie.NewTrie(root, common.SHA256Hash, dbConn)
 	if err != nil {
