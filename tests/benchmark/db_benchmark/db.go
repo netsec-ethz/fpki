@@ -32,7 +32,7 @@ func main() {
 		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 		defer cancelF()
 		start := time.Now()
-		err, _ = conn.UpdateKeyValuesTreeStruc(ctx, newKVPair)
+		_, err = conn.UpdateKeyValuesTreeStruc(ctx, newKVPair)
 		if err != nil {
 			panic(err)
 		}
@@ -87,7 +87,7 @@ func main() {
 		keys := getKeys(i*1000, i*1000+999)
 
 		start := time.Now()
-		err := conn.DeleteKeyValuesTreeStruc(ctx, keys)
+		_, err := conn.DeleteKeyValuesTreeStruc(ctx, keys)
 		if err != nil {
 			panic(err)
 		}

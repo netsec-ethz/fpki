@@ -22,11 +22,12 @@ import (
 // Currently two tables:
 // - DomainEntries table: used to store domain materials(certificates, PC, RPC, etc.)
 // - Tree table: store the SMT tree structure
-type TableName int
+type tableName int
 
 const (
-	DomainEntries TableName = iota
-	Tree          TableName = iota
+	DomainEntries tableName = iota
+	Tree          tableName = iota
+	Updates       tableName = iota
 )
 
 type mysqlDB struct {

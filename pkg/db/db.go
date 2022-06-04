@@ -39,10 +39,10 @@ type Conn interface {
 	RetrieveKeyValuePairTreeStruc(ctx context.Context, id []common.SHA256Output, numOfRoutine int) ([]KeyValuePair, error)
 
 	// UpdateKeyValues_TreeStruc: Update a list of key-value pairs in Tree table
-	UpdateKeyValuesTreeStruc(ctx context.Context, keyValuePairs []KeyValuePair) (error, int)
+	UpdateKeyValuesTreeStruc(ctx context.Context, keyValuePairs []KeyValuePair) (int, error)
 
 	// DeleteKeyValues_TreeStruc: Delete a list of key-value pairs in Tree table
-	DeleteKeyValuesTreeStruc(ctx context.Context, keys []common.SHA256Output) error
+	DeleteKeyValuesTreeStruc(ctx context.Context, keys []common.SHA256Output) (int, error)
 
 	// ************************************************************
 	//             Function for DomainEntries table
@@ -55,7 +55,7 @@ type Conn interface {
 	RetrieveKeyValuePairDomainEntries(ctx context.Context, id []common.SHA256Output, numOfRoutine int) ([]KeyValuePair, error)
 
 	// UpdateKeyValues_DomainEntries: Update a list of key-value pairs in domain entries table
-	UpdateKeyValuesDomainEntries(ctx context.Context, keyValuePairs []KeyValuePair) (error, int)
+	UpdateKeyValuesDomainEntries(ctx context.Context, keyValuePairs []KeyValuePair) (int, error)
 
 	// ************************************************************
 	//           Function for Updates table

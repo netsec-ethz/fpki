@@ -44,7 +44,7 @@ func (mapUpdater *MapUpdater) writeChangesToDB(updatesToDomainEntriesTable []db.
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	err, _ := mapUpdater.dbConn.UpdateKeyValuesDomainEntries(ctx, updatesToDomainEntriesTable)
+	_, err := mapUpdater.dbConn.UpdateKeyValuesDomainEntries(ctx, updatesToDomainEntriesTable)
 	if err != nil {
 		return 0, fmt.Errorf("writeToDomainEntriesTable | UpdateKeyValuePairBatches | %w", err)
 	}

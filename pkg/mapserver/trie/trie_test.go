@@ -353,16 +353,16 @@ func (d *MockDB) RetrieveUpdatedDomainHashesUpdates(ctx context.Context, perQuer
 
 func (d *MockDB) GetCountOfUpdatesDomainsUpdates(ctx context.Context) (int, error) { return 0, nil }
 
-func (d *MockDB) UpdateKeyValuesDomainEntries(ctx context.Context, keyValuePairs []db.KeyValuePair) (error, int) {
-	return nil, 0
+func (d *MockDB) UpdateKeyValuesDomainEntries(ctx context.Context, keyValuePairs []db.KeyValuePair) (int, error) {
+	return 0, nil
 }
 
-func (d *MockDB) UpdateKeyValuesTreeStruc(ctx context.Context, keyValuePairs []db.KeyValuePair) (error, int) {
-	return nil, 0
+func (d *MockDB) UpdateKeyValuesTreeStruc(ctx context.Context, keyValuePairs []db.KeyValuePair) (int, error) {
+	return 0, nil
 }
 
-func (d *MockDB) DeleteKeyValuesTreeStruc(ctx context.Context, keys []common.SHA256Output) error {
-	return nil
+func (d *MockDB) DeleteKeyValuesTreeStruc(ctx context.Context, keys []common.SHA256Output) (int, error) {
+	return 0, nil
 }
 
 func (d *MockDB) AddUpdatedDomainHashesUpdates(ctx context.Context, keys []common.SHA256Output) (int, error) {

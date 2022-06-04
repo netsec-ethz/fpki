@@ -83,7 +83,7 @@ func (cacheDB *CacheDB) commitChangesToDB() error {
 	defer cancelF()
 
 	updateStart := time.Now()
-	err, numOfWrites := cacheDB.Store.UpdateKeyValuesTreeStruc(ctx, updates)
+	numOfWrites, err := cacheDB.Store.UpdateKeyValuesTreeStruc(ctx, updates)
 	if err != nil {
 		return fmt.Errorf("commitChangesToDB | UpdateKeyValuePairBatches | %w", err)
 	}
@@ -101,7 +101,7 @@ func (cacheDB *CacheDB) commitChangesToDB() error {
 		defer cancelF()
 
 		start := time.Now()
-		err = cacheDB.Store.DeleteKeyValuesTreeStruc(ctx, keys)
+		_, err = cacheDB.Store.DeleteKeyValuesTreeStruc(ctx, keys)
 		if err != nil {
 			return fmt.Errorf("commitChangesToDB | DeleteKeyValuePairBatches | %w", err)
 		}
