@@ -13,6 +13,7 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 )
 
@@ -92,7 +93,7 @@ func (cacheDB *CacheDB) commitChangesToDB() error {
 	cacheDB.updatedNodes = make(map[Hash][][]byte)
 
 	if len(cacheDB.removedNode) > 0 {
-		keys := []db.DomainHash{}
+		keys := []common.SHA256Output{}
 		for k := range cacheDB.removedNode {
 			keys = append(keys, k)
 		}

@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	projectCommon "github.com/netsec-ethz/fpki/pkg/common"
-	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/domain"
 )
@@ -56,9 +55,9 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesUsingRPCAndPC(rpc []*projectCom
 }
 
 // getAffectedDomainAndCertMapPCAndRPC: return a map of affected domains, and cert map
-func getAffectedDomainAndCertMapPCAndRPC(rpc []*projectCommon.RPC, pc []*projectCommon.PC) (map[db.DomainHash]byte, map[string]*newUpdates) {
+func getAffectedDomainAndCertMapPCAndRPC(rpc []*projectCommon.RPC, pc []*projectCommon.PC) (map[projectCommon.SHA256Output]byte, map[string]*newUpdates) {
 	// unique list of the updated domains
-	affectedDomainsMap := make(map[db.DomainHash]byte)
+	affectedDomainsMap := make(map[projectCommon.SHA256Output]byte)
 	domainCertMap := make(map[string]*newUpdates)
 
 	// deal with RPC
@@ -69,7 +68,7 @@ func getAffectedDomainAndCertMapPCAndRPC(rpc []*projectCommon.RPC, pc []*project
 			continue
 		}
 
-		var domainNameHash db.DomainHash
+		var domainNameHash projectCommon.SHA256Output
 		copy(domainNameHash[:], projectCommon.SHA256Hash([]byte(domainName)))
 
 		// attach domain hash to unique map
@@ -89,7 +88,7 @@ func getAffectedDomainAndCertMapPCAndRPC(rpc []*projectCommon.RPC, pc []*project
 			continue
 		}
 
-		var domainNameHash db.DomainHash
+		var domainNameHash projectCommon.SHA256Output
 		copy(domainNameHash[:], projectCommon.SHA256Hash([]byte(domainName)))
 
 		affectedDomainsMap[domainNameHash] = 1
@@ -104,14 +103,14 @@ func getAffectedDomainAndCertMapPCAndRPC(rpc []*projectCommon.RPC, pc []*project
 }
 
 // update domain entries
-func updateDomainEntriesWithRPCAndPC(domainEntries map[db.DomainHash]*common.DomainEntry, certDomainMap map[string]*newUpdates) (map[db.DomainHash]byte, error) {
-	updatedDomainHash := make(map[db.DomainHash]byte)
+func updateDomainEntriesWithRPCAndPC(domainEntries map[projectCommon.SHA256Output]*common.DomainEntry, certDomainMap map[string]*newUpdates) (map[projectCommon.SHA256Output]byte, error) {
+	updatedDomainHash := make(map[projectCommon.SHA256Output]byte)
 	// read from previous map
 	// the map records: domain - certs pair
 	// Which domain will be affected by which certificates
 	for domainName, updates := range certDomainMap {
 		for _, rpc := range updates.rpc {
-			var domainNameHash db.DomainHash
+			var domainNameHash projectCommon.SHA256Output
 			copy(domainNameHash[:], projectCommon.SHA256Hash([]byte(domainName)))
 
 			// get domain entries
@@ -136,7 +135,7 @@ func updateDomainEntriesWithRPCAndPC(domainEntries map[db.DomainHash]*common.Dom
 		}
 
 		for _, pc := range updates.pc {
-			var domainNameHash db.DomainHash
+			var domainNameHash projectCommon.SHA256Output
 			copy(domainNameHash[:], projectCommon.SHA256Hash([]byte(domainName)))
 
 			// get domain entries

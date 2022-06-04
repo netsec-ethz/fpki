@@ -79,9 +79,9 @@ func (mapResponder *MapResponder) GetDomainProofs(ctx context.Context, domainNam
 	return domainResultMap, nil
 }
 
-func getMapping(domainNames []string) (map[string][]*mapCommon.MapServerResponse, map[db.DomainHash]*mapCommon.MapServerResponse, error) {
+func getMapping(domainNames []string) (map[string][]*mapCommon.MapServerResponse, map[common.SHA256Output]*mapCommon.MapServerResponse, error) {
 	domainResultMap := make(map[string][]*mapCommon.MapServerResponse)
-	domainProofMap := make(map[db.DomainHash]*mapCommon.MapServerResponse)
+	domainProofMap := make(map[common.SHA256Output]*mapCommon.MapServerResponse)
 
 	for _, domainName := range domainNames {
 		_, ok := domainResultMap[domainName]
@@ -94,7 +94,7 @@ func getMapping(domainNames []string) (map[string][]*mapCommon.MapServerResponse
 				return nil, nil, fmt.Errorf("getMapping | parseDomainName | %w", err)
 			}
 			for _, subDomainName := range subDomainNames {
-				var domainHash32Bytes db.DomainHash
+				var domainHash32Bytes common.SHA256Output
 				copy(domainHash32Bytes[:], common.SHA256Hash([]byte(subDomainName)))
 				subDomainResult, ok := domainProofMap[domainHash32Bytes]
 				if ok {
@@ -110,8 +110,8 @@ func getMapping(domainNames []string) (map[string][]*mapCommon.MapServerResponse
 	return domainResultMap, domainProofMap, nil
 }
 
-func (mapResponder *MapResponder) getProofFromSMT(domainMap map[db.DomainHash]*mapCommon.MapServerResponse) ([]db.DomainHash, error) {
-	domainNameToFetchFromDB := []db.DomainHash{}
+func (mapResponder *MapResponder) getProofFromSMT(domainMap map[common.SHA256Output]*mapCommon.MapServerResponse) ([]common.SHA256Output, error) {
+	domainNameToFetchFromDB := []common.SHA256Output{}
 	for key, value := range domainMap {
 		proof, isPoP, proofKey, ProofValue, err := mapResponder.smt.MerkleProof(key[:])
 		if err != nil {

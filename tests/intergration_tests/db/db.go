@@ -256,8 +256,8 @@ func getKeyValuePair(startIdx, endIdx int, content []byte) []db.KeyValuePair {
 	return result
 }
 
-func getKeys(startIdx, endIdx int) []db.DomainHash {
-	result := []db.DomainHash{}
+func getKeys(startIdx, endIdx int) []common.SHA256Output {
+	result := []common.SHA256Output{}
 	for i := startIdx; i <= endIdx; i++ {
 		keyHash := common.SHA256Hash([]byte(strconv.Itoa(i)))
 		keyHash32Bytes := [32]byte{}

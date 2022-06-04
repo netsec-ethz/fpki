@@ -330,20 +330,20 @@ func (d *MockDB) RetrieveNode(ctx context.Context, id db.FullID) ([]byte, []byte
 	return nil, nil, nil
 }
 
-func (d *MockDB) RetrieveOneKeyValuePairTreeStruc(ctx context.Context, id db.DomainHash) (*db.KeyValuePair, error) {
+func (d *MockDB) RetrieveOneKeyValuePairTreeStruc(ctx context.Context, id common.SHA256Output) (*db.KeyValuePair, error) {
 	return nil, nil
 }
 
 // RetrieveKeyValuePairFromTreeStruc: Retrieve a list of key-value pairs from Tree tables. Used by SMT lib.
-func (d *MockDB) RetrieveKeyValuePairTreeStruc(ctx context.Context, id []db.DomainHash, numOfRoutine int) ([]db.KeyValuePair, error) {
+func (d *MockDB) RetrieveKeyValuePairTreeStruc(ctx context.Context, id []common.SHA256Output, numOfRoutine int) ([]db.KeyValuePair, error) {
 	return nil, nil
 }
 
 // RetrieveKeyValuePairFromDomainEntries: Retrieve a list of domain entries
-func (d *MockDB) RetrieveKeyValuePairDomainEntries(ctx context.Context, id []db.DomainHash, numOfRoutine int) ([]db.KeyValuePair, error) {
+func (d *MockDB) RetrieveKeyValuePairDomainEntries(ctx context.Context, id []common.SHA256Output, numOfRoutine int) ([]db.KeyValuePair, error) {
 	return nil, nil
 }
-func (d *MockDB) RetrieveUpdatedDomainHashesUpdates(ctx context.Context, perQueryLimit int) ([]db.DomainHash, error) {
+func (d *MockDB) RetrieveUpdatedDomainHashesUpdates(ctx context.Context, perQueryLimit int) ([]common.SHA256Output, error) {
 	return nil, nil
 }
 
@@ -357,11 +357,11 @@ func (d *MockDB) UpdateKeyValuesTreeStruc(ctx context.Context, keyValuePairs []d
 	return nil, 0
 }
 
-func (d *MockDB) DeleteKeyValuesTreeStruc(ctx context.Context, keys []db.DomainHash) error {
+func (d *MockDB) DeleteKeyValuesTreeStruc(ctx context.Context, keys []common.SHA256Output) error {
 	return nil
 }
 
-func (d *MockDB) AddUpdatedDomainHashesUpdates(ctx context.Context, keys []db.DomainHash) (int, error) {
+func (d *MockDB) AddUpdatedDomainHashesUpdates(ctx context.Context, keys []common.SHA256Output) (int, error) {
 	return 0, nil
 }
 

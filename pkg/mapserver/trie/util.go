@@ -8,7 +8,7 @@ package trie
 import (
 	"bytes"
 
-	"github.com/netsec-ethz/fpki/pkg/db"
+	"github.com/netsec-ethz/fpki/pkg/common"
 )
 
 var (
@@ -22,7 +22,7 @@ const (
 )
 
 //type Hash [HashLength]byte
-type Hash = db.DomainHash
+type Hash = common.SHA256Output
 
 func bitIsSet(bits []byte, i int) bool {
 	return bits[i/8]&(1<<uint(7-i%8)) != 0

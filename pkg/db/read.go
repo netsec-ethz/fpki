@@ -5,17 +5,19 @@ import (
 	"database/sql"
 	"fmt"
 	"strconv"
+
+	"github.com/netsec-ethz/fpki/pkg/common"
 	//"time"
 )
 
 // used during main thread and worker thread
 type readKeyResult struct {
-	Keys []DomainHash
+	Keys []common.SHA256Output
 	Err  error
 }
 
 // RetrieveOneKeyValuePair: Retrieve one single key-value pair
-func (c *mysqlDB) RetrieveOneKeyValuePairTreeStruc(ctx context.Context, key DomainHash) (*KeyValuePair, error) {
+func (c *mysqlDB) RetrieveOneKeyValuePairTreeStruc(ctx context.Context, key common.SHA256Output) (*KeyValuePair, error) {
 	var value []byte
 	stmt := c.prepGetValueTree
 
@@ -35,7 +37,7 @@ func (c *mysqlDB) RetrieveOneKeyValuePairTreeStruc(ctx context.Context, key Doma
 }
 
 // RetrieveKeyValuePairFromTreeStruc: Retrieve a list of key-value pairs from DB. Multi-threaded
-func (c *mysqlDB) RetrieveKeyValuePairTreeStruc(ctx context.Context, key []DomainHash, numOfWorker int) ([]KeyValuePair, error) {
+func (c *mysqlDB) RetrieveKeyValuePairTreeStruc(ctx context.Context, key []common.SHA256Output, numOfWorker int) ([]KeyValuePair, error) {
 	stmt := c.prepGetValueTree
 
 	// if work is less than number of worker
@@ -68,7 +70,7 @@ func (c *mysqlDB) RetrieveKeyValuePairTreeStruc(ctx context.Context, key []Domai
 	return keyValuePairs, nil
 }
 
-func (c *mysqlDB) RetrieveKeyValuePairDomainEntries(ctx context.Context, key []DomainHash, numOfWorker int) ([]KeyValuePair, error) {
+func (c *mysqlDB) RetrieveKeyValuePairDomainEntries(ctx context.Context, key []common.SHA256Output, numOfWorker int) ([]KeyValuePair, error) {
 	stmt := c.prepGetValueDomainEntries
 
 	// if work is less than number of worker
@@ -101,7 +103,7 @@ func (c *mysqlDB) RetrieveKeyValuePairDomainEntries(ctx context.Context, key []D
 	return keyValuePairs, nil
 }
 
-func fetchKeyValuePairWorker(resultChan chan keyValueResult, keys []DomainHash, stmt *sql.Stmt, ctx context.Context) {
+func fetchKeyValuePairWorker(resultChan chan keyValueResult, keys []common.SHA256Output, stmt *sql.Stmt, ctx context.Context) {
 	numOfWork := len(keys)
 	pairs := []KeyValuePair{}
 	var value []byte
@@ -126,7 +128,7 @@ work_loop:
 }
 
 // RetrieveUpdatedDomainHashes: Get updated domains name hashes from updates table
-func (c *mysqlDB) RetrieveUpdatedDomainHashesUpdates(ctx context.Context, perQueryLimit int) ([]DomainHash, error) {
+func (c *mysqlDB) RetrieveUpdatedDomainHashesUpdates(ctx context.Context, perQueryLimit int) ([]common.SHA256Output, error) {
 	count, err := c.GetCountOfUpdatesDomainsUpdates(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("RetrieveUpdatedDomainHashes_Updates | RetrieveTableRowsCount | %w", err)
@@ -153,7 +155,7 @@ func (c *mysqlDB) RetrieveUpdatedDomainHashesUpdates(ctx context.Context, perQue
 	go fetchKeyWorker(resultChan, (numberOfWorker-1)*step, count+1, ctx, c.db)
 
 	finishedWorker := 0
-	keys := []DomainHash{}
+	keys := []common.SHA256Output{}
 
 	// get response
 	for numberOfWorker > finishedWorker {
@@ -184,7 +186,7 @@ func (c *mysqlDB) RetrieveUpdatedDomainHashesUpdates(ctx context.Context, perQue
 
 func fetchKeyWorker(resultChan chan readKeyResult, start, end int, ctx context.Context, db *sql.DB) {
 	var key []byte
-	result := []DomainHash{}
+	result := []common.SHA256Output{}
 
 	stmt, err := db.Prepare("SELECT * FROM updates LIMIT " + strconv.Itoa(start) + "," + strconv.Itoa(end-start))
 	if err != nil {
@@ -200,7 +202,7 @@ func fetchKeyWorker(resultChan chan readKeyResult, start, end int, ctx context.C
 		if err != nil {
 			resultChan <- readKeyResult{Err: fmt.Errorf("fetchKeyWorker | Scan | %w", err)}
 		}
-		var key32bytes DomainHash
+		var key32bytes common.SHA256Output
 		copy(key32bytes[:], key)
 		result = append(result, key32bytes)
 	}

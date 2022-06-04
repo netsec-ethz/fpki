@@ -3,6 +3,8 @@ package db
 import (
 	"context"
 	"fmt"
+
+	"github.com/netsec-ethz/fpki/pkg/common"
 )
 
 // UpdateKeyValues_DomainEntries: Update a list of key-value store
@@ -100,7 +102,7 @@ func (c *mysqlDB) UpdateKeyValuesTreeStruc(ctx context.Context, keyValuePairs []
 }
 
 // InsertIgnoreKeyBatches: Insert a list of keys into the updates table. If key exists, ignore it.
-func (c *mysqlDB) AddUpdatedDomainHashesUpdates(ctx context.Context, keys []DomainHash) (int, error) {
+func (c *mysqlDB) AddUpdatedDomainHashesUpdates(ctx context.Context, keys []common.SHA256Output) (int, error) {
 	dataLen := len(keys)
 	remainingDataLen := dataLen
 

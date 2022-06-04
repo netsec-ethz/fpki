@@ -161,7 +161,7 @@ func (mapUpdater *MapUpdater) CommitChanges() error {
 	return nil
 }
 
-func (mapUpdater *MapUpdater) fetchUpdatedDomainHash() ([]db.DomainHash, error) {
+func (mapUpdater *MapUpdater) fetchUpdatedDomainHash() ([]common.SHA256Output, error) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 

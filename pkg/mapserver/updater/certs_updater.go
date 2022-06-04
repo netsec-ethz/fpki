@@ -79,9 +79,9 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesUsingCerts(certs []*x509.Certif
 // First return value: map of hashes of updated domain name. TODO(yongzhe): change this to a list maybe
 // Second return value: "domain name" -> certs. So later, one can look through the map to decide which certs to
 //     added to which domain.
-func getAffectedDomainAndCertMap(certs []*x509.Certificate) (map[db.DomainHash]byte, map[string][]*x509.Certificate) {
+func getAffectedDomainAndCertMap(certs []*x509.Certificate) (map[common.SHA256Output]byte, map[string][]*x509.Certificate) {
 	// unique list of the updated domains
-	affectedDomainsMap := make(map[db.DomainHash]byte)
+	affectedDomainsMap := make(map[common.SHA256Output]byte)
 
 	// map to map "domain name" -> certs list(certs to be added to this domain).
 	domainCertMap := make(map[string][]*x509.Certificate)
@@ -101,7 +101,7 @@ func getAffectedDomainAndCertMap(certs []*x509.Certificate) (map[db.DomainHash]b
 		}
 
 		for _, domainName := range affectedDomains {
-			var domainNameHash db.DomainHash
+			var domainNameHash common.SHA256Output
 			copy(domainNameHash[:], common.SHA256Hash([]byte(domainName)))
 
 			affectedDomainsMap[domainNameHash] = 1
@@ -137,17 +137,17 @@ func extractCertDomains(cert *x509.Certificate) []string {
 }
 
 // update domain entries
-func updateDomainEntries(domainEntries map[db.DomainHash]*mapCommon.DomainEntry,
-	certDomainMap map[string][]*x509.Certificate) (map[db.DomainHash]byte, error) {
+func updateDomainEntries(domainEntries map[common.SHA256Output]*mapCommon.DomainEntry,
+	certDomainMap map[string][]*x509.Certificate) (map[common.SHA256Output]byte, error) {
 
-	updatedDomainHash := make(map[db.DomainHash]byte)
+	updatedDomainHash := make(map[common.SHA256Output]byte)
 	// read from previous map
 	// the map records: domain - certs pair
 	// Which domain will be affected by which certificates
 	for domainName, certs := range certDomainMap {
 		//iterStart := time.Now()
 		for _, cert := range certs {
-			var domainNameHash db.DomainHash
+			var domainNameHash common.SHA256Output
 			copy(domainNameHash[:], common.SHA256Hash([]byte(domainName)))
 			// get domain entries
 			domainEntry, ok := domainEntries[domainNameHash]
@@ -225,10 +225,10 @@ ca_entry_loop:
 }
 
 // get updated domains, and extract the corresponding domain bytes
-func getDomainEntriesToWrite(updatedDomain map[db.DomainHash]byte,
-	domainEntries map[db.DomainHash]*mapCommon.DomainEntry) (map[db.DomainHash]*mapCommon.DomainEntry, error) {
+func getDomainEntriesToWrite(updatedDomain map[common.SHA256Output]byte,
+	domainEntries map[common.SHA256Output]*mapCommon.DomainEntry) (map[common.SHA256Output]*mapCommon.DomainEntry, error) {
 
-	result := make(map[db.DomainHash]*mapCommon.DomainEntry)
+	result := make(map[common.SHA256Output]*mapCommon.DomainEntry)
 	for k := range updatedDomain {
 		domainEntry, ok := domainEntries[k]
 		if !ok {
@@ -241,9 +241,9 @@ func getDomainEntriesToWrite(updatedDomain map[db.DomainHash]byte,
 }
 
 // serialize the updated domains
-func serializeUpdatedDomainEntries(domainEntriesMap map[db.DomainHash]*mapCommon.DomainEntry) ([]db.KeyValuePair, []db.DomainHash, error) {
+func serializeUpdatedDomainEntries(domainEntriesMap map[common.SHA256Output]*mapCommon.DomainEntry) ([]db.KeyValuePair, []common.SHA256Output, error) {
 	result := []db.KeyValuePair{}
-	updatedDomainNameHashes := []db.DomainHash{}
+	updatedDomainNameHashes := []common.SHA256Output{}
 	for domainNameHash, domainEntryBytes := range domainEntriesMap {
 		domainBytes, err := mapCommon.SerialisedDomainEntry(domainEntryBytes)
 		if err != nil {

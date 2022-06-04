@@ -5,16 +5,17 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
+	mapCommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
 )
 
 // retrieveAffectedDomainFromDB: get affected domain entries from db
-func (mapUpdater *MapUpdater) retrieveAffectedDomainFromDB(affectedDomainsMap map[db.DomainHash]byte,
-	readerNum int) (map[db.DomainHash]*common.DomainEntry, error) {
+func (mapUpdater *MapUpdater) retrieveAffectedDomainFromDB(affectedDomainsMap map[common.SHA256Output]byte,
+	readerNum int) (map[common.SHA256Output]*mapCommon.DomainEntry, error) {
 
 	// list of domain hashes to fetch the domain entries from db
-	affectedDomainHash := []db.DomainHash{}
+	affectedDomainHash := []common.SHA256Output{}
 	for k := range affectedDomainsMap {
 		affectedDomainHash = append(affectedDomainHash, k)
 	}
@@ -38,7 +39,7 @@ func (mapUpdater *MapUpdater) retrieveAffectedDomainFromDB(affectedDomainsMap ma
 
 // commit changes to db
 func (mapUpdater *MapUpdater) writeChangesToDB(updatesToDomainEntriesTable []db.KeyValuePair,
-	updatesToUpdatesTable []db.DomainHash) (int, error) {
+	updatesToUpdatesTable []common.SHA256Output) (int, error) {
 
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
@@ -57,10 +58,10 @@ func (mapUpdater *MapUpdater) writeChangesToDB(updatesToDomainEntriesTable []db.
 }
 
 // domain bytes -> domain entries
-func parseDomainBytes(keyValuePairs []db.KeyValuePair) (map[db.DomainHash]*common.DomainEntry, error) {
-	result := make(map[db.DomainHash]*common.DomainEntry)
+func parseDomainBytes(keyValuePairs []db.KeyValuePair) (map[common.SHA256Output]*mapCommon.DomainEntry, error) {
+	result := make(map[common.SHA256Output]*mapCommon.DomainEntry)
 	for _, pair := range keyValuePairs {
-		newPair, err := common.DesrialiseDomainEntry(pair.Value)
+		newPair, err := mapCommon.DesrialiseDomainEntry(pair.Value)
 		if err != nil {
 			return nil, fmt.Errorf("parseDomainBytes | DesrialiseDomainEntry | %w", err)
 		}

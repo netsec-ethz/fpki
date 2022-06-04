@@ -6,7 +6,6 @@ import (
 	"sort"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
-	"github.com/netsec-ethz/fpki/pkg/db"
 	mapCommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
 )
 
@@ -26,7 +25,7 @@ func HashDomainEntriesThenSort(domainEntries []mapCommon.DomainEntry) ([]UpdateI
 		if err != nil {
 			return nil, fmt.Errorf("HashDomainEntriesThenSort | SerialisedDomainEntry | %w", err)
 		}
-		var domainHash db.DomainHash
+		var domainHash common.SHA256Output
 		copy(domainHash[:], common.SHA256Hash([]byte(v.DomainName)))
 		hashInput := UpdateInput{
 			Key:   domainHash,

@@ -3,10 +3,12 @@ package db
 import (
 	"context"
 	"fmt"
+
+	"github.com/netsec-ethz/fpki/pkg/common"
 )
 
 // DeleteKeyValues: Delete a list of key-value store
-func (c *mysqlDB) DeleteKeyValuesTreeStruc(ctx context.Context, keys []DomainHash) error {
+func (c *mysqlDB) DeleteKeyValuesTreeStruc(ctx context.Context, keys []common.SHA256Output) error {
 	dataLen := len(keys)
 	remainingDataLen := dataLen
 

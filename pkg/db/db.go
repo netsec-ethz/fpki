@@ -2,6 +2,8 @@ package db
 
 import (
 	"context"
+
+	"github.com/netsec-ethz/fpki/pkg/common"
 )
 
 const batchSize = 1000
@@ -15,13 +17,11 @@ type keyValueResult struct {
 	Err   error
 }
 
-type DomainHash [32]byte
-
 // KeyValuePair: key-value pair;
 // key: hex-encoded of domain name hash: hex.EncodeToString(SHA256(domain name))
 // TODO(yongzhe): change key to bytes
 type KeyValuePair struct {
-	Key   DomainHash
+	Key   common.SHA256Output
 	Value []byte
 }
 
@@ -35,23 +35,23 @@ type Conn interface {
 	// ************************************************************
 
 	// RetrieveOneKeyValuePair_TreeStruc: Retrieve one key-value pair from Tree table.
-	RetrieveOneKeyValuePairTreeStruc(ctx context.Context, id DomainHash) (*KeyValuePair, error)
+	RetrieveOneKeyValuePairTreeStruc(ctx context.Context, id common.SHA256Output) (*KeyValuePair, error)
 
 	// RetrieveKeyValuePair_TreeStruc: Retrieve a list of key-value pairs from Tree tables.
-	RetrieveKeyValuePairTreeStruc(ctx context.Context, id []DomainHash, numOfRoutine int) ([]KeyValuePair, error)
+	RetrieveKeyValuePairTreeStruc(ctx context.Context, id []common.SHA256Output, numOfRoutine int) ([]KeyValuePair, error)
 
 	// UpdateKeyValues_TreeStruc: Update a list of key-value pairs in Tree table
 	UpdateKeyValuesTreeStruc(ctx context.Context, keyValuePairs []KeyValuePair) (error, int)
 
 	// DeleteKeyValues_TreeStruc: Delete a list of key-value pairs in Tree table
-	DeleteKeyValuesTreeStruc(ctx context.Context, keys []DomainHash) error
+	DeleteKeyValuesTreeStruc(ctx context.Context, keys []common.SHA256Output) error
 
 	// ************************************************************
 	//             Function for DomainEntries table
 	// ************************************************************
 
 	// RetrieveKeyValuePair_DomainEntries: Retrieve a list of domain entries table
-	RetrieveKeyValuePairDomainEntries(ctx context.Context, id []DomainHash, numOfRoutine int) ([]KeyValuePair, error)
+	RetrieveKeyValuePairDomainEntries(ctx context.Context, id []common.SHA256Output, numOfRoutine int) ([]KeyValuePair, error)
 
 	// UpdateKeyValues_DomainEntries: Update a list of key-value pairs in domain entries table
 	UpdateKeyValuesDomainEntries(ctx context.Context, keyValuePairs []KeyValuePair) (error, int)
@@ -64,11 +64,11 @@ type Conn interface {
 	GetCountOfUpdatesDomainsUpdates(ctx context.Context) (int, error)
 
 	// AddUpdatedDomainHashes_Updates: Add a list of hashes of updated domain into the updates table. If key exists, ignore it.
-	AddUpdatedDomainHashesUpdates(ctx context.Context, keys []DomainHash) (int, error)
+	AddUpdatedDomainHashesUpdates(ctx context.Context, keys []common.SHA256Output) (int, error)
 
 	// TODO(yongzhe): investigate whether perQueryLimit is necessary
 	// RetrieveUpdatedDomainHashes_Updates: Retrieve all updated domain hashes from update table
-	RetrieveUpdatedDomainHashesUpdates(ctx context.Context, perQueryLimit int) ([]DomainHash, error)
+	RetrieveUpdatedDomainHashesUpdates(ctx context.Context, perQueryLimit int) ([]common.SHA256Output, error)
 
 	// TruncateUpdatesTable_Updates: Truncate updates table; Called after updating is finished
 	TruncateUpdatesTableUpdates(ctx context.Context) error
