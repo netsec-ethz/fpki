@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	mapCommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
@@ -13,19 +12,31 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
-// MapResponder: A map responder, which is responsible for receiving client's request. Only read from db.
-type MapResponder struct {
-	smt *trie.Trie
-
-	dbConn db.Conn
+type responderWorker struct {
+	dbConn          db.Conn
+	smt             *trie.Trie
+	clientInputChan chan ClientRequest
 }
 
-// NewMapResponder: return a new MapResponder.
-// input:
-//   --db: db connection to the tree
-//   --root: for a new tree, it can be nil. To load a non-empty tree, root should be the latest root of the tree.
-//   --cacheHeight: Maximum height of the cached tree (in memory). 256 means no cache, 0 means cache the whole tree. 0-256
-func NewMapResponder(root []byte, cacheHeight int) (*MapResponder, error) {
+type ClientRequest struct {
+	domainName string
+	ctx        context.Context
+	resultChan chan ClientResponse
+}
+
+type ClientResponse struct {
+	Proof []mapCommon.MapServerResponse
+	Err   error
+}
+
+// NewMapResponder: A map responder, which is responsible for receiving client's request. Only read from db.
+type MapResponder struct {
+	workerPool []*responderWorker
+	workerChan chan ClientRequest
+	smt        *trie.Trie
+}
+
+func NewMapResponder(root []byte, cacheHeight int, workerThreadNum int) (*MapResponder, error) {
 	config := db.Configuration{
 		Dsn: "root@tcp(localhost)/fpki",
 		Values: map[string]string{
@@ -38,98 +49,175 @@ func NewMapResponder(root []byte, cacheHeight int) (*MapResponder, error) {
 	if err != nil {
 		return nil, fmt.Errorf("NewMapResponder | Connect | %w", err)
 	}
+
 	smt, err := trie.NewTrie(root, common.SHA256Hash, dbConn)
 	if err != nil {
 		return nil, fmt.Errorf("NewMapResponder | NewTrie | %w", err)
 	}
 	smt.CacheHeightLimit = cacheHeight
+	err = smt.LoadCache(root)
+	if err != nil {
+		return nil, fmt.Errorf("NewMapResponder | LoadCache | %w", err)
+	}
 
-	smt.LoadCache(root)
+	clientInputChan := make(chan ClientRequest)
+	workerPool := []*responderWorker{}
+
+	for i := 0; i < workerThreadNum; i++ {
+		dbConn, err := db.Connect(&config)
+		if err != nil {
+			return nil, fmt.Errorf("NewUpdatedMapResponder | Connect | %w", err)
+		}
+		newWorker := &responderWorker{dbConn: dbConn, clientInputChan: clientInputChan, smt: smt}
+		workerPool = append(workerPool, newWorker)
+		go newWorker.work()
+	}
 
 	return &MapResponder{
-		smt:    smt,
-		dbConn: dbConn,
+		workerChan: clientInputChan,
+		workerPool: workerPool,
+		smt:        smt,
 	}, nil
 }
 
-func (mapResponder *MapResponder) GetDomainProofs(ctx context.Context, domainNames []string) (map[string][]*mapCommon.MapServerResponse, error) {
-	domainResultMap, domainProofMap, err := getMapping(domainNames)
-	if err != nil {
-		return nil, fmt.Errorf("GetDomainProofs | getMapping | %w", err)
-	}
+func (responder *MapResponder) GetProof(ctx context.Context, domainName string) ([]mapCommon.MapServerResponse, error) {
+	resultChan := make(chan ClientResponse)
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
 
-	domainToFetch, err := mapResponder.getProofFromSMT(domainProofMap)
-	if err != nil {
-		return nil, fmt.Errorf("GetDomainProofs | getProofFromSMT | %w", err)
-	}
-
-	fmt.Println("domain to fetch: ", len(domainToFetch))
-	start := time.Now()
-	result, err := mapResponder.dbConn.RetrieveKeyValuePairDomainEntries(ctx, domainToFetch, 10)
-	if err != nil {
-		return nil, fmt.Errorf("GetDomainProofs | RetrieveKeyValuePairMultiThread | %w", err)
-	}
-	end := time.Now()
-	fmt.Println("Read from DB: ", end.Sub(start))
-
-	for _, keyValuePair := range result {
-		domainProofMap[keyValuePair.Key].DomainEntryBytes = keyValuePair.Value
-	}
-
-	return domainResultMap, nil
+	responder.workerChan <- ClientRequest{domainName: domainName, ctx: ctx, resultChan: resultChan}
+	result := <-resultChan
+	return result.Proof, result.Err
 }
 
-func getMapping(domainNames []string) (map[string][]*mapCommon.MapServerResponse, map[common.SHA256Output]*mapCommon.MapServerResponse, error) {
-	domainResultMap := make(map[string][]*mapCommon.MapServerResponse)
-	domainProofMap := make(map[common.SHA256Output]*mapCommon.MapServerResponse)
+/*
+func worker(workerChan chan ClientRequest) {
+	for {
+		request := <-workerChan
 
-	for _, domainName := range domainNames {
-		_, ok := domainResultMap[domainName]
-		if !ok {
-			// list of proofs for this domain
-			resultsList := []*mapCommon.MapServerResponse{}
-			subDomainNames, err := parseDomainName(domainName)
-
-			if err != nil {
-				return nil, nil, fmt.Errorf("getMapping | parseDomainName | %w", err)
-			}
-			for _, subDomainName := range subDomainNames {
-				var domainHash32Bytes common.SHA256Output
-				copy(domainHash32Bytes[:], common.SHA256Hash([]byte(subDomainName)))
-				subDomainResult, ok := domainProofMap[domainHash32Bytes]
-				if ok {
-					resultsList = append(resultsList, subDomainResult)
-				} else {
-					domainProofMap[domainHash32Bytes] = &mapCommon.MapServerResponse{Domain: subDomainName}
-					resultsList = append(resultsList, domainProofMap[domainHash32Bytes])
-				}
-			}
-			domainResultMap[domainName] = resultsList
-		}
 	}
-	return domainResultMap, domainProofMap, nil
-}
+}*/
 
-func (mapResponder *MapResponder) getProofFromSMT(domainMap map[common.SHA256Output]*mapCommon.MapServerResponse) ([]common.SHA256Output, error) {
-	domainNameToFetchFromDB := []common.SHA256Output{}
-	for key, value := range domainMap {
-		proof, isPoP, proofKey, ProofValue, err := mapResponder.smt.MerkleProof(key[:])
+func (responderWorker *responderWorker) work() {
+	for {
+		newRequest := <-responderWorker.clientInputChan
+
+		proofs, err := responderWorker.getDomainProof(newRequest.ctx, newRequest.domainName)
 		if err != nil {
-			return nil, fmt.Errorf("getProofFromSMT | MerkleProof | %w", err)
+			newRequest.resultChan <- ClientResponse{Err: err}
 		}
+		newRequest.resultChan <- ClientResponse{Proof: proofs}
+	}
+}
 
-		value.PoI = mapCommon.PoI{Proof: proof, ProofKey: proofKey, ProofValue: ProofValue, Root: mapResponder.smt.Root}
+func (responderWorker *responderWorker) getDomainProof(ctx context.Context, domainName string) ([]mapCommon.MapServerResponse, error) {
+	//start := time.Now()
+	proofsResult := []mapCommon.MapServerResponse{}
+	domainList, err := parseDomainName(domainName)
+	if err != nil {
+		return nil, fmt.Errorf("GetDomainProof | parseDomainName | %w", err)
+	}
 
+	// var for benchmark
+	// TODO(yongzhe): delete this later
+	/*
+		var merStart time.Time
+		var merEnd time.Time
+		var newStart time.Time
+		var newEnd time.Time
+		var hashStart time.Time
+		var hashEnd time.Time
+		var dbReadTime []time.Duration
+		var resultSize []int
+	*/
+
+	//durationList := []time.Duration{}
+
+	for _, domain := range domainList {
+		// hash the domain name -> key
+		//hashStart = time.Now()
+		domainHash := common.SHA256Hash32Bytes([]byte(domain))
+		//hashEnd = time.Now()
+		//durationList = append(durationList, hashEnd.Sub(hashStart))
+
+		// get the merkle proof from the smt. If isPoP == true, then it's a proof of inclusion
+		//merStart = time.Now()
+		proof, isPoP, proofKey, ProofValue, err := responderWorker.smt.MerkleProof(domainHash[:])
+		if err != nil {
+			return nil, fmt.Errorf("GetProofs | MerkleProof | %w", err)
+		}
+		//merEnd = time.Now()
+		//if merEnd.Sub(merStart) > time.Millisecond {
+		//	fmt.Println("fetch proof: ", merEnd.Sub(merStart))
+		//}
+
+		//durationList = append(durationList, merEnd.Sub(merStart))
+
+		//newStart = time.Now()
+		var proofType mapCommon.ProofType
+		domainBytes := []byte{}
+		// If it is PoP, query the domain entry. If it is PoA, directly return the PoA
 		switch {
 		case isPoP:
-			value.PoI.ProofType = mapCommon.PoP
-			domainNameToFetchFromDB = append(domainNameToFetchFromDB, key)
+			proofType = mapCommon.PoP
+			//dbStart := time.Now()
+			result, err := responderWorker.dbConn.RetrieveOneKeyValuePairDomainEntries(ctx, domainHash)
+			if err != nil {
+				return nil, fmt.Errorf("GetDomainProof | QueryRow | %w", err)
+			}
+			//dbEnd := time.Now()
+			//dbReadTime = append(dbReadTime, dbEnd.Sub(dbStart))
+			//resultSize = append(resultSize, len(result.Value))
+			domainBytes = result.Value
 
 		case !isPoP:
-			value.PoI.ProofType = mapCommon.PoA
+			proofType = mapCommon.PoA
 		}
+		//newEnd = time.Now()
+
+		//durationList = append(durationList, newEnd.Sub(newStart))
+
+		proofsResult = append(proofsResult, mapCommon.MapServerResponse{
+			Domain: domain,
+			PoI: mapCommon.PoI{
+				Proof:      proof,
+				Root:       responderWorker.smt.Root,
+				ProofType:  proofType,
+				ProofKey:   proofKey,
+				ProofValue: ProofValue},
+			DomainEntryBytes: domainBytes,
+		})
 	}
-	return domainNameToFetchFromDB, nil
+	//end := time.Now()
+	// print the slow query
+	/*
+		if end.Sub(start) > time.Millisecond {
+			fmt.Println("time to fetch: ", end.Sub(start))
+			fmt.Println(domainName)
+			for i, timeST := range durationList {
+				fmt.Println(timeST)
+				if i%3 == 2 {
+					fmt.Println()
+				}
+			}
+			fmt.Println("db read time")
+			for _, dbTime := range dbReadTime {
+				fmt.Println(dbTime)
+			}
+
+			for _, domain := range domainList {
+				fmt.Println("key", hex.EncodeToString(trie.Hasher([]byte(domain))))
+			}
+
+			for _, resultSize := range resultSize {
+				fmt.Println("size: ", resultSize)
+			}
+
+			fmt.Println("--------------------------------------")
+		}
+	*/
+
+	return proofsResult, nil
 }
 
 // parseDomainName: get the parent domain until E2LD, return a list of domains(remove the www. and *.)
@@ -163,115 +251,3 @@ func (mapResponder *MapResponder) GetRoot() []byte {
 func (mapResponder *MapResponder) Close() error {
 	return mapResponder.smt.Close()
 }
-
-/* GetDomainProof: Single-thread non-batching DB read really SLOW! Switch to multi-thread batch reading.
-
-// GetMapResponse: Query the proofs and materials for a list of domains. Return type: MapServerResponse
-func (mapResponder *MapResponder) GetDomainProof(ctx context.Context, domainName string) ([]mapCommon.MapServerResponse, error) {
-
-	start := time.Now()
-	proofsResult := []mapCommon.MapServerResponse{}
-	domainList, err := parseDomainName(domainName)
-	if err != nil {
-		return nil, fmt.Errorf("GetDomainProof | parseDomainName | %w", err)
-	}
-
-	// var for benchmark
-	// TODO(yongzhe): delete this later
-	var merStart time.Time
-	var merEnd time.Time
-	var newStart time.Time
-	var newEnd time.Time
-	var hashStart time.Time
-	var hashEnd time.Time
-	var dbReadTime []time.Duration
-	var resultSize []int
-
-	durationList := []time.Duration{}
-
-	for _, domain := range domainList {
-		// hash the domain name -> key
-		hashStart = time.Now()
-		domainHash := trie.Hasher([]byte(domain))
-		hashEnd = time.Now()
-		durationList = append(durationList, hashEnd.Sub(hashStart))
-
-		// get the merkle proof from the smt. If isPoP == true, then it's a proof of inclusion
-		merStart = time.Now()
-		proof, isPoP, proofKey, ProofValue, err := mapResponder.smt.MerkleProof(domainHash)
-		if err != nil {
-			return nil, fmt.Errorf("GetProofs | MerkleProof | %w", err)
-		}
-		merEnd = time.Now()
-		if merEnd.Sub(merStart) > time.Millisecond {
-			fmt.Println("fetch proof: ", merEnd.Sub(merStart))
-		}
-
-		durationList = append(durationList, merEnd.Sub(merStart))
-
-		newStart = time.Now()
-		var proofType mapCommon.ProofType
-		domainBytes := []byte{}
-		// If it is PoP, query the domain entry. If it is PoA, directly return the PoA
-		switch {
-		case isPoP:
-			proofType = mapCommon.PoP
-			domainHashString := hex.EncodeToString(domainHash)
-			dbStart := time.Now()
-			result, err := mapResponder.dbConn.RetrieveOneKeyValuePair(ctx, domainHashString, db.DomainEntries)
-			if err != nil {
-				return nil, fmt.Errorf("GetDomainProof | QueryRow | %w", err)
-			}
-			dbEnd := time.Now()
-			dbReadTime = append(dbReadTime, dbEnd.Sub(dbStart))
-			resultSize = append(resultSize, len(result.Value))
-			domainBytes = result.Value
-
-		case !isPoP:
-			proofType = mapCommon.PoA
-		}
-		newEnd = time.Now()
-
-		durationList = append(durationList, newEnd.Sub(newStart))
-
-		proofsResult = append(proofsResult, mapCommon.MapServerResponse{
-			Domain: domain,
-			PoI: mapCommon.PoI{
-				Proof:      proof,
-				Root:       mapResponder.smt.Root,
-				ProofType:  proofType,
-				ProofKey:   proofKey,
-				ProofValue: ProofValue},
-			DomainEntryBytes: domainBytes,
-		})
-	}
-	end := time.Now()
-	// print the slow query
-	if end.Sub(start) > time.Millisecond {
-		fmt.Println("time to fetch: ", end.Sub(start))
-		fmt.Println(domainName)
-		for i, timeST := range durationList {
-			fmt.Println(timeST)
-			if i%3 == 2 {
-				fmt.Println()
-			}
-		}
-		fmt.Println("db read time")
-		for _, dbTime := range dbReadTime {
-			fmt.Println(dbTime)
-		}
-
-		for _, domain := range domainList {
-			fmt.Println("key", hex.EncodeToString(trie.Hasher([]byte(domain))))
-		}
-
-		for _, resultSize := range resultSize {
-			fmt.Println("size: ", resultSize)
-		}
-
-		fmt.Println("--------------------------------------")
-	}
-
-	return proofsResult, nil
-}
-*/

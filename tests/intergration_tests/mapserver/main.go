@@ -85,7 +85,7 @@ func main() {
 	}
 
 	// get a new responder, and load an existing tree
-	mapResponder, err := responder.NewUpdatedMapResponder(root, 233, 10)
+	mapResponder, err := responder.NewMapResponder(root, 233, 10)
 	if err != nil {
 		panic(err)
 	}
@@ -116,7 +116,7 @@ func main() {
 	fmt.Println("map server succeed!")
 }
 
-func worker(certs []ctX509.Certificate, mapResponder *responder.UpdatedMapResponder) {
+func worker(certs []ctX509.Certificate, mapResponder *responder.MapResponder) {
 	for _, cert := range certs {
 		if cert.Subject.CommonName != "" {
 			ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)

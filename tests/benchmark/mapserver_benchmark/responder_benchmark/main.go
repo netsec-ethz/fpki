@@ -1,5 +1,6 @@
 package main
 
+/*
 import (
 	"bytes"
 	"context"
@@ -199,3 +200,4 @@ parse_cert_loop:
 	}
 	return certList, nil
 }
+*/
