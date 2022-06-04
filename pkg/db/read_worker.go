@@ -13,11 +13,7 @@ func fetchKeyWorker(resultChan chan readKeyResult, start, end int, ctx context.C
 	var key []byte
 	result := []common.SHA256Output{}
 
-	stmt, err := db.Prepare("SELECT * FROM updates LIMIT " + strconv.Itoa(start) + "," + strconv.Itoa(end-start))
-	if err != nil {
-		resultChan <- readKeyResult{Err: fmt.Errorf("fetchKeyWorker | SELECT * | %w", err)}
-	}
-	resultRows, err := stmt.Query()
+	resultRows, err := db.Query("SELECT * FROM updates LIMIT " + strconv.Itoa(start) + "," + strconv.Itoa(end-start))
 	if err != nil {
 		resultChan <- readKeyResult{Err: fmt.Errorf("fetchKeyWorker | Query | %w", err)}
 	}
@@ -31,7 +27,6 @@ func fetchKeyWorker(resultChan chan readKeyResult, start, end int, ctx context.C
 		copy(key32bytes[:], key)
 		result = append(result, key32bytes)
 	}
-	stmt.Close()
 
 	resultChan <- readKeyResult{Keys: result}
 }

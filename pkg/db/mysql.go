@@ -79,52 +79,52 @@ func repeatStmtForDelete(tableName string, N int) string {
 func NewMysqlDB(db *sql.DB) (*mysqlDB, error) {
 	prepNodePath, err := db.Prepare("SELECT node_path(?)")
 	if err != nil {
-		return nil, fmt.Errorf("preparing statement prepNodePath: %w", err)
+		return nil, fmt.Errorf("NewMysqlDB | preparing statement prepNodePath: %w", err)
 	}
 
 	prepValueProofPath, err := db.Prepare("CALL val_and_proof_path(?)")
 	if err != nil {
-		return nil, fmt.Errorf("preparing statement prepValueProofPath: %w", err)
+		return nil, fmt.Errorf("NewMysqlDB | preparing statement prepValueProofPath: %w", err)
 	}
 
 	prepGetValue, err := db.Prepare("SELECT value from nodes WHERE idhash=?")
 	if err != nil {
-		return nil, fmt.Errorf("preparing statement prepGetValue: %w", err)
+		return nil, fmt.Errorf("NewMysqlDB | preparing statement prepGetValue: %w", err)
 	}
 
 	prepGetValueDomainEntries, err := db.Prepare("SELECT `value` from `domainEntries` WHERE `key`=?")
 	if err != nil {
-		return nil, fmt.Errorf("preparing statement prepGetValueDomainEntries: %w", err)
+		return nil, fmt.Errorf("NewMysqlDB | preparing statement prepGetValueDomainEntries: %w", err)
 	}
 
 	prepUpdateValueDomainEntries, err := db.Prepare("REPLACE into domainEntries (`key`, `value`) values " + repeatStmt(batchSize, 2))
 	if err != nil {
-		return nil, fmt.Errorf("preparing statement prepUpdateValueDomainEntries: %w", err)
+		return nil, fmt.Errorf("NewMysqlDB | preparing statement prepUpdateValueDomainEntries: %w", err)
 	}
 
 	prepDeleteKeyValueDomainEntries, err := db.Prepare(repeatStmtForDelete("domainEntries", batchSize))
 	if err != nil {
-		return nil, fmt.Errorf("preparing statement prepDeleteKeyValueDomainEntries: %w", err)
+		return nil, fmt.Errorf("NewMysqlDB | preparing statement prepDeleteKeyValueDomainEntries: %w", err)
 	}
 
 	prepUpdateValueTree, err := db.Prepare("REPLACE into tree (`key`, `value`) values " + repeatStmt(batchSize, 2))
 	if err != nil {
-		return nil, fmt.Errorf("preparing statement prepUpdateValueTree: %w", err)
+		return nil, fmt.Errorf("NewMysqlDB | preparing statement prepUpdateValueTree: %w", err)
 	}
 
 	prepGetValueTree, err := db.Prepare("SELECT `value` from `tree` WHERE `key`=?")
 	if err != nil {
-		return nil, fmt.Errorf("preparing statement prepGetValueTree: %w", err)
+		return nil, fmt.Errorf("NewMysqlDB | preparing statement prepGetValueTree: %w", err)
 	}
 
 	prepDeleteKeyValueTree, err := db.Prepare(repeatStmtForDelete("tree", batchSize))
 	if err != nil {
-		return nil, fmt.Errorf("preparing statement prepDeleteKeyValueTree: %w", err)
+		return nil, fmt.Errorf("NewMysqlDB | preparing statement prepDeleteKeyValueTree: %w", err)
 	}
 
 	prepInsertKeysUpdates, err := db.Prepare("INSERT IGNORE into `updates` (`key`) VALUES " + repeatStmt(batchSize, 1))
 	if err != nil {
-		return nil, fmt.Errorf("preparing statement prepInsertKeysUpdates: %w", err)
+		return nil, fmt.Errorf("NewMysqlDB | preparing statement prepInsertKeysUpdates: %w", err)
 	}
 
 	return &mysqlDB{

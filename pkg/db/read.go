@@ -54,11 +54,11 @@ func (c *mysqlDB) GetCountOfUpdatesDomainsUpdates(ctx context.Context) (int, err
 	return number, nil
 }
 
-// RetrieveUpdatedDomainHashes: Get updated domains name hashes from updates table. The updates table will be truncated.
+// RetrieveUpdatedDomainHashesUpdates: Get updated domains name hashes from updates table. The updates table will be truncated.
 func (c *mysqlDB) RetrieveUpdatedDomainHashesUpdates(ctx context.Context, perQueryLimit int) ([]common.SHA256Output, error) {
 	count, err := c.GetCountOfUpdatesDomainsUpdates(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("RetrieveUpdatedDomainHashes_Updates | RetrieveTableRowsCount | %w", err)
+		return nil, fmt.Errorf("RetrieveUpdatedDomainHashesUpdates | RetrieveTableRowsCount | %w", err)
 	}
 
 	// calculate the number of workers
@@ -90,19 +90,19 @@ func (c *mysqlDB) RetrieveUpdatedDomainHashesUpdates(ctx context.Context, perQue
 	for numberOfWorker > finishedWorker {
 		newResult := <-resultChan
 		if newResult.Err != nil {
-			return nil, fmt.Errorf("RetrieveUpdatedDomainHashes_Updates | %w", newResult.Err)
+			return nil, fmt.Errorf("RetrieveUpdatedDomainHashesUpdates | %w", newResult.Err)
 		}
 		keys = append(keys, newResult.Keys...)
 		finishedWorker++
 	}
 
 	if count != len(keys) {
-		return nil, fmt.Errorf("RetrieveUpdatedDomainHashes_Updates | incomplete fetching")
+		return nil, fmt.Errorf("RetrieveUpdatedDomainHashesUpdates | incomplete fetching")
 	}
 
 	err = c.TruncateUpdatesTableUpdates(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("RetrieveUpdatedDomainHashes_Updates | TruncateUpdatesTable | %w", err)
+		return nil, fmt.Errorf("RetrieveUpdatedDomainHashesUpdates | TruncateUpdatesTableUpdates | %w", err)
 	}
 
 	return keys, nil

@@ -10,7 +10,7 @@ import (
 
 // TODO(yongzhe): delete this file. move multi-thread reading to responder
 
-// RetrieveKeyValuePairFromTreeStruc: Retrieve a list of key-value pairs from DB. Multi-threaded
+// RetrieveKeyValuePairTreeStruc: Retrieve a list of key-value pairs from DB. Multi-threaded
 func (c *mysqlDB) RetrieveKeyValuePairTreeStruc(ctx context.Context, key []common.SHA256Output, numOfWorker int) ([]KeyValuePair, error) {
 	stmt := c.prepGetValueTree
 
@@ -35,7 +35,7 @@ func (c *mysqlDB) RetrieveKeyValuePairTreeStruc(ctx context.Context, key []commo
 	for numOfWorker > finishedWorker {
 		newResult := <-resultChan
 		if newResult.Err != nil {
-			return nil, fmt.Errorf("RetrieveKeyValuePairMultiThread | %w", newResult.Err)
+			return nil, fmt.Errorf("RetrieveKeyValuePairTreeStruc | %w", newResult.Err)
 		}
 		keyValuePairs = append(keyValuePairs, newResult.Pairs...)
 		finishedWorker++
@@ -44,6 +44,7 @@ func (c *mysqlDB) RetrieveKeyValuePairTreeStruc(ctx context.Context, key []commo
 	return keyValuePairs, nil
 }
 
+// RetrieveKeyValuePairDomainEntries: Retrieve a list of key-value pairs from domain entries table
 func (c *mysqlDB) RetrieveKeyValuePairDomainEntries(ctx context.Context, key []common.SHA256Output, numOfWorker int) ([]KeyValuePair, error) {
 	stmt := c.prepGetValueDomainEntries
 
@@ -68,7 +69,7 @@ func (c *mysqlDB) RetrieveKeyValuePairDomainEntries(ctx context.Context, key []c
 	for numOfWorker > finishedWorker {
 		newResult := <-resultChan
 		if newResult.Err != nil {
-			return nil, fmt.Errorf("RetrieveKeyValuePairMultiThread | %w", newResult.Err)
+			return nil, fmt.Errorf("RetrieveKeyValuePairDomainEntries | %w", newResult.Err)
 		}
 		keyValuePairs = append(keyValuePairs, newResult.Pairs...)
 		finishedWorker++

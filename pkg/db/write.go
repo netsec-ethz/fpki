@@ -12,12 +12,12 @@ import (
 //                Write functions for Tree table
 // ********************************************************************
 
-// UpdateKeyValues_DomainEntries: Update a list of key-value store
+// UpdateKeyValuesDomainEntries: Update a list of key-value store
 func (c *mysqlDB) UpdateKeyValuesDomainEntries(ctx context.Context, keyValuePairs []KeyValuePair) (int, error) {
 	return c.doUpdatesPairs(ctx, c.prepUpdateValueDomainEntries, keyValuePairs, DomainEntries)
 }
 
-// DeleteKeyValues: Delete a list of key-value store
+// DeleteKeyValuesTreeStruc: Delete a list of key-value store
 func (c *mysqlDB) DeleteKeyValuesTreeStruc(ctx context.Context, keys []common.SHA256Output) (int, error) {
 	return c.doUpdatesKeys(ctx, c.prepDeleteKeyValueTree, keys, Tree)
 }
@@ -26,7 +26,7 @@ func (c *mysqlDB) DeleteKeyValuesTreeStruc(ctx context.Context, keys []common.SH
 //                Write functions for domain entries table
 // ********************************************************************
 
-// UpdateKeyValues_TreeStruc: Update a list of key-value store
+// UpdateKeyValuesTreeStruc: Update a list of key-value store
 func (c *mysqlDB) UpdateKeyValuesTreeStruc(ctx context.Context, keyValuePairs []KeyValuePair) (int, error) {
 	return c.doUpdatesPairs(ctx, c.prepUpdateValueTree, keyValuePairs, Tree)
 }
@@ -35,16 +35,16 @@ func (c *mysqlDB) UpdateKeyValuesTreeStruc(ctx context.Context, keyValuePairs []
 //                Write functions for updates table
 // ********************************************************************
 
-// InsertIgnoreKeyBatches: Insert a list of keys into the updates table. If key exists, ignore it.
+// AddUpdatedDomainHashesUpdates: Insert a list of keys into the updates table. If key exists, ignore it.
 func (c *mysqlDB) AddUpdatedDomainHashesUpdates(ctx context.Context, keys []common.SHA256Output) (int, error) {
 	return c.doUpdatesKeys(ctx, c.prepInsertKeysUpdates, keys, Updates)
 }
 
-// TruncateUpdatesTable: truncate updates table
+// TruncateUpdatesTableUpdates: truncate updates table
 func (c *mysqlDB) TruncateUpdatesTableUpdates(ctx context.Context) error {
 	_, err := c.db.Exec("TRUNCATE `fpki`.`updates`;")
 	if err != nil {
-		return fmt.Errorf("TruncateUpdatesTable | TRUNCATE | %w", err)
+		return fmt.Errorf("TruncateUpdatesTableUpdates | TRUNCATE | %w", err)
 	}
 	return nil
 }
@@ -83,7 +83,7 @@ func (c *mysqlDB) doUpdatesPairs(ctx context.Context, stmt *sql.Stmt, keyValuePa
 		// insert updated domains' entries
 		stmt, err := c.db.Prepare(repeatedStmt)
 		if err != nil {
-			return 0, fmt.Errorf("UpdateKeyValuePairBatches | db.Prepare | %w", err)
+			return 0, fmt.Errorf("doUpdates | db.Prepare | %w", err)
 		}
 		data := make([]interface{}, 2*(dataLen%batchSize)) // 2 elements per record ()
 
@@ -93,7 +93,7 @@ func (c *mysqlDB) doUpdatesPairs(ctx context.Context, stmt *sql.Stmt, keyValuePa
 		}
 		_, err = stmt.Exec(data...)
 		if err != nil {
-			return 0, fmt.Errorf("UpdateKeyValuePairBatches | Exec remaining | %w", err)
+			return 0, fmt.Errorf("doUpdates | Exec remaining | %w", err)
 		}
 		stmt.Close()
 	}
@@ -130,7 +130,7 @@ func (c *mysqlDB) doUpdatesKeys(ctx context.Context, stmt *sql.Stmt, keys []comm
 
 		stmt, err := c.db.Prepare(repeatedStmt)
 		if err != nil {
-			return 0, fmt.Errorf("DeleteKeyValues | db.Prepare | %w", err)
+			return 0, fmt.Errorf("doUpdatesKeys | db.Prepare | %w", err)
 		}
 		data := make([]interface{}, dataLen%batchSize)
 
@@ -139,7 +139,7 @@ func (c *mysqlDB) doUpdatesKeys(ctx context.Context, stmt *sql.Stmt, keys []comm
 		}
 		_, err = stmt.Exec(data...)
 		if err != nil {
-			return 0, fmt.Errorf("DeleteKeyValues | Exec remaining | %w", err)
+			return 0, fmt.Errorf("doUpdatesKeys | Exec remaining | %w", err)
 		}
 		stmt.Close()
 	}
