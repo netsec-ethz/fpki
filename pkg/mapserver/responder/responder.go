@@ -87,7 +87,10 @@ func (responder *MapResponder) GetProof(ctx context.Context, domainName string) 
 	defer cancelF()
 
 	responder.workerChan <- ClientRequest{domainName: domainName, ctx: ctx, resultChan: resultChan}
+	fmt.Println("waiting for response ", domainName)
 	result := <-resultChan
+	fmt.Println("get response ", domainName)
+	close(resultChan)
 	return result.Proof, result.Err
 }
 

@@ -25,6 +25,7 @@ func (responderWorker *responderWorker) work() {
 		proofs, err := responderWorker.getDomainProof(newRequest.ctx, newRequest.domainName)
 		if err != nil {
 			newRequest.resultChan <- ClientResponse{Err: err}
+			continue
 		}
 		newRequest.resultChan <- ClientResponse{Proof: proofs}
 	}
@@ -35,6 +36,9 @@ func (responderWorker *responderWorker) getDomainProof(ctx context.Context, doma
 	proofsResult := []mapCommon.MapServerResponse{}
 	domainList, err := responderWorker.domainParser.ParseDomainName(domainName)
 	if err != nil {
+		if err == domain.InvalidDomainNameErr {
+			return nil, err
+		}
 		return nil, fmt.Errorf("GetDomainProof | parseDomainName | %w", err)
 	}
 

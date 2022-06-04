@@ -14,6 +14,7 @@ import (
 	ct "github.com/google/certificate-transparency-go"
 	ctTls "github.com/google/certificate-transparency-go/tls"
 	ctX509 "github.com/google/certificate-transparency-go/x509"
+	"github.com/netsec-ethz/fpki/pkg/domain"
 	mapCommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/prover"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/responder"
@@ -123,6 +124,9 @@ func worker(certs []ctX509.Certificate, mapResponder *responder.MapResponder) {
 			defer cancelF()
 			proofs, err := mapResponder.GetProof(ctx, cert.Subject.CommonName)
 			if err != nil {
+				if err == domain.InvalidDomainNameErr {
+					continue
+				}
 				panic(err)
 			}
 			if !checkProof(cert, proofs) {

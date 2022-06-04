@@ -35,6 +35,8 @@ const (
 	MaxSANLength    = 4
 )
 
+var InvalidDomainNameErr = fmt.Errorf("Invalid Domain Name")
+
 var Empty struct{}
 
 type DomainParser struct {
@@ -238,7 +240,7 @@ func findShortestLength(domainNames [][]string) int {
 // eg: www.google.com -> google.com
 func (parser *DomainParser) ParseDomainName(domainName string) ([]string, error) {
 	if !parser.IsValidDomain(domainName) {
-		return nil, fmt.Errorf("invalid domain %s", domainName)
+		return nil, InvalidDomainNameErr
 	}
 
 	if len(domainName) > 2 && domainName[:2] == "*." {

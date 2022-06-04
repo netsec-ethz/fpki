@@ -15,6 +15,7 @@ import (
 	ct "github.com/google/certificate-transparency-go"
 	ctTls "github.com/google/certificate-transparency-go/tls"
 	ctX509 "github.com/google/certificate-transparency-go/x509"
+	"github.com/netsec-ethz/fpki/pkg/domain"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/responder"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 )
@@ -112,13 +113,14 @@ func collectProof(responder *responder.MapResponder, certs []ctX509.Certificate)
 	for _, cert := range certs {
 		if cert.Subject.CommonName != "" {
 			_, err := responder.GetProof(ctx, cert.Subject.CommonName)
-			if err != nil {
+			if err != nil && err != domain.InvalidDomainNameErr {
 				panic(err)
 			}
-			numOfQuery++
 		}
+		numOfQuery++
+		fmt.Println(numOfQuery, " / ", len(certs))
 	}
-	fmt.Println(numOfQuery)
+	fmt.Println("finished !", numOfQuery)
 	wg.Done()
 }
 
