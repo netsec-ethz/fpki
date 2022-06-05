@@ -66,7 +66,7 @@ func (responderWorker *responderWorker) getDomainProof(ctx context.Context, doma
 
 		// get the merkle proof from the smt. If isPoP == true, then it's a proof of inclusion
 		//merStart = time.Now()
-		proof, isPoP, proofKey, ProofValue, err := responderWorker.smt.MerkleProof(domainHash[:])
+		proof, isPoP, proofKey, ProofValue, err := responderWorker.smt.MerkleProof(ctx, domainHash[:])
 		if err != nil {
 			return nil, fmt.Errorf("GetProofs | MerkleProof | %w", err)
 		}

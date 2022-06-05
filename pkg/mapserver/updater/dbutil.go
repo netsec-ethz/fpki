@@ -3,7 +3,6 @@ package updater
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
@@ -11,7 +10,7 @@ import (
 )
 
 // retrieveAffectedDomainFromDB: get affected domain entries from db
-func (mapUpdater *MapUpdater) retrieveAffectedDomainFromDB(affectedDomainsMap map[common.SHA256Output]byte,
+func (mapUpdater *MapUpdater) retrieveAffectedDomainFromDB(ctx context.Context, affectedDomainsMap map[common.SHA256Output]byte,
 	readerNum int) (map[common.SHA256Output]*mapCommon.DomainEntry, error) {
 
 	// list of domain hashes to fetch the domain entries from db
@@ -19,10 +18,6 @@ func (mapUpdater *MapUpdater) retrieveAffectedDomainFromDB(affectedDomainsMap ma
 	for k := range affectedDomainsMap {
 		affectedDomainHash = append(affectedDomainHash, k)
 	}
-
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
-	defer cancelF()
-
 	// read key-value pair from DB
 	domainPair, err := mapUpdater.dbConn.RetrieveKeyValuePairDomainEntries(ctx, affectedDomainHash, readerNum)
 	if err != nil {
@@ -38,11 +33,8 @@ func (mapUpdater *MapUpdater) retrieveAffectedDomainFromDB(affectedDomainsMap ma
 }
 
 // commit changes to db
-func (mapUpdater *MapUpdater) writeChangesToDB(updatesToDomainEntriesTable []db.KeyValuePair,
+func (mapUpdater *MapUpdater) writeChangesToDB(ctx context.Context, updatesToDomainEntriesTable []db.KeyValuePair,
 	updatesToUpdatesTable []common.SHA256Output) (int, error) {
-
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
-	defer cancelF()
 
 	_, err := mapUpdater.dbConn.UpdateKeyValuesDomainEntries(ctx, updatesToDomainEntriesTable)
 	if err != nil {

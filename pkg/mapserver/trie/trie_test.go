@@ -12,6 +12,7 @@ import (
 	"math/rand"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
@@ -29,6 +30,9 @@ func TestTrieEmpty(t *testing.T) {
 }
 
 func TestTrieUpdateAndGet(t *testing.T) {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
 	db := &MockDB{}
 	smt, err := NewTrie(nil, common.SHA256Hash, db)
 	require.NoError(t, err)
@@ -39,13 +43,13 @@ func TestTrieUpdateAndGet(t *testing.T) {
 	keys := getFreshData(10, 32)
 	values := getFreshData(10, 32)
 	ch := make(chan mResult, 1)
-	smt.update(smt.Root, keys, values, nil, 0, smt.TrieHeight, ch)
+	smt.update(ctx, smt.Root, keys, values, nil, 0, smt.TrieHeight, ch)
 	res := <-ch
 	root := res.update
 
 	// Check all keys have been stored
 	for i, key := range keys {
-		value, _ := smt.get(root, key, nil, 0, smt.TrieHeight)
+		value, _ := smt.get(ctx, root, key, nil, 0, smt.TrieHeight)
 		if !bytes.Equal(values[i], value) {
 			t.Fatal("value not updated")
 		}
@@ -55,14 +59,14 @@ func TestTrieUpdateAndGet(t *testing.T) {
 	newKeys := getFreshData(5, 32)
 	newValues := getFreshData(5, 32)
 	ch = make(chan mResult, 1)
-	smt.update(root, newKeys, newValues, nil, 0, smt.TrieHeight, ch)
+	smt.update(ctx, root, newKeys, newValues, nil, 0, smt.TrieHeight, ch)
 	res = <-ch
 	newRoot := res.update
 	if bytes.Equal(root, newRoot) {
 		t.Fatal("trie not updated")
 	}
 	for i, newKey := range newKeys {
-		newValue, _ := smt.get(newRoot, newKey, nil, 0, smt.TrieHeight)
+		newValue, _ := smt.get(ctx, newRoot, newKey, nil, 0, smt.TrieHeight)
 		if !bytes.Equal(newValues[i], newValue) {
 			t.Fatal("failed to get value")
 		}
@@ -70,6 +74,9 @@ func TestTrieUpdateAndGet(t *testing.T) {
 }
 
 func TestTrieAtomicUpdate(t *testing.T) {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
 	db := &MockDB{}
 	smt, err := NewTrie(nil, common.SHA256Hash, db)
 	require.NoError(t, err)
@@ -77,11 +84,11 @@ func TestTrieAtomicUpdate(t *testing.T) {
 	smt.CacheHeightLimit = 0
 	keys := getFreshData(1, 32)
 	values := getFreshData(1, 32)
-	root, _ := smt.AtomicUpdate(keys, values)
+	root, _ := smt.AtomicUpdate(ctx, keys, values)
 	updatedNb := len(smt.db.updatedNodes)
 	cacheNb := len(smt.db.liveCache)
 	newValues := getFreshData(1, 32)
-	smt.AtomicUpdate(keys, newValues)
+	smt.AtomicUpdate(ctx, keys, newValues)
 	if len(smt.db.updatedNodes) != 2*updatedNb {
 		t.Fatal("Atomic update doesn't store all tries")
 	}
@@ -93,7 +100,7 @@ func TestTrieAtomicUpdate(t *testing.T) {
 	// updated nodes with root.
 	smt.atomicUpdate = false
 	for i, key := range keys {
-		value, _ := smt.get(root, key, nil, 0, smt.TrieHeight)
+		value, _ := smt.get(ctx, root, key, nil, 0, smt.TrieHeight)
 		if !bytes.Equal(values[i], value) {
 			t.Fatal("failed to get value")
 		}
@@ -101,6 +108,9 @@ func TestTrieAtomicUpdate(t *testing.T) {
 }
 
 func TestTriePublicUpdateAndGet(t *testing.T) {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
 	db := &MockDB{}
 	smt, err := NewTrie(nil, common.SHA256Hash, db)
 	require.NoError(t, err)
@@ -109,13 +119,13 @@ func TestTriePublicUpdateAndGet(t *testing.T) {
 	// Add data to empty trie
 	keys := getFreshData(20, 32)
 	values := getFreshData(20, 32)
-	root, _ := smt.Update(keys, values)
+	root, _ := smt.Update(ctx, keys, values)
 	updatedNb := len(smt.db.updatedNodes)
 	cacheNb := len(smt.db.liveCache)
 
 	// Check all keys have been stored
 	for i, key := range keys {
-		value, _ := smt.Get(key)
+		value, _ := smt.Get(ctx, key)
 		if !bytes.Equal(values[i], value) {
 			t.Fatal("trie not updated")
 		}
@@ -125,7 +135,7 @@ func TestTriePublicUpdateAndGet(t *testing.T) {
 	}
 
 	newValues := getFreshData(20, 32)
-	smt.Update(keys, newValues)
+	smt.Update(ctx, keys, newValues)
 
 	if len(smt.db.updatedNodes) != updatedNb {
 		t.Fatal("multiple updates don't actualize updated nodes")
@@ -135,7 +145,7 @@ func TestTriePublicUpdateAndGet(t *testing.T) {
 	}
 	// Check all keys have been modified
 	for i, key := range keys {
-		value, _ := smt.Get(key)
+		value, _ := smt.Get(ctx, key)
 		if !bytes.Equal(newValues[i], value) {
 			t.Fatal("trie not updated")
 		}
@@ -144,6 +154,9 @@ func TestTriePublicUpdateAndGet(t *testing.T) {
 
 // test updating and deleting at the same time
 func TestTrieUpdateAndDelete(t *testing.T) {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
 	db := &MockDB{}
 	smt, err := NewTrie(nil, common.SHA256Hash, db)
 	require.NoError(t, err)
@@ -151,11 +164,11 @@ func TestTrieUpdateAndDelete(t *testing.T) {
 	smt.CacheHeightLimit = 0
 	key0 := make([]byte, 32, 32)
 	values := getFreshData(1, 32)
-	root, _ := smt.Update([][]byte{key0}, values)
+	root, _ := smt.Update(ctx, [][]byte{key0}, values)
 	cacheNb := len(smt.db.liveCache)
 	updatedNb := len(smt.db.updatedNodes)
 	smt.atomicUpdate = false
-	_, _, k, v, isShortcut, _ := smt.loadChildren(root, smt.TrieHeight, 0, nil)
+	_, _, k, v, isShortcut, _ := smt.loadChildren(ctx, root, smt.TrieHeight, 0, nil)
 	if !isShortcut || !bytes.Equal(k[:HashLength], key0) || !bytes.Equal(v[:HashLength], values[0]) {
 		t.Fatal("leaf shortcut didn't move up to root")
 	}
@@ -165,7 +178,7 @@ func TestTrieUpdateAndDelete(t *testing.T) {
 	bitSet(key1, 255)
 	keys := [][]byte{key0, key1}
 	values = [][]byte{DefaultLeaf, getFreshData(1, 32)[0]}
-	root, _ = smt.Update(keys, values)
+	root, _ = smt.Update(ctx, keys, values)
 
 	if len(smt.db.liveCache) != cacheNb {
 		t.Fatal("number of cache nodes not correct after delete")
@@ -175,13 +188,16 @@ func TestTrieUpdateAndDelete(t *testing.T) {
 	}
 
 	smt.atomicUpdate = false
-	_, _, k, v, isShortcut, _ = smt.loadChildren(root, smt.TrieHeight, 0, nil)
+	_, _, k, v, isShortcut, _ = smt.loadChildren(ctx, root, smt.TrieHeight, 0, nil)
 	if !isShortcut || !bytes.Equal(k[:HashLength], key1) || !bytes.Equal(v[:HashLength], values[1]) {
 		t.Fatal("leaf shortcut didn't move up to root")
 	}
 }
 
 func TestTrieMerkleProof(t *testing.T) {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
 	db := &MockDB{}
 	smt, err := NewTrie(nil, common.SHA256Hash, db)
 	require.NoError(t, err)
@@ -189,10 +205,10 @@ func TestTrieMerkleProof(t *testing.T) {
 	// Add data to empty trie
 	keys := getFreshData(10, 32)
 	values := getFreshData(10, 32)
-	smt.Update(keys, values)
+	smt.Update(ctx, keys, values)
 
 	for i, key := range keys {
-		ap, _, k, v, _ := smt.MerkleProof(key)
+		ap, _, k, v, _ := smt.MerkleProof(ctx, key)
 		if !VerifyInclusion(smt.Root, ap, key, values[i]) {
 			t.Fatalf("failed to verify inclusion proof")
 		}
@@ -201,7 +217,7 @@ func TestTrieMerkleProof(t *testing.T) {
 		}
 	}
 	emptyKey := common.SHA256Hash([]byte("non-member"))
-	ap, included, proofKey, proofValue, _ := smt.MerkleProof(emptyKey)
+	ap, included, proofKey, proofValue, _ := smt.MerkleProof(ctx, emptyKey)
 	if included {
 		t.Fatalf("failed to verify non inclusion proof")
 	}
@@ -211,6 +227,9 @@ func TestTrieMerkleProof(t *testing.T) {
 }
 
 func TestTrieMerkleProofCompressed(t *testing.T) {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
 	db := &MockDB{}
 	smt, err := NewTrie(nil, common.SHA256Hash, db)
 	require.NoError(t, err)
@@ -218,10 +237,10 @@ func TestTrieMerkleProofCompressed(t *testing.T) {
 	// Add data to empty trie
 	keys := getFreshData(10, 32)
 	values := getFreshData(10, 32)
-	smt.Update(keys, values)
+	smt.Update(ctx, keys, values)
 
 	for i, key := range keys {
-		bitmap, ap, length, _, k, v, _ := smt.MerkleProofCompressed(key)
+		bitmap, ap, length, _, k, v, _ := smt.MerkleProofCompressed(ctx, key)
 		if !smt.VerifyInclusionC(bitmap, key, values[i], ap, length) {
 			t.Fatalf("failed to verify inclusion proof")
 		}
@@ -230,7 +249,7 @@ func TestTrieMerkleProofCompressed(t *testing.T) {
 		}
 	}
 	emptyKey := common.SHA256Hash([]byte("non-member"))
-	bitmap, ap, length, included, proofKey, proofValue, _ := smt.MerkleProofCompressed(emptyKey)
+	bitmap, ap, length, included, proofKey, proofValue, _ := smt.MerkleProofCompressed(ctx, emptyKey)
 	if included {
 		t.Fatalf("failed to verify non inclusion proof")
 	}
@@ -240,6 +259,9 @@ func TestTrieMerkleProofCompressed(t *testing.T) {
 }
 
 func TestHeight0LeafShortcut(t *testing.T) {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
 	keySize := 32
 	db := &MockDB{}
 	smt, err := NewTrie(nil, common.SHA256Hash, db)
@@ -251,17 +273,17 @@ func TestHeight0LeafShortcut(t *testing.T) {
 	bitSet(key1, keySize*8-1)
 	keys := [][]byte{key0, key1}
 	values := getFreshData(2, 32)
-	smt.Update(keys, values)
+	smt.Update(ctx, keys, values)
 	updatedNb := len(smt.db.updatedNodes)
 
 	// Check all keys have been stored
 	for i, key := range keys {
-		value, _ := smt.Get(key)
+		value, _ := smt.Get(ctx, key)
 		if !bytes.Equal(values[i], value) {
 			t.Fatal("trie not updated")
 		}
 	}
-	bitmap, ap, length, _, k, v, err := smt.MerkleProofCompressed(key1)
+	bitmap, ap, length, _, k, v, err := smt.MerkleProofCompressed(ctx, key1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,7 +298,7 @@ func TestHeight0LeafShortcut(t *testing.T) {
 	}
 
 	// Delete one key and check that the remaining one moved up to the root of the tree
-	newRoot, _ := smt.AtomicUpdate(keys[0:1], [][]byte{DefaultLeaf})
+	newRoot, _ := smt.AtomicUpdate(ctx, keys[0:1], [][]byte{DefaultLeaf})
 
 	// Nb of updated nodes remains same because the new shortcut root was already stored at height 0.
 	if len(smt.db.updatedNodes) != updatedNb {
@@ -284,7 +306,7 @@ func TestHeight0LeafShortcut(t *testing.T) {
 		t.Fatal("number of cache nodes not correct after delete")
 	}
 	smt.atomicUpdate = false
-	_, _, k, v, isShortcut, err := smt.loadChildren(newRoot, smt.TrieHeight, 0, nil)
+	_, _, k, v, isShortcut, err := smt.loadChildren(ctx, newRoot, smt.TrieHeight, 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,7 +314,7 @@ func TestHeight0LeafShortcut(t *testing.T) {
 		t.Fatal("leaf shortcut didn't move up to root")
 	}
 
-	_, _, length, _, k, v, _ = smt.MerkleProofCompressed(key1)
+	_, _, length, _, k, v, _ = smt.MerkleProofCompressed(ctx, key1)
 	if length != 0 {
 		t.Fatal("proof should have length equal to trie height for a leaf shortcut")
 	}

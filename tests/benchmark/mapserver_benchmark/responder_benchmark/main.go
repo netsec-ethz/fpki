@@ -55,12 +55,15 @@ func main() {
 
 	updateStart := time.Now()
 
-	err = mapUpdater.UpdateFromCT("https://ct.googleapis.com/logs/argon2021", int64(2500000), int64(2509999))
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
+	err = mapUpdater.UpdateFromCT(ctx, "https://ct.googleapis.com/logs/argon2021", int64(2500000), int64(2509999))
 	if err != nil {
 		panic(err)
 	}
 
-	err = mapUpdater.CommitChanges()
+	err = mapUpdater.CommitChanges(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -75,7 +78,7 @@ func main() {
 		panic(err)
 	}
 	// only use one responder
-	responder, err := responder.NewMapResponder(root, 233, 10)
+	responder, err := responder.NewMapResponder(ctx, root, 233, 10)
 
 	// collect 10,000 certs, for proof fetching
 	collectedCerts := []ctX509.Certificate{}

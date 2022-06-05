@@ -1,6 +1,7 @@
 package updater
 
 import (
+	"context"
 	"fmt"
 
 	projectCommon "github.com/netsec-ethz/fpki/pkg/common"
@@ -15,7 +16,7 @@ type newUpdates struct {
 }
 
 // UpdateDomainEntriesUsingRPCAndPC: update the domain entries table, given RPC and PC
-func (mapUpdater *MapUpdater) UpdateDomainEntriesUsingRPCAndPC(rpc []*projectCommon.RPC, pc []*projectCommon.PC, readerNum int) (int, error) {
+func (mapUpdater *MapUpdater) UpdateDomainEntriesUsingRPCAndPC(ctx context.Context, rpc []*projectCommon.RPC, pc []*projectCommon.PC, readerNum int) (int, error) {
 	if len(rpc) == 0 && len(pc) == 0 {
 		return 0, nil
 	}
@@ -27,7 +28,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesUsingRPCAndPC(rpc []*projectCom
 
 	// retrieve (possibly)affected domain entries from db
 	// It's possible that no records will be changed, because the certs are already recorded.
-	domainEntriesMap, err := mapUpdater.retrieveAffectedDomainFromDB(affectedDomainsMap, readerNum)
+	domainEntriesMap, err := mapUpdater.retrieveAffectedDomainFromDB(ctx, affectedDomainsMap, readerNum)
 	if err != nil {
 		return 0, fmt.Errorf("UpdateDomainEntriesUsingRPCAndPC | retrieveAffectedDomainFromDB | %w", err)
 	}
@@ -51,7 +52,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesUsingRPCAndPC(rpc []*projectCom
 	}
 
 	// commit changes to db
-	return mapUpdater.writeChangesToDB(keyValuePairs, updatedDomainNames)
+	return mapUpdater.writeChangesToDB(ctx, keyValuePairs, updatedDomainNames)
 }
 
 // getAffectedDomainAndCertMapPCAndRPC: return a map of affected domains, and cert map

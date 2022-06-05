@@ -7,6 +7,7 @@ package trie
 
 import (
 	"bytes"
+	"context"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 )
@@ -17,11 +18,11 @@ import (
 // (key,value) can be 1- (nil, value), value of the included key, 2- the kv of a LeafNode
 // on the path of the non-included key, 3- (nil, nil) for a non-included key
 // with a DefaultLeaf on the path
-func (s *Trie) MerkleProof(key []byte) ([][]byte, bool, []byte, []byte, error) {
+func (s *Trie) MerkleProof(ctx context.Context, key []byte) ([][]byte, bool, []byte, []byte, error) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 	s.atomicUpdate = false // so loadChildren doesn't return a copy
-	return s.merkleProof(s.Root, key, nil, s.TrieHeight, 0)
+	return s.merkleProof(ctx, s.Root, key, nil, s.TrieHeight, 0)
 }
 
 // MerkleProofPast generates a Merkle proof of inclusion or non-inclusion
@@ -30,29 +31,29 @@ func (s *Trie) MerkleProof(key []byte) ([][]byte, bool, []byte, []byte, error) {
 // (key,value) can be 1- (nil, value), value of the included key, 2- the kv of a LeafNode
 // on the path of the non-included key, 3- (nil, nil) for a non-included key
 // with a DefaultLeaf on the path
-func (s *Trie) MerkleProofR(key, root []byte) ([][]byte, bool, []byte, []byte, error) {
+func (s *Trie) MerkleProofR(ctx context.Context, key, root []byte) ([][]byte, bool, []byte, []byte, error) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 	s.atomicUpdate = false // so loadChildren doesn't return a copy
-	return s.merkleProof(root, key, nil, s.TrieHeight, 0)
+	return s.merkleProof(ctx, root, key, nil, s.TrieHeight, 0)
 }
 
 // MerkleProofCompressed returns a compressed merkle proof in the given trie
-func (s *Trie) MerkleProofCompressedR(key, root []byte) ([]byte, [][]byte, int, bool, []byte, []byte, error) {
-	return s.merkleProofCompressed(key, root)
+func (s *Trie) MerkleProofCompressedR(ctx context.Context, key, root []byte) ([]byte, [][]byte, int, bool, []byte, []byte, error) {
+	return s.merkleProofCompressed(ctx, key, root)
 }
 
 // MerkleProofCompressed returns a compressed merkle proof
-func (s *Trie) MerkleProofCompressed(key []byte) ([]byte, [][]byte, int, bool, []byte, []byte, error) {
-	return s.merkleProofCompressed(key, s.Root)
+func (s *Trie) MerkleProofCompressed(ctx context.Context, key []byte) ([]byte, [][]byte, int, bool, []byte, []byte, error) {
+	return s.merkleProofCompressed(ctx, key, s.Root)
 }
 
-func (s *Trie) merkleProofCompressed(key, root []byte) ([]byte, [][]byte, int, bool, []byte, []byte, error) {
+func (s *Trie) merkleProofCompressed(ctx context.Context, key, root []byte) ([]byte, [][]byte, int, bool, []byte, []byte, error) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 	s.atomicUpdate = false // so loadChildren doesn't return a copy
 	// create a regular merkle proof and then compress it
-	mpFull, included, proofKey, proofVal, err := s.merkleProof(root, key, nil, s.TrieHeight, 0)
+	mpFull, included, proofKey, proofVal, err := s.merkleProof(ctx, root, key, nil, s.TrieHeight, 0)
 	if err != nil {
 		return nil, nil, 0, true, nil, nil, err
 	}
@@ -75,13 +76,13 @@ func (s *Trie) merkleProofCompressed(key, root []byte) ([]byte, [][]byte, int, b
 // (key,value) can be 1- (nil, value), value of the included key, 2- the kv of a LeafNode
 // on the path of the non-included key, 3- (nil, nil) for a non-included key
 // with a DefaultLeaf on the path
-func (s *Trie) merkleProof(root, key []byte, batch [][]byte, height, iBatch int) ([][]byte, bool, []byte, []byte, error) {
+func (s *Trie) merkleProof(ctx context.Context, root, key []byte, batch [][]byte, height, iBatch int) ([][]byte, bool, []byte, []byte, error) {
 	if len(root) == 0 {
 		// prove that an empty subtree is on the path of the key
 		return nil, false, nil, nil, nil
 	}
 	// Fetch the children of the node
-	batch, iBatch, lnode, rnode, isShortcut, err := s.loadChildren(root, height, iBatch, batch)
+	batch, iBatch, lnode, rnode, isShortcut, err := s.loadChildren(ctx, root, height, iBatch, batch)
 	if err != nil {
 		return nil, false, nil, nil, err
 	}
@@ -96,7 +97,7 @@ func (s *Trie) merkleProof(root, key []byte, batch [][]byte, height, iBatch int)
 
 	// append the left or right node to the proof
 	if bitIsSet(key, s.TrieHeight-height) {
-		mp, included, proofKey, proofValue, err := s.merkleProof(rnode, key, batch, height-1, 2*iBatch+2)
+		mp, included, proofKey, proofValue, err := s.merkleProof(ctx, rnode, key, batch, height-1, 2*iBatch+2)
 		if err != nil {
 			return nil, false, nil, nil, err
 		}
@@ -107,7 +108,7 @@ func (s *Trie) merkleProof(root, key []byte, batch [][]byte, height, iBatch int)
 		}
 
 	}
-	mp, included, proofKey, proofValue, err := s.merkleProof(lnode, key, batch, height-1, 2*iBatch+1)
+	mp, included, proofKey, proofValue, err := s.merkleProof(ctx, lnode, key, batch, height-1, 2*iBatch+1)
 	if err != nil {
 		return nil, false, nil, nil, err
 	}

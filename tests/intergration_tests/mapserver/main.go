@@ -61,9 +61,12 @@ func main() {
 		panic(err)
 	}
 
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
 	start := time.Now()
 	// download the certs and update the domain entries
-	err = mapUpdater.UpdateFromCT("https://ct.googleapis.com/logs/argon2021", 1120000, 1120999)
+	err = mapUpdater.UpdateFromCT(ctx, "https://ct.googleapis.com/logs/argon2021", 1120000, 1120999)
 	if err != nil {
 		panic(err)
 	}
@@ -72,7 +75,7 @@ func main() {
 	fmt.Println("time to get 10000 certs: ", end.Sub(start))
 
 	start = time.Now()
-	err = mapUpdater.CommitChanges()
+	err = mapUpdater.CommitChanges(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -86,7 +89,7 @@ func main() {
 	}
 
 	// get a new responder, and load an existing tree
-	mapResponder, err := responder.NewMapResponder(root, 233, 10)
+	mapResponder, err := responder.NewMapResponder(ctx, root, 233, 10)
 	if err != nil {
 		panic(err)
 	}

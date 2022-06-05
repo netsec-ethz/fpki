@@ -2,6 +2,7 @@ package updater
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"sort"
 	"time"
@@ -14,7 +15,7 @@ import (
 )
 
 // UpdateDomainEntriesUsingCerts: Update the domain entries using the domain certificates
-func (mapUpdater *MapUpdater) UpdateDomainEntriesUsingCerts(certs []*x509.Certificate, readerNum int) (int, error) {
+func (mapUpdater *MapUpdater) UpdateDomainEntriesUsingCerts(ctx context.Context, certs []*x509.Certificate, readerNum int) (int, error) {
 	if len(certs) == 0 {
 		return 0, nil
 	}
@@ -32,7 +33,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesUsingCerts(certs []*x509.Certif
 	start := time.Now()
 	// retrieve (possibly)affected domain entries from db
 	// It's possible that no records will be changed, because the certs are already recorded.
-	domainEntriesMap, err := mapUpdater.retrieveAffectedDomainFromDB(affectedDomainsMap, readerNum)
+	domainEntriesMap, err := mapUpdater.retrieveAffectedDomainFromDB(ctx, affectedDomainsMap, readerNum)
 	if err != nil {
 		return 0, fmt.Errorf("UpdateDomainEntriesUsingCerts | retrieveAffectedDomainFromDB | %w", err)
 	}
@@ -72,7 +73,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesUsingCerts(certs []*x509.Certif
 	fmt.Println("---time to serializeUpdatedDomainEntries:   ", end.Sub(start))
 
 	// commit changes to db
-	return mapUpdater.writeChangesToDB(keyValuePairs, updatedDomainNameHashes)
+	return mapUpdater.writeChangesToDB(ctx, keyValuePairs, updatedDomainNameHashes)
 }
 
 // return affected domains.

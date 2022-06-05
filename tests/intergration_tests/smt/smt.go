@@ -36,14 +36,14 @@ func testUpdateWithSameKeys() {
 
 	smt, err := trie.NewTrie(nil, common.SHA256Hash, db)
 
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
 	smt.CacheHeightLimit = 0
 	// Add 10000 key-value pair
 	keys := getFreshData(10000, 32)
 	values := getFreshData(10000, 32)
-	smt.Update(keys, values)
-
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
-	defer cancelF()
+	smt.Update(ctx, keys, values)
 
 	err = smt.Commit(ctx)
 	if err != nil {
@@ -59,7 +59,7 @@ func testUpdateWithSameKeys() {
 
 	// get 10000 new values
 	newValues := getFreshData(10000, 32)
-	smt.Update(keys, newValues)
+	smt.Update(ctx, keys, newValues)
 
 	err = smt.Commit(ctx)
 	if err != nil {
@@ -81,6 +81,9 @@ func testUpdateWithSameKeys() {
 }
 
 func testTrieMerkleProofAndReloadTree() {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
 	config := db.Configuration{
 		Dsn: "root@tcp(localhost)/fpki",
 		Values: map[string]string{
@@ -101,14 +104,12 @@ func testTrieMerkleProofAndReloadTree() {
 	// Add data to empty trie
 	keys := getFreshData(100, 32)
 	values := getFreshData(100, 32)
-	smt.Update(keys, values)
+	smt.Update(ctx, keys, values)
 
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
-	defer cancelF()
 	smt.Commit(ctx)
 
 	for i, key := range keys {
-		ap, _, k, v, _ := smt.MerkleProof(key)
+		ap, _, k, v, _ := smt.MerkleProof(ctx, key)
 		if !trie.VerifyInclusion(smt.Root, ap, key, values[i]) {
 			panic("failed to verify inclusion proof")
 		}
@@ -117,7 +118,7 @@ func testTrieMerkleProofAndReloadTree() {
 		}
 	}
 	emptyKey := common.SHA256Hash([]byte("non-memvqbdqwdqwdqber"))
-	ap_, included_, proofKey_, proofValue_, _ := smt.MerkleProof(emptyKey)
+	ap_, included_, proofKey_, proofValue_, _ := smt.MerkleProof(ctx, emptyKey)
 	if included_ {
 		panic("failed to verify non inclusion proof")
 	}
@@ -133,7 +134,7 @@ func testTrieMerkleProofAndReloadTree() {
 	smt1, err := trie.NewTrie(smt.Root, common.SHA256Hash, dbConn1)
 
 	for i, key_ := range keys {
-		ap_, included_, k_, v_, _ := smt1.MerkleProof(key_)
+		ap_, included_, k_, v_, _ := smt1.MerkleProof(ctx, key_)
 		if !trie.VerifyInclusion(smt1.Root, ap_, key_, values[i]) {
 			panic("failed to verify new inclusion proof")
 		}
@@ -146,7 +147,7 @@ func testTrieMerkleProofAndReloadTree() {
 	}
 
 	emptyKey = common.SHA256Hash([]byte("non-member"))
-	ap_, included_, proofKey_, proofValue_, _ = smt1.MerkleProof(emptyKey)
+	ap_, included_, proofKey_, proofValue_, _ = smt1.MerkleProof(ctx, emptyKey)
 	if included_ {
 		panic("failed to verify new non inclusion proof")
 	}
@@ -173,6 +174,8 @@ func testTrieLoadCache() {
 	if err != nil {
 		panic(err)
 	}
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
 
 	// Test size of cache
 	smt.CacheHeightLimit = 0
@@ -180,7 +183,7 @@ func testTrieLoadCache() {
 	key1 := make([]byte, 32, 32)
 	bitSet(key1, 255)
 	values := getFreshData(2, 32)
-	smt.Update([][]byte{key0, key1}, values)
+	smt.Update(ctx, [][]byte{key0, key1}, values)
 	if smt.GetLiveCacheSize() != 66 {
 		// the nodes are at the tip, so 64 + 2 = 66
 		panic("cache size incorrect")
@@ -189,10 +192,7 @@ func testTrieLoadCache() {
 	// Add data to empty trie
 	keys := getFreshData(10, 32)
 	values = getFreshData(10, 32)
-	smt.Update(keys, values)
-
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
-	defer cancelF()
+	smt.Update(ctx, keys, values)
 
 	err = smt.Commit(ctx)
 	if err != nil {
@@ -203,7 +203,7 @@ func testTrieLoadCache() {
 	cacheSize := smt.GetLiveCacheSize()
 	smt.ResetLiveCache()
 
-	err = smt.LoadCache(smt.Root)
+	err = smt.LoadCache(ctx, smt.Root)
 	if err != nil {
 		panic(err)
 	}

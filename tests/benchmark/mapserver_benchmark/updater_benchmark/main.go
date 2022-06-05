@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"sync"
@@ -43,6 +44,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
 
 	updateStart := time.Now()
 	// collect 1M certs
@@ -51,7 +54,7 @@ func main() {
 		fmt.Println()
 		fmt.Println(" ---------------------- Iteration ", i, " ---------------------------")
 		start := time.Now()
-		err = mapUpdater.UpdateFromCT("https://ct.googleapis.com/logs/argon2021",
+		err = mapUpdater.UpdateFromCT(ctx, "https://ct.googleapis.com/logs/argon2021",
 			int64(2000000+i*10000), int64(2009999+i*10000))
 		if err != nil {
 			panic(err)
@@ -60,7 +63,7 @@ func main() {
 		fmt.Println("time to update the changes: ", end.Sub(start))
 
 		start = time.Now()
-		err = mapUpdater.CommitChanges()
+		err = mapUpdater.CommitChanges(ctx)
 		if err != nil {
 			panic(err)
 		}

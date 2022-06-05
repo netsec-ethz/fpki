@@ -7,6 +7,7 @@ package trie
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"sync"
 
@@ -79,14 +80,14 @@ func (s *Trie) Close() error {
 // To delete, set the value to DefaultLeaf.
 // If Update is called multiple times, only the state after the last update
 // is committed.
-func (s *Trie) Update(keys, values [][]byte) ([]byte, error) {
+func (s *Trie) Update(ctx context.Context, keys, values [][]byte) ([]byte, error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	s.atomicUpdate = false
 	s.LoadDbCounter = 0
 	s.LoadCacheCounter = 0
 	ch := make(chan mResult, 1)
-	s.update(s.Root, keys, values, nil, 0, s.TrieHeight, ch)
+	s.update(ctx, s.Root, keys, values, nil, 0, s.TrieHeight, ch)
 	result := <-ch
 	if result.err != nil {
 		return nil, result.err
@@ -102,14 +103,14 @@ func (s *Trie) Update(keys, values [][]byte) ([]byte, error) {
 // AtomicUpdate can be called multiple times and all the updated nodes will be committed
 // and roots will be stored in past tries.
 // Can be used for updating several blocks before committing to DB.
-func (s *Trie) AtomicUpdate(keys, values [][]byte) ([]byte, error) {
+func (s *Trie) AtomicUpdate(ctx context.Context, keys, values [][]byte) ([]byte, error) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	s.atomicUpdate = true
 	s.LoadDbCounter = 0
 	s.LoadCacheCounter = 0
 	ch := make(chan mResult, 1)
-	s.update(s.Root, keys, values, nil, 0, s.TrieHeight, ch)
+	s.update(ctx, s.Root, keys, values, nil, 0, s.TrieHeight, ch)
 	result := <-ch
 	if result.err != nil {
 		return nil, result.err
@@ -135,7 +136,7 @@ type mResult struct {
 // Adding and deleting can be simultaneous.
 // To delete, set the value to DefaultLeaf.
 // It returns the root of the updated tree.
-func (s *Trie) update(root []byte, keys, values, batch [][]byte, iBatch, height int, ch chan<- (mResult)) {
+func (s *Trie) update(ctx context.Context, root []byte, keys, values, batch [][]byte, iBatch, height int, ch chan<- (mResult)) {
 	if height == 0 {
 		if bytes.Equal(DefaultLeaf, values[0]) {
 			// Delete the key-value from the trie if it is being set to DefaultLeaf
@@ -157,7 +158,7 @@ func (s *Trie) update(root []byte, keys, values, batch [][]byte, iBatch, height 
 	copy(rootCopy[:], root)
 
 	// Load the node to update
-	batch, iBatch, lNode, rNode, isShortcut, err := s.loadChildren(root, height, iBatch, batch)
+	batch, iBatch, lNode, rNode, isShortcut, err := s.loadChildren(ctx, root, height, iBatch, batch)
 	if err != nil {
 		ch <- mResult{nil, false, err}
 		return
@@ -206,27 +207,27 @@ func (s *Trie) update(root []byte, keys, values, batch [][]byte, iBatch, height 
 			s.db.addRemoveNode(rootCopy)
 		}
 
-		s.updateRight(lNode, rNode, root, keys, values, batch, iBatch, height, ch)
+		s.updateRight(ctx, lNode, rNode, root, keys, values, batch, iBatch, height, ch)
 	case len(lKeys) > 0 && len(rKeys) == 0:
 		if rootCopy != [32]byte{0} && height%4 == 0 {
 			s.db.addRemoveNode(rootCopy)
 		}
 
-		s.updateLeft(lNode, rNode, root, keys, values, batch, iBatch, height, ch)
+		s.updateLeft(ctx, lNode, rNode, root, keys, values, batch, iBatch, height, ch)
 	default:
 		if rootCopy != [32]byte{0} && height%4 == 0 {
 			s.db.addRemoveNode(rootCopy)
 		}
 
-		s.updateParallel(lNode, rNode, root, lKeys, rKeys, lValues, rValues, batch, iBatch, height, ch)
+		s.updateParallel(ctx, lNode, rNode, root, lKeys, rKeys, lValues, rValues, batch, iBatch, height, ch)
 	}
 }
 
 // updateRight updates the right side of the tree
-func (s *Trie) updateRight(lNode, rNode, root []byte, keys, values, batch [][]byte, iBatch, height int, ch chan<- (mResult)) {
+func (s *Trie) updateRight(ctx context.Context, lNode, rNode, root []byte, keys, values, batch [][]byte, iBatch, height int, ch chan<- (mResult)) {
 	// all the keys go in the right subtree
 	newCh := make(chan mResult, 1)
-	s.update(rNode, keys, values, batch, 2*iBatch+2, height-1, newCh)
+	s.update(ctx, rNode, keys, values, batch, 2*iBatch+2, height-1, newCh)
 	result := <-newCh
 	if result.err != nil {
 		ch <- mResult{nil, false, result.err}
@@ -234,7 +235,7 @@ func (s *Trie) updateRight(lNode, rNode, root []byte, keys, values, batch [][]by
 	}
 	// Move up a shortcut node if necessary.
 	if result.deleted {
-		if s.maybeMoveUpShortcut(lNode, result.update, root, batch, iBatch, height, ch) {
+		if s.maybeMoveUpShortcut(ctx, lNode, result.update, root, batch, iBatch, height, ch) {
 			return
 		}
 	}
@@ -243,10 +244,10 @@ func (s *Trie) updateRight(lNode, rNode, root []byte, keys, values, batch [][]by
 }
 
 // updateLeft updates the left side of the tree
-func (s *Trie) updateLeft(lNode, rNode, root []byte, keys, values, batch [][]byte, iBatch, height int, ch chan<- (mResult)) {
+func (s *Trie) updateLeft(ctx context.Context, lNode, rNode, root []byte, keys, values, batch [][]byte, iBatch, height int, ch chan<- (mResult)) {
 	// all the keys go in the left subtree
 	newCh := make(chan mResult, 1)
-	s.update(lNode, keys, values, batch, 2*iBatch+1, height-1, newCh)
+	s.update(ctx, lNode, keys, values, batch, 2*iBatch+1, height-1, newCh)
 	result := <-newCh
 	if result.err != nil {
 		ch <- mResult{nil, false, result.err}
@@ -254,7 +255,7 @@ func (s *Trie) updateLeft(lNode, rNode, root []byte, keys, values, batch [][]byt
 	}
 	// Move up a shortcut node if necessary.
 	if result.deleted {
-		if s.maybeMoveUpShortcut(result.update, rNode, root, batch, iBatch, height, ch) {
+		if s.maybeMoveUpShortcut(ctx, result.update, rNode, root, batch, iBatch, height, ch) {
 			return
 		}
 	}
@@ -263,11 +264,11 @@ func (s *Trie) updateLeft(lNode, rNode, root []byte, keys, values, batch [][]byt
 }
 
 // updateParallel updates both sides of the trie simultaneously
-func (s *Trie) updateParallel(lNode, rNode, root []byte, lKeys, rKeys, lValues, rValues, batch [][]byte, iBatch, height int, ch chan<- (mResult)) {
+func (s *Trie) updateParallel(ctx context.Context, lNode, rNode, root []byte, lKeys, rKeys, lValues, rValues, batch [][]byte, iBatch, height int, ch chan<- (mResult)) {
 	lch := make(chan mResult, 1)
 	rch := make(chan mResult, 1)
-	go s.update(lNode, lKeys, lValues, batch, 2*iBatch+1, height-1, lch)
-	go s.update(rNode, rKeys, rValues, batch, 2*iBatch+2, height-1, rch)
+	go s.update(ctx, lNode, lKeys, lValues, batch, 2*iBatch+1, height-1, lch)
+	go s.update(ctx, rNode, rKeys, rValues, batch, 2*iBatch+2, height-1, rch)
 	lResult := <-lch
 	rResult := <-rch
 	if lResult.err != nil {
@@ -281,7 +282,7 @@ func (s *Trie) updateParallel(lNode, rNode, root []byte, lKeys, rKeys, lValues, 
 
 	// Move up a shortcut node if it's sibling is default
 	if lResult.deleted || rResult.deleted {
-		if s.maybeMoveUpShortcut(lResult.update, rResult.update, root, batch, iBatch, height, ch) {
+		if s.maybeMoveUpShortcut(ctx, lResult.update, rResult.update, root, batch, iBatch, height, ch) {
 			return
 		}
 	}
@@ -315,7 +316,7 @@ func (s *Trie) splitKeys(keys [][]byte, height int) ([][]byte, [][]byte) {
 }
 
 // maybeMoveUpShortcut moves up a shortcut if it's sibling node is default
-func (s *Trie) maybeMoveUpShortcut(left, right, root []byte, batch [][]byte, iBatch, height int, ch chan<- (mResult)) bool {
+func (s *Trie) maybeMoveUpShortcut(ctx context.Context, left, right, root []byte, batch [][]byte, iBatch, height int, ch chan<- (mResult)) bool {
 	if len(left) == 0 && len(right) == 0 {
 		// Both update and sibling are deleted subtrees
 		if iBatch == 0 {
@@ -330,22 +331,22 @@ func (s *Trie) maybeMoveUpShortcut(left, right, root []byte, batch [][]byte, iBa
 	} else if len(left) == 0 {
 		// If right is a shortcut move it up
 		if right[HashLength] == 1 {
-			s.moveUpShortcut(right, root, batch, iBatch, 2*iBatch+2, height, ch)
+			s.moveUpShortcut(ctx, right, root, batch, iBatch, 2*iBatch+2, height, ch)
 			return true
 		}
 	} else if len(right) == 0 {
 		// If left is a shortcut move it up
 		if left[HashLength] == 1 {
-			s.moveUpShortcut(left, root, batch, iBatch, 2*iBatch+1, height, ch)
+			s.moveUpShortcut(ctx, left, root, batch, iBatch, 2*iBatch+1, height, ch)
 			return true
 		}
 	}
 	return false
 }
 
-func (s *Trie) moveUpShortcut(shortcut, root []byte, batch [][]byte, iBatch, iShortcut, height int, ch chan<- (mResult)) {
+func (s *Trie) moveUpShortcut(ctx context.Context, shortcut, root []byte, batch [][]byte, iBatch, iShortcut, height int, ch chan<- (mResult)) {
 	// it doesn't matter if atomic update is true or false since the batch is node modified
-	_, _, shortcutKey, shortcutVal, _, err := s.loadChildren(shortcut, height-1, iShortcut, batch)
+	_, _, shortcutKey, shortcutVal, _, err := s.loadChildren(ctx, shortcut, height-1, iShortcut, batch)
 	if err != nil {
 		ch <- mResult{nil, false, err}
 		return
@@ -432,7 +433,7 @@ func (s *Trie) maybeAddShortcutToKV(keys, values [][]byte, shortcutKey, shortcut
 
 // loadChildren looks for the children of a node.
 // if the node is not stored in cache, it will be loaded from db.
-func (s *Trie) loadChildren(root []byte, height, iBatch int, batch [][]byte) ([][]byte, int, []byte, []byte, bool, error) {
+func (s *Trie) loadChildren(ctx context.Context, root []byte, height, iBatch int, batch [][]byte) ([][]byte, int, []byte, []byte, bool, error) {
 	isShortcut := false
 	if height%4 == 0 {
 		if len(root) == 0 {
@@ -441,7 +442,7 @@ func (s *Trie) loadChildren(root []byte, height, iBatch int, batch [][]byte) ([]
 			batch[0] = []byte{0}
 		} else {
 			var err error
-			batch, err = s.loadBatch(root, height)
+			batch, err = s.loadBatch(ctx, root, height)
 			if err != nil {
 				return nil, 0, nil, nil, false, err
 			}
@@ -459,7 +460,7 @@ func (s *Trie) loadChildren(root []byte, height, iBatch int, batch [][]byte) ([]
 }
 
 // loadBatch fetches a batch of nodes in cache or db
-func (s *Trie) loadBatch(root []byte, height int) ([][]byte, error) {
+func (s *Trie) loadBatch(ctx context.Context, root []byte, height int) ([][]byte, error) {
 	var node Hash
 	copy(node[:], root)
 
@@ -493,7 +494,7 @@ func (s *Trie) loadBatch(root []byte, height int) ([][]byte, error) {
 		return nil, fmt.Errorf("DB not connected to trie")
 	}
 
-	value, err := s.db.getValue(root[:HashLength])
+	value, err := s.db.getValue(ctx, root[:HashLength])
 	if err != nil {
 		return nil, fmt.Errorf("the trie node %x is unavailable in the disk db, db may be corrupted | %w", root, err)
 	}

@@ -25,17 +25,17 @@ func benchmark10MAccounts10Ktps(smt *trie.Trie) ([][]byte, [][]byte) {
 	allValues := [][]byte{}
 	for i := 0; i < 500; i++ {
 		fmt.Println("Iteration ", i, " ------------------------------")
+		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+		defer cancelF()
+
 		newKeys := getFreshData(100000, 32)
 		newValues := getFreshData(100000, 32)
 		allKeys = append(allKeys, newKeys...)
 		allValues = append(allValues, newValues...)
 
 		start := time.Now()
-		smt.Update(newKeys, newValues)
+		smt.Update(ctx, newKeys, newValues)
 		end := time.Now()
-
-		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
-		defer cancelF()
 
 		err := smt.Commit(ctx)
 		if err != nil {
@@ -43,7 +43,7 @@ func benchmark10MAccounts10Ktps(smt *trie.Trie) ([][]byte, [][]byte) {
 		}
 		end2 := time.Now()
 		for j, key := range newKeys {
-			val, _ := smt.Get(key)
+			val, _ := smt.Get(ctx, key)
 			if !bytes.Equal(val, newValues[j]) {
 				panic("new key not included")
 			}
@@ -91,9 +91,12 @@ func BenchmarkCacheHeightLimit233() {
 	fmt.Println("length of keys: ", len(allKeys))
 
 	for i := 0; i < 300; i++ {
+		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+		defer cancelF()
+
 		start := time.Now()
 		for j := 0; j < 1000; j++ {
-			ap_, _, _, _, _ := smt.MerkleProof(allKeys[i*10000+j])
+			ap_, _, _, _, _ := smt.MerkleProof(ctx, allKeys[i*10000+j])
 
 			if !trie.VerifyInclusion(smt.Root, ap_, allKeys[i*10000+j], allValues[i*10000+j]) {
 				panic("failed to verify inclusion proof")

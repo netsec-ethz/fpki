@@ -3,7 +3,6 @@ package responder
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
@@ -31,7 +30,7 @@ type MapResponder struct {
 }
 
 // NewMapResponder: return a new responder
-func NewMapResponder(root []byte, cacheHeight int, workerThreadNum int) (*MapResponder, error) {
+func NewMapResponder(ctx context.Context, root []byte, cacheHeight int, workerThreadNum int) (*MapResponder, error) {
 	parser, err := domain.NewDomainParser()
 	if err != nil {
 		return nil, fmt.Errorf("NewMapResponder | NewDomainParser | %w", err)
@@ -55,7 +54,7 @@ func NewMapResponder(root []byte, cacheHeight int, workerThreadNum int) (*MapRes
 		return nil, fmt.Errorf("NewMapResponder | NewTrie | %w", err)
 	}
 	smt.CacheHeightLimit = cacheHeight
-	err = smt.LoadCache(root)
+	err = smt.LoadCache(ctx, root)
 	if err != nil {
 		return nil, fmt.Errorf("NewMapResponder | LoadCache | %w", err)
 	}
@@ -82,9 +81,6 @@ func NewMapResponder(root []byte, cacheHeight int, workerThreadNum int) (*MapRes
 
 func (responder *MapResponder) GetProof(ctx context.Context, domainName string) ([]mapCommon.MapServerResponse, error) {
 	resultChan := make(chan ClientResponse)
-
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
-	defer cancelF()
 
 	responder.workerChan <- ClientRequest{domainName: domainName, ctx: ctx, resultChan: resultChan}
 	fmt.Println("waiting for response ", domainName)
