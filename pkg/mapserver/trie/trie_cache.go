@@ -99,12 +99,12 @@ func (cacheDB *CacheDB) commitChangesToDB(ctx context.Context) error {
 	defer cacheDB.lock.Unlock()
 
 	updateStart := time.Now()
-	numOfWrites, err := cacheDB.Store.UpdateKeyValuesTreeStruc(ctx, updates)
+	_, err := cacheDB.Store.UpdateKeyValuesTreeStruc(ctx, updates)
 	if err != nil {
 		return fmt.Errorf("commitChangesToDB | UpdateKeyValuePairBatches | %w", err)
 	}
 	updateEnd := time.Now()
-	fmt.Println("Update : takes ", updateEnd.Sub(updateStart), " | write ", numOfWrites)
+	fmt.Println("Update : takes ", updateEnd.Sub(updateStart), " | write ", len(updates))
 
 	if len(keys) > 0 {
 		start := time.Now()
