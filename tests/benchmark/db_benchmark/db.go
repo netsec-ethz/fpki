@@ -41,25 +41,6 @@ func main() {
 		fmt.Println("iteration ", i, " current nodes: ", i, "k time ", end.Sub(start))
 	}
 
-	// read randomly
-	for i := 0; i < 1000; i++ {
-		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
-		defer cancelF()
-
-		keys := getKeys(i*1000, i*1000+999)
-
-		start := time.Now()
-		result, err := conn.RetrieveKeyValuePairTreeStruc(ctx, keys, 10)
-		if err != nil {
-			panic(err)
-		}
-		if len(result) != 1000 {
-			panic("data missing")
-		}
-		end := time.Now()
-		fmt.Println("READ ", i*1000, "time ", end.Sub(start))
-	}
-
 	// read one value, single-threaded
 	for i := 0; i < 100; i++ {
 		keys := getKeys(i*1000, i*1000+999)
@@ -95,26 +76,6 @@ func main() {
 		end := time.Now()
 		fmt.Println("DELETE ", i*1000, "time ", end.Sub(start))
 	}
-
-	// read randomly; should return nil
-	for i := 0; i < 1000; i++ {
-		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
-		defer cancelF()
-
-		keys := getKeys(i*1000, i*1000+999)
-
-		start := time.Now()
-		result, err := conn.RetrieveKeyValuePairTreeStruc(ctx, keys, 10)
-		if err != nil {
-			panic(err)
-		}
-		if len(result) != 0 {
-			panic("read deleted data")
-		}
-		end := time.Now()
-		fmt.Println("READ ", i*1000, "time ", end.Sub(start))
-	}
-
 }
 
 func generateRandomBytes() []byte {

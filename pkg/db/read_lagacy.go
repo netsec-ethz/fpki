@@ -10,40 +10,6 @@ import (
 
 // TODO(yongzhe): delete this file. move multi-thread reading to responder
 
-// RetrieveKeyValuePairTreeStruc: Retrieve a list of key-value pairs from DB. Multi-threaded
-func (c *mysqlDB) RetrieveKeyValuePairTreeStruc(ctx context.Context, key []common.SHA256Output, numOfWorker int) ([]KeyValuePair, error) {
-	stmt := c.prepGetValueTree
-
-	// if work is less than number of worker
-	if len(key) < numOfWorker {
-		numOfWorker = len(key)
-	}
-
-	count := len(key)
-	step := count / numOfWorker
-
-	resultChan := make(chan keyValueResult)
-	for r := 0; r < numOfWorker-1; r++ {
-		go fetchKeyValuePairWorker(resultChan, key[r*step:r*step+step], stmt, ctx)
-	}
-	// let the final one do the rest of the work
-	go fetchKeyValuePairWorker(resultChan, key[(numOfWorker-1)*step:count], stmt, ctx)
-
-	finishedWorker := 0
-	keyValuePairs := []KeyValuePair{}
-
-	for numOfWorker > finishedWorker {
-		newResult := <-resultChan
-		if newResult.Err != nil {
-			return nil, fmt.Errorf("RetrieveKeyValuePairTreeStruc | %w", newResult.Err)
-		}
-		keyValuePairs = append(keyValuePairs, newResult.Pairs...)
-		finishedWorker++
-	}
-
-	return keyValuePairs, nil
-}
-
 // RetrieveKeyValuePairDomainEntries: Retrieve a list of key-value pairs from domain entries table
 func (c *mysqlDB) RetrieveKeyValuePairDomainEntries(ctx context.Context, key []common.SHA256Output, numOfWorker int) ([]KeyValuePair, error) {
 	stmt := c.prepGetValueDomainEntries

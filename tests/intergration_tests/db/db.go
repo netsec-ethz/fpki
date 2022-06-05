@@ -153,9 +153,15 @@ func testKeyValueStore() {
 	keys = getKeys(11511, 14555)
 	keySize = len(keys)
 
-	result, err = conn.RetrieveKeyValuePairTreeStruc(ctx, keys, 10)
-	if err != nil {
-		panic(err)
+	result = []db.KeyValuePair{}
+	for _, key := range keys {
+		newResult, err := conn.RetrieveOneKeyValuePairTreeStruc(ctx, key)
+		if err != nil && err != sql.ErrNoRows {
+			panic(err)
+		}
+		if newResult != nil {
+			result = append(result, *newResult)
+		}
 	}
 
 	if len(result) != keySize {
@@ -165,10 +171,17 @@ func testKeyValueStore() {
 	keys = getKeys(11511, 11511)
 	keySize = len(keys)
 
-	result, err = conn.RetrieveKeyValuePairTreeStruc(ctx, keys, 10)
-	if err != nil {
-		panic(err)
+	result = []db.KeyValuePair{}
+	for _, key := range keys {
+		newResult, err := conn.RetrieveOneKeyValuePairTreeStruc(ctx, key)
+		if err != nil && err != sql.ErrNoRows {
+			panic(err)
+		}
+		if newResult != nil {
+			result = append(result, *newResult)
+		}
 	}
+
 	if len(result) != keySize {
 		panic("Tree key size error 2")
 	}
@@ -176,28 +189,49 @@ func testKeyValueStore() {
 	keys = getKeys(11542, 11673)
 	keySize = len(keys)
 
-	result, err = conn.RetrieveKeyValuePairTreeStruc(ctx, keys, 10)
-	if err != nil {
-		panic(err)
+	result = []db.KeyValuePair{}
+	for _, key := range keys {
+		newResult, err := conn.RetrieveOneKeyValuePairTreeStruc(ctx, key)
+		if err != nil && err != sql.ErrNoRows {
+			panic(err)
+		}
+		if newResult != nil {
+			result = append(result, *newResult)
+		}
 	}
+
 	if len(result) != keySize {
 		panic("Tree key size error 3")
 	}
 
 	keys = getKeys(14555, 16000)
-	result, err = conn.RetrieveKeyValuePairTreeStruc(ctx, keys, 10)
-	if err != nil {
-		panic(err)
+	result = []db.KeyValuePair{}
+	for _, key := range keys {
+		newResult, err := conn.RetrieveOneKeyValuePairTreeStruc(ctx, key)
+		if err != nil && err != sql.ErrNoRows {
+			panic(err)
+		}
+		if newResult != nil {
+			result = append(result, *newResult)
+		}
 	}
+
 	if len(result) != 1 {
 		panic("Tree key size error 4")
 	}
 
 	keys = getKeys(14575, 16000)
-	result, err = conn.RetrieveKeyValuePairTreeStruc(ctx, keys, 10)
-	if err != nil {
-		panic(err)
+	result = []db.KeyValuePair{}
+	for _, key := range keys {
+		newResult, err := conn.RetrieveOneKeyValuePairTreeStruc(ctx, key)
+		if err != nil && err != sql.ErrNoRows {
+			panic(err)
+		}
+		if newResult != nil {
+			result = append(result, *newResult)
+		}
 	}
+
 	if len(result) != 0 {
 		panic("Tree key size error 5")
 	}
