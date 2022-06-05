@@ -13,6 +13,10 @@ import (
 )
 
 func main() {
+	// *****************************************************************
+	//                     open a db connection
+	// *****************************************************************
+
 	config := db.Configuration{
 		Dsn: "root@tcp(localhost)/fpki",
 		Values: map[string]string{
@@ -26,7 +30,9 @@ func main() {
 		panic(err)
 	}
 
-	// insert 10M node first
+	// *****************************************************************
+	//                     insert 1M node first
+	// *****************************************************************
 	for i := 0; i < 1000; i++ {
 		newKVPair := getKeyValuePair(i*1000, i*1000+999, generateRandomBytes())
 		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
@@ -41,7 +47,9 @@ func main() {
 		fmt.Println("iteration ", i, " current nodes: ", i, "k time ", end.Sub(start))
 	}
 
-	// read one value, single-threaded
+	// *****************************************************************
+	//                     read one value, single-threaded
+	// *****************************************************************
 	for i := 0; i < 100; i++ {
 		keys := getKeys(i*1000, i*1000+999)
 		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
@@ -57,10 +65,12 @@ func main() {
 			}
 		}
 		end := time.Now()
-		fmt.Println("READ Sequentially", i*1000, "time ", end.Sub(start))
+		fmt.Println("Single-thread READ for 1000 read: index: ", i*1000, "time: ", end.Sub(start))
 	}
 
-	// delete entries
+	// *****************************************************************
+	//                     delete entries
+	// *****************************************************************
 	for i := 0; i < 1000; i++ {
 		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 		defer cancelF()

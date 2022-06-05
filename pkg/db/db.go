@@ -33,10 +33,10 @@ type Conn interface {
 	RetrieveOneKeyValuePairTreeStruc(ctx context.Context, id common.SHA256Output) (*KeyValuePair, error)
 
 	// UpdateKeyValuesTreeStruc: Update a list of key-value pairs in Tree table
-	UpdateKeyValuesTreeStruc(ctx context.Context, keyValuePairs []KeyValuePair) (int, error)
+	UpdateKeyValuesTreeStruc(ctx context.Context, keyValuePairs []KeyValuePair) (int64, error)
 
 	// DeleteKeyValuesTreeStruc: Delete a list of key-value pairs in Tree table
-	DeleteKeyValuesTreeStruc(ctx context.Context, keys []common.SHA256Output) (int, error)
+	DeleteKeyValuesTreeStruc(ctx context.Context, keys []common.SHA256Output) (int64, error)
 
 	// ************************************************************
 	//             Function for DomainEntries table
@@ -50,7 +50,7 @@ type Conn interface {
 	RetrieveKeyValuePairDomainEntries(ctx context.Context, id []common.SHA256Output, numOfRoutine int) ([]KeyValuePair, error)
 
 	// UpdateKeyValuesDomainEntries: Update a list of key-value pairs in domain entries table
-	UpdateKeyValuesDomainEntries(ctx context.Context, keyValuePairs []KeyValuePair) (int, error)
+	UpdateKeyValuesDomainEntries(ctx context.Context, keyValuePairs []KeyValuePair) (int64, error)
 
 	// ************************************************************
 	//           Function for Updates table
@@ -60,7 +60,7 @@ type Conn interface {
 	GetCountOfUpdatesDomainsUpdates(ctx context.Context) (int, error)
 
 	// AddUpdatedDomainHashesUpdates: Add a list of hashes of updated domain into the updates table. If key exists, ignore it.
-	AddUpdatedDomainHashesUpdates(ctx context.Context, keys []common.SHA256Output) (int, error)
+	AddUpdatedDomainHashesUpdates(ctx context.Context, keys []common.SHA256Output) (int64, error)
 
 	// TODO(yongzhe): investigate whether perQueryLimit is necessary
 	// RetrieveUpdatedDomainHashesUpdates: Retrieve all updated domain hashes from update table

@@ -13,7 +13,7 @@ import (
 // ********************************************************************
 
 // UpdateKeyValuesDomainEntries: Update a list of key-value store
-func (c *mysqlDB) UpdateKeyValuesDomainEntries(ctx context.Context, keyValuePairs []KeyValuePair) (int, error) {
+func (c *mysqlDB) UpdateKeyValuesDomainEntries(ctx context.Context, keyValuePairs []KeyValuePair) (int64, error) {
 	numOfUpdatedRecords, err := c.doUpdatesPairs(ctx, c.prepUpdateValueDomainEntries, keyValuePairs, DomainEntries)
 	if err != nil {
 		return 0, fmt.Errorf("UpdateKeyValuesDomainEntries | %w", err)
@@ -22,7 +22,7 @@ func (c *mysqlDB) UpdateKeyValuesDomainEntries(ctx context.Context, keyValuePair
 }
 
 // DeleteKeyValuesTreeStruc: Delete a list of key-value store
-func (c *mysqlDB) DeleteKeyValuesTreeStruc(ctx context.Context, keys []common.SHA256Output) (int, error) {
+func (c *mysqlDB) DeleteKeyValuesTreeStruc(ctx context.Context, keys []common.SHA256Output) (int64, error) {
 	numOfDeletedRecords, err := c.doUpdatesKeys(ctx, c.prepDeleteKeyValueTree, keys, Tree)
 	if err != nil {
 		return 0, fmt.Errorf("DeleteKeyValuesTreeStruc | %w", err)
@@ -36,7 +36,7 @@ func (c *mysqlDB) DeleteKeyValuesTreeStruc(ctx context.Context, keys []common.SH
 // ********************************************************************
 
 // UpdateKeyValuesTreeStruc: Update a list of key-value store
-func (c *mysqlDB) UpdateKeyValuesTreeStruc(ctx context.Context, keyValuePairs []KeyValuePair) (int, error) {
+func (c *mysqlDB) UpdateKeyValuesTreeStruc(ctx context.Context, keyValuePairs []KeyValuePair) (int64, error) {
 	numOfUpdatedPairs, err := c.doUpdatesPairs(ctx, c.prepUpdateValueTree, keyValuePairs, Tree)
 	if err != nil {
 		return 0, fmt.Errorf("UpdateKeyValuesTreeStruc | %w", err)
@@ -49,7 +49,7 @@ func (c *mysqlDB) UpdateKeyValuesTreeStruc(ctx context.Context, keyValuePairs []
 // ********************************************************************
 
 // AddUpdatedDomainHashesUpdates: Insert a list of keys into the updates table. If key exists, ignore it.
-func (c *mysqlDB) AddUpdatedDomainHashesUpdates(ctx context.Context, keys []common.SHA256Output) (int, error) {
+func (c *mysqlDB) AddUpdatedDomainHashesUpdates(ctx context.Context, keys []common.SHA256Output) (int64, error) {
 	numOfUpdatedPairs, err := c.doUpdatesKeys(ctx, c.prepInsertKeysUpdates, keys, Updates)
 	if err != nil {
 		return 0, fmt.Errorf("AddUpdatedDomainHashesUpdates | %w", err)
@@ -70,8 +70,10 @@ func (c *mysqlDB) TruncateUpdatesTableUpdates(ctx context.Context) error {
 //                              Common
 // ********************************************************************
 // worker to update key-value pairs
-func (c *mysqlDB) doUpdatesPairs(ctx context.Context, stmt *sql.Stmt, keyValuePairs []KeyValuePair, tableName tableName) (int, error) {
+func (c *mysqlDB) doUpdatesPairs(ctx context.Context, stmt *sql.Stmt, keyValuePairs []KeyValuePair, tableName tableName) (int64, error) {
 	dataLen := len(keyValuePairs)
+	var affectedRowsCount int64
+	affectedRowsCount = 0
 
 	// write in batch of batchSize
 	for i := 0; i < dataLen/batchSize; i++ {
@@ -81,10 +83,18 @@ func (c *mysqlDB) doUpdatesPairs(ctx context.Context, stmt *sql.Stmt, keyValuePa
 			data[2*j] = keyValuePairs[i*batchSize+j].Key[:]
 			data[2*j+1] = keyValuePairs[i*batchSize+j].Value
 		}
-		_, err := stmt.Exec(data...)
+
+		result, err := stmt.Exec(data...)
 		if err != nil {
 			return 0, fmt.Errorf("doUpdatesPairs | Exec | %w", err)
 		}
+
+		numOfRows, err := result.RowsAffected()
+		if err != nil {
+			return 0, fmt.Errorf("doUpdatesKeys | RowsAffected | %w", err)
+		}
+
+		affectedRowsCount = affectedRowsCount + numOfRows
 	}
 
 	// if remaining data is less than batchSize
@@ -106,17 +116,26 @@ func (c *mysqlDB) doUpdatesPairs(ctx context.Context, stmt *sql.Stmt, keyValuePa
 			data[2*j+1] = keyValuePairs[dataLen-dataLen%batchSize+j].Value
 		}
 
-		_, err := c.db.Exec(repeatedStmt, data...)
+		result, err := c.db.Exec(repeatedStmt, data...)
 		if err != nil {
 			return 0, fmt.Errorf("doUpdatesPairs | Exec remaining | %w", err)
 		}
+
+		numOfRows, err := result.RowsAffected()
+		if err != nil {
+			return 0, fmt.Errorf("doUpdatesKeys | RowsAffected | %w", err)
+		}
+
+		affectedRowsCount = affectedRowsCount + numOfRows
 	}
-	return dataLen, nil
+	return affectedRowsCount, nil
 }
 
 // worker to update keys
-func (c *mysqlDB) doUpdatesKeys(ctx context.Context, stmt *sql.Stmt, keys []common.SHA256Output, tableName tableName) (int, error) {
+func (c *mysqlDB) doUpdatesKeys(ctx context.Context, stmt *sql.Stmt, keys []common.SHA256Output, tableName tableName) (int64, error) {
 	dataLen := len(keys)
+	var affectedRowsCount int64
+	affectedRowsCount = 0
 
 	// write in batch of batchSize
 	for i := 0; i < dataLen/batchSize; i++ {
@@ -126,10 +145,17 @@ func (c *mysqlDB) doUpdatesKeys(ctx context.Context, stmt *sql.Stmt, keys []comm
 			data[j] = keys[i*batchSize+j][:]
 		}
 
-		_, err := stmt.Exec(data...)
+		result, err := stmt.Exec(data...)
 		if err != nil {
 			return 0, fmt.Errorf("doUpdatesKeys | Exec | %w", err)
 		}
+
+		numOfRows, err := result.RowsAffected()
+		if err != nil {
+			return 0, fmt.Errorf("doUpdatesKeys | RowsAffected | %w", err)
+		}
+
+		affectedRowsCount = affectedRowsCount + numOfRows
 	}
 
 	// if remaining data is less than batchSize, finish the remaining deleting
@@ -150,10 +176,17 @@ func (c *mysqlDB) doUpdatesKeys(ctx context.Context, stmt *sql.Stmt, keys []comm
 			data[j] = keys[dataLen-dataLen%batchSize+j][:]
 		}
 
-		_, err := c.db.Exec(repeatedStmt, data...)
+		result, err := c.db.Exec(repeatedStmt, data...)
 		if err != nil {
 			return 0, fmt.Errorf("doUpdatesKeys | Exec remaining | %w", err)
 		}
+
+		numOfRows, err := result.RowsAffected()
+		if err != nil {
+			return 0, fmt.Errorf("doUpdatesKeys | RowsAffected | %w", err)
+		}
+
+		affectedRowsCount = affectedRowsCount + numOfRows
 	}
-	return dataLen, nil
+	return affectedRowsCount, nil
 }

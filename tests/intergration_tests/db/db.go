@@ -148,6 +148,85 @@ func testTreeTable() {
 	}
 
 	// *****************************************************************
+	//                       update keys
+	// *****************************************************************
+	newKVPair = getKeyValuePair(2056, 4555, []byte("new value"))
+	_, err = conn.UpdateKeyValuesTreeStruc(ctx, newKVPair)
+	if err != nil {
+		panic(err)
+	}
+
+	// *****************************************************************
+	//                 read updated key-value pairs
+	// *****************************************************************
+	keys = getKeys(2056, 4555)
+	result = []db.KeyValuePair{}
+
+	for _, key := range keys {
+		newResult, err := conn.RetrieveOneKeyValuePairTreeStruc(ctx, key)
+		if err != nil && err != sql.ErrNoRows {
+			panic(err)
+		}
+		if newResult != nil {
+			// test of value if correctly stored and read
+			if !bytes.Equal(newResult.Value, []byte("new value")) {
+				panic("Tree Table Read test 4: Stored value is not correct")
+			}
+			result = append(result, *newResult)
+		}
+	}
+
+	if len(keys) != len(result) {
+		panic("Tree Table Read test 4: read result size error")
+	}
+
+	// *****************************************************************
+	//                       delete keys
+	// *****************************************************************
+	keys = getKeys(1000, 1200)
+	affectDomainsCount, err := conn.DeleteKeyValuesTreeStruc(ctx, keys)
+	if err != nil {
+		panic(err)
+	}
+
+	if affectDomainsCount != 0 {
+		panic("Tree Table Read test 5: affected number error (1000-1200)")
+	}
+
+	keys = getKeys(1511, 4222)
+	affectDomainsCount, err = conn.DeleteKeyValuesTreeStruc(ctx, keys)
+	if err != nil {
+		panic(err)
+	}
+	if affectDomainsCount != int64(len(keys)) {
+		panic("Tree Table Read test 5: affected number error (1511-4222)")
+	}
+
+	keys = getKeys(4223, 4555)
+	affectDomainsCount, err = conn.DeleteKeyValuesTreeStruc(ctx, keys)
+	if err != nil {
+		panic(err)
+	}
+	if affectDomainsCount != int64(len(keys)) {
+		panic("Tree Table Read test 5: affected number error (4223-4555)")
+	}
+
+	// *****************************************************************
+	//                      read keys again
+	// *****************************************************************
+	keys = getKeys(1011, 5555)
+
+	for _, key := range keys {
+		newResult, err := conn.RetrieveOneKeyValuePairTreeStruc(ctx, key)
+		if err != nil && err != sql.ErrNoRows {
+			panic(err)
+		}
+		if newResult != nil {
+			panic("Tree Table test 6: read deleted entry")
+		}
+	}
+
+	// *****************************************************************
 	//              Test Close()
 	// *****************************************************************
 	err = conn.Close()
