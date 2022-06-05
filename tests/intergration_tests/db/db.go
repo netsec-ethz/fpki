@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"strconv"
@@ -14,14 +15,25 @@ import (
 
 func main() {
 	clearTable()
-	testKeyValueStore()
+
+	// test for tree table functions
+	testTreeTable()
+
+	// test for domain entries table functions
+	testDomainEntriesTable()
+
+	// test for updates table functions
 	testUpdateTable()
+
 	clearTable()
 	fmt.Println("succeed")
 }
 
-// testKeyValueStore: test insert and read, with arbitrary indexes
-func testKeyValueStore() {
+// test tree table
+func testTreeTable() {
+	// *****************************************************************
+	//                     open a db connection
+	// *****************************************************************
 	config := db.Configuration{
 		Dsn: "root@tcp(localhost)/fpki",
 		Values: map[string]string{
@@ -34,196 +46,241 @@ func testKeyValueStore() {
 		panic(err)
 	}
 
-	newKVPair := getKeyValuePair(1511, 2012, []byte("hi this is a test"))
+	// *****************************************************************
+	//                     insert into tree table
+	// *****************************************************************
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	// update key-value pair from 1511 to 2012
+	// insert key 1511 - 2012
+	newKVPair := getKeyValuePair(1511, 2012, []byte("hi this is a test"))
+	_, err = conn.UpdateKeyValuesTreeStruc(ctx, newKVPair)
+	if err != nil {
+		panic(err)
+	}
+
+	// insert key 2013 - 2055
+	newKVPair = getKeyValuePair(2013, 2055, []byte("hi this is a test"))
+	_, err = conn.UpdateKeyValuesTreeStruc(ctx, newKVPair)
+	if err != nil {
+		panic(err)
+	}
+
+	// insert key 2056 - 2155
+	newKVPair = getKeyValuePair(2056, 2155, []byte("hi this is a test"))
+	_, err = conn.UpdateKeyValuesTreeStruc(ctx, newKVPair)
+	if err != nil {
+		panic(err)
+	}
+
+	// insert key 2056 - 4555
+	newKVPair = getKeyValuePair(2056, 4555, []byte("hi this is a test"))
+	_, err = conn.UpdateKeyValuesTreeStruc(ctx, newKVPair)
+	if err != nil {
+		panic(err)
+	}
+
+	// *****************************************************************
+	//              check if value is correctly inserted
+	// *****************************************************************
+	keys := getKeys(1511, 4555)
+	prevKeySize := len(keys)
+	result := []db.KeyValuePair{}
+
+	for _, key := range keys {
+		newResult, err := conn.RetrieveOneKeyValuePairTreeStruc(ctx, key)
+		if err != nil && err != sql.ErrNoRows {
+			panic(err)
+		}
+		if newResult != nil {
+			// test of value if correctly stored and read
+			if !bytes.Equal(newResult.Value, []byte("hi this is a test")) {
+				panic("Tree Table Read test 1: Stored value is not correct")
+			}
+			result = append(result, *newResult)
+		}
+	}
+
+	if len(keys) != len(result) {
+		panic("Tree Table Read test 1: read result size error")
+	}
+
+	// query a larger range
+	keys = getKeys(1011, 5555)
+	result = []db.KeyValuePair{}
+
+	for _, key := range keys {
+		newResult, err := conn.RetrieveOneKeyValuePairTreeStruc(ctx, key)
+		if err != nil && err != sql.ErrNoRows {
+			panic(err)
+		}
+		if newResult != nil {
+			// test of value if correctly stored and read
+			if !bytes.Equal(newResult.Value, []byte("hi this is a test")) {
+				panic("Tree Table Read test 2: Stored value is not correct")
+			}
+			result = append(result, *newResult)
+		}
+	}
+
+	if prevKeySize != len(result) {
+		panic("Tree Table Read test 2: read result size error")
+	}
+
+	// *****************************************************************
+	//                       read empty keys
+	// *****************************************************************
+	keys = getKeys(11511, 14555)
+	result = []db.KeyValuePair{}
+
+	for _, key := range keys {
+		newResult, err := conn.RetrieveOneKeyValuePairTreeStruc(ctx, key)
+		if err != nil && err != sql.ErrNoRows {
+			panic(err)
+		}
+		if newResult != nil {
+			result = append(result, *newResult)
+		}
+	}
+
+	if len(result) != 0 {
+		panic("Tree Table Read test 3: read not inserted values")
+	}
+
+	// *****************************************************************
+	//              Test Close()
+	// *****************************************************************
+	err = conn.Close()
+	if err != nil {
+		panic(err)
+	}
+}
+
+// test tree table
+func testDomainEntriesTable() {
+	// *****************************************************************
+	//                     open a db connection
+	// *****************************************************************
+	config := db.Configuration{
+		Dsn: "root@tcp(localhost)/fpki",
+		Values: map[string]string{
+			"interpolateParams": "true", // 1 round trip per query
+			"collation":         "binary",
+		},
+	}
+	conn, err := db.Connect(&config)
+	if err != nil {
+		panic(err)
+	}
+	// *****************************************************************
+	//                     insert into tree table
+	// *****************************************************************
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
+	// insert key 1511 - 2012
+	newKVPair := getKeyValuePair(1511, 2012, []byte("hi this is a test"))
 	_, err = conn.UpdateKeyValuesDomainEntries(ctx, newKVPair)
 	if err != nil {
 		panic(err)
 	}
 
-	// update key-value pair from 2013 to 2055
+	// insert key 2013 - 2055
 	newKVPair = getKeyValuePair(2013, 2055, []byte("hi this is a test"))
 	_, err = conn.UpdateKeyValuesDomainEntries(ctx, newKVPair)
 	if err != nil {
 		panic(err)
 	}
 
-	// update key-value pair from 2056 to 2155
+	// insert key 2056 - 2155
 	newKVPair = getKeyValuePair(2056, 2155, []byte("hi this is a test"))
 	_, err = conn.UpdateKeyValuesDomainEntries(ctx, newKVPair)
 	if err != nil {
 		panic(err)
 	}
 
-	// update key-value pair from 2056 to 4555
+	// insert key 2056 - 4555
 	newKVPair = getKeyValuePair(2056, 4555, []byte("hi this is a test"))
 	_, err = conn.UpdateKeyValuesDomainEntries(ctx, newKVPair)
 	if err != nil {
 		panic(err)
 	}
 
+	// *****************************************************************
+	//              check if value is correctly inserted
+	//              RetrieveOneKeyValuePairDomainEntries()
+	// *****************************************************************
 	keys := getKeys(1511, 4555)
-	keySize := len(keys)
+	prevKeySize := len(keys)
+	result := []db.KeyValuePair{}
 
-	// retrieve previously stored key-value pairs
-	result, err := conn.RetrieveKeyValuePairDomainEntries(ctx, keys, 10)
-	if err != nil {
-		panic(err)
+	for _, key := range keys {
+		newResult, err := conn.RetrieveOneKeyValuePairDomainEntries(ctx, key)
+		if err != nil && err != sql.ErrNoRows {
+			panic(err)
+		}
+		if newResult != nil {
+			// test of value if correctly stored and read
+			if !bytes.Equal(newResult.Value, []byte("hi this is a test")) {
+				panic("Domain entries Table Read test 1: Stored value is not correct")
+			}
+			result = append(result, *newResult)
+		}
 	}
 
-	if len(result) != keySize {
-		panic("key size error 1")
+	if len(keys) != len(result) {
+		panic("Domain entries Table Read test 1: read result size error")
 	}
 
-	keys = getKeys(1511, 1511)
-	keySize = len(keys)
+	// query a larger range
+	keys = getKeys(1011, 5555)
+	result = []db.KeyValuePair{}
 
-	// test to retrieve only one key
+	for _, key := range keys {
+		newResult, err := conn.RetrieveOneKeyValuePairDomainEntries(ctx, key)
+		if err != nil && err != sql.ErrNoRows {
+			panic(err)
+		}
+		if newResult != nil {
+			// test of value if correctly stored and read
+			if !bytes.Equal(newResult.Value, []byte("hi this is a test")) {
+				panic("Domain entries Table Read test 2: Stored value is not correct")
+			}
+			result = append(result, *newResult)
+		}
+	}
+
+	if prevKeySize != len(result) {
+		panic("Domain entries Table Read test 2: read result size error")
+	}
+
+	// *****************************************************************
+	//              check if value is correctly inserted
+	//              RetrieveKeyValuePairDomainEntries()
+	// *****************************************************************
 	result, err = conn.RetrieveKeyValuePairDomainEntries(ctx, keys, 10)
 	if err != nil {
 		panic(err)
 	}
-	if len(result) != keySize {
-		panic("key size error 2")
+
+	if prevKeySize != len(result) {
+		panic("Domain entries Table Read test 3: read result size error")
 	}
 
-	keys = getKeys(1542, 1673)
-	keySize = len(keys)
-
-	// test to retrieve keys
-	result, err = conn.RetrieveKeyValuePairDomainEntries(ctx, keys, 10)
-	if err != nil {
-		panic(err)
-	}
-	if len(result) != keySize {
-		panic("key size error 3")
+	for _, newResult := range result {
+		if !bytes.Equal(newResult.Value, []byte("hi this is a test")) {
+			panic("Domain entries Table Read test 3: Stored value is not correct")
+		}
 	}
 
-	keys = getKeys(4555, 6000)
-	result, err = conn.RetrieveKeyValuePairDomainEntries(ctx, keys, 10)
-	if err != nil {
-		panic(err)
-	}
-	if len(result) != 1 {
-		panic("key size error 4")
-	}
-
-	keys = getKeys(4575, 6000)
-	result, err = conn.RetrieveKeyValuePairDomainEntries(ctx, keys, 10)
-	if err != nil {
-		panic(err)
-	}
-	if len(result) != 0 {
-		panic("key size error 4")
-	}
-
-	keys = getKeys(1511, 2155)
-
-	// test for tree table
-	newKVPair = getKeyValuePair(11511, 12012, []byte("hi this is a test"))
-	ctx, cancelF = context.WithTimeout(context.Background(), time.Minute)
-	defer cancelF()
-
-	_, err = conn.UpdateKeyValuesTreeStruc(ctx, newKVPair)
-	if err != nil {
-		panic(err)
-	}
-
-	newKVPair = getKeyValuePair(12013, 12055, []byte("hi this is a test"))
-	_, err = conn.UpdateKeyValuesTreeStruc(ctx, newKVPair)
-	if err != nil {
-		panic(err)
-	}
-
-	newKVPair = getKeyValuePair(12056, 12155, []byte("hi this is a test"))
-	_, err = conn.UpdateKeyValuesTreeStruc(ctx, newKVPair)
-	if err != nil {
-		panic(err)
-	}
-
-	newKVPair = getKeyValuePair(12056, 14555, []byte("hi this is a test"))
-	_, err = conn.UpdateKeyValuesTreeStruc(ctx, newKVPair)
-	if err != nil {
-		panic(err)
-	}
-
+	// *****************************************************************
+	//                       read empty keys
+	// *****************************************************************
 	keys = getKeys(11511, 14555)
-	keySize = len(keys)
-
 	result = []db.KeyValuePair{}
+
 	for _, key := range keys {
-		newResult, err := conn.RetrieveOneKeyValuePairTreeStruc(ctx, key)
-		if err != nil && err != sql.ErrNoRows {
-			panic(err)
-		}
-		if newResult != nil {
-			result = append(result, *newResult)
-		}
-	}
-
-	if len(result) != keySize {
-		panic("Tree key size error 1")
-	}
-
-	keys = getKeys(11511, 11511)
-	keySize = len(keys)
-
-	result = []db.KeyValuePair{}
-	for _, key := range keys {
-		newResult, err := conn.RetrieveOneKeyValuePairTreeStruc(ctx, key)
-		if err != nil && err != sql.ErrNoRows {
-			panic(err)
-		}
-		if newResult != nil {
-			result = append(result, *newResult)
-		}
-	}
-
-	if len(result) != keySize {
-		panic("Tree key size error 2")
-	}
-
-	keys = getKeys(11542, 11673)
-	keySize = len(keys)
-
-	result = []db.KeyValuePair{}
-	for _, key := range keys {
-		newResult, err := conn.RetrieveOneKeyValuePairTreeStruc(ctx, key)
-		if err != nil && err != sql.ErrNoRows {
-			panic(err)
-		}
-		if newResult != nil {
-			result = append(result, *newResult)
-		}
-	}
-
-	if len(result) != keySize {
-		panic("Tree key size error 3")
-	}
-
-	keys = getKeys(14555, 16000)
-	result = []db.KeyValuePair{}
-	for _, key := range keys {
-		newResult, err := conn.RetrieveOneKeyValuePairTreeStruc(ctx, key)
-		if err != nil && err != sql.ErrNoRows {
-			panic(err)
-		}
-		if newResult != nil {
-			result = append(result, *newResult)
-		}
-	}
-
-	if len(result) != 1 {
-		panic("Tree key size error 4")
-	}
-
-	keys = getKeys(14575, 16000)
-	result = []db.KeyValuePair{}
-	for _, key := range keys {
-		newResult, err := conn.RetrieveOneKeyValuePairTreeStruc(ctx, key)
+		newResult, err := conn.RetrieveOneKeyValuePairDomainEntries(ctx, key)
 		if err != nil && err != sql.ErrNoRows {
 			panic(err)
 		}
@@ -233,28 +290,23 @@ func testKeyValueStore() {
 	}
 
 	if len(result) != 0 {
-		panic("Tree key size error 5")
+		panic("Domain entries Table Read test 4: read not inserted values")
 	}
 
-	keys = getKeys(11511, 12155)
-
-	_, err = conn.DeleteKeyValuesTreeStruc(ctx, keys)
+	// *****************************************************************
+	//              Test Close()
+	// *****************************************************************
+	err = conn.Close()
 	if err != nil {
 		panic(err)
 	}
-
-	keys = getKeys(12056, 14555)
-
-	_, err = conn.DeleteKeyValuesTreeStruc(ctx, keys)
-	if err != nil {
-		panic(err)
-	}
-
-	conn.Close()
 }
 
 // testUpdateTable: test if RetrieveTableRowsCount return correct number of entries.
 func testUpdateTable() {
+	// *****************************************************************
+	//                     open a db connection
+	// *****************************************************************
 	config := db.Configuration{
 		Dsn: "root@tcp(localhost)/fpki",
 		Values: map[string]string{
@@ -267,31 +319,76 @@ func testUpdateTable() {
 		panic(err)
 	}
 
-	keys := getKeys(100, 200)
+	// *****************************************************************
+	//                        add some records
+	// *****************************************************************
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
+	totalRecordsNum := 0
+
+	keys := getKeys(100, 200)
 	_, err = conn.AddUpdatedDomainHashesUpdates(ctx, keys)
 	if err != nil {
 		panic(err)
 	}
+	totalRecordsNum = totalRecordsNum + len(keys)
 
-	newKeys := getKeys(333, 409)
-	_, err = conn.AddUpdatedDomainHashesUpdates(ctx, newKeys)
+	keys = getKeys(333, 409)
+	_, err = conn.AddUpdatedDomainHashesUpdates(ctx, keys)
 	if err != nil {
 		panic(err)
 	}
+	totalRecordsNum = totalRecordsNum + len(keys)
 
+	// *****************************************************************
+	//                        query updates
+	// *****************************************************************
 	numOfUpdates, err := conn.GetCountOfUpdatesDomainsUpdates(ctx)
 	if err != nil {
 		panic(err)
 	}
 
-	keys, err = conn.RetrieveUpdatedDomainHashesUpdates(ctx, 1000)
-	if len(keys) != numOfUpdates {
-		panic("length not equal")
+	if numOfUpdates != totalRecordsNum {
+		panic("Updates table test: missing some records")
 	}
 
+	keys, err = conn.RetrieveUpdatedDomainHashesUpdates(ctx, 1000)
+	if len(keys) != numOfUpdates {
+		panic("Updates table test: length not equal")
+	}
+
+	// *****************************************************************
+	//                       truncate tables
+	// *****************************************************************
+	err = conn.TruncateUpdatesTableUpdates(ctx)
+	if err != nil {
+		panic(err)
+	}
+
+	// *****************************************************************
+	//                      read records after truncation
+	// *****************************************************************
+	numOfUpdates, err = conn.GetCountOfUpdatesDomainsUpdates(ctx)
+	if err != nil {
+		panic(err)
+	}
+	if numOfUpdates != 0 {
+		panic("Updates table test: table not truncated")
+	}
+
+	keys, err = conn.RetrieveUpdatedDomainHashesUpdates(ctx, 1000)
+	if len(keys) != 0 {
+		panic("Updates table test: read values after truncation")
+	}
+
+	// *****************************************************************
+	//              Test Close()
+	// *****************************************************************
+	err = conn.Close()
+	if err != nil {
+		panic(err)
+	}
 }
 
 func getKeyValuePair(startIdx, endIdx int, content []byte) []db.KeyValuePair {
@@ -337,4 +434,8 @@ func clearTable() {
 		panic(err)
 	}
 
+	err = db.Close()
+	if err != nil {
+		panic(err)
+	}
 }
