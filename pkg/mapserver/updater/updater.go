@@ -159,7 +159,10 @@ func (mapUpdater *MapUpdater) UpdateRPCAndPC(ctUrl string, startIdx, endIdx int6
 
 // CommitChanges: commit changes to DB
 func (mapUpdater *MapUpdater) CommitChanges() error {
-	err := mapUpdater.smt.Commit()
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
+	err := mapUpdater.smt.Commit(ctx)
 	if err != nil {
 		return fmt.Errorf("CommitChanges | Commit | %w", err)
 	}

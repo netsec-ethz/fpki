@@ -7,6 +7,7 @@ package trie
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 )
 
@@ -109,8 +110,8 @@ func (s *Trie) get(root, key []byte, batch [][]byte, iBatch, height int) ([]byte
 	return s.get(lnode, key, batch, 2*iBatch+1, height-1)
 }
 
-func (s *Trie) Commit() error {
-	err := s.db.commitChangesToDB()
+func (s *Trie) Commit(ctx context.Context) error {
+	err := s.db.commitChangesToDB(ctx)
 	if err != nil {
 		return err
 	}

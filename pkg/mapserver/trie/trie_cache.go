@@ -71,32 +71,28 @@ func NewCacheDB(store db.Conn) (*CacheDB, error) {
 }
 
 // commitChangesToDB stores the updated nodes to disk.
-func (cacheDB *CacheDB) commitChangesToDB() error {
-	// init context
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
-	defer cancelF()
-
+func (cacheDB *CacheDB) commitChangesToDB(ctx context.Context) error {
 	// prepare value to store
 	updates := []db.KeyValuePair{}
 	keys := []common.SHA256Output{}
 
-	// lock the updates and deletes tables
+	// get nodes from update map
 	cacheDB.updatedMux.Lock()
-
 	for k, v := range cacheDB.updatedNodes {
 		updates = append(updates, db.KeyValuePair{Key: k, Value: serializeBatch(v)})
 	}
+	cacheDB.updatedNodes = make(map[Hash][][]byte)
+	cacheDB.updatedMux.Unlock()
 
+	// get nodes from remove map
+	cacheDB.removeMux.Lock()
 	if len(cacheDB.removedNode) > 0 {
 		for k := range cacheDB.removedNode {
 			keys = append(keys, k)
 		}
 	}
-	// clear map
-	cacheDB.updatedNodes = make(map[Hash][][]byte)
 	cacheDB.removedNode = make(map[Hash][]byte)
-
-	cacheDB.updatedMux.Unlock()
+	cacheDB.removeMux.Unlock()
 
 	// lock the db; other thread should not read or write to db during the updates
 	cacheDB.lock.Lock()

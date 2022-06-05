@@ -2,10 +2,12 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"fmt"
 	"sort"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/netsec-ethz/fpki/pkg/common"
@@ -39,7 +41,11 @@ func testUpdateWithSameKeys() {
 	keys := getFreshData(10000, 32)
 	values := getFreshData(10000, 32)
 	smt.Update(keys, values)
-	err = smt.Commit()
+
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
+	err = smt.Commit(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -55,7 +61,7 @@ func testUpdateWithSameKeys() {
 	newValues := getFreshData(10000, 32)
 	smt.Update(keys, newValues)
 
-	err = smt.Commit()
+	err = smt.Commit(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -96,7 +102,10 @@ func testTrieMerkleProofAndReloadTree() {
 	keys := getFreshData(100, 32)
 	values := getFreshData(100, 32)
 	smt.Update(keys, values)
-	smt.Commit()
+
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+	smt.Commit(ctx)
 
 	for i, key := range keys {
 		ap, _, k, v, _ := smt.MerkleProof(key)
@@ -181,7 +190,11 @@ func testTrieLoadCache() {
 	keys := getFreshData(10, 32)
 	values = getFreshData(10, 32)
 	smt.Update(keys, values)
-	err = smt.Commit()
+
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
+	err = smt.Commit(ctx)
 	if err != nil {
 		panic(err)
 	}

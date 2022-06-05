@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"fmt"
 	"runtime"
@@ -32,7 +33,11 @@ func benchmark10MAccounts10Ktps(smt *trie.Trie) ([][]byte, [][]byte) {
 		start := time.Now()
 		smt.Update(newKeys, newValues)
 		end := time.Now()
-		err := smt.Commit()
+
+		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+		defer cancelF()
+
+		err := smt.Commit(ctx)
 		if err != nil {
 			panic(err)
 		}
