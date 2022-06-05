@@ -80,22 +80,17 @@ func (c *mysqlDB) doUpdatesPairs(ctx context.Context, stmt *sql.Stmt, keyValuePa
 			repeatedStmt = "REPLACE into domainEntries (`key`, `value`) values " + repeatStmt(dataLen%batchSize, 2)
 		}
 
-		// insert updated domains' entries
-		stmt, err := c.db.Prepare(repeatedStmt)
-		if err != nil {
-			return 0, fmt.Errorf("doUpdates | db.Prepare | %w", err)
-		}
 		data := make([]interface{}, 2*(dataLen%batchSize)) // 2 elements per record ()
 
 		for j := 0; j < dataLen%batchSize; j++ {
 			data[2*j] = keyValuePairs[dataLen-dataLen%batchSize+j].Key[:]
 			data[2*j+1] = keyValuePairs[dataLen-dataLen%batchSize+j].Value
 		}
-		_, err = stmt.Exec(data...)
+
+		_, err := c.db.Exec(repeatedStmt, data...)
 		if err != nil {
 			return 0, fmt.Errorf("doUpdates | Exec remaining | %w", err)
 		}
-		stmt.Close()
 	}
 	return dataLen, nil
 }
@@ -128,20 +123,16 @@ func (c *mysqlDB) doUpdatesKeys(ctx context.Context, stmt *sql.Stmt, keys []comm
 			repeatedStmt = "INSERT IGNORE into `updates` (`key`) VALUES " + repeatStmt(dataLen%batchSize, 1)
 		}
 
-		stmt, err := c.db.Prepare(repeatedStmt)
-		if err != nil {
-			return 0, fmt.Errorf("doUpdatesKeys | db.Prepare | %w", err)
-		}
 		data := make([]interface{}, dataLen%batchSize)
 
 		for j := 0; j < dataLen%batchSize; j++ {
 			data[j] = keys[dataLen-dataLen%batchSize+j][:]
 		}
-		_, err = stmt.Exec(data...)
+
+		_, err := c.db.Exec(repeatedStmt, data...)
 		if err != nil {
 			return 0, fmt.Errorf("doUpdatesKeys | Exec remaining | %w", err)
 		}
-		stmt.Close()
 	}
 	return dataLen, nil
 }
