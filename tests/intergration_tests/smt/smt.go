@@ -21,9 +21,15 @@ func main() {
 	testTrieMerkleProofAndReloadTree()
 	testTrieLoadCache()
 	truncateTable()
+	fmt.Println("smt test succeed!")
 }
 
+// update the db twice, with the same keys but different values
+// to check whether db size grows
 func testUpdateWithSameKeys() {
+	//***************************************************************
+	//                     connect to db
+	//***************************************************************
 	config := db.Configuration{
 		Dsn: "root@tcp(localhost)/fpki",
 		Values: map[string]string{
@@ -33,7 +39,13 @@ func testUpdateWithSameKeys() {
 	}
 
 	db, err := db.Connect(&config)
+	if err != nil {
+		panic(err)
+	}
 
+	//***************************************************************
+	//                    get a new SMT
+	//***************************************************************
 	smt, err := trie.NewTrie(nil, common.SHA256Hash, db)
 
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
@@ -43,6 +55,10 @@ func testUpdateWithSameKeys() {
 	// Add 10000 key-value pair
 	keys := getFreshData(10000, 32)
 	values := getFreshData(10000, 32)
+
+	//***************************************************************
+	//             update and commit the tree to db
+	//***************************************************************
 	smt.Update(ctx, keys, values)
 
 	err = smt.Commit(ctx)
@@ -55,8 +71,9 @@ func testUpdateWithSameKeys() {
 		panic(err)
 	}
 
-	fmt.Println("table size", prevDBSize)
-
+	//***************************************************************
+	//           update the same key with different values
+	//***************************************************************
 	// get 10000 new values
 	newValues := getFreshData(10000, 32)
 	smt.Update(ctx, keys, newValues)
@@ -71,19 +88,26 @@ func testUpdateWithSameKeys() {
 		panic(err)
 	}
 
-	fmt.Println("table size", newDBSize)
-
+	//***************************************************************
+	//              check if db size does not change
+	//***************************************************************
 	if prevDBSize != newDBSize {
 		panic("db size not equal")
 	}
 
-	smt.Close()
+	err = smt.Close()
+	if err != nil {
+		panic(err)
+	}
 }
 
+// update a tree, commit to db, reload the tree, and test proofs
 func testTrieMerkleProofAndReloadTree() {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
-
+	//***************************************************************
+	//                     connect to a new db
+	//***************************************************************
 	config := db.Configuration{
 		Dsn: "root@tcp(localhost)/fpki",
 		Values: map[string]string{
@@ -96,6 +120,9 @@ func testTrieMerkleProofAndReloadTree() {
 		panic(err)
 	}
 
+	//***************************************************************
+	//                    get a new SMT
+	//***************************************************************
 	smt, err := trie.NewTrie(nil, common.SHA256Hash, dbConn)
 	if err != nil {
 		panic(err)
@@ -106,10 +133,19 @@ func testTrieMerkleProofAndReloadTree() {
 	values := getFreshData(100, 32)
 	smt.Update(ctx, keys, values)
 
+	//***************************************************************
+	//                   commit changes to db
+	//***************************************************************
 	smt.Commit(ctx)
 
+	//***************************************************************
+	//          generate Proof of Presence, and verify them
+	//***************************************************************
 	for i, key := range keys {
-		ap, _, k, v, _ := smt.MerkleProof(ctx, key)
+		ap, isIncluded, k, v, _ := smt.MerkleProof(ctx, key)
+		if !isIncluded {
+			panic("proof type error")
+		}
 		if !trie.VerifyInclusion(smt.Root, ap, key, values[i]) {
 			panic("failed to verify inclusion proof")
 		}
@@ -117,6 +153,10 @@ func testTrieMerkleProofAndReloadTree() {
 			panic("merkle proof didn't return the correct key-value pair")
 		}
 	}
+
+	//***************************************************************
+	//          generate Proof of Absence, and verify them
+	//***************************************************************
 	emptyKey := common.SHA256Hash([]byte("non-memvqbdqwdqwdqber"))
 	ap_, included_, proofKey_, proofValue_, _ := smt.MerkleProof(ctx, emptyKey)
 	if included_ {
@@ -126,13 +166,29 @@ func testTrieMerkleProofAndReloadTree() {
 		panic("failed to verify non inclusion proof")
 	}
 
+	//***************************************************************
+	//                          start a new db
+	//***************************************************************
 	dbConn1, err := db.Connect(&config)
 	if err != nil {
 		panic(err)
 	}
-
+	//***************************************************************
+	//                   start a new SMT
+	//***************************************************************
 	smt1, err := trie.NewTrie(smt.Root, common.SHA256Hash, dbConn1)
 
+	//***************************************************************
+	//                   reload cache
+	//***************************************************************
+	err = smt1.LoadCache(ctx, smt.Root)
+	if err != nil {
+		panic(err)
+	}
+
+	//***************************************************************
+	//                   verify PoP
+	//***************************************************************
 	for i, key_ := range keys {
 		ap_, included_, k_, v_, _ := smt1.MerkleProof(ctx, key_)
 		if !trie.VerifyInclusion(smt1.Root, ap_, key_, values[i]) {
@@ -146,6 +202,9 @@ func testTrieMerkleProofAndReloadTree() {
 		}
 	}
 
+	//***************************************************************
+	//                   verify PoA
+	//***************************************************************
 	emptyKey = common.SHA256Hash([]byte("non-member"))
 	ap_, included_, proofKey_, proofValue_, _ = smt1.MerkleProof(ctx, emptyKey)
 	if included_ {

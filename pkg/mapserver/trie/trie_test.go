@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestTrieEmpty: test empty SMT
 func TestTrieEmpty(t *testing.T) {
 	db := &MockDB{}
 	smt, err := NewTrie(nil, common.SHA256Hash, db)
@@ -29,6 +30,7 @@ func TestTrieEmpty(t *testing.T) {
 	}
 }
 
+// TestTrieUpdateAndGet: Update leaves and get leaves
 func TestTrieUpdateAndGet(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
@@ -55,7 +57,7 @@ func TestTrieUpdateAndGet(t *testing.T) {
 		}
 	}
 
-	// Append to the trie
+	// Add another new leaves
 	newKeys := getFreshData(5, 32)
 	newValues := getFreshData(5, 32)
 	ch = make(chan mResult, 1)
@@ -73,6 +75,7 @@ func TestTrieUpdateAndGet(t *testing.T) {
 	}
 }
 
+// TestTrieAtomicUpdate: test AtomicUpdate()
 func TestTrieAtomicUpdate(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
@@ -107,6 +110,7 @@ func TestTrieAtomicUpdate(t *testing.T) {
 	}
 }
 
+// TestTriePublicUpdateAndGet: test Update() and verify the memory
 func TestTriePublicUpdateAndGet(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
@@ -152,7 +156,7 @@ func TestTriePublicUpdateAndGet(t *testing.T) {
 	}
 }
 
-// test updating and deleting at the same time
+// TestTrieUpdateAndDelete: test updating and deleting at the same time
 func TestTrieUpdateAndDelete(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
@@ -194,6 +198,7 @@ func TestTrieUpdateAndDelete(t *testing.T) {
 	}
 }
 
+// TestTrieMerkleProof: test if merkle proof is correct
 func TestTrieMerkleProof(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
@@ -216,16 +221,19 @@ func TestTrieMerkleProof(t *testing.T) {
 			t.Fatalf("merkle proof didn't return the correct key-value pair")
 		}
 	}
+
 	emptyKey := common.SHA256Hash([]byte("non-member"))
 	ap, included, proofKey, proofValue, _ := smt.MerkleProof(ctx, emptyKey)
 	if included {
 		t.Fatalf("failed to verify non inclusion proof")
 	}
+
 	if !VerifyNonInclusion(smt.Root, ap, emptyKey, proofValue, proofKey) {
 		t.Fatalf("failed to verify non inclusion proof")
 	}
 }
 
+// TestTrieMerkleProofCompressed: compressed proofs test
 func TestTrieMerkleProofCompressed(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
