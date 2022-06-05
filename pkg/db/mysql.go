@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"strings"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -31,46 +30,18 @@ const (
 )
 
 type mysqlDB struct {
-	db                              *sql.DB
-	prepValueProofPath              *sql.Stmt // returns the value and the complete proof path
-	prepGetValue                    *sql.Stmt // returns the value for a node
-	prepGetValueDomainEntries       *sql.Stmt // returns the domain entries
-	prepUpdateValueDomainEntries    *sql.Stmt // update the DomainEntries table
-	prepDeleteKeyValueDomainEntries *sql.Stmt // delete key value pair from DomainEntries table
+	db                 *sql.DB
+	prepValueProofPath *sql.Stmt // returns the value and the complete proof path
+	prepGetValue       *sql.Stmt // returns the value for a node
+
+	prepGetValueDomainEntries    *sql.Stmt // returns the domain entries
+	prepUpdateValueDomainEntries *sql.Stmt // update the DomainEntries table
 
 	prepUpdateValueTree    *sql.Stmt // update tree table
 	prepGetValueTree       *sql.Stmt // get key-value pair from tree table
 	prepDeleteKeyValueTree *sql.Stmt // delete key-value pair from tree table
 
 	prepInsertKeysUpdates *sql.Stmt // update updates table
-}
-
-func repeatStmt(N int, noOfComponents int) string {
-	components := make([]string, noOfComponents)
-	for i := 0; i < len(components); i++ {
-		components[i] = "?"
-	}
-	toRepeat := "(" + strings.Join(components, ",") + ")"
-	return strings.Repeat(toRepeat+",", N-1) + toRepeat
-}
-
-func repeatStmtForDelete(tableName string, N int) string {
-	var deleteSB strings.Builder
-	queryStr := "DELETE from `" + tableName + "` WHERE `key` IN ("
-	deleteSB.WriteString(queryStr)
-
-	isFirst := true
-	for i := 0; i < N; i++ {
-		if isFirst {
-			deleteSB.WriteString("?")
-			isFirst = false
-		} else {
-			deleteSB.WriteString(", ?")
-		}
-	}
-
-	deleteSB.WriteString(");")
-	return deleteSB.String()
 }
 
 // NewMysqlDB is called to create a new instance of the mysqlDB, initializing certain values,
@@ -96,11 +67,6 @@ func NewMysqlDB(db *sql.DB) (*mysqlDB, error) {
 		return nil, fmt.Errorf("NewMysqlDB | preparing statement prepUpdateValueDomainEntries: %w", err)
 	}
 
-	prepDeleteKeyValueDomainEntries, err := db.Prepare(repeatStmtForDelete("domainEntries", batchSize))
-	if err != nil {
-		return nil, fmt.Errorf("NewMysqlDB | preparing statement prepDeleteKeyValueDomainEntries: %w", err)
-	}
-
 	prepUpdateValueTree, err := db.Prepare("REPLACE into tree (`key`, `value`) values " + repeatStmt(batchSize, 2))
 	if err != nil {
 		return nil, fmt.Errorf("NewMysqlDB | preparing statement prepUpdateValueTree: %w", err)
@@ -122,16 +88,15 @@ func NewMysqlDB(db *sql.DB) (*mysqlDB, error) {
 	}
 
 	return &mysqlDB{
-		db:                              db,
-		prepValueProofPath:              prepValueProofPath,
-		prepGetValue:                    prepGetValue,
-		prepGetValueDomainEntries:       prepGetValueDomainEntries,
-		prepUpdateValueDomainEntries:    prepUpdateValueDomainEntries,
-		prepDeleteKeyValueDomainEntries: prepDeleteKeyValueDomainEntries,
-		prepUpdateValueTree:             prepUpdateValueTree,
-		prepGetValueTree:                prepGetValueTree,
-		prepDeleteKeyValueTree:          prepDeleteKeyValueTree,
-		prepInsertKeysUpdates:           prepInsertKeysUpdates,
+		db:                           db,
+		prepValueProofPath:           prepValueProofPath,
+		prepGetValue:                 prepGetValue,
+		prepGetValueDomainEntries:    prepGetValueDomainEntries,
+		prepUpdateValueDomainEntries: prepUpdateValueDomainEntries,
+		prepUpdateValueTree:          prepUpdateValueTree,
+		prepGetValueTree:             prepGetValueTree,
+		prepDeleteKeyValueTree:       prepDeleteKeyValueTree,
+		prepInsertKeysUpdates:        prepInsertKeysUpdates,
 	}, nil
 }
 

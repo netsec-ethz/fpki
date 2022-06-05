@@ -80,6 +80,7 @@ func (c *mysqlDB) doUpdatesPairs(ctx context.Context, stmt *sql.Stmt, keyValuePa
 			repeatedStmt = "REPLACE into domainEntries (`key`, `value`) values " + repeatStmt(dataLen%batchSize, 2)
 		}
 
+		// prepare data
 		data := make([]interface{}, 2*(dataLen%batchSize)) // 2 elements per record ()
 
 		for j := 0; j < dataLen%batchSize; j++ {
@@ -123,6 +124,7 @@ func (c *mysqlDB) doUpdatesKeys(ctx context.Context, stmt *sql.Stmt, keys []comm
 			repeatedStmt = "INSERT IGNORE into `updates` (`key`) VALUES " + repeatStmt(dataLen%batchSize, 1)
 		}
 
+		// prepare data
 		data := make([]interface{}, dataLen%batchSize)
 
 		for j := 0; j < dataLen%batchSize; j++ {

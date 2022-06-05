@@ -51,6 +51,41 @@ func (c *mysqlDB) RetrieveOneKeyValuePairDomainEntries(ctx context.Context, key 
 	return keyValuePair, nil
 }
 
+// RetrieveKeyValuePairDomainEntries: Retrieve a list of key-value pairs from domain entries table
+// No sql.ErrNoRows will be thrown, if some records does not exist. Check the length of result
+func (c *mysqlDB) RetrieveKeyValuePairDomainEntries(ctx context.Context, key []common.SHA256Output, numOfWorker int) ([]KeyValuePair, error) {
+	stmt := c.prepGetValueDomainEntries
+
+	// if work is less than number of worker
+	if len(key) < numOfWorker {
+		numOfWorker = len(key)
+	}
+
+	count := len(key)
+	step := count / numOfWorker
+
+	resultChan := make(chan keyValueResult)
+	for r := 0; r < numOfWorker-1; r++ {
+		go fetchKeyValuePairWorker(resultChan, key[r*step:r*step+step], stmt, ctx)
+	}
+	// let the final one do the rest of the work
+	go fetchKeyValuePairWorker(resultChan, key[(numOfWorker-1)*step:count], stmt, ctx)
+
+	finishedWorker := 0
+	keyValuePairs := []KeyValuePair{}
+
+	for numOfWorker > finishedWorker {
+		newResult := <-resultChan
+		if newResult.Err != nil {
+			return nil, fmt.Errorf("RetrieveKeyValuePairDomainEntries | %w", newResult.Err)
+		}
+		keyValuePairs = append(keyValuePairs, newResult.Pairs...)
+		finishedWorker++
+	}
+
+	return keyValuePairs, nil
+}
+
 // ********************************************************************
 //                Read functions for updates table
 // ********************************************************************
@@ -111,6 +146,7 @@ func (c *mysqlDB) RetrieveUpdatedDomainHashesUpdates(ctx context.Context, perQue
 		return nil, fmt.Errorf("RetrieveUpdatedDomainHashesUpdates | incomplete fetching")
 	}
 
+	// truncate the update table after retrieving
 	err = c.TruncateUpdatesTableUpdates(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("RetrieveUpdatedDomainHashesUpdates | TruncateUpdatesTableUpdates | %w", err)
