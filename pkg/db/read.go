@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	//"time"
@@ -21,10 +20,15 @@ type readKeyResult struct {
 // ********************************************************************
 
 // RetrieveOneKeyValuePair: Retrieve one single key-value pair
+// Return sql.ErrNoRows if no row is round
 func (c *mysqlDB) RetrieveOneKeyValuePairTreeStruc(ctx context.Context, key common.SHA256Output) (*KeyValuePair, error) {
 	keyValuePair, err := retrieveOneKeyValuePair(ctx, c.prepGetValueTree, key)
 	if err != nil {
-		return nil, fmt.Errorf("RetrieveOneKeyValuePairTreeStruc | %w", err)
+		if err != sql.ErrNoRows {
+			return nil, fmt.Errorf("RetrieveOneKeyValuePairTreeStruc | %w", err)
+		} else {
+			return nil, err
+		}
 	}
 	return keyValuePair, nil
 }
@@ -34,10 +38,15 @@ func (c *mysqlDB) RetrieveOneKeyValuePairTreeStruc(ctx context.Context, key comm
 // ********************************************************************
 
 // RetrieveOneKeyValuePairDomainEntries: Retrieve one key-value pair from domain entries table
+// Return sql.ErrNoRows if no row is round
 func (c *mysqlDB) RetrieveOneKeyValuePairDomainEntries(ctx context.Context, key common.SHA256Output) (*KeyValuePair, error) {
 	keyValuePair, err := retrieveOneKeyValuePair(ctx, c.prepGetValueDomainEntries, key)
 	if err != nil {
-		return nil, fmt.Errorf("RetrieveOneKeyValuePairDomainEntries | %w", err)
+		if err != sql.ErrNoRows {
+			return nil, fmt.Errorf("RetrieveOneKeyValuePairDomainEntries | %w", err)
+		} else {
+			return nil, err
+		}
 	}
 	return keyValuePair, nil
 }
@@ -56,10 +65,11 @@ func (c *mysqlDB) GetCountOfUpdatesDomainsUpdates(ctx context.Context) (int, err
 }
 
 // RetrieveUpdatedDomainHashesUpdates: Get updated domains name hashes from updates table. The updates table will be truncated.
+// sql.ErrNoRows will be omitted. Check length of result
 func (c *mysqlDB) RetrieveUpdatedDomainHashesUpdates(ctx context.Context, perQueryLimit int) ([]common.SHA256Output, error) {
 	count, err := c.GetCountOfUpdatesDomainsUpdates(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("RetrieveUpdatedDomainHashesUpdates | RetrieveTableRowsCount | %w", err)
+		return nil, fmt.Errorf("RetrieveUpdatedDomainHashesUpdates | Retrieve update table count | %w", err)
 	}
 
 	// calculate the number of workers
@@ -113,19 +123,17 @@ func (c *mysqlDB) RetrieveUpdatedDomainHashesUpdates(ctx context.Context, perQue
 //                             Common
 // ********************************************************************
 
+// omit sql.ErrNoRows error
 func retrieveOneKeyValuePair(ctx context.Context, stmt *sql.Stmt, key common.SHA256Output) (*KeyValuePair, error) {
 	var value []byte
-	start := time.Now()
 	result := stmt.QueryRow(key[:])
-	end := time.Now()
-	fmt.Println(end.Sub(start))
+
 	err := result.Scan(&value)
 	if err != nil {
-		switch {
-		case err != sql.ErrNoRows:
+		if err != sql.ErrNoRows {
 			return nil, fmt.Errorf("retrieveOneKeyValuePair | Scan | %w", err)
-		case err == sql.ErrNoRows:
-			return nil, nil
+		} else {
+			return nil, err
 		}
 	}
 

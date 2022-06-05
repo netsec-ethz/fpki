@@ -32,7 +32,6 @@ const (
 
 type mysqlDB struct {
 	db                              *sql.DB
-	prepNodePath                    *sql.Stmt // returns the node path
 	prepValueProofPath              *sql.Stmt // returns the value and the complete proof path
 	prepGetValue                    *sql.Stmt // returns the value for a node
 	prepGetValueDomainEntries       *sql.Stmt // returns the domain entries
@@ -77,11 +76,6 @@ func repeatStmtForDelete(tableName string, N int) string {
 // NewMysqlDB is called to create a new instance of the mysqlDB, initializing certain values,
 // like stored procedures.
 func NewMysqlDB(db *sql.DB) (*mysqlDB, error) {
-	prepNodePath, err := db.Prepare("SELECT node_path(?)")
-	if err != nil {
-		return nil, fmt.Errorf("NewMysqlDB | preparing statement prepNodePath: %w", err)
-	}
-
 	prepValueProofPath, err := db.Prepare("CALL val_and_proof_path(?)")
 	if err != nil {
 		return nil, fmt.Errorf("NewMysqlDB | preparing statement prepValueProofPath: %w", err)
@@ -129,7 +123,6 @@ func NewMysqlDB(db *sql.DB) (*mysqlDB, error) {
 
 	return &mysqlDB{
 		db:                              db,
-		prepNodePath:                    prepNodePath,
 		prepValueProofPath:              prepValueProofPath,
 		prepGetValue:                    prepGetValue,
 		prepGetValueDomainEntries:       prepGetValueDomainEntries,

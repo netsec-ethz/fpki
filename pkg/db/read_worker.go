@@ -9,6 +9,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/common"
 )
 
+// used for retrieving entries from updates table
 func fetchKeyWorker(resultChan chan readKeyResult, start, end int, ctx context.Context, db *sql.DB) {
 	var key []byte
 	result := []common.SHA256Output{}
@@ -20,6 +21,7 @@ func fetchKeyWorker(resultChan chan readKeyResult, start, end int, ctx context.C
 	defer resultRows.Close()
 	for resultRows.Next() {
 		err = resultRows.Scan(&key)
+		// sql.NoRowErr should not be omitted.
 		if err != nil {
 			resultChan <- readKeyResult{Err: fmt.Errorf("fetchKeyWorker | Scan | %w", err)}
 		}

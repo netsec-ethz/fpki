@@ -35,9 +35,6 @@ type Conn interface {
 	// RetrieveOneKeyValuePair_TreeStruc: Retrieve one key-value pair from Tree table.
 	RetrieveOneKeyValuePairTreeStruc(ctx context.Context, id common.SHA256Output) (*KeyValuePair, error)
 
-	// RetrieveKeyValuePair_TreeStruc: Retrieve a list of key-value pairs from Tree tables.
-	RetrieveKeyValuePairTreeStruc(ctx context.Context, id []common.SHA256Output, numOfRoutine int) ([]KeyValuePair, error)
-
 	// UpdateKeyValues_TreeStruc: Update a list of key-value pairs in Tree table
 	UpdateKeyValuesTreeStruc(ctx context.Context, keyValuePairs []KeyValuePair) (int, error)
 

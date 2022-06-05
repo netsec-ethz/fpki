@@ -11,6 +11,7 @@ import (
 // TODO(yongzhe): delete this file. move multi-thread reading to responder
 
 // RetrieveKeyValuePairDomainEntries: Retrieve a list of key-value pairs from domain entries table
+// sql.ErrNoRows will be omitted
 func (c *mysqlDB) RetrieveKeyValuePairDomainEntries(ctx context.Context, key []common.SHA256Output, numOfWorker int) ([]KeyValuePair, error) {
 	stmt := c.prepGetValueDomainEntries
 
@@ -58,6 +59,7 @@ work_loop:
 			case err != sql.ErrNoRows:
 				resultChan <- keyValueResult{Err: fmt.Errorf("fetchKeyValuePairWorker | result.Scan | %w", err)}
 				return
+			// omit sql.ErrNoRows
 			case err == sql.ErrNoRows:
 				continue work_loop
 			}

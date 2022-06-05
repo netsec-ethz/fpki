@@ -34,6 +34,7 @@ func Connect(config *Configuration) (Conn, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot open DB: %w", err)
 	}
+
 	db.SetMaxOpenConns(512) // TODO(juagargi) set higher for production
 	db.SetMaxIdleConns(512)
 	db.SetConnMaxLifetime(2 * time.Second)
