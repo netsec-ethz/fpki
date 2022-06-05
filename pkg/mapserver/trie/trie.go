@@ -187,9 +187,7 @@ func (s *Trie) update(root []byte, keys, values, batch [][]byte, iBatch, height 
 			ch <- mResult{nil, true, nil}
 		} else {
 			if rootCopy != [32]byte{0} && height%4 == 0 {
-				s.db.removeMux.Lock()
-				s.db.removedNode[rootCopy] = []byte{0}
-				s.db.removeMux.Unlock()
+				s.db.addRemoveNode(rootCopy)
 			}
 			node := s.leafHash(keys[0], values[0], root, batch, iBatch, height)
 			ch <- mResult{node, false, nil}
@@ -205,25 +203,19 @@ func (s *Trie) update(root []byte, keys, values, batch [][]byte, iBatch, height 
 	switch {
 	case len(lKeys) == 0 && len(rKeys) > 0:
 		if rootCopy != [32]byte{0} && height%4 == 0 {
-			s.db.removeMux.Lock()
-			s.db.removedNode[rootCopy] = []byte{0}
-			s.db.removeMux.Unlock()
+			s.db.addRemoveNode(rootCopy)
 		}
 
 		s.updateRight(lNode, rNode, root, keys, values, batch, iBatch, height, ch)
 	case len(lKeys) > 0 && len(rKeys) == 0:
 		if rootCopy != [32]byte{0} && height%4 == 0 {
-			s.db.removeMux.Lock()
-			s.db.removedNode[rootCopy] = []byte{0}
-			s.db.removeMux.Unlock()
+			s.db.addRemoveNode(rootCopy)
 		}
 
 		s.updateLeft(lNode, rNode, root, keys, values, batch, iBatch, height, ch)
 	default:
 		if rootCopy != [32]byte{0} && height%4 == 0 {
-			s.db.removeMux.Lock()
-			s.db.removedNode[rootCopy] = []byte{0}
-			s.db.removeMux.Unlock()
+			s.db.addRemoveNode(rootCopy)
 		}
 
 		s.updateParallel(lNode, rNode, root, lKeys, rKeys, lValues, rValues, batch, iBatch, height, ch)
@@ -304,14 +296,11 @@ func (s *Trie) deleteOldNode(root []byte, height int, movingUp bool) {
 	if !s.atomicUpdate || movingUp {
 		// don't delete old nodes with atomic updated except when
 		// moving up a shortcut, we don't record every single move
-		s.db.updatedMux.Lock()
-		delete(s.db.updatedNodes, node)
-		s.db.updatedMux.Unlock()
+		s.db.deleteUpdatedNodes(node)
+
 	}
 	if height >= s.CacheHeightLimit {
-		s.db.liveMux.Lock()
-		delete(s.db.liveCache, node)
-		s.db.liveMux.Unlock()
+		s.db.deleteLiveCache(node)
 	}
 }
 
@@ -474,15 +463,9 @@ func (s *Trie) loadBatch(root []byte, height int) ([][]byte, error) {
 	var node Hash
 	copy(node[:], root)
 
-	s.db.liveMux.RLock()
-	val, exists := s.db.liveCache[node]
-	s.db.liveMux.RUnlock()
+	val, exists := s.db.getLiveCache(node)
+
 	if exists {
-		if s.counterOn {
-			s.liveCountMux.Lock()
-			s.LoadCacheCounter++
-			s.liveCountMux.Unlock()
-		}
 		if s.atomicUpdate {
 			// Return a copy so that Commit() doesn't have to be called at
 			// each block and still commit every state transition.
@@ -494,9 +477,7 @@ func (s *Trie) loadBatch(root []byte, height int) ([][]byte, error) {
 		return val, nil
 	}
 	// checking updated nodes is useful if get() or update() is called twice in a row without db commit
-	s.db.updatedMux.RLock()
-	val, exists = s.db.updatedNodes[node]
-	s.db.updatedMux.RUnlock()
+	val, exists = s.db.getUpdatedNodes(node)
 	if exists {
 		if s.atomicUpdate {
 			// Return a copy so that Commit() doesn't have to be called at
@@ -511,21 +492,11 @@ func (s *Trie) loadBatch(root []byte, height int) ([][]byte, error) {
 	if s.db.Store == nil {
 		return nil, fmt.Errorf("DB not connected to trie")
 	}
-	if s.counterOn {
-		s.loadDbMux.Lock()
-		s.LoadDbCounter++
-		s.loadDbMux.Unlock()
-	}
-	s.db.lock.Lock()
-
-	// Replace: replace with mysql db
-	//dBValue := s.db.Store.Get(root[:HashLength])
 
 	value, err := s.db.getValue(root[:HashLength])
 	if err != nil {
 		return nil, fmt.Errorf("the trie node %x is unavailable in the disk db, db may be corrupted | %w", root, err)
 	}
-	s.db.lock.Unlock()
 
 	var rootCopy [32]byte
 	copy(rootCopy[:], root[:HashLength])
@@ -592,14 +563,10 @@ func (s *Trie) storeNode(batch [][]byte, h, oldRoot []byte, height int) {
 		var node Hash
 		copy(node[:], h)
 		// record new node
-		s.db.updatedMux.Lock()
-		s.db.updatedNodes[node] = batch
-		s.db.updatedMux.Unlock()
+		s.db.updateUpdateNodes(node, batch)
 		// Cache the shortcut node if it's height is over CacheHeightLimit
 		if height >= s.CacheHeightLimit {
-			s.db.liveMux.Lock()
-			s.db.liveCache[node] = batch
-			s.db.liveMux.Unlock()
+			s.db.updateLiveCache(node, batch)
 		}
 		s.deleteOldNode(oldRoot, height, false)
 	}

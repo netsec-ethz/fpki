@@ -116,6 +116,8 @@ func (cacheDB *CacheDB) commitChangesToDB() error {
 }
 
 func (cacheDB *CacheDB) getValue(key []byte) ([]byte, error) {
+	cacheDB.lock.Lock()
+
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
@@ -123,12 +125,16 @@ func (cacheDB *CacheDB) getValue(key []byte) ([]byte, error) {
 	copy(key32Bytes[:], key)
 
 	result, err := cacheDB.Store.RetrieveOneKeyValuePairTreeStruc(ctx, key32Bytes)
+	cacheDB.lock.Unlock()
 	if err != nil {
+		//cacheDB.lock.Unlock()
 		return nil, fmt.Errorf("getValue | RetrieveOneKeyValuePair | %w", err)
 	}
 	if result.Value == nil {
+		//cacheDB.lock.Unlock()
 		return nil, ErrorNoRow
 	}
+	//cacheDB.lock.Unlock()
 	return result.Value, nil
 }
 
@@ -150,6 +156,50 @@ func serializeBatch(batch [][]byte) []byte {
 
 func (db *CacheDB) GetLiveCacheSize() int {
 	return len(db.liveCache)
+}
+
+func (db *CacheDB) deleteUpdatedNodes(node common.SHA256Output) {
+	db.updatedMux.Lock()
+	delete(db.updatedNodes, node)
+	db.updatedMux.Unlock()
+}
+
+func (db *CacheDB) deleteLiveCache(node common.SHA256Output) {
+	db.liveMux.Lock()
+	delete(db.liveCache, node)
+	db.liveMux.Unlock()
+}
+
+func (db *CacheDB) getLiveCache(node common.SHA256Output) ([][]byte, bool) {
+	db.liveMux.RLock()
+	defer db.liveMux.RUnlock()
+	val, exists := db.liveCache[node]
+	return val, exists
+}
+
+func (db *CacheDB) getUpdatedNodes(node common.SHA256Output) ([][]byte, bool) {
+	db.updatedMux.RLock()
+	defer db.updatedMux.RUnlock()
+	val, exists := db.updatedNodes[node]
+	return val, exists
+}
+
+func (db *CacheDB) updateUpdateNodes(node common.SHA256Output, value [][]byte) {
+	db.updatedMux.Lock()
+	db.updatedNodes[node] = value
+	db.updatedMux.Unlock()
+}
+
+func (db *CacheDB) updateLiveCache(node common.SHA256Output, value [][]byte) {
+	db.liveMux.Lock()
+	db.liveCache[node] = value
+	db.liveMux.Unlock()
+}
+
+func (db *CacheDB) addRemoveNode(node common.SHA256Output) {
+	db.removeMux.Lock()
+	db.removedNode[node] = []byte{0}
+	db.removeMux.Unlock()
 }
 
 /*
