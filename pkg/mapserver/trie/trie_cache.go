@@ -72,15 +72,35 @@ func NewCacheDB(store db.Conn) (*CacheDB, error) {
 
 // commitChangesToDB stores the updated nodes to disk.
 func (cacheDB *CacheDB) commitChangesToDB() error {
-	cacheDB.updatedMux.Lock()
-	defer cacheDB.updatedMux.Unlock()
+	// init context
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
 
+	// prepare value to store
 	updates := []db.KeyValuePair{}
+	keys := []common.SHA256Output{}
+
+	// lock the updates and deletes tables
+	cacheDB.updatedMux.Lock()
+
 	for k, v := range cacheDB.updatedNodes {
 		updates = append(updates, db.KeyValuePair{Key: k, Value: serializeBatch(v)})
 	}
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
-	defer cancelF()
+
+	if len(cacheDB.removedNode) > 0 {
+		for k := range cacheDB.removedNode {
+			keys = append(keys, k)
+		}
+	}
+	// clear map
+	cacheDB.updatedNodes = make(map[Hash][][]byte)
+	cacheDB.removedNode = make(map[Hash][]byte)
+
+	cacheDB.updatedMux.Unlock()
+
+	// lock the db; other thread should not read or write to db during the updates
+	cacheDB.lock.Lock()
+	defer cacheDB.lock.Unlock()
 
 	updateStart := time.Now()
 	numOfWrites, err := cacheDB.Store.UpdateKeyValuesTreeStruc(ctx, updates)
@@ -89,27 +109,15 @@ func (cacheDB *CacheDB) commitChangesToDB() error {
 	}
 	updateEnd := time.Now()
 	fmt.Println("Update : takes ", updateEnd.Sub(updateStart), " | write ", numOfWrites)
-	// clear update nodes
-	cacheDB.updatedNodes = make(map[Hash][][]byte)
 
-	if len(cacheDB.removedNode) > 0 {
-		keys := []common.SHA256Output{}
-		for k := range cacheDB.removedNode {
-			keys = append(keys, k)
-		}
-		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
-		defer cancelF()
-
+	if len(keys) > 0 {
 		start := time.Now()
-		_, err = cacheDB.Store.DeleteKeyValuesTreeStruc(ctx, keys)
+		_, err := cacheDB.Store.DeleteKeyValuesTreeStruc(ctx, keys)
 		if err != nil {
 			return fmt.Errorf("commitChangesToDB | DeleteKeyValuePairBatches | %w", err)
 		}
 		end := time.Now()
-
-		fmt.Println("Delete : takes ", end.Sub(start), " | delete ", len(cacheDB.removedNode))
-		cacheDB.removedNode = make(map[Hash][]byte)
-
+		fmt.Println("Delete : takes ", end.Sub(start), " | delete ", len(keys))
 	}
 
 	return nil

@@ -14,14 +14,11 @@ import (
 )
 
 func main() {
-	testUpdateWithSameKeys()
-	fmt.Println("test succeed!")
-	testTrieMerkleProofAndReloadTree()
-	fmt.Println("test succeed!")
-	testTrieLoadCache()
-	fmt.Println("test succeed!")
 	truncateTable()
-	fmt.Println("test succeed!")
+	testUpdateWithSameKeys()
+	testTrieMerkleProofAndReloadTree()
+	testTrieLoadCache()
+	truncateTable()
 }
 
 func testUpdateWithSameKeys() {
