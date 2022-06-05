@@ -150,7 +150,7 @@ func GetPCAndRPC(ctURL string, startIndex int64, endIndex int64, numOfWorker int
 		domainName := scanner.Text()
 		// no policy for TLD
 		if !domainParser.IsValidDomain(domainName) {
-			fmt.Println("invalid domain name: ", domainName)
+			//fmt.Println("invalid domain name: ", domainName)
 			continue
 		}
 		resultPC = append(resultPC, &common.PC{

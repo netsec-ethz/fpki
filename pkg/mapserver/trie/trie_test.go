@@ -8,7 +8,6 @@ package trie
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"math/rand"
 	"sort"
 	"testing"
@@ -310,7 +309,6 @@ func TestHeight0LeafShortcut(t *testing.T) {
 
 	// Nb of updated nodes remains same because the new shortcut root was already stored at height 0.
 	if len(smt.db.updatedNodes) != updatedNb {
-		fmt.Println(len(smt.db.updatedNodes), updatedNb)
 		t.Fatal("number of cache nodes not correct after delete")
 	}
 	smt.atomicUpdate = false

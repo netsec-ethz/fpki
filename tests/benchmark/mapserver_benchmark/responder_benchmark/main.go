@@ -3,11 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -17,67 +17,75 @@ import (
 	ctX509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/domain"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/responder"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 )
 
 var wg sync.WaitGroup
 
 func main() {
-	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/fpki?maxAllowedPacket=1073741824")
-	defer db.Close()
+	/*
+		db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/fpki?maxAllowedPacket=1073741824")
+		defer db.Close()
+		if err != nil {
+			panic(err)
+		}
+
+		// truncate table
+		_, err = db.Exec("TRUNCATE `fpki`.`domainEntries`;")
+		if err != nil {
+			panic(err)
+		}
+
+		// truncate table
+		_, err = db.Exec("TRUNCATE `fpki`.`tree`;")
+		if err != nil {
+			panic(err)
+		}
+
+		// truncate table
+		_, err = db.Exec("TRUNCATE `fpki`.`updates`;")
+		if err != nil {
+			panic(err)
+		}
+
+		// new updater
+		mapUpdater, err := updater.NewMapUpdater(nil, 233)
+		if err != nil {
+			panic(err)
+		}
+
+		updateStart := time.Now()
+
+		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+		defer cancelF()
+
+		err = mapUpdater.UpdateFromCT(ctx, "https://ct.googleapis.com/logs/argon2021", int64(2500000), int64(2509999))
+		if err != nil {
+			panic(err)
+		}
+
+		err = mapUpdater.CommitChanges(ctx)
+		if err != nil {
+			panic(err)
+		}
+
+		updateEnd := time.Now()
+		fmt.Println("************************ Update finished ******************************")
+		fmt.Println("time to get and update 10,000 certs: ", updateEnd.Sub(updateStart))
+
+		root := mapUpdater.GetRoot()
+		err = mapUpdater.Close()
+		if err != nil {
+			panic(err)
+		}
+	*/
+	// only use one responder
+	root, err := os.ReadFile("root")
 	if err != nil {
 		panic(err)
 	}
-
-	// truncate table
-	_, err = db.Exec("TRUNCATE `fpki`.`domainEntries`;")
-	if err != nil {
-		panic(err)
-	}
-
-	// truncate table
-	_, err = db.Exec("TRUNCATE `fpki`.`tree`;")
-	if err != nil {
-		panic(err)
-	}
-
-	// truncate table
-	_, err = db.Exec("TRUNCATE `fpki`.`updates`;")
-	if err != nil {
-		panic(err)
-	}
-
-	// new updater
-	mapUpdater, err := updater.NewMapUpdater(nil, 233)
-	if err != nil {
-		panic(err)
-	}
-
-	updateStart := time.Now()
-
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancelF()
 
-	err = mapUpdater.UpdateFromCT(ctx, "https://ct.googleapis.com/logs/argon2021", int64(2500000), int64(2509999))
-	if err != nil {
-		panic(err)
-	}
-
-	err = mapUpdater.CommitChanges(ctx)
-	if err != nil {
-		panic(err)
-	}
-
-	updateEnd := time.Now()
-	fmt.Println("************************ Update finished ******************************")
-	fmt.Println("time to get and update 10,000 certs: ", updateEnd.Sub(updateStart))
-
-	root := mapUpdater.GetRoot()
-	err = mapUpdater.Close()
-	if err != nil {
-		panic(err)
-	}
-	// only use one responder
 	responder, err := responder.NewMapResponder(ctx, root, 233, 10)
 
 	// collect 10,000 certs, for proof fetching
@@ -121,7 +129,7 @@ func collectProof(responder *responder.MapResponder, certs []ctX509.Certificate)
 			}
 		}
 		numOfQuery++
-		fmt.Println(numOfQuery, " / ", len(certs))
+		//fmt.Println(numOfQuery, " / ", len(certs))
 	}
 	fmt.Println("finished !", numOfQuery)
 	wg.Done()
@@ -177,9 +185,6 @@ parse_cert_loop:
 			}
 		}
 
-		fmt.Println("-------------------------------------")
-		fmt.Println(certificate.Subject.CommonName)
-		fmt.Println(certificate.DNSNames)
 		certList = append(certList, *certificate)
 	}
 	return certList, nil

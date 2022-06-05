@@ -2,10 +2,8 @@ package updater
 
 import (
 	"bytes"
-	"fmt"
 	"io/ioutil"
 	"testing"
-	"time"
 
 	projectCommon "github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/domain"
@@ -22,16 +20,10 @@ func TestRPCAndPC(t *testing.T) {
 	parser, err := domain.NewDomainParser()
 	require.NoError(t, err)
 
-	start := time.Now()
 	pcList, rpcList, err := logpicker.GetPCAndRPC("./testdata/domain_list/domains.txt", 0, 0, 0)
 	require.NoError(t, err, "GetPCAndRPC error")
-	end := time.Now()
-	fmt.Println(end.Sub(start))
 
-	start = time.Now()
 	affectedDomainsMap, domainCertMap := getAffectedDomainAndCertMapPCAndRPC(rpcList, pcList, parser)
-	end = time.Now()
-	fmt.Println(end.Sub(start))
 
 	for _, pc := range pcList {
 		subjectName := pc.Subject

@@ -11,12 +11,14 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
+// ClientRequest: client's request
 type ClientRequest struct {
 	domainName string
 	ctx        context.Context
 	resultChan chan ClientResponse
 }
 
+// ClientResponse: response to client's request
 type ClientResponse struct {
 	Proof []mapCommon.MapServerResponse
 	Err   error
@@ -31,6 +33,7 @@ type MapResponder struct {
 
 // NewMapResponder: return a new responder
 func NewMapResponder(ctx context.Context, root []byte, cacheHeight int, workerThreadNum int) (*MapResponder, error) {
+	// init domain parser
 	parser, err := domain.NewDomainParser()
 	if err != nil {
 		return nil, fmt.Errorf("NewMapResponder | NewDomainParser | %w", err)
@@ -44,6 +47,7 @@ func NewMapResponder(ctx context.Context, root []byte, cacheHeight int, workerTh
 		},
 	}
 
+	// new db connection for SMT
 	dbConn, err := db.Connect(&config)
 	if err != nil {
 		return nil, fmt.Errorf("NewMapResponder | Connect | %w", err)
@@ -54,6 +58,8 @@ func NewMapResponder(ctx context.Context, root []byte, cacheHeight int, workerTh
 		return nil, fmt.Errorf("NewMapResponder | NewTrie | %w", err)
 	}
 	smt.CacheHeightLimit = cacheHeight
+
+	// load cache
 	err = smt.LoadCache(ctx, root)
 	if err != nil {
 		return nil, fmt.Errorf("NewMapResponder | LoadCache | %w", err)
@@ -62,6 +68,7 @@ func NewMapResponder(ctx context.Context, root []byte, cacheHeight int, workerTh
 	clientInputChan := make(chan ClientRequest)
 	workerPool := []*responderWorker{}
 
+	// create worker pool
 	for i := 0; i < workerThreadNum; i++ {
 		newDbConn, err := db.Connect(&config)
 		if err != nil {
@@ -79,13 +86,12 @@ func NewMapResponder(ctx context.Context, root []byte, cacheHeight int, workerTh
 	}, nil
 }
 
+// GetProof: get proofs for one domain
 func (responder *MapResponder) GetProof(ctx context.Context, domainName string) ([]mapCommon.MapServerResponse, error) {
 	resultChan := make(chan ClientResponse)
 
 	responder.workerChan <- ClientRequest{domainName: domainName, ctx: ctx, resultChan: resultChan}
-	fmt.Println("waiting for response ", domainName)
 	result := <-resultChan
-	fmt.Println("get response ", domainName)
 	close(resultChan)
 	return result.Proof, result.Err
 }
@@ -97,5 +103,12 @@ func (mapResponder *MapResponder) GetRoot() []byte {
 
 // Close: close db
 func (mapResponder *MapResponder) Close() error {
+	for _, worker := range mapResponder.workerPool {
+		close(worker.clientInputChan)
+		err := worker.dbConn.Close()
+		if err != nil {
+			return fmt.Errorf("Close | %w", err)
+		}
+	}
 	return mapResponder.smt.Close()
 }

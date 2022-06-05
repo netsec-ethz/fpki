@@ -81,7 +81,7 @@ func (cacheDB *CacheDB) commitChangesToDB(ctx context.Context) error {
 		return fmt.Errorf("commitChangesToDB | UpdateKeyValuePairBatches | %w", err)
 	}
 	updateEnd := time.Now()
-	fmt.Println("Update : takes ", updateEnd.Sub(updateStart), " | write ", len(updates))
+	fmt.Println("SMT DB Update : takes ", updateEnd.Sub(updateStart), " | write ", len(updates))
 
 	if len(keys) > 0 {
 		start := time.Now()
@@ -90,7 +90,7 @@ func (cacheDB *CacheDB) commitChangesToDB(ctx context.Context) error {
 			return fmt.Errorf("commitChangesToDB | DeleteKeyValuePairBatches | %w", err)
 		}
 		end := time.Now()
-		fmt.Println("Delete : takes ", end.Sub(start), " | delete ", len(keys))
+		fmt.Println("SMT DB Delete : takes ", end.Sub(start), " | delete ", len(keys))
 	}
 
 	return nil

@@ -64,50 +64,49 @@ func (mapUpdater *MapUpdater) UpdateFromCT(ctx context.Context, ctUrl string, st
 	end := time.Now()
 	fmt.Println("time to fetch certs from internet         ", end.Sub(start), " ", len(certs))
 
-	start = time.Now()
-	fmt.Println()
-	fmt.Println(" ------UpdateDomainEntriesUsingCerts -----")
+	//start = time.Now()
+
+	//fmt.Println(" ------UpdateDomainEntriesUsingCerts -----")
 	_, err = mapUpdater.UpdateDomainEntriesUsingCerts(ctx, certs, 10)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingCerts | %w", err)
 	}
-	end = time.Now()
-	fmt.Println("time to UpdateDomainEntriesUsingCerts     ", end.Sub(start))
-	fmt.Println()
+	//end = time.Now()
+	//fmt.Println("time to UpdateDomainEntriesUsingCerts     ", end.Sub(start))
 
-	start = time.Now()
+	//start = time.Now()
 	updatedDomainHash, err := mapUpdater.fetchUpdatedDomainHash(ctx)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | fetchUpdatedDomainHash | %w", err)
 	}
-	end = time.Now()
-	fmt.Println("time to fetchUpdatedDomainHash            ", end.Sub(start))
+	//end = time.Now()
+	//fmt.Println("time to fetchUpdatedDomainHash            ", end.Sub(start))
 
-	start = time.Now()
+	//start = time.Now()
 	keyValuePairs, err := mapUpdater.dbConn.RetrieveKeyValuePairDomainEntries(ctx, updatedDomainHash, 10)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | RetrieveKeyValuePairMultiThread | %w", err)
 	}
 
-	end = time.Now()
-	fmt.Println("time to RetrieveKeyValuePairMultiThread   ", end.Sub(start))
+	//end = time.Now()
+	//fmt.Println("time to RetrieveKeyValuePairMultiThread   ", end.Sub(start))
 
-	start = time.Now()
+	//start = time.Now()
 	keyInput, valueInput, err := keyValuePairToSMTInput(keyValuePairs)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | keyValuePairToSMTInput | %w", err)
 	}
-	end = time.Now()
-	fmt.Println("time to keyValuePairToSMTInput            ", end.Sub(start))
+	//end = time.Now()
+	//fmt.Println("time to keyValuePairToSMTInput            ", end.Sub(start))
 
-	start = time.Now()
+	//start = time.Now()
 	_, err = mapUpdater.smt.Update(ctx, keyInput, valueInput)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | Update | %w", err)
 	}
-	end = time.Now()
-	fmt.Println("time to Update SMT                        ", end.Sub(start))
-	fmt.Println("****** UpdateFromCT End ******")
+	//end = time.Now()
+	//fmt.Println("time to Update SMT                        ", end.Sub(start))
+	//fmt.Println("****** UpdateFromCT End ******")
 
 	return nil
 }
@@ -164,6 +163,11 @@ func (mapUpdater *MapUpdater) fetchUpdatedDomainHash(ctx context.Context) ([]com
 	keys, err := mapUpdater.dbConn.RetrieveUpdatedDomainHashesUpdates(ctx, readBatchSize)
 	if err != nil {
 		return nil, fmt.Errorf("fetchUpdatedDomainHash | RetrieveUpdatedDomainMultiThread | %w", err)
+	}
+
+	err = mapUpdater.dbConn.TruncateUpdatesTableUpdates(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("fetchUpdatedDomainHash | TruncateUpdatesTableUpdates | %w", err)
 	}
 
 	return keys, nil

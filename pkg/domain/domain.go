@@ -187,7 +187,7 @@ func (parser *DomainParser) uniqueValidDomainName(domainNames []string) []string
 	uniqueDomainName := make(map[string]struct{})
 	for _, domainName := range domainNames {
 		if !parser.IsValidDomain(domainName) {
-			fmt.Println("invalid domain name ", domainName)
+			//fmt.Println("invalid domain name ", domainName)
 			continue
 		}
 
