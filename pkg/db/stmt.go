@@ -2,6 +2,7 @@ package db
 
 import "strings"
 
+// string for stmt
 func repeatStmt(N int, noOfComponents int) string {
 	components := make([]string, noOfComponents)
 	for i := 0; i < len(components); i++ {
@@ -11,6 +12,7 @@ func repeatStmt(N int, noOfComponents int) string {
 	return strings.Repeat(toRepeat+",", N-1) + toRepeat
 }
 
+// string for delete stmt
 func repeatStmtForDelete(tableName string, N int) string {
 	var deleteSB strings.Builder
 	queryStr := "DELETE from `" + tableName + "` WHERE `key` IN ("

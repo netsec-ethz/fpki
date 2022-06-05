@@ -19,6 +19,7 @@ func fetchKeyWorker(resultChan chan readKeyResult, start, end int, ctx context.C
 		resultChan <- readKeyResult{Err: fmt.Errorf("fetchKeyWorker | Query | %w", err)}
 	}
 	defer resultRows.Close()
+
 	for resultRows.Next() {
 		err = resultRows.Scan(&key)
 		// sql.NoRowErr should not be omitted.
@@ -34,6 +35,7 @@ func fetchKeyWorker(resultChan chan readKeyResult, start, end int, ctx context.C
 }
 
 // used for retrieving key value pair
+// TO_DISCUSS(yongzhe): keep this or move it to updater
 func fetchKeyValuePairWorker(resultChan chan keyValueResult, keys []common.SHA256Output, stmt *sql.Stmt, ctx context.Context) {
 	numOfWork := len(keys)
 	pairs := []KeyValuePair{}

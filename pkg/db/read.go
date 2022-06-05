@@ -19,7 +19,7 @@ type readKeyResult struct {
 //                Read functions for Tree table
 // ********************************************************************
 
-// RetrieveOneKeyValuePair: Retrieve one single key-value pair
+// RetrieveOneKeyValuePair: Retrieve one single key-value pair from tree table
 // Return sql.ErrNoRows if no row is round
 func (c *mysqlDB) RetrieveOneKeyValuePairTreeStruc(ctx context.Context, key common.SHA256Output) (*KeyValuePair, error) {
 	keyValuePair, err := retrieveOneKeyValuePair(ctx, c.prepGetValueTree, key)
@@ -27,6 +27,7 @@ func (c *mysqlDB) RetrieveOneKeyValuePairTreeStruc(ctx context.Context, key comm
 		if err != sql.ErrNoRows {
 			return nil, fmt.Errorf("RetrieveOneKeyValuePairTreeStruc | %w", err)
 		} else {
+			// return sql.ErrNoRows
 			return nil, err
 		}
 	}
@@ -45,6 +46,7 @@ func (c *mysqlDB) RetrieveOneKeyValuePairDomainEntries(ctx context.Context, key 
 		if err != sql.ErrNoRows {
 			return nil, fmt.Errorf("RetrieveOneKeyValuePairDomainEntries | %w", err)
 		} else {
+			// return sql.ErrNoRows
 			return nil, err
 		}
 	}
@@ -53,6 +55,7 @@ func (c *mysqlDB) RetrieveOneKeyValuePairDomainEntries(ctx context.Context, key 
 
 // RetrieveKeyValuePairDomainEntries: Retrieve a list of key-value pairs from domain entries table
 // No sql.ErrNoRows will be thrown, if some records does not exist. Check the length of result
+// TO_DISCUSS(yongzhe): keep this or move it to updater
 func (c *mysqlDB) RetrieveKeyValuePairDomainEntries(ctx context.Context, key []common.SHA256Output, numOfWorker int) ([]KeyValuePair, error) {
 	stmt := c.prepGetValueDomainEntries
 
@@ -99,8 +102,7 @@ func (c *mysqlDB) GetCountOfUpdatesDomainsUpdates(ctx context.Context) (int, err
 	return number, nil
 }
 
-// RetrieveUpdatedDomainHashesUpdates: Get updated domains name hashes from updates table. The updates table will be truncated.
-// sql.ErrNoRows will be omitted. Check length of result
+// RetrieveUpdatedDomainHashesUpdates: Get updated domains name hashes from updates table.
 func (c *mysqlDB) RetrieveUpdatedDomainHashesUpdates(ctx context.Context, perQueryLimit int) ([]common.SHA256Output, error) {
 	count, err := c.GetCountOfUpdatesDomainsUpdates(ctx)
 	if err != nil {
@@ -119,6 +121,7 @@ func (c *mysqlDB) RetrieveUpdatedDomainHashesUpdates(ctx context.Context, perQue
 	if numberOfWorker == 1 {
 		step = count
 	} else {
+		// evenly distribute the workload
 		step = count / numberOfWorker
 	}
 
@@ -145,15 +148,17 @@ func (c *mysqlDB) RetrieveUpdatedDomainHashesUpdates(ctx context.Context, perQue
 	if count != len(keys) {
 		return nil, fmt.Errorf("RetrieveUpdatedDomainHashesUpdates | incomplete fetching")
 	}
+	return keys, nil
+}
 
+//TODO(yongzhe) don't forget to truncate the table
+/*
 	// truncate the update table after retrieving
 	err = c.TruncateUpdatesTableUpdates(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("RetrieveUpdatedDomainHashesUpdates | TruncateUpdatesTableUpdates | %w", err)
 	}
-
-	return keys, nil
-}
+*/
 
 // ********************************************************************
 //                             Common

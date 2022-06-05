@@ -1,7 +1,6 @@
 package db
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 
@@ -11,16 +10,13 @@ import (
 // NOTE
 // The project contains three tables:
 // * Domain entries tables: the table to store domain materials.
-// -- Key: hex-encoded of domain name hash: hex.EncodeToString(SHA256(domain name))
-// -- Value: Serialised data of domain materials. Use Json to serialise the data structure.
+// -- Key: domain name hash: 32 bytes VarBinary
+// -- Value: Serialized data of domain materials. Use Json to serialize the data structure. Stored as BLOB
 // * Tree table: contains the Sparse Merkle Tree. Store the nodes of Sparse Merkle Tree
 // * updates table: contains the domain hashes of the changed domains during this update.
 //   updates table will be truncated after the Sparse Merkle Tree is updated.
 
 // TableName: enum type of tables
-// Currently two tables:
-// - DomainEntries table: used to store domain materials(certificates, PC, RPC, etc.)
-// - Tree table: store the SMT tree structure
 type tableName int
 
 const (
@@ -103,26 +99,4 @@ func NewMysqlDB(db *sql.DB) (*mysqlDB, error) {
 // Close: close connection
 func (c *mysqlDB) Close() error {
 	return c.db.Close()
-}
-
-// RetrieveValue returns the value associated with the node.
-func (c *mysqlDB) RetrieveValue(ctx context.Context, id FullID) ([]byte, error) {
-	var val []byte
-	row := c.prepGetValue.QueryRowContext(ctx, id[:])
-	if err := row.Scan(&val); err != nil {
-		return nil, err
-	}
-	return val, nil
-}
-
-// RetrieveNode returns the value and the proof path (without the root) for a given node.
-// Since each one of the steps of the proof path has a fixed size, returning the path
-// as a slice is sufficient to know how many steps there were in the proof path.
-func (c *mysqlDB) RetrieveNode(ctx context.Context, id FullID) ([]byte, []byte, error) {
-	var val, proofPath []byte
-	row := c.prepValueProofPath.QueryRowContext(ctx, id[:])
-	if err := row.Scan(&val, &proofPath); err != nil {
-		return nil, nil, err
-	}
-	return val, proofPath, nil
 }

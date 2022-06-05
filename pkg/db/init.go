@@ -45,7 +45,6 @@ func Connect(config *Configuration) (Conn, error) {
 			return nil, fmt.Errorf("checking schema on connection: %w", err)
 		}
 	}
-
 	return NewMysqlDB(db)
 }
 

@@ -14,12 +14,21 @@ import (
 
 // UpdateKeyValuesDomainEntries: Update a list of key-value store
 func (c *mysqlDB) UpdateKeyValuesDomainEntries(ctx context.Context, keyValuePairs []KeyValuePair) (int, error) {
-	return c.doUpdatesPairs(ctx, c.prepUpdateValueDomainEntries, keyValuePairs, DomainEntries)
+	numOfUpdatedRecords, err := c.doUpdatesPairs(ctx, c.prepUpdateValueDomainEntries, keyValuePairs, DomainEntries)
+	if err != nil {
+		return 0, fmt.Errorf("UpdateKeyValuesDomainEntries | %w", err)
+	}
+	return numOfUpdatedRecords, nil
 }
 
 // DeleteKeyValuesTreeStruc: Delete a list of key-value store
 func (c *mysqlDB) DeleteKeyValuesTreeStruc(ctx context.Context, keys []common.SHA256Output) (int, error) {
-	return c.doUpdatesKeys(ctx, c.prepDeleteKeyValueTree, keys, Tree)
+	numOfDeletedRecords, err := c.doUpdatesKeys(ctx, c.prepDeleteKeyValueTree, keys, Tree)
+	if err != nil {
+		return 0, fmt.Errorf("DeleteKeyValuesTreeStruc | %w", err)
+	}
+
+	return numOfDeletedRecords, nil
 }
 
 // ********************************************************************
@@ -28,7 +37,11 @@ func (c *mysqlDB) DeleteKeyValuesTreeStruc(ctx context.Context, keys []common.SH
 
 // UpdateKeyValuesTreeStruc: Update a list of key-value store
 func (c *mysqlDB) UpdateKeyValuesTreeStruc(ctx context.Context, keyValuePairs []KeyValuePair) (int, error) {
-	return c.doUpdatesPairs(ctx, c.prepUpdateValueTree, keyValuePairs, Tree)
+	numOfUpdatedPairs, err := c.doUpdatesPairs(ctx, c.prepUpdateValueTree, keyValuePairs, Tree)
+	if err != nil {
+		return 0, fmt.Errorf("UpdateKeyValuesTreeStruc | %w", err)
+	}
+	return numOfUpdatedPairs, nil
 }
 
 // ********************************************************************
@@ -37,7 +50,11 @@ func (c *mysqlDB) UpdateKeyValuesTreeStruc(ctx context.Context, keyValuePairs []
 
 // AddUpdatedDomainHashesUpdates: Insert a list of keys into the updates table. If key exists, ignore it.
 func (c *mysqlDB) AddUpdatedDomainHashesUpdates(ctx context.Context, keys []common.SHA256Output) (int, error) {
-	return c.doUpdatesKeys(ctx, c.prepInsertKeysUpdates, keys, Updates)
+	numOfUpdatedPairs, err := c.doUpdatesKeys(ctx, c.prepInsertKeysUpdates, keys, Updates)
+	if err != nil {
+		return 0, fmt.Errorf("AddUpdatedDomainHashesUpdates | %w", err)
+	}
+	return numOfUpdatedPairs, nil
 }
 
 // TruncateUpdatesTableUpdates: truncate updates table
@@ -52,6 +69,7 @@ func (c *mysqlDB) TruncateUpdatesTableUpdates(ctx context.Context) error {
 // ********************************************************************
 //                              Common
 // ********************************************************************
+// worker to update key-value pairs
 func (c *mysqlDB) doUpdatesPairs(ctx context.Context, stmt *sql.Stmt, keyValuePairs []KeyValuePair, tableName tableName) (int, error) {
 	dataLen := len(keyValuePairs)
 
@@ -65,7 +83,7 @@ func (c *mysqlDB) doUpdatesPairs(ctx context.Context, stmt *sql.Stmt, keyValuePa
 		}
 		_, err := stmt.Exec(data...)
 		if err != nil {
-			return 0, fmt.Errorf("doUpdates | Exec | %w", err)
+			return 0, fmt.Errorf("doUpdatesPairs | Exec | %w", err)
 		}
 	}
 
@@ -90,12 +108,13 @@ func (c *mysqlDB) doUpdatesPairs(ctx context.Context, stmt *sql.Stmt, keyValuePa
 
 		_, err := c.db.Exec(repeatedStmt, data...)
 		if err != nil {
-			return 0, fmt.Errorf("doUpdates | Exec remaining | %w", err)
+			return 0, fmt.Errorf("doUpdatesPairs | Exec remaining | %w", err)
 		}
 	}
 	return dataLen, nil
 }
 
+// worker to update keys
 func (c *mysqlDB) doUpdatesKeys(ctx context.Context, stmt *sql.Stmt, keys []common.SHA256Output, tableName tableName) (int, error) {
 	dataLen := len(keys)
 
