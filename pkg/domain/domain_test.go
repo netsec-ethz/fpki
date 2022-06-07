@@ -35,83 +35,176 @@ func TestUniqueValidDomainName(t *testing.T) {
 	parser, err := NewDomainParser()
 	require.NoError(t, err)
 
-	assert.Equal(t, 1, len(parser.uniqueValidDomainName([]string{"www.baidu.com", "www.baidu.com"})))
-	assert.Equal(t, 1, len(parser.uniqueValidDomainName([]string{"*.baidu.com", "www.baidu.com", "baidu.com"})))
-	assert.Equal(t, 0, len(parser.uniqueValidDomainName([]string{"com", "*.*.baidu.com", "12378.com"})))
-	assert.Equal(t, 3, len(parser.uniqueValidDomainName([]string{"video.google.com", "mail.google.com", "audio.google.com"})))
+	test := map[string]struct {
+		input  []string
+		length int
+	}{
+		"1": {
+			input:  []string{"www.baidu.com", "www.baidu.com"},
+			length: 1,
+		},
+		"2": {
+			input:  []string{"*.baidu.com", "www.baidu.com", "baidu.com"},
+			length: 1,
+		},
+		"3": {
+			input:  []string{"com", "*.*.baidu.com", "12378.com"},
+			length: 0,
+		},
+		"4": {
+			input:  []string{"video.google.com", "mail.google.com", "audio.google.com"},
+			length: 3,
+		},
+	}
+
+	for _, v := range test {
+		assert.Equal(t, v.length, len(parser.uniqueValidDomainName(v.input)))
+	}
 }
 
 func TestSplitE2LD(t *testing.T) {
-	result, err := SplitE2LD("baidu.com")
-	assert.NoError(t, err)
-	assert.Equal(t, 1, len(result))
-	assert.Contains(t, result, "baidu.com")
+	test := map[string]struct {
+		input  string
+		output []string
+		length int
+	}{
+		"1": {
+			input:  "baidu.com",
+			output: []string{"baidu.com"},
+			length: 1,
+		},
 
-	result, err = SplitE2LD("video.www.baidu.com")
-	assert.NoError(t, err)
-	assert.Equal(t, 3, len(result))
-	assert.Contains(t, result, "baidu.com", "www", "video")
+		"2": {
+			input:  "video.www.baidu.com",
+			output: []string{"baidu.com", "www", "video"},
+			length: 3,
+		},
 
-	result, err = SplitE2LD("video.baidu.com")
-	assert.NoError(t, err)
-	assert.Equal(t, 2, len(result))
-	assert.Contains(t, result, "baidu.com", "video")
+		"3": {
+			input:  "video.baidu.com",
+			output: []string{"baidu.com", "video"},
+			length: 2,
+		},
+	}
+
+	for _, v := range test {
+		result, err := SplitE2LD(v.input)
+		assert.NoError(t, err)
+		assert.Equal(t, v.length, len(result))
+		for _, outputString := range v.output {
+			assert.Contains(t, result, outputString)
+		}
+	}
 }
 
 func TestFindLongestSuffix(t *testing.T) {
-	input := [][]string{{"mail", "video"}, {"audio", "video"}}
-	assert.Equal(t, "video.", findLongestSuffix(input))
+	test := map[string]struct {
+		input  [][]string
+		output string
+	}{
+		"1": {
+			input:  [][]string{{"mail", "video"}, {"audio", "video"}},
+			output: "video.",
+		},
+		"2": {
+			input:  [][]string{{"tv", "mail", "video"}, {"mail", "video"}, {"mail", "video"}},
+			output: "mail.video.",
+		},
+		"3": {
+			input:  [][]string{{"tv", "mail", "mail"}, {"mail", "mail"}, {"mail", "video"}},
+			output: "",
+		},
+	}
 
-	input = [][]string{{"tv", "mail", "video"}, {"mail", "video"}, {"mail", "video"}}
-	assert.Equal(t, "mail.video.", findLongestSuffix(input))
+	for _, v := range test {
+		assert.Equal(t, v.output, findLongestSuffix(v.input))
+	}
 
-	input = [][]string{{"tv", "mail", "mail"}, {"mail", "mail"}, {"mail", "video"}}
-	assert.Equal(t, "", findLongestSuffix(input))
 }
 
 func TestExtractAffectedDomains(t *testing.T) {
 	parser, err := NewDomainParser()
 	require.NoError(t, err)
 
-	result := parser.ExtractAffectedDomains([]string{"www.baidu.com", "www.google.com"})
-	assert.Equal(t, 2, len(result))
-	assert.Contains(t, result, "baidu.com", "google.com")
+	test := map[string]struct {
+		input  []string
+		output []string
+	}{
+		"1": {
+			input:  []string{"www.baidu.com", "www.google.com"},
+			output: []string{"baidu.com", "google.com"},
+		},
+		"2": {
+			input:  []string{"www.baidu.com", "*.baidu.com"},
+			output: []string{"baidu.com"},
+		},
+		"3": {
+			input:  []string{"video.baidu.com", "*.baidu.com", "mail.baidu.com"},
+			output: []string{"baidu.com", "video.baidu.com", "mail.baidu.com"},
+		},
+		"4": {
+			input:  []string{"video.baidu.com", "*.baidu.com", "mail.baidu.com", "book.baidu.com", "func.baidu.com"},
+			output: []string{"baidu.com"},
+		},
+		"5": {
+			input: []string{"video.baidu.com", "*.baidu.com", "mail.baidu.com", "book.baidu.com",
+				"func.baidu.com", "video.google.com", "mail.google.com", "book.mail.google.com"},
+			output: []string{"baidu.com", "google.com"},
+		},
+	}
 
-	result = parser.ExtractAffectedDomains([]string{"www.baidu.com", "*.baidu.com"})
-	assert.Equal(t, 1, len(result))
-	assert.Contains(t, result, "baidu.com")
-
-	result = parser.ExtractAffectedDomains([]string{"video.baidu.com", "*.baidu.com", "mail.baidu.com"})
-	assert.Equal(t, 3, len(result))
-	assert.Contains(t, result, "baidu.com")
-	assert.Contains(t, result, "video.baidu.com")
-	assert.Contains(t, result, "mail.baidu.com")
-
-	result = parser.ExtractAffectedDomains([]string{"video.baidu.com", "*.baidu.com", "mail.baidu.com", "book.baidu.com", "func.baidu.com"})
-	assert.Equal(t, 1, len(result))
-	assert.Contains(t, result, "baidu.com")
-
-	result = parser.ExtractAffectedDomains([]string{"video.baidu.com", "*.baidu.com", "mail.baidu.com", "book.baidu.com", "func.baidu.com", "video.google.com", "mail.google.com", "book.mail.google.com"})
-	assert.Equal(t, 2, len(result))
-	assert.Contains(t, result, "baidu.com", "google.com")
+	for k, v := range test {
+		result := parser.ExtractAffectedDomains(v.input)
+		assert.Equal(t, len(v.output), len(result), k)
+		for _, outputString := range v.output {
+			assert.Contains(t, result, outputString)
+		}
+	}
 }
 
 func TestParseDomainName(t *testing.T) {
 	parser, err := NewDomainParser()
 	require.NoError(t, err)
 
-	result, err := parser.ParseDomainName("www.baidu.com")
-	require.NoError(t, err)
-	assert.Equal(t, 1, len(result))
+	noErr := map[string]struct {
+		input  string
+		length int
+		output []string
+	}{
+		"1": {
+			input:  "www.baidu.com",
+			length: 1,
+			output: []string{"baidu.com"},
+		},
+		"2": {
+			input:  "video.mail.baidu.com",
+			length: 3,
+			output: []string{"video.mail.baidu.com", "mail.baidu.com", "baidu.com"},
+		},
+	}
 
-	result, err = parser.ParseDomainName("*.*.baidu.com")
-	require.Error(t, err)
+	hasErr := map[string]struct {
+		input string
+	}{
+		"1": {
+			input: "*.*.baidu.com",
+		},
+		"2": {
+			input: "_hi.baidu.com",
+		},
+	}
 
-	result, err = parser.ParseDomainName("_hi.baidu.com")
-	require.Error(t, err)
+	for _, v := range noErr {
+		result, err := parser.ParseDomainName(v.input)
+		require.NoError(t, err)
+		assert.Equal(t, v.length, len(result))
+		for _, outputString := range v.output {
+			assert.Contains(t, result, outputString)
+		}
+	}
 
-	result, err = parser.ParseDomainName("video.mail.baidu.com")
-	require.NoError(t, err)
-	assert.Equal(t, 3, len(result))
-	assert.Contains(t, result, "video.mail.baidu.com", "mail.baidu.com", "baidu.com")
+	for _, v := range hasErr {
+		_, err = parser.ParseDomainName(v.input)
+		require.Error(t, err)
+	}
 }

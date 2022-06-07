@@ -207,14 +207,13 @@ func findLongestSuffix(domainNames [][]string) string {
 	// shortest length of all the strings
 	shortestLength := findShortestLength(domainNames)
 
-main_loop:
 	// loop to compare the domain name one level by one level
 	for i := 0; i < shortestLength; i++ {
 		newName := domainNames[0][len(domainNames[0])-1-i]
 		for _, name := range domainNames {
 			// if one level of domain name is not equal among all the input
 			if name[len(name)-1-i] != newName {
-				break main_loop
+				return result
 			}
 			newName = name[len(name)-1-i]
 		}
