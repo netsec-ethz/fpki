@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"runtime"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
@@ -14,16 +15,18 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
+var wg sync.WaitGroup
+
 // benchmark for sparse merkle tree
 func main() {
 	BenchmarkCacheHeightLimit233()
-	fmt.Println("benchmark for 50M updating and fetching finished")
+	fmt.Println("benchmark for 5M updating and fetching finished")
 }
 
 func benchmark10MAccounts10Ktps(smt *trie.Trie) ([][]byte, [][]byte) {
 	allKeys := [][]byte{}
 	allValues := [][]byte{}
-	for i := 0; i < 500; i++ {
+	for i := 0; i < 50; i++ {
 		fmt.Println("Iteration ", i, " ------------------------------")
 		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 		defer cancelF()
@@ -85,26 +88,33 @@ func BenchmarkCacheHeightLimit233() {
 	}
 
 	smt.CacheHeightLimit = 233
-	allKeys, allValues := benchmark10MAccounts10Ktps(smt)
+	allKeys, _ := benchmark10MAccounts10Ktps(smt)
 	//benchmark10MAccounts10Ktps(smt, b)
 
 	fmt.Println("length of keys: ", len(allKeys))
 
-	for i := 0; i < 300; i++ {
-		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
-		defer cancelF()
-
-		start := time.Now()
-		for j := 0; j < 1000; j++ {
-			ap_, _, _, _, _ := smt.MerkleProof(ctx, allKeys[i*10000+j])
-
-			if !trie.VerifyInclusion(smt.Root, ap_, allKeys[i*10000+j], allValues[i*10000+j]) {
-				panic("failed to verify inclusion proof")
-			}
-		}
-		end := time.Now()
-		fmt.Println("batch ", i, " passed time: ", end.Sub(start))
+	wg.Add(20)
+	start := time.Now()
+	for i := 0; i < 20; i++ {
+		go worker(allKeys[i*10000:i*10000+9999], smt)
 	}
+	wg.Wait()
+	end := time.Now()
+	fmt.Println("time to retrieve 200,000 proofs: ", end.Sub(start))
+}
+
+func worker(input [][]byte, smt *trie.Trie) {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
+	for _, key := range input {
+		_, _, _, _, err := smt.MerkleProof(ctx, key)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	wg.Done()
 }
 
 func getFreshData(size, length int) [][]byte {
