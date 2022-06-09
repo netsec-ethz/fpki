@@ -61,16 +61,14 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		end := time.Now()
-		fmt.Println("time to update the changes: ", end.Sub(start))
+		fmt.Println("time to update the changes: ", time.Since(start))
 
 		start = time.Now()
 		err = mapUpdater.CommitChanges(ctx)
 		if err != nil {
 			panic(err)
 		}
-		end = time.Now()
-		fmt.Println("time to commit the changes: ", end.Sub(start))
+		fmt.Println("time to commit the changes: ", time.Since(start))
 	}
 	updateEnd := time.Now()
 	fmt.Println("************************ Update finished ******************************")
