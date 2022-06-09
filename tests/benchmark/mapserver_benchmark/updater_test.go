@@ -234,6 +234,50 @@ func benchmarkSmtUpdate(b *testing.B, count int) {
 	}
 }
 
+// BenchmarkCommitChanges10K uses ~ 356 ms
+func BenchmarkCommitChanges10K(b *testing.B) {
+	benchmarkCommitChanges(b, 10*1000)
+}
+
+func benchmarkCommitChanges(b *testing.B, count int) {
+	swapBack := swapDBs(b)
+	defer swapBack()
+	raw, err := ioutil.ReadFile("testdata/certs.pem")
+	require.NoError(b, err)
+	certs := loadCertsFromPEM(b, raw)
+	require.GreaterOrEqual(b, len(certs), count)
+	certs = certs[:count]
+
+	ctx, cancelF := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancelF()
+	up, err := updater.NewMapTestUpdater(nil, 233)
+	require.NoError(b, err)
+
+	_, err = up.UpdateDomainEntriesUsingCerts(ctx, certs, 10)
+	require.NoError(b, err)
+	updatedDomainHash, err := up.FetchUpdatedDomainHash(ctx)
+	require.NoError(b, err)
+	keyValuePairs, err := up.Conn().
+		RetrieveKeyValuePairDomainEntries(ctx, updatedDomainHash, 10)
+	require.NoError(b, err)
+	k, v, err := up.KeyValuePairToSMTInput(keyValuePairs)
+	require.NoError(b, err)
+	_, err = up.SMT().Update(ctx, k, v)
+	require.NoError(b, err)
+
+	b.ResetTimer()
+
+	// exec only once, assume perfect measuring. Because b.N is the number of iterations,
+	// just mimic b.N executions.
+	t0 := time.Now()
+	err = up.CommitChanges(ctx)
+	elapsed := time.Since(t0)
+	require.NoError(b, err)
+	for i := 1; i < b.N; i++ {
+		time.Sleep(elapsed)
+	}
+}
+
 // swapDBs swaps a possibly existing production DB with a new one, to be able to perform a test
 // TODO(juagargi) ensure that the data from the DB is preserved. Thoughts about this are below:
 // IMO this is  hard to do with a function because if it may be called from different

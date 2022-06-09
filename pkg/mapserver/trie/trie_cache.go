@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/netsec-ethz/fpki/pkg/common"
@@ -75,22 +74,16 @@ func (cacheDB *CacheDB) commitChangesToDB(ctx context.Context) error {
 	cacheDB.lock.Lock()
 	defer cacheDB.lock.Unlock()
 
-	updateStart := time.Now()
 	_, err := cacheDB.Store.UpdateKeyValuesTreeStruc(ctx, updates)
 	if err != nil {
 		return fmt.Errorf("commitChangesToDB | UpdateKeyValuePairBatches | %w", err)
 	}
-	updateEnd := time.Now()
-	fmt.Println("SMT DB Update : takes ", updateEnd.Sub(updateStart), " | write ", len(updates))
 
 	if len(keys) > 0 {
-		start := time.Now()
 		_, err := cacheDB.Store.DeleteKeyValuesTreeStruc(ctx, keys)
 		if err != nil {
 			return fmt.Errorf("commitChangesToDB | DeleteKeyValuePairBatches | %w", err)
 		}
-		end := time.Now()
-		fmt.Println("SMT DB Delete : takes ", end.Sub(start), " | delete ", len(keys))
 	}
 
 	return nil

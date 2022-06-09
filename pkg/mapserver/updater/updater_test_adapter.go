@@ -48,3 +48,7 @@ func (a *UpdaterTestAdapter) SMT() *trie.Trie {
 func (a *UpdaterTestAdapter) SetSMT(smt *trie.Trie) {
 	a.smt = smt
 }
+
+func (a *UpdaterTestAdapter) CommitChanges(ctx context.Context) error {
+	return (*MapUpdater)(a).CommitChanges(ctx)
+}
