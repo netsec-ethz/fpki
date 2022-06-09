@@ -5,39 +5,40 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
-	"sync"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 )
 
-var wg sync.WaitGroup
-
 // collect 1M certs, and update them
 func main() {
-	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/fpki?maxAllowedPacket=1073741824")
-	if err != nil {
-		panic(err)
-	}
-	defer db.Close()
+	{ // truncate tables manually
+		db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/fpki?maxAllowedPacket=1073741824")
+		if err != nil {
+			panic(err)
+		}
 
-	// truncate table
-	_, err = db.Exec("TRUNCATE fpki.domainEntries;")
-	if err != nil {
-		panic(err)
-	}
+		// truncate table
+		_, err = db.Exec("TRUNCATE fpki.domainEntries;")
+		if err != nil {
+			panic(err)
+		}
 
-	// truncate table
-	_, err = db.Exec("TRUNCATE fpki.tree;")
-	if err != nil {
-		panic(err)
-	}
+		// truncate table
+		_, err = db.Exec("TRUNCATE fpki.tree;")
+		if err != nil {
+			panic(err)
+		}
 
-	// truncate table
-	_, err = db.Exec("TRUNCATE fpki.updates;")
-	if err != nil {
-		panic(err)
+		// truncate table
+		_, err = db.Exec("TRUNCATE fpki.updates;")
+		if err != nil {
+			panic(err)
+		}
+		if err = db.Close(); err != nil {
+			panic(err)
+		}
 	}
 
 	// new updater
@@ -85,5 +86,4 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-
 }
