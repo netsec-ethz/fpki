@@ -1,6 +1,7 @@
 package benchmark
 
 import (
+	"compress/gzip"
 	"encoding/pem"
 	"os"
 	"testing"
@@ -43,22 +44,25 @@ func TestCreateCerts(t *testing.T) {
 		t.Skip("not generating new certificates")
 	}
 	baseSize := 2 * 1000
-	// count := 10 * 1000
-	count := 10 * 1000
+	count := 100 * 1000
 	certs, err := logpicker.GetCertMultiThread(ctURL, int64(baseSize), int64(baseSize+count-1), 32)
 	require.NoError(t, err)
 	require.Len(t, certs, count, "we have %d certificates", len(certs))
 
-	f, err := os.Create("testdata/certs.pem")
+	f, err := os.Create("testdata/certs.pem.gz")
+	require.NoError(t, err)
+	z, err := gzip.NewWriterLevel(f, gzip.BestCompression)
 	require.NoError(t, err)
 	for _, c := range certs {
 		require.NotNil(t, c.RawTBSCertificate)
-		err = pem.Encode(f, &pem.Block{
+		err = pem.Encode(z, &pem.Block{
 			Type:  "CERTIFICATE",
 			Bytes: c.RawTBSCertificate,
 		})
 		require.NoError(t, err)
 	}
+	err = z.Close()
+	require.NoError(t, err)
 	err = f.Close()
 	require.NoError(t, err)
 }
