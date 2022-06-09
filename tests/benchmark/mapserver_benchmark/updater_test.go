@@ -21,8 +21,61 @@ func BenchmarkFullUpdate1K(b *testing.B) {
 // BenchmarkFullUpdate10K uses ~ 1438 ms
 // Target is updating 17M certs in 2 hours = (linear) = 7200s/17M = 0.424ms per certificate =>
 // Target for this test is 0.42 ms * 10K = 4200 ms.
+// Linear regression (with 6 points)
+// y= 0.1161x + 542.6176 milliseconds
+// Linear correlation coefficient is 0.9966
+// prediction is y(17M) = 1974243 ms = 1974.243 s = 33 minutes
+//
+// n log n fitting ( m*x*log(m*x) + c )  (use MSE e.g. mycurvefit.com)
+// y= 0.02722022x log(0.02722022x) + 1348.432
+// prediction is y(17M) = 2722347 ms = 2722.348 s = 45 minutes
+//
+// Reproduce and print milliseconds:
+// run: go test -run=XXX -bench=FullUpdate ./tests/benchmark/mapserver_benchmark/
+// and pipe it to: grep ^BenchmarkFullUpdate | awk '{printf("%30s, %013.6f\n",$1,$3/1000000) }' | \
+// sed 's/BenchmarkFullUpdate//'|sed 's/-24//'|sed 's/K/000/'
 func BenchmarkFullUpdate10K(b *testing.B) {
 	benchmarkFullUpdate(b, 10*1000)
+}
+
+func BenchmarkFullUpdate20K(b *testing.B) {
+	benchmarkFullUpdate(b, 20*1000)
+}
+
+func BenchmarkFullUpdate30K(b *testing.B) {
+	benchmarkFullUpdate(b, 30*1000)
+}
+
+func BenchmarkFullUpdate40K(b *testing.B) {
+	benchmarkFullUpdate(b, 40*1000)
+}
+
+func BenchmarkFullUpdate50K(b *testing.B) {
+	benchmarkFullUpdate(b, 50*1000)
+}
+
+func BenchmarkFullUpdate60K(b *testing.B) {
+	benchmarkFullUpdate(b, 60*1000)
+}
+
+func BenchmarkFullUpdate70K(b *testing.B) {
+	benchmarkFullUpdate(b, 70*1000)
+}
+
+func BenchmarkFullUpdate80K(b *testing.B) {
+	benchmarkFullUpdate(b, 80*1000)
+}
+
+func BenchmarkFullUpdate90K(b *testing.B) {
+	benchmarkFullUpdate(b, 90*1000)
+}
+
+func BenchmarkFullUpdate100K(b *testing.B) {
+	benchmarkFullUpdate(b, 100*1000)
+}
+
+func BenchmarkFullUpdate200K(b *testing.B) {
+	benchmarkFullUpdate(b, 200*1000)
 }
 
 func benchmarkFullUpdate(b *testing.B, count int) {
