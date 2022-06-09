@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"time"
 
 	"github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/common"
@@ -28,49 +27,35 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesUsingCerts(ctx context.Context,
 		return 0, nil
 	}
 
-	fmt.Println("number of affected domains: ", len(affectedDomainsMap))
-
-	start := time.Now()
 	// retrieve (possibly)affected domain entries from db
 	// It's possible that no records will be changed, because the certs are already recorded.
 	domainEntriesMap, err := mapUpdater.retrieveAffectedDomainFromDB(ctx, affectedDomainsMap, readerNum)
 	if err != nil {
 		return 0, fmt.Errorf("UpdateDomainEntriesUsingCerts | retrieveAffectedDomainFromDB | %w", err)
 	}
-	end := time.Now()
-	fmt.Println("---time to retrieveAffectedDomainFromDB:   ", end.Sub(start))
 
-	start = time.Now()
 	// update the domain entries
 	updatedDomains, err := updateDomainEntries(domainEntriesMap, domainCertMap)
 	if err != nil {
 		return 0, fmt.Errorf("UpdateDomainEntriesUsingCerts | updateDomainEntries | %w", err)
 	}
-	end = time.Now()
-	fmt.Println("---time to updateDomainEntries:   ", end.Sub(start))
 
 	// if during this updates, no cert is added, directly return
 	if len(updatedDomains) == 0 {
 		return 0, nil
 	}
 
-	start = time.Now()
 	// get the domain entries only if they are updated, from DB
 	domainEntriesToWrite, err := getDomainEntriesToWrite(updatedDomains, domainEntriesMap)
 	if err != nil {
 		return 0, fmt.Errorf("UpdateDomainEntriesUsingCerts | domainEntriesToWrite | %w", err)
 	}
-	end = time.Now()
-	fmt.Println("---time to getDomainEntriesToWrite:   ", end.Sub(start))
 
 	// serialised the domainEntry -> key-value pair
-	start = time.Now()
 	keyValuePairs, updatedDomainNameHashes, err := serializeUpdatedDomainEntries(domainEntriesToWrite)
 	if err != nil {
 		return 0, fmt.Errorf("UpdateDomainEntriesUsingCerts | serializeUpdatedDomainEntries | %w", err)
 	}
-	end = time.Now()
-	fmt.Println("---time to serializeUpdatedDomainEntries:   ", end.Sub(start))
 
 	// commit changes to db
 	return mapUpdater.writeChangesToDB(ctx, keyValuePairs, updatedDomainNameHashes)

@@ -136,7 +136,14 @@ type mResult struct {
 // Adding and deleting can be simultaneous.
 // To delete, set the value to DefaultLeaf.
 // It returns the root of the updated tree.
-func (s *Trie) update(ctx context.Context, root []byte, keys, values, batch [][]byte, iBatch, height int, ch chan<- (mResult)) {
+func (s *Trie) update(ctx context.Context, root []byte, keys, values, batch [][]byte, iBatch,
+	height int, ch chan<- (mResult)) {
+
+	if len(keys) == 0 {
+		ch <- mResult{}
+		return
+	}
+
 	if height == 0 {
 		if bytes.Equal(DefaultLeaf, values[0]) {
 			// Delete the key-value from the trie if it is being set to DefaultLeaf
