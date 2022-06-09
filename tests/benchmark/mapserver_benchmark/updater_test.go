@@ -2,10 +2,12 @@ package benchmark
 
 import (
 	"context"
+	"database/sql"
 	"io/ioutil"
 	"testing"
 	"time"
 
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 	"github.com/stretchr/testify/require"
 )
@@ -48,7 +50,7 @@ func benchmarkUpdate(b *testing.B, count int) {
 	}
 }
 
-// BenchmarkUpdateDomainEntriesUsingCerts10K uses ~ 430 ms
+// BenchmarkUpdateDomainEntriesUsingCerts10K uses ~ 1246 ms
 func BenchmarkUpdateDomainEntriesUsingCerts10K(b *testing.B) {
 	benchmarkUpdateDomainEntriesUsingCerts(b, 10*1000)
 }
@@ -80,7 +82,7 @@ func benchmarkUpdateDomainEntriesUsingCerts(b *testing.B, count int) {
 	}
 }
 
-// BenchmarkFetchUpdatedDomainHash10K uses ~ 27 ms
+// BenchmarkFetchUpdatedDomainHash10K uses ~ 31 ms
 func BenchmarkFetchUpdatedDomainHash10K(b *testing.B) {
 	benchmarkFetchUpdatedDomainHash(b, 10*1000)
 }
@@ -114,7 +116,7 @@ func benchmarkFetchUpdatedDomainHash(b *testing.B, count int) {
 	}
 }
 
-// BenchmarkRetrieveKeyValuePairDomainEntries10K uses ~ 0.008494 ms
+// BenchmarkRetrieveKeyValuePairDomainEntries10K uses ~ 114 ms
 func BenchmarkRetrieveKeyValuePairDomainEntries10K(b *testing.B) {
 	benchmarkRetrieveKeyValuePairDomainEntries(b, 10*1000)
 }
@@ -151,7 +153,7 @@ func benchmarkRetrieveKeyValuePairDomainEntries(b *testing.B, count int) {
 	}
 }
 
-// BenchmarkKeyValuePairToSMTInput10K uses ~ 0.131 ms
+// BenchmarkKeyValuePairToSMTInput10K uses ~ 21 ms
 func BenchmarkKeyValuePairToSMTInput10K(b *testing.B) {
 	benchmarkKeyValuePairToSMTInput(b, 10*1000)
 }
@@ -190,7 +192,7 @@ func benchmarkKeyValuePairToSMTInput(b *testing.B, count int) {
 	}
 }
 
-// BenchmarkSmtUpdate10K uses ~ 0.304 ms
+// BenchmarkSmtUpdate10K uses ~ 30 ms
 func BenchmarkSmtUpdate10K(b *testing.B) {
 	benchmarkSmtUpdate(b, 10*1000)
 }
@@ -219,7 +221,6 @@ func benchmarkSmtUpdate(b *testing.B, count int) {
 	k, v, err := up.KeyValuePairToSMTInput(keyValuePairs)
 	require.NoError(b, err)
 
-	// up.SetSMT(up.SMT().Clone())
 	b.ResetTimer()
 
 	// exec only once, assume perfect measuring. Because b.N is the number of iterations,
@@ -242,6 +243,20 @@ func benchmarkSmtUpdate(b *testing.B, count int) {
 // a benchmark, and would not affect any global data.
 func swapDBs(t require.TestingT) func() {
 	swapBack := func() {
+		// this will swap the DB back to its original state
 	}
+	// prepare the DB for the benchmark
+	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/fpki?maxAllowedPacket=1073741824")
+	require.NoError(t, err)
+	// truncate tables
+	_, err = db.Exec("TRUNCATE fpki.domainEntries;")
+	require.NoError(t, err)
+	_, err = db.Exec("TRUNCATE fpki.tree;")
+	require.NoError(t, err)
+	_, err = db.Exec("TRUNCATE fpki.updates;")
+	require.NoError(t, err)
+	// done
+	err = db.Close()
+	require.NoError(t, err)
 	return swapBack
 }
