@@ -79,6 +79,7 @@ func BenchmarkFullUpdate200K(b *testing.B) {
 }
 
 func benchmarkFullUpdate(b *testing.B, count int) {
+	expensiveBenchmark(b, count)
 	swapBack := swapDBs(b)
 	defer swapBack()
 	raw, err := gunzip(b, "testdata/certs.pem.gz")
@@ -374,4 +375,10 @@ func gunzip(t require.TestingT, filename string) ([]byte, error) {
 	require.NoError(t, err)
 
 	return raw, theErr
+}
+
+func expensiveBenchmark(b *testing.B, count int) {
+	if count > 30000 && os.Getenv("FPKI_BENCH") == "" {
+		b.Skip("benchmark is expensive. Skipping")
+	}
 }
