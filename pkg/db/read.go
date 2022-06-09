@@ -56,9 +56,14 @@ func (c *mysqlDB) RetrieveOneKeyValuePairDomainEntries(ctx context.Context, key 
 // RetrieveKeyValuePairDomainEntries: Retrieve a list of key-value pairs from domain entries table
 // No sql.ErrNoRows will be thrown, if some records does not exist. Check the length of result
 // TO_DISCUSS(yongzhe): keep this or move it to updater
-func (c *mysqlDB) RetrieveKeyValuePairDomainEntries(ctx context.Context, key []common.SHA256Output, numOfWorker int) ([]KeyValuePair, error) {
+func (c *mysqlDB) RetrieveKeyValuePairDomainEntries(ctx context.Context, key []common.SHA256Output,
+	numOfWorker int) ([]KeyValuePair, error) {
+
 	stmt := c.prepGetValueDomainEntries
 
+	if len(key) == 0 {
+		return nil, nil
+	}
 	// if work is less than number of worker
 	if len(key) < numOfWorker {
 		numOfWorker = len(key)

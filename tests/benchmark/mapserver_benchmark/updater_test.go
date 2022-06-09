@@ -11,7 +11,6 @@ import (
 )
 
 func BenchmarkUpdate1K(b *testing.B) {
-	b.Skip("TODO(juagargi) this benchmark crashes the map updater")
 	benchmarkUpdate(b, 1000)
 }
 
