@@ -5,9 +5,9 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/domain"
@@ -54,59 +54,38 @@ func NewMapUpdater(root []byte, cacheHeight int) (*MapUpdater, error) {
 // UpdateFromCT: download certs from ct log, update the domain entries and update the updates table, and SMT;
 // SMT not committed yet
 func (mapUpdater *MapUpdater) UpdateFromCT(ctx context.Context, ctUrl string, startIdx, endIdx int64) error {
-	fmt.Println("****** UpdateFromCT ******")
-	start := time.Now()
-	fmt.Println(startIdx, endIdx)
 	certs, err := logpicker.GetCertMultiThread(ctUrl, startIdx, endIdx, 20)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | GetCertMultiThread | %w", err)
 	}
-	end := time.Now()
-	fmt.Println("time to fetch certs from internet         ", end.Sub(start), " ", len(certs))
+	return mapUpdater.updateCerts(ctx, certs)
+}
 
-	//start = time.Now()
-
-	//fmt.Println(" ------UpdateDomainEntriesUsingCerts -----")
-	_, err = mapUpdater.UpdateDomainEntriesUsingCerts(ctx, certs, 10)
+func (mapUpdater *MapUpdater) updateCerts(ctx context.Context, certs []*ctx509.Certificate) error {
+	_, err := mapUpdater.UpdateDomainEntriesUsingCerts(ctx, certs, 10)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingCerts | %w", err)
 	}
-	//end = time.Now()
-	//fmt.Println("time to UpdateDomainEntriesUsingCerts     ", end.Sub(start))
 
-	//start = time.Now()
 	updatedDomainHash, err := mapUpdater.fetchUpdatedDomainHash(ctx)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | fetchUpdatedDomainHash | %w", err)
 	}
-	//end = time.Now()
-	//fmt.Println("time to fetchUpdatedDomainHash            ", end.Sub(start))
 
-	//start = time.Now()
 	keyValuePairs, err := mapUpdater.dbConn.RetrieveKeyValuePairDomainEntries(ctx, updatedDomainHash, 10)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | RetrieveKeyValuePairMultiThread | %w", err)
 	}
 
-	//end = time.Now()
-	//fmt.Println("time to RetrieveKeyValuePairMultiThread   ", end.Sub(start))
-
-	//start = time.Now()
 	keyInput, valueInput, err := keyValuePairToSMTInput(keyValuePairs)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | keyValuePairToSMTInput | %w", err)
 	}
-	//end = time.Now()
-	//fmt.Println("time to keyValuePairToSMTInput            ", end.Sub(start))
 
-	//start = time.Now()
 	_, err = mapUpdater.smt.Update(ctx, keyInput, valueInput)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | Update | %w", err)
 	}
-	//end = time.Now()
-	//fmt.Println("time to Update SMT                        ", end.Sub(start))
-	//fmt.Println("****** UpdateFromCT End ******")
 
 	return nil
 }
