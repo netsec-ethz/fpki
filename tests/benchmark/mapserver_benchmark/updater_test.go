@@ -1,9 +1,11 @@
 package benchmark
 
 import (
+	"compress/gzip"
 	"context"
 	"database/sql"
-	"io/ioutil"
+	"io"
+	"os"
 	"testing"
 	"time"
 
@@ -12,21 +14,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func BenchmarkUpdate1K(b *testing.B) {
-	benchmarkUpdate(b, 1000)
+func BenchmarkFullUpdate1K(b *testing.B) {
+	benchmarkFullUpdate(b, 1000)
 }
 
-// BenchmarkUpdate10K uses ~ 1438 ms
-// Target is updating 17M certs in 2 hours = 7200s/17M = 0.424ms per certificate =>
+// BenchmarkFullUpdate10K uses ~ 1438 ms
+// Target is updating 17M certs in 2 hours = (linear) = 7200s/17M = 0.424ms per certificate =>
 // Target for this test is 0.42 ms * 10K = 4200 ms.
-func BenchmarkUpdate10K(b *testing.B) {
-	benchmarkUpdate(b, 10*1000)
+func BenchmarkFullUpdate10K(b *testing.B) {
+	benchmarkFullUpdate(b, 10*1000)
 }
 
-func benchmarkUpdate(b *testing.B, count int) {
+func benchmarkFullUpdate(b *testing.B, count int) {
 	swapBack := swapDBs(b)
 	defer swapBack()
-	raw, err := ioutil.ReadFile("testdata/certs.pem")
+	raw, err := gunzip(b, "testdata/certs.pem.gz")
 	require.NoError(b, err)
 	certs := loadCertsFromPEM(b, raw)
 	require.GreaterOrEqual(b, len(certs), count)
@@ -58,7 +60,7 @@ func BenchmarkUpdateDomainEntriesUsingCerts10K(b *testing.B) {
 func benchmarkUpdateDomainEntriesUsingCerts(b *testing.B, count int) {
 	swapBack := swapDBs(b)
 	defer swapBack()
-	raw, err := ioutil.ReadFile("testdata/certs.pem")
+	raw, err := gunzip(b, "testdata/certs.pem.gz")
 	require.NoError(b, err)
 	certs := loadCertsFromPEM(b, raw)
 	require.GreaterOrEqual(b, len(certs), count)
@@ -90,7 +92,7 @@ func BenchmarkFetchUpdatedDomainHash10K(b *testing.B) {
 func benchmarkFetchUpdatedDomainHash(b *testing.B, count int) {
 	swapBack := swapDBs(b)
 	defer swapBack()
-	raw, err := ioutil.ReadFile("testdata/certs.pem")
+	raw, err := gunzip(b, "testdata/certs.pem.gz")
 	require.NoError(b, err)
 	certs := loadCertsFromPEM(b, raw)
 	require.GreaterOrEqual(b, len(certs), count)
@@ -124,7 +126,7 @@ func BenchmarkRetrieveKeyValuePairDomainEntries10K(b *testing.B) {
 func benchmarkRetrieveKeyValuePairDomainEntries(b *testing.B, count int) {
 	swapBack := swapDBs(b)
 	defer swapBack()
-	raw, err := ioutil.ReadFile("testdata/certs.pem")
+	raw, err := gunzip(b, "testdata/certs.pem.gz")
 	require.NoError(b, err)
 	certs := loadCertsFromPEM(b, raw)
 	require.GreaterOrEqual(b, len(certs), count)
@@ -161,7 +163,7 @@ func BenchmarkKeyValuePairToSMTInput10K(b *testing.B) {
 func benchmarkKeyValuePairToSMTInput(b *testing.B, count int) {
 	swapBack := swapDBs(b)
 	defer swapBack()
-	raw, err := ioutil.ReadFile("testdata/certs.pem")
+	raw, err := gunzip(b, "testdata/certs.pem.gz")
 	require.NoError(b, err)
 	certs := loadCertsFromPEM(b, raw)
 	require.GreaterOrEqual(b, len(certs), count)
@@ -200,7 +202,7 @@ func BenchmarkSmtUpdate10K(b *testing.B) {
 func benchmarkSmtUpdate(b *testing.B, count int) {
 	swapBack := swapDBs(b)
 	defer swapBack()
-	raw, err := ioutil.ReadFile("testdata/certs.pem")
+	raw, err := gunzip(b, "testdata/certs.pem.gz")
 	require.NoError(b, err)
 	certs := loadCertsFromPEM(b, raw)
 	require.GreaterOrEqual(b, len(certs), count)
@@ -242,7 +244,7 @@ func BenchmarkCommitChanges10K(b *testing.B) {
 func benchmarkCommitChanges(b *testing.B, count int) {
 	swapBack := swapDBs(b)
 	defer swapBack()
-	raw, err := ioutil.ReadFile("testdata/certs.pem")
+	raw, err := gunzip(b, "testdata/certs.pem.gz")
 	require.NoError(b, err)
 	certs := loadCertsFromPEM(b, raw)
 	require.GreaterOrEqual(b, len(certs), count)
@@ -303,4 +305,20 @@ func swapDBs(t require.TestingT) func() {
 	err = db.Close()
 	require.NoError(t, err)
 	return swapBack
+}
+
+func gunzip(t require.TestingT, filename string) ([]byte, error) {
+	f, err := os.Open(filename)
+	require.NoError(t, err)
+	z, err := gzip.NewReader(f)
+	require.NoError(t, err)
+
+	raw, theErr := io.ReadAll(z)
+
+	err = z.Close()
+	require.NoError(t, err)
+	err = f.Close()
+	require.NoError(t, err)
+
+	return raw, theErr
 }
