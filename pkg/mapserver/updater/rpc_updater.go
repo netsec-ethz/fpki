@@ -102,7 +102,7 @@ func getAffectedDomainAndCertMapPCAndRPC(rpc []*projectCommon.RPC, pc []*project
 	return affectedDomainsMap, domainCertMap
 }
 
-// update domain entries
+// updateDomainEntriesWithRPCAndPC: update domain entries
 func updateDomainEntriesWithRPCAndPC(domainEntries map[projectCommon.SHA256Output]*common.DomainEntry, certDomainMap map[string]*newUpdates) (uniqueSet, error) {
 	updatedDomainHash := make(uniqueSet)
 	// read from previous map
@@ -116,21 +116,17 @@ func updateDomainEntriesWithRPCAndPC(domainEntries map[projectCommon.SHA256Outpu
 			// get domain entries
 			domainEntry, ok := domainEntries[domainNameHash]
 			// if domain entry exists in the db
-			if ok {
-				isUpdated := updateDomainEntryWithRPC(domainEntry, rpc)
-				if isUpdated {
-					// flag the updated domains
-					updatedDomainHash[domainNameHash] = empty
-				}
-			} else {
+			if !ok {
 				// create an empty domain entry
 				newDomainEntry := &common.DomainEntry{DomainName: domainName}
 				domainEntries[domainNameHash] = newDomainEntry
-				isUpdated := updateDomainEntryWithRPC(newDomainEntry, rpc)
-				if isUpdated {
-					// flag the updated domains
-					updatedDomainHash[domainNameHash] = empty
-				}
+				domainEntry = newDomainEntry
+			}
+
+			isUpdated := updateDomainEntryWithRPC(domainEntry, rpc)
+			if isUpdated {
+				// flag the updated domains
+				updatedDomainHash[domainNameHash] = empty
 			}
 		}
 
@@ -141,28 +137,24 @@ func updateDomainEntriesWithRPCAndPC(domainEntries map[projectCommon.SHA256Outpu
 			// get domain entries
 			domainEntry, ok := domainEntries[domainNameHash]
 			// if domain entry exists in the db
-			if ok {
-				isUpdated := updateDomainEntryWithPC(domainEntry, pc)
-				if isUpdated {
-					// flag the updated domains
-					updatedDomainHash[domainNameHash] = empty
-				}
-			} else {
+			if !ok {
 				// create an empty domain entry
 				newDomainEntry := &common.DomainEntry{DomainName: domainName}
 				domainEntries[domainNameHash] = newDomainEntry
-				isUpdated := updateDomainEntryWithPC(newDomainEntry, pc)
-				if isUpdated {
-					// flag the updated domains
-					updatedDomainHash[domainNameHash] = empty
-				}
+				domainEntry = newDomainEntry
+			}
+
+			isUpdated := updateDomainEntryWithPC(domainEntry, pc)
+			if isUpdated {
+				// flag the updated domains
+				updatedDomainHash[domainNameHash] = empty
 			}
 		}
 	}
 	return updatedDomainHash, nil
 }
 
-// insert certificate into correct CAEntry
+// updateDomainEntryWithRPC: insert certificate into correct CAEntry
 func updateDomainEntryWithRPC(domainEntry *common.DomainEntry, rpc *projectCommon.RPC) bool {
 	caName := rpc.CAName
 	isFound := false
@@ -194,7 +186,7 @@ func updateDomainEntryWithRPC(domainEntry *common.DomainEntry, rpc *projectCommo
 	return isUpdated
 }
 
-// insert pc into correct CAEntry
+// updateDomainEntryWithPC: insert pc into correct CAEntry
 func updateDomainEntryWithPC(domainEntry *common.DomainEntry, pc *projectCommon.PC) bool {
 	caName := pc.CAName
 	isFound := false

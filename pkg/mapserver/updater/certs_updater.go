@@ -13,6 +13,7 @@ import (
 )
 
 // TODO(yongzhe): make the list if size is already known.
+// TODO(yongzhe): unit test for updateDomainEntryWithRPC and ...
 
 type uniqueSet map[common.SHA256Output]struct{}
 type uniqueStringSet map[string]struct{}
