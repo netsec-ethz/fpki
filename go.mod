@@ -4,20 +4,21 @@ go 1.17
 
 require (
 	github.com/go-sql-driver/mysql v1.6.0
-	github.com/golang/glog v1.0.0
-	github.com/google/certificate-transparency-go v1.1.2-0.20210512142713-bed466244fa6
+	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
+	github.com/google/certificate-transparency-go v1.1.3
 	github.com/google/trillian v1.4.1
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/minio/sha256-simd v1.0.0
 	github.com/stretchr/testify v1.7.1
 	github.com/transparency-dev/merkle v0.0.1
-	golang.org/x/net v0.0.0-20220421235706-1d1ef9303861
+	golang.org/x/net v0.0.0-20220425223048-2871e0cb64e4
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	google.golang.org/grpc v1.46.0
 	google.golang.org/protobuf v1.28.0
 )
 
 require (
+	bitbucket.org/creachadair/shell v0.0.7 // indirect
 	cloud.google.com/go v0.100.2 // indirect
 	cloud.google.com/go/compute v1.6.0 // indirect
 	cloud.google.com/go/monitoring v1.1.0 // indirect
@@ -34,7 +35,7 @@ require (
 	github.com/cncf/xds/go v0.0.0-20211011173535-cb28da3451f1 // indirect
 	github.com/coreos/go-semver v0.3.0 // indirect
 	github.com/coreos/go-systemd/v22 v22.3.2 // indirect
-	github.com/cpuguy83/go-md2man/v2 v2.0.1 // indirect
+	github.com/cpuguy83/go-md2man/v2 v2.0.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dustin/go-humanize v1.0.0 // indirect
 	github.com/envoyproxy/go-control-plane v0.10.2-0.20220325020618-49ff273808a1 // indirect
@@ -113,7 +114,7 @@ require (
 	golang.org/x/xerrors v0.0.0-20220411194840-2f41105eb62f // indirect
 	google.golang.org/api v0.77.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
-	google.golang.org/genproto v0.0.0-20220422154200-b37d22cd5731 // indirect
+	google.golang.org/genproto v0.0.0-20220426171045-31bebdecfb46 // indirect
 	gopkg.in/cheggaaa/pb.v1 v1.0.28 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
