@@ -121,36 +121,31 @@ func updateDomainEntries(domainEntries map[common.SHA256Output]*mapCommon.Domain
 			copy(domainNameHash[:], common.SHA256Hash([]byte(domainName)))
 			// get domain entries
 			domainEntry, ok := domainEntries[domainNameHash]
-			// if domain entry exists in the db
-			if ok {
-				isUpdated := updateDomainEntry(domainEntry, cert)
-				if isUpdated {
-					// flag the updated domains
-					updatedDomainHash[domainNameHash] = empty
-				}
-			} else {
+			// if domain entry does not exist in the db
+			if !ok {
 				// create an empty domain entry
 				newDomainEntry := &mapCommon.DomainEntry{DomainName: domainName}
 				domainEntries[domainNameHash] = newDomainEntry
-				isUpdated := updateDomainEntry(newDomainEntry, cert)
-				if isUpdated {
-					// flag the updated domains
-					updatedDomainHash[domainNameHash] = empty
-				}
+				domainEntry = newDomainEntry
 			}
+
+			isUpdated := updateDomainEntry(domainEntry, cert)
+			if isUpdated {
+				// flag the updated domains
+				updatedDomainHash[domainNameHash] = empty
+			}
+
 		}
 	}
 
 	return updatedDomainHash, nil
 }
 
-// insert certificate into correct CAEntry
+// updateDomainEntry: insert certificate into correct CAEntry
 func updateDomainEntry(domainEntry *mapCommon.DomainEntry, cert *x509.Certificate) bool {
 	caName := cert.Issuer.CommonName
 	isFound := false
-	isUpdated := false
 
-ca_entry_loop:
 	// iterate CAEntry list, find if the target CA list exists
 	for i := range domainEntry.CAEntry {
 		if domainEntry.CAEntry[i].CAName == caName {
@@ -158,14 +153,13 @@ ca_entry_loop:
 			// check whether this certificate is already registered
 			for _, certRaw := range domainEntry.CAEntry[i].DomainCerts {
 				if bytes.Equal(certRaw, cert.Raw) {
-					break ca_entry_loop
+					return false
 				}
 			}
 			// if not, append the raw of the certificate
 			domainEntry.CAEntry[i].DomainCerts = append(domainEntry.CAEntry[i].DomainCerts, cert.Raw)
 
-			isUpdated = true
-			break
+			return true
 		}
 	}
 
@@ -176,10 +170,10 @@ ca_entry_loop:
 			DomainCerts: [][]byte{cert.Raw},
 			CAName:      caName,
 			CAHash:      common.SHA256Hash([]byte(caName))})
-		isUpdated = true
+		return true
 	}
 
-	return isUpdated
+	return false
 }
 
 // get updated domains, and extract the corresponding domain bytes
