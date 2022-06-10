@@ -13,6 +13,11 @@ import (
 	mapCommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
 )
 
+type uniqueSet map[common.SHA256Output]struct{}
+type uniqueStringSet map[string]struct{}
+
+var empty struct{}
+
 // UpdateDomainEntriesUsingCerts: Update the domain entries using the domain certificates
 func (mapUpdater *MapUpdater) UpdateDomainEntriesUsingCerts(ctx context.Context, certs []*x509.Certificate, readerNum int) (int, error) {
 	if len(certs) == 0 {
@@ -65,9 +70,9 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesUsingCerts(ctx context.Context,
 // First return value: map of hashes of updated domain name. TODO(yongzhe): change this to a list maybe
 // Second return value: "domain name" -> certs. So later, one can look through the map to decide which certs to
 //     added to which domain.
-func getAffectedDomainAndCertMap(certs []*x509.Certificate, parser *domain.DomainParser) (map[common.SHA256Output]byte, map[string][]*x509.Certificate) {
+func getAffectedDomainAndCertMap(certs []*x509.Certificate, parser *domain.DomainParser) (uniqueSet, map[string][]*x509.Certificate) {
 	// unique list of the updated domains
-	affectedDomainsMap := make(map[common.SHA256Output]byte)
+	affectedDomainsMap := make(uniqueSet)
 
 	// map to map "domain name" -> certs list(certs to be added to this domain).
 	domainCertMap := make(map[string][]*x509.Certificate)
@@ -90,7 +95,7 @@ func getAffectedDomainAndCertMap(certs []*x509.Certificate, parser *domain.Domai
 			var domainNameHash common.SHA256Output
 			copy(domainNameHash[:], common.SHA256Hash([]byte(domainName)))
 
-			affectedDomainsMap[domainNameHash] = 1
+			affectedDomainsMap[domainNameHash] = empty
 			_, ok := domainCertMap[domainName]
 			if ok {
 				domainCertMap[domainName] = append(domainCertMap[domainName], cert)
@@ -102,17 +107,15 @@ func getAffectedDomainAndCertMap(certs []*x509.Certificate, parser *domain.Domai
 	return affectedDomainsMap, domainCertMap
 }
 
-// get domain from cert:
-// 1. Subject name
-// 2. SANs
+// extractCertDomains: get domain from cert: {Common Name, SANs}
 func extractCertDomains(cert *x509.Certificate) []string {
-	domains := make(map[string]byte)
+	domains := make(uniqueStringSet)
 	if len(cert.Subject.CommonName) != 0 {
-		domains[cert.Subject.CommonName] = 1
+		domains[cert.Subject.CommonName] = empty
 	}
 
 	for _, dnsName := range cert.DNSNames {
-		domains[dnsName] = 1
+		domains[dnsName] = empty
 	}
 
 	result := []string{}
@@ -124,9 +127,9 @@ func extractCertDomains(cert *x509.Certificate) []string {
 
 // update domain entries
 func updateDomainEntries(domainEntries map[common.SHA256Output]*mapCommon.DomainEntry,
-	certDomainMap map[string][]*x509.Certificate) (map[common.SHA256Output]byte, error) {
+	certDomainMap map[string][]*x509.Certificate) (uniqueSet, error) {
 
-	updatedDomainHash := make(map[common.SHA256Output]byte)
+	updatedDomainHash := make(uniqueSet)
 	// read from previous map
 	// the map records: domain - certs pair
 	// Which domain will be affected by which certificates
@@ -142,7 +145,7 @@ func updateDomainEntries(domainEntries map[common.SHA256Output]*mapCommon.Domain
 				isUpdated := updateDomainEntry(domainEntry, cert)
 				if isUpdated {
 					// flag the updated domains
-					updatedDomainHash[domainNameHash] = 1
+					updatedDomainHash[domainNameHash] = empty
 				}
 			} else {
 				// create an empty domain entry
@@ -151,22 +154,10 @@ func updateDomainEntries(domainEntries map[common.SHA256Output]*mapCommon.Domain
 				isUpdated := updateDomainEntry(newDomainEntry, cert)
 				if isUpdated {
 					// flag the updated domains
-					updatedDomainHash[domainNameHash] = 1
+					updatedDomainHash[domainNameHash] = empty
 				}
 			}
 		}
-		/*
-			iterEnd := time.Now()
-			if iterEnd.Sub(iterStart) > time.Millisecond {
-				fmt.Println(iterEnd.Sub(iterStart), " ", len(certs), " ", domainName)
-				for _, cert := range certs {
-					fmt.Println()
-					fmt.Println(cert.Subject.CommonName)
-					for _, name := range cert.DNSNames {
-						fmt.Println(name)
-					}
-				}
-			}*/
 	}
 
 	return updatedDomainHash, nil
@@ -211,7 +202,7 @@ ca_entry_loop:
 }
 
 // get updated domains, and extract the corresponding domain bytes
-func getDomainEntriesToWrite(updatedDomain map[common.SHA256Output]byte,
+func getDomainEntriesToWrite(updatedDomain uniqueSet,
 	domainEntries map[common.SHA256Output]*mapCommon.DomainEntry) (map[common.SHA256Output]*mapCommon.DomainEntry, error) {
 
 	result := make(map[common.SHA256Output]*mapCommon.DomainEntry)
@@ -231,7 +222,7 @@ func serializeUpdatedDomainEntries(domainEntriesMap map[common.SHA256Output]*map
 	result := []db.KeyValuePair{}
 	updatedDomainNameHashes := []common.SHA256Output{}
 	for domainNameHash, domainEntryBytes := range domainEntriesMap {
-		domainBytes, err := mapCommon.SerialisedDomainEntry(domainEntryBytes)
+		domainBytes, err := mapCommon.SerializedDomainEntry(domainEntryBytes)
 		if err != nil {
 			return nil, nil, fmt.Errorf("serializeUpdatedDomainEntries | SerializeDomainEntry | %w", err)
 		}

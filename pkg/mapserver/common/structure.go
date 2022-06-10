@@ -26,8 +26,8 @@ type CAEntry struct {
 	DomainCerts      [][]byte
 }
 
-// SerialisedDomainEntry: DomainEntry -> bytes. Use json
-func SerialisedDomainEntry(domainEntry *DomainEntry) ([]byte, error) {
+// SerializedDomainEntry: DomainEntry -> bytes. Use json
+func SerializedDomainEntry(domainEntry *DomainEntry) ([]byte, error) {
 	result, err := json.Marshal(domainEntry)
 	if err != nil {
 		return nil, fmt.Errorf("SerialisedDomainEntry | Marshal | %w", err)

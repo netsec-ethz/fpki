@@ -10,7 +10,7 @@ import (
 )
 
 // retrieveAffectedDomainFromDB: get affected domain entries from db
-func (mapUpdater *MapUpdater) retrieveAffectedDomainFromDB(ctx context.Context, affectedDomainsMap map[common.SHA256Output]byte,
+func (mapUpdater *MapUpdater) retrieveAffectedDomainFromDB(ctx context.Context, affectedDomainsMap uniqueSet,
 	readerNum int) (map[common.SHA256Output]*mapCommon.DomainEntry, error) {
 
 	// list of domain hashes to fetch the domain entries from db
