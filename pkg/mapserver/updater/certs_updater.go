@@ -51,7 +51,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesUsingCerts(ctx context.Context,
 		return 0, fmt.Errorf("UpdateDomainEntriesUsingCerts | domainEntriesToWrite | %w", err)
 	}
 
-	// serialised the domainEntry -> key-value pair
+	// serialized the domainEntry -> key-value pair
 	keyValuePairs, updatedDomainNameHashes, err := serializeUpdatedDomainEntries(domainEntriesToWrite)
 	if err != nil {
 		return 0, fmt.Errorf("UpdateDomainEntriesUsingCerts | serializeUpdatedDomainEntries | %w", err)

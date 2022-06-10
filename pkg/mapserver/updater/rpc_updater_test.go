@@ -1,34 +1,36 @@
 package updater
 
 import (
-	"bytes"
-	"io/ioutil"
 	"testing"
 
 	projectCommon "github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/domain"
 
-	ctX509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/logpicker"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-//TestRPCAndPC: test if PC and RPC are correctly added
+//TestRPCAndPC: test UpdateDomainEntriesUsingRPCAndPC()
+//This test tests the sub-functions from the UpdateDomainEntriesUsingRPCAndPC(), except for the db-related sub-functions
 func TestRPCAndPC(t *testing.T) {
 	parser, err := domain.NewDomainParser()
 	require.NoError(t, err)
 
+	// get PC and RPC
 	pcList, rpcList, err := logpicker.GetPCAndRPC("./testdata/domain_list/domains.txt", 0, 0, 0)
 	require.NoError(t, err, "GetPCAndRPC error")
 
+	// add the affectedDomainsMap and domainCertMap
 	affectedDomainsMap, domainCertMap := getAffectedDomainAndCertMapPCAndRPC(rpcList, pcList, parser)
 
+	// check affectedDomainsMap and domainCertMap are correct
 	for _, pc := range pcList {
 		subjectName := pc.Subject
 		var subjectNameHash projectCommon.SHA256Output
 		copy(subjectNameHash[:], projectCommon.SHA256Hash([]byte(subjectName)))
+
 		_, ok := affectedDomainsMap[subjectNameHash]
 		assert.True(t, ok, "domain not found")
 
@@ -50,6 +52,7 @@ func TestRPCAndPC(t *testing.T) {
 
 	}
 
+	// check affectedDomainsMap and domainCertMap are correct
 	for _, rpc := range rpcList {
 		subjectName := rpc.Subject
 		var subjectNameHash projectCommon.SHA256Output
@@ -137,127 +140,14 @@ func TestRPCAndPC(t *testing.T) {
 			}
 		}
 	}
-}
 
-// TestCerts: test if certs are correctly added
-func TestCerts(t *testing.T) {
-	parser, err := domain.NewDomainParser()
+	// get the domain entries only if they are updated
+	domainEntriesToWrite, err := getDomainEntriesToWrite(updatedDomains, domainEntriesMap)
 	require.NoError(t, err)
 
-	certs := []*ctX509.Certificate{}
-	// check if
-	files, err := ioutil.ReadDir("./testdata/certs/")
-	require.NoError(t, err, "ioutil.ReadDir")
-	for _, file := range files {
-		cert, err := projectCommon.CTX509CertFromFile("./testdata/certs/" + file.Name())
-		require.NoError(t, err, "projectCommon.CTX509CertFromFile")
-		certs = append(certs, cert)
-	}
-
-	affectedDomainsMap, domainCertMap := getAffectedDomainAndCertMap(certs, parser)
-
-	for _, cert := range certs {
-		domainNames := extractCertDomains(cert)
-
-		affectedDomains := parser.ExtractAffectedDomains(domainNames)
-		if len(affectedDomains) == 0 {
-			continue
-		}
-
-		// check the correctness of affectedDomains
-		for _, affectedDomain := range affectedDomains {
-			var affectedNameHash projectCommon.SHA256Output
-			copy(affectedNameHash[:], projectCommon.SHA256Hash([]byte(affectedDomain)))
-
-			_, ok := affectedDomainsMap[affectedNameHash]
-			assert.True(t, ok, "domain not found in affectedDomainsMap")
-		}
-
-		for domainName, newCerts := range domainCertMap {
-			if includedIn(affectedDomains, domainName) {
-				isFound := false
-				for _, newCert := range newCerts {
-					if bytes.Equal(newCert.Raw, cert.Raw) {
-						isFound = true
-					}
-				}
-				assert.True(t, isFound, "cert not found in domainCertMap")
-			} else {
-				for _, newCert := range newCerts {
-					assert.False(t, bytes.Equal(newCert.Raw, cert.Raw), "cert should not be here")
-				}
-			}
-		}
-	}
-
-	domainEntriesMap := make(map[projectCommon.SHA256Output]*common.DomainEntry)
-	updatedDomains, err := updateDomainEntries(domainEntriesMap, domainCertMap)
-	require.NoError(t, err, "updateDomainEntries")
-
-	assert.Equal(t, len(updatedDomains), len(affectedDomainsMap), "len(updatedDomains) should equals to len(affectedDomainsMap)")
-
-	for _, cert := range certs {
-		domainNames := extractCertDomains(cert)
-		caName := cert.Issuer.CommonName
-
-		affectedDomains := parser.ExtractAffectedDomains(domainNames)
-		if len(affectedDomains) == 0 {
-			continue
-		}
-
-		for _, domainName := range affectedDomains {
-			var domainHash projectCommon.SHA256Output
-			copy(domainHash[:], projectCommon.SHA256Hash([]byte(domainName)))
-
-			for newDomainHash, domainEntry := range domainEntriesMap {
-				if newDomainHash == domainHash {
-					assert.True(t, domainEntry.DomainName == domainName)
-					for _, caList := range domainEntry.CAEntry {
-						if caList.CAName == caName {
-							isFound := false
-							for _, newCert := range caList.DomainCerts {
-								if bytes.Equal(newCert, cert.Raw) {
-									isFound = true
-								}
-							}
-							assert.True(t, isFound, "cert not found")
-						} else {
-							for _, newCert := range caList.DomainCerts {
-								assert.False(t, bytes.Equal(newCert, cert.Raw), "cert should not be here")
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-}
-
-// TestUpdateSameCertTwice: update the same certs twice, number of updates should be zero
-func TestUpdateSameCertTwice(t *testing.T) {
-	parser, err := domain.NewDomainParser()
+	// serialize the domainEntry -> key-value pair
+	_, _, err = serializeUpdatedDomainEntries(domainEntriesToWrite)
 	require.NoError(t, err)
-
-	certs := []*ctX509.Certificate{}
-	// check if
-	files, err := ioutil.ReadDir("./testdata/certs/")
-	require.NoError(t, err, "ioutil.ReadDir")
-	for _, file := range files {
-		cert, err := projectCommon.CTX509CertFromFile("./testdata/certs/" + file.Name())
-		require.NoError(t, err, "projectCommon.CTX509CertFromFile")
-		certs = append(certs, cert)
-	}
-
-	_, domainCertMap := getAffectedDomainAndCertMap(certs, parser)
-
-	domainEntriesMap := make(map[projectCommon.SHA256Output]*common.DomainEntry)
-	updatedDomains, err := updateDomainEntries(domainEntriesMap, domainCertMap)
-	require.NoError(t, err, "updateDomainEntries")
-
-	updatedDomains, err = updateDomainEntries(domainEntriesMap, domainCertMap)
-	require.NoError(t, err, "updateDomainEntries")
-
-	assert.Equal(t, 0, len(updatedDomains), "updated domain should be 0")
 }
 
 // TestUpdateSameRPCTwice: update the same RPC twice, number of updates should be zero
