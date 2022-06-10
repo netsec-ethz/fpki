@@ -62,11 +62,11 @@ func (cacheDB *CacheDB) commitChangesToDB(ctx context.Context) error {
 
 	// get nodes from remove map
 	cacheDB.removeMux.Lock()
-	if len(cacheDB.removedNode) > 0 {
-		for k := range cacheDB.removedNode {
-			keysToDelete = append(keysToDelete, k)
-		}
+
+	for k := range cacheDB.removedNode {
+		keysToDelete = append(keysToDelete, k)
 	}
+
 	cacheDB.removedNode = make(map[Hash][]byte)
 	cacheDB.removeMux.Unlock()
 
