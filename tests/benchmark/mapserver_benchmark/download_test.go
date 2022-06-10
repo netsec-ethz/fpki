@@ -28,7 +28,7 @@ func benchmarkDownload(b *testing.B, count int) {
 	// exec only once, assume perfect measuring. Because b.N is the number of iterations,
 	// just mimic b.N executions.
 	t0 := time.Now()
-	_, err := logpicker.GetCertMultiThread(ctURL, int64(baseSize), int64(baseSize+count), 20)
+	_, err := logpicker.GetCertMultiThread(ctURL, baseSize, baseSize+count, 20)
 	elapsed := time.Since(t0)
 	require.NoError(b, err)
 	for i := 1; i < b.N; i++ {
@@ -45,7 +45,7 @@ func TestCreateCerts(t *testing.T) {
 	}
 	baseSize := 2 * 1000
 	count := 100 * 1000
-	certs, err := logpicker.GetCertMultiThread(ctURL, int64(baseSize), int64(baseSize+count-1), 32)
+	certs, err := logpicker.GetCertMultiThread(ctURL, baseSize, baseSize+count-1, 32)
 	require.NoError(t, err)
 	require.Len(t, certs, count, "we have %d certificates", len(certs))
 

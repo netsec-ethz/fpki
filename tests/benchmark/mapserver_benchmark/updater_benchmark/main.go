@@ -56,8 +56,9 @@ func main() {
 		fmt.Println()
 		fmt.Println(" ---------------------- Iteration ", i, " ---------------------------")
 		start := time.Now()
+		const baseCTSize = 2 * 1000 * 1000
 		err = mapUpdater.UpdateFromCT(ctx, "https://ct.googleapis.com/logs/argon2021",
-			int64(2000000+i*10000), int64(2009999+i*10000))
+			baseCTSize+i*10000, baseCTSize+i*10000+10000)
 		if err != nil {
 			panic(err)
 		}

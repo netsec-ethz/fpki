@@ -54,7 +54,7 @@ func doUpdater() {
 		wholeStart := time.Now()
 		start := time.Now()
 		err = mapUpdater.UpdateFromCT(ctx, "https://ct.googleapis.com/logs/argon2021",
-			int64(2000000+i*10000), int64(2009999+i*10000))
+			2000000+i*10000, 2009999+i*10000)
 		if err != nil {
 			panic(err)
 		}
