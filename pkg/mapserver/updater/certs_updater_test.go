@@ -8,7 +8,7 @@ import (
 	projectCommon "github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/domain"
 
-	ctX509 "github.com/google/certificate-transparency-go/x509"
+	"github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,7 +20,7 @@ func TestUpdateDomainEntriesUsingCerts(t *testing.T) {
 	parser, err := domain.NewDomainParser()
 	require.NoError(t, err)
 
-	certs := []*ctX509.Certificate{}
+	certs := []*x509.Certificate{}
 
 	// load test certs
 	files, err := ioutil.ReadDir("./testdata/certs/")
@@ -133,7 +133,7 @@ func TestUpdateSameCertTwice(t *testing.T) {
 	parser, err := domain.NewDomainParser()
 	require.NoError(t, err)
 
-	certs := []*ctX509.Certificate{}
+	certs := []*x509.Certificate{}
 	// check if
 	files, err := ioutil.ReadDir("./testdata/certs/")
 	require.NoError(t, err, "ioutil.ReadDir")
