@@ -142,6 +142,7 @@ func updateDomainEntries(domainEntries map[common.SHA256Output]*mapCommon.Domain
 }
 
 // updateDomainEntry: insert certificate into correct CAEntry
+// return: if this domain entry is updated
 func updateDomainEntry(domainEntry *mapCommon.DomainEntry, cert *x509.Certificate) bool {
 	caName := cert.Issuer.CommonName
 	isFound := false
@@ -153,6 +154,7 @@ func updateDomainEntry(domainEntry *mapCommon.DomainEntry, cert *x509.Certificat
 			// check whether this certificate is already registered
 			for _, certRaw := range domainEntry.CAEntry[i].DomainCerts {
 				if bytes.Equal(certRaw, cert.Raw) {
+					// cert already exists
 					return false
 				}
 			}
