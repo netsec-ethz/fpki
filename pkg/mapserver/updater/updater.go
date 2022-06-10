@@ -54,7 +54,7 @@ func NewMapUpdater(root []byte, cacheHeight int) (*MapUpdater, error) {
 // UpdateFromCT: download certs from ct log, update the domain entries and update the updates table, and SMT;
 // SMT not committed yet
 func (mapUpdater *MapUpdater) UpdateFromCT(ctx context.Context, ctUrl string, startIdx, endIdx int) error {
-	certs, err := logpicker.GetCertMultiThread(ctUrl, startIdx, endIdx, 20)
+	certs, err := logpicker.GetCertificates(ctUrl, startIdx, endIdx, 20)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | GetCertMultiThread | %w", err)
 	}

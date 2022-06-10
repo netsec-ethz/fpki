@@ -54,7 +54,7 @@ func TestDownloadCertSize(t *testing.T) {
 		name, tc := name, tc
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			certs, err := GetCertMultiThread(ctURL, tc.start, tc.end, tc.numWorkers)
+			certs, err := GetCertificates(ctURL, tc.start, tc.end, tc.numWorkers)
 			require.NoError(t, err)
 			require.Len(t, certs, tc.end-tc.start+1,
 				"got %d instead of %d", len(certs), tc.end-tc.start+1)

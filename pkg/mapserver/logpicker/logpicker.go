@@ -9,12 +9,13 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	ct "github.com/google/certificate-transparency-go"
 	ctTls "github.com/google/certificate-transparency-go/tls"
 	"github.com/google/certificate-transparency-go/x509"
-	ctX509 "github.com/google/certificate-transparency-go/x509"
+	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/domain"
 )
@@ -30,15 +31,9 @@ type CertLog struct {
 	Entries []CertData
 }
 
-// certResult: Used in worker threads
-type certResult struct {
-	Err   error
-	Certs []*x509.Certificate
-}
-
-// GetCertMultiThread fetches certificates from CT log.
+// GetCertificates fetches certificates from CT log.
 // It will download end - start + 1 certificates, starting at start, and finishing with end.
-func GetCertMultiThread(ctURL string, startIndex, endIndex, numOfWorker int) (
+func GetCertificates(ctURL string, startIndex, endIndex, numOfWorker int) (
 	[]*x509.Certificate, error) {
 
 	count := endIndex - startIndex + 1
@@ -48,43 +43,42 @@ func GetCertMultiThread(ctURL string, startIndex, endIndex, numOfWorker int) (
 	if numOfWorker == 0 {
 		return nil, nil
 	}
+
+	certsCol := make([][]*ctx509.Certificate, numOfWorker)
+	errs := make([]error, numOfWorker)
+	wg := sync.WaitGroup{}
+	wg.Add(numOfWorker)
+
 	stride := count / numOfWorker
 	rem := count % numOfWorker
 
-	resultChan := make(chan certResult)
 	for i := 0; i < rem; i++ {
-		go workerThread(ctURL, startIndex+i*stride, startIndex+(i+1)*stride, resultChan)
+		go func(start, end int, certsPtr *[]*ctx509.Certificate, errPtr *error) {
+			defer wg.Done()
+			*certsPtr, *errPtr = getCerts(ctURL, start, end)
+		}(startIndex+i*stride, startIndex+(i+1)*stride, &certsCol[i], &errs[i])
 	}
 	for i := rem; i < numOfWorker; i++ {
-		go workerThread(ctURL, startIndex+i*stride, startIndex+(i+1)*stride-1, resultChan)
+		go func(start, end int, certsPtr *[]*ctx509.Certificate, errPtr *error) {
+			defer wg.Done()
+			*certsPtr, *errPtr = getCerts(ctURL, start, end)
+		}(startIndex+i*stride, startIndex+(i+1)*stride-1, &certsCol[i], &errs[i])
 	}
 
-	certResult := make([]*x509.Certificate, 0)
+	certs := make([]*x509.Certificate, 0, count)
+	wg.Wait()
 	for i := 0; i < numOfWorker; i++ {
-		newResult := <-resultChan
-		if newResult.Err != nil {
-			return nil, fmt.Errorf("UpdateDomainFromLog | %w", newResult.Err)
+		if errs[i] != nil {
+			return nil, errs[i]
 		}
-		certResult = append(certResult, newResult.Certs...)
+		certs = append(certs, certsCol[i]...)
 	}
-
-	close(resultChan)
-	return certResult, nil
-}
-
-// workerThread: worker thread for log picker
-func workerThread(ctURL string, start, end int, resultChan chan certResult) {
-	certs, err := getCerts(ctURL, start, end)
-	if err != nil {
-		resultChan <- certResult{Err: err}
-		return
-	}
-	resultChan <- certResult{Certs: certs}
+	return certs, nil
 }
 
 // getCerts gets certificates from CT log. It will request all certs in [start,end] (including both)
-func getCerts(ctURL string, start, end int) ([]*ctX509.Certificate, error) {
-	allCerts := make([]*ctX509.Certificate, 0, end-start+1)
+func getCerts(ctURL string, start, end int) ([]*ctx509.Certificate, error) {
+	allCerts := make([]*ctx509.Certificate, 0, end-start+1)
 	for end >= start {
 		url := fmt.Sprintf(ctURL+"/ct/v1/get-entries?start=%d&end=%d&quot", start, end)
 		resp, err := http.Get(url)
@@ -103,7 +97,7 @@ func getCerts(ctURL string, start, end int) ([]*ctX509.Certificate, error) {
 
 // parseCertificatesFromCTLogServerResponse iteratively gets all requested certificates,
 // with as many HTTP requests as necessary.
-func parseCertificatesFromCTLogServerResponse(resp *http.Response) ([]*ctX509.Certificate, error) {
+func parseCertificatesFromCTLogServerResponse(resp *http.Response) ([]*ctx509.Certificate, error) {
 	buf := new(bytes.Buffer)
 	buf.ReadFrom(resp.Body)
 	var ctCerts CertLog
@@ -112,22 +106,22 @@ func parseCertificatesFromCTLogServerResponse(resp *http.Response) ([]*ctX509.Ce
 		return nil, fmt.Errorf("getCerts | json unmarshal %w", err)
 	}
 
-	certs := make([]*ctX509.Certificate, len(ctCerts.Entries))
+	certs := make([]*ctx509.Certificate, len(ctCerts.Entries))
 	// parse merkle leaves and append them to the result
 	for i, entry := range ctCerts.Entries {
 		leafBytes, _ := base64.RawStdEncoding.DecodeString(entry.LeafInput)
 		var merkleLeaf ct.MerkleTreeLeaf
 		ctTls.Unmarshal(leafBytes, &merkleLeaf)
 
-		var certificate *ctX509.Certificate
+		var certificate *ctx509.Certificate
 		switch entryType := merkleLeaf.TimestampedEntry.EntryType; entryType {
 		case ct.X509LogEntryType:
-			certificate, err = ctX509.ParseCertificate(merkleLeaf.TimestampedEntry.X509Entry.Data)
+			certificate, err = ctx509.ParseCertificate(merkleLeaf.TimestampedEntry.X509Entry.Data)
 			if err != nil {
 				return nil, fmt.Errorf("getCerts | ParseCertificate %w", err)
 			}
 		case ct.PrecertLogEntryType:
-			certificate, err = ctX509.ParseTBSCertificate(merkleLeaf.TimestampedEntry.PrecertEntry.TBSCertificate)
+			certificate, err = ctx509.ParseTBSCertificate(merkleLeaf.TimestampedEntry.PrecertEntry.TBSCertificate)
 			if err != nil {
 				return nil, fmt.Errorf("getCerts | ParseTBSCertificate %w", err)
 			}
