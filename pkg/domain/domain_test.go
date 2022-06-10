@@ -31,6 +31,7 @@ func TestIsValidDomain(t *testing.T) {
 	}
 }
 
+// TestUniqueValidDomainName: test uniqueValidDomainName()
 func TestUniqueValidDomainName(t *testing.T) {
 	parser, err := NewDomainParser()
 	require.NoError(t, err)
@@ -57,11 +58,15 @@ func TestUniqueValidDomainName(t *testing.T) {
 		},
 	}
 
-	for _, v := range test {
-		assert.Equal(t, v.length, len(parser.uniqueValidDomainName(v.input)))
+	for name, v := range test {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, v.length, len(parser.uniqueValidDomainName(v.input)))
+		})
 	}
 }
 
+// TestSplitE2LD: test SplitE2LD()
 func TestSplitE2LD(t *testing.T) {
 	test := map[string]struct {
 		input  string
@@ -87,16 +92,20 @@ func TestSplitE2LD(t *testing.T) {
 		},
 	}
 
-	for _, v := range test {
-		result, err := SplitE2LD(v.input)
-		assert.NoError(t, err)
-		assert.Equal(t, v.length, len(result))
-		for _, outputString := range v.output {
-			assert.Contains(t, result, outputString)
-		}
+	for name, v := range test {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			result, err := SplitE2LD(v.input)
+			assert.NoError(t, err)
+			assert.Equal(t, v.length, len(result))
+			for _, outputString := range v.output {
+				assert.Contains(t, result, outputString)
+			}
+		})
 	}
 }
 
+// TestFindLongestSuffix: test findLongestSuffix()
 func TestFindLongestSuffix(t *testing.T) {
 	test := map[string]struct {
 		input  [][]string
@@ -116,12 +125,15 @@ func TestFindLongestSuffix(t *testing.T) {
 		},
 	}
 
-	for _, v := range test {
-		assert.Equal(t, v.output, findLongestSuffix(v.input))
+	for name, v := range test {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, v.output, findLongestSuffix(v.input))
+		})
 	}
-
 }
 
+// TestExtractAffectedDomains: test ExtractAffectedDomains()
 func TestExtractAffectedDomains(t *testing.T) {
 	parser, err := NewDomainParser()
 	require.NoError(t, err)
@@ -153,15 +165,19 @@ func TestExtractAffectedDomains(t *testing.T) {
 		},
 	}
 
-	for k, v := range test {
-		result := parser.ExtractAffectedDomains(v.input)
-		assert.Equal(t, len(v.output), len(result), k)
-		for _, outputString := range v.output {
-			assert.Contains(t, result, outputString)
-		}
+	for name, v := range test {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			result := parser.ExtractAffectedDomains(v.input)
+			assert.Equal(t, len(v.output), len(result))
+			for _, outputString := range v.output {
+				assert.Contains(t, result, outputString)
+			}
+		})
 	}
 }
 
+// TestParseDomainName: test ParseDomainName()
 func TestParseDomainName(t *testing.T) {
 	parser, err := NewDomainParser()
 	require.NoError(t, err)
@@ -194,17 +210,23 @@ func TestParseDomainName(t *testing.T) {
 		},
 	}
 
-	for _, v := range noErr {
-		result, err := parser.ParseDomainName(v.input)
-		require.NoError(t, err)
-		assert.Equal(t, v.length, len(result))
-		for _, outputString := range v.output {
-			assert.Contains(t, result, outputString)
-		}
+	for name, v := range noErr {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			result, err := parser.ParseDomainName(v.input)
+			require.NoError(t, err)
+			assert.Equal(t, v.length, len(result))
+			for _, outputString := range v.output {
+				assert.Contains(t, result, outputString)
+			}
+		})
 	}
 
-	for _, v := range hasErr {
-		_, err = parser.ParseDomainName(v.input)
-		require.Error(t, err)
+	for name, v := range hasErr {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			_, err = parser.ParseDomainName(v.input)
+			require.Error(t, err)
+		})
 	}
 }
