@@ -30,25 +30,19 @@ func extractCertDomains(cert *x509.Certificate) []string {
 func sortDomainEntry(domainEntry *common.DomainEntry) {
 	// sort CA entries
 	sort.Slice(domainEntry.CAEntry, func(j, k int) bool {
-		switch {
-		case len(domainEntry.CAEntry[j].CAHash) < len(domainEntry.CAEntry[k].CAHash):
-			return true
-		case len(domainEntry.CAEntry[j].CAHash) > len(domainEntry.CAEntry[k].CAHash):
-			return false
+		if len(domainEntry.CAEntry[j].CAHash) == len(domainEntry.CAEntry[k].CAHash) {
+			return bytes.Compare(domainEntry.CAEntry[j].CAHash, domainEntry.CAEntry[k].CAHash) == -1
 		}
-		return bytes.Compare(domainEntry.CAEntry[j].CAHash, domainEntry.CAEntry[k].CAHash) == -1
+		return len(domainEntry.CAEntry[j].CAHash) < len(domainEntry.CAEntry[k].CAHash)
 	})
 
-	// sort individual list
+	// sort domain certs in one CA entry
 	for i := range domainEntry.CAEntry {
 		sort.Slice(domainEntry.CAEntry[i].DomainCerts, func(j, k int) bool {
-			switch {
-			case len(domainEntry.CAEntry[i].DomainCerts[j]) < len(domainEntry.CAEntry[i].DomainCerts[k]):
-				return true
-			case len(domainEntry.CAEntry[i].DomainCerts[j]) > len(domainEntry.CAEntry[i].DomainCerts[k]):
-				return false
+			if len(domainEntry.CAEntry[i].DomainCerts[j]) == len(domainEntry.CAEntry[i].DomainCerts[k]) {
+				return bytes.Compare(domainEntry.CAEntry[i].DomainCerts[j], domainEntry.CAEntry[i].DomainCerts[k]) == -1
 			}
-			return bytes.Compare(domainEntry.CAEntry[i].DomainCerts[j], domainEntry.CAEntry[i].DomainCerts[k]) == -1
+			return len(domainEntry.CAEntry[i].DomainCerts[j]) < len(domainEntry.CAEntry[i].DomainCerts[k])
 		})
 	}
 }

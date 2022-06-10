@@ -12,6 +12,8 @@ import (
 	mapCommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
 )
 
+// TODO(yongzhe): make the list if size is already known.
+
 type uniqueSet map[common.SHA256Output]struct{}
 type uniqueStringSet map[string]struct{}
 
@@ -178,7 +180,7 @@ func updateDomainEntry(domainEntry *mapCommon.DomainEntry, cert *x509.Certificat
 	return false
 }
 
-// get updated domains, and extract the corresponding domain bytes
+// getDomainEntriesToWrite: get updated domains, and extract the domain bytes
 func getDomainEntriesToWrite(updatedDomain uniqueSet,
 	domainEntries map[common.SHA256Output]*mapCommon.DomainEntry) (map[common.SHA256Output]*mapCommon.DomainEntry, error) {
 
@@ -194,10 +196,10 @@ func getDomainEntriesToWrite(updatedDomain uniqueSet,
 	return result, nil
 }
 
-// serialize the updated domains
+// serializeUpdatedDomainEntries: serialize the updated domains
 func serializeUpdatedDomainEntries(domainEntriesMap map[common.SHA256Output]*mapCommon.DomainEntry) ([]db.KeyValuePair, []common.SHA256Output, error) {
-	result := []db.KeyValuePair{}
-	updatedDomainNameHashes := []common.SHA256Output{}
+	result := make([]db.KeyValuePair, 0, len(domainEntriesMap))
+	updatedDomainNameHashes := make([]common.SHA256Output, 0, len(domainEntriesMap))
 	for domainNameHash, domainEntryBytes := range domainEntriesMap {
 		domainBytes, err := mapCommon.SerializedDomainEntry(domainEntryBytes)
 		if err != nil {

@@ -14,7 +14,7 @@ func (mapUpdater *MapUpdater) retrieveAffectedDomainFromDB(ctx context.Context, 
 	readerNum int) (map[common.SHA256Output]*mapCommon.DomainEntry, error) {
 
 	// list of domain hashes to fetch the domain entries from db
-	affectedDomainHash := []common.SHA256Output{}
+	affectedDomainHash := make([]common.SHA256Output, 0, len(affectedDomainsMap))
 	for k := range affectedDomainsMap {
 		affectedDomainHash = append(affectedDomainHash, k)
 	}
