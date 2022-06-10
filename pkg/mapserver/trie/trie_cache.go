@@ -25,8 +25,8 @@ type CacheDB struct {
 	updatedNodes map[Hash][][]byte
 	updatedMux   sync.RWMutex
 
-	// lock for CacheDB
-	lock sync.RWMutex
+	// wholeCacheDBLock for CacheDB
+	wholeCacheDBLock sync.RWMutex
 
 	// dbConn is the conn to mysql db
 	Store db.Conn
@@ -49,13 +49,13 @@ func NewCacheDB(store db.Conn) (*CacheDB, error) {
 // commitChangesToDB stores the updated nodes to disk.
 func (cacheDB *CacheDB) commitChangesToDB(ctx context.Context) error {
 	// prepare value to store
-	updates := []db.KeyValuePair{}
-	keys := []common.SHA256Output{}
+	updatesToDB := []db.KeyValuePair{}
+	keysToDelete := []common.SHA256Output{}
 
 	// get nodes from update map
 	cacheDB.updatedMux.Lock()
 	for k, v := range cacheDB.updatedNodes {
-		updates = append(updates, db.KeyValuePair{Key: k, Value: serializeBatch(v)})
+		updatesToDB = append(updatesToDB, db.KeyValuePair{Key: k, Value: serializeBatch(v)})
 	}
 	cacheDB.updatedNodes = make(map[Hash][][]byte)
 	cacheDB.updatedMux.Unlock()
@@ -64,23 +64,23 @@ func (cacheDB *CacheDB) commitChangesToDB(ctx context.Context) error {
 	cacheDB.removeMux.Lock()
 	if len(cacheDB.removedNode) > 0 {
 		for k := range cacheDB.removedNode {
-			keys = append(keys, k)
+			keysToDelete = append(keysToDelete, k)
 		}
 	}
 	cacheDB.removedNode = make(map[Hash][]byte)
 	cacheDB.removeMux.Unlock()
 
 	// lock the db; other thread should not read or write to db during the updates
-	cacheDB.lock.Lock()
-	defer cacheDB.lock.Unlock()
+	cacheDB.wholeCacheDBLock.Lock()
+	defer cacheDB.wholeCacheDBLock.Unlock()
 
-	_, err := cacheDB.Store.UpdateKeyValuesTreeStruc(ctx, updates)
+	_, err := cacheDB.Store.UpdateKeyValuesTreeStruc(ctx, updatesToDB)
 	if err != nil {
 		return fmt.Errorf("commitChangesToDB | UpdateKeyValuePairBatches | %w", err)
 	}
 
-	if len(keys) > 0 {
-		_, err := cacheDB.Store.DeleteKeyValuesTreeStruc(ctx, keys)
+	if len(keysToDelete) > 0 {
+		_, err := cacheDB.Store.DeleteKeyValuesTreeStruc(ctx, keysToDelete)
 		if err != nil {
 			return fmt.Errorf("commitChangesToDB | DeleteKeyValuePairBatches | %w", err)
 		}
@@ -91,13 +91,13 @@ func (cacheDB *CacheDB) commitChangesToDB(ctx context.Context) error {
 
 // get a key-value pair from db
 func (cacheDB *CacheDB) getValue(ctx context.Context, key []byte) ([]byte, error) {
-	cacheDB.lock.Lock()
+	cacheDB.wholeCacheDBLock.Lock()
 
 	key32Bytes := Hash{}
 	copy(key32Bytes[:], key)
 
 	result, err := cacheDB.Store.RetrieveOneKeyValuePairTreeStruc(ctx, key32Bytes)
-	cacheDB.lock.Unlock()
+	cacheDB.wholeCacheDBLock.Unlock()
 	if err != nil {
 		return nil, fmt.Errorf("getValue | RetrieveOneKeyValuePair | %w", err)
 	}
