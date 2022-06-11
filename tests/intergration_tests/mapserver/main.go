@@ -66,7 +66,7 @@ func main() {
 
 	start := time.Now()
 	// download the certs and update the domain entries
-	err = mapUpdater.UpdateFromCT(ctx, "https://ct.googleapis.com/logs/argon2021", 1120000, 1120999)
+	err = mapUpdater.UpdateCerts(ctx, "https://ct.googleapis.com/logs/argon2021", 1120000, 1120999)
 	if err != nil {
 		panic(err)
 	}

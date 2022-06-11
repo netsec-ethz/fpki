@@ -57,7 +57,7 @@ func main() {
 		fmt.Println(" ---------------------- Iteration ", i, " ---------------------------")
 		start := time.Now()
 		const baseCTSize = 2 * 1000 * 1000
-		err = mapUpdater.UpdateFromCT(ctx, "https://ct.googleapis.com/logs/argon2021",
+		err = mapUpdater.UpdateCerts(ctx, "https://ct.googleapis.com/logs/argon2021",
 			baseCTSize+i*10000, baseCTSize+i*10000+10000)
 		if err != nil {
 			panic(err)
