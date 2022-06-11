@@ -75,7 +75,7 @@ func main() {
 	fmt.Println("time to get 10000 certs: ", end.Sub(start))
 
 	start = time.Now()
-	err = mapUpdater.CommitChanges(ctx)
+	err = mapUpdater.CommitSMTChanges(ctx)
 	if err != nil {
 		panic(err)
 	}

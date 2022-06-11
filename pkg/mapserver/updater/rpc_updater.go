@@ -154,12 +154,12 @@ func updateDomainEntriesWithRPCAndPC(domainEntries map[projectCommon.SHA256Outpu
 	return updatedDomainHash, nil
 }
 
-// updateDomainEntryWithRPC: insert certificate into correct CAEntry
+// updateDomainEntryWithRPC: insert RPC into correct CAEntry
 func updateDomainEntryWithRPC(domainEntry *common.DomainEntry, rpc *projectCommon.RPC) bool {
 	return domainEntry.AddRPC(rpc)
 }
 
-// updateDomainEntryWithPC: insert pc into correct CAEntry
+// updateDomainEntryWithPC: insert PC into correct CAEntry
 func updateDomainEntryWithPC(domainEntry *common.DomainEntry, pc *projectCommon.PC) bool {
 	return domainEntry.AddPC(pc)
 }

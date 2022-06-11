@@ -51,9 +51,9 @@ func NewMapUpdater(root []byte, cacheHeight int) (*MapUpdater, error) {
 	return &MapUpdater{smt: smt, dbConn: dbConn, domainParser: parser}, nil
 }
 
-// UpdateFromCT: download certs from ct log, update the domain entries and update the updates table, and SMT;
+// UpdateCerts: download certs from ct log, update the domain entries and update the updates table, and SMT;
 // SMT not committed yet
-func (mapUpdater *MapUpdater) UpdateFromCT(ctx context.Context, ctUrl string, startIdx, endIdx int) error {
+func (mapUpdater *MapUpdater) UpdateCerts(ctx context.Context, ctUrl string, startIdx, endIdx int) error {
 	certs, err := logpicker.GetCertificates(ctUrl, startIdx, endIdx, 20)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | GetCertMultiThread | %w", err)
@@ -97,9 +97,12 @@ func (mapUpdater *MapUpdater) UpdateRPCAndPC(ctx context.Context, ctUrl string, 
 	if err != nil {
 		return fmt.Errorf("CollectCerts | GetPCAndRPC | %w", err)
 	}
+	return mapUpdater.updateRPCAndPC(ctx, pcList, rpcList)
+}
 
+func (mapUpdater *MapUpdater) updateRPCAndPC(ctx context.Context, pcList []*common.PC, rpcList []*common.RPC) error {
 	// update the domain and
-	_, err = mapUpdater.UpdateDomainEntriesUsingRPCAndPC(ctx, rpcList, pcList, 10)
+	_, err := mapUpdater.UpdateDomainEntriesUsingRPCAndPC(ctx, rpcList, pcList, 10)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingRPCAndPC | %w", err)
 	}
@@ -125,12 +128,11 @@ func (mapUpdater *MapUpdater) UpdateRPCAndPC(ctx context.Context, ctUrl string, 
 	if err != nil {
 		return fmt.Errorf("CollectCerts | Update | %w", err)
 	}
-
 	return nil
 }
 
-// CommitChanges: commit changes to DB
-func (mapUpdater *MapUpdater) CommitChanges(ctx context.Context) error {
+// CommitSMTChanges: commit changes to DB
+func (mapUpdater *MapUpdater) CommitSMTChanges(ctx context.Context) error {
 	err := mapUpdater.smt.Commit(ctx)
 	if err != nil {
 		return fmt.Errorf("CommitChanges | Commit | %w", err)
@@ -153,7 +155,6 @@ func (mapUpdater *MapUpdater) fetchUpdatedDomainHash(ctx context.Context) ([]com
 }
 
 func keyValuePairToSMTInput(keyValuePair []db.KeyValuePair) ([][]byte, [][]byte, error) {
-
 	updateInput := []UpdateInput{}
 
 	for _, pair := range keyValuePair {

@@ -65,7 +65,7 @@ func main() {
 		fmt.Println("time to update the changes: ", time.Since(start))
 
 		start = time.Now()
-		err = mapUpdater.CommitChanges(ctx)
+		err = mapUpdater.CommitSMTChanges(ctx)
 		if err != nil {
 			panic(err)
 		}

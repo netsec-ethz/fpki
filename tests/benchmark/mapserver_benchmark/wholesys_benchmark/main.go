@@ -53,7 +53,7 @@ func doUpdater() {
 		fmt.Println(" ---------------------- Iteration ", i, " ---------------------------")
 		wholeStart := time.Now()
 		start := time.Now()
-		err = mapUpdater.UpdateFromCT(ctx, "https://ct.googleapis.com/logs/argon2021",
+		err = mapUpdater.UpdateCerts(ctx, "https://ct.googleapis.com/logs/argon2021",
 			2000000+i*10000, 2009999+i*10000)
 		if err != nil {
 			panic(err)
@@ -61,7 +61,7 @@ func doUpdater() {
 		end := time.Now()
 
 		start = time.Now()
-		err = mapUpdater.CommitChanges(ctx)
+		err = mapUpdater.CommitSMTChanges(ctx)
 		if err != nil {
 			panic(err)
 		}

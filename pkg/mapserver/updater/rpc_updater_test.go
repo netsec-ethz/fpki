@@ -22,8 +22,8 @@ func TestRPCAndPC(t *testing.T) {
 	pcList, rpcList, err := logpicker.GetPCAndRPC("./testdata/domain_list/domains.txt", 0, 0, 0)
 	require.NoError(t, err, "GetPCAndRPC error")
 
-	// add the affectedDomainsMap and domainCertMap
-	affectedDomainsMap, domainCertMap := getAffectedDomainAndCertMapPCAndRPC(rpcList, pcList, parser)
+	// add the affectedDomainsSet and domainCertMap
+	affectedDomainsSet, domainCertMap := getAffectedDomainAndCertMapPCAndRPC(rpcList, pcList, parser)
 
 	// check affectedDomainsMap and domainCertMap are correct
 	for _, pc := range pcList {
@@ -31,25 +31,15 @@ func TestRPCAndPC(t *testing.T) {
 		var subjectNameHash projectCommon.SHA256Output
 		copy(subjectNameHash[:], projectCommon.SHA256Hash([]byte(subjectName)))
 
-		_, ok := affectedDomainsMap[subjectNameHash]
-		assert.True(t, ok, "domain not found")
+		assert.Contains(t, affectedDomainsSet, subjectNameHash)
 
 		for domainHash, newUpdate := range domainCertMap {
 			if domainHash == subjectName {
-				isFound := false
-				for _, newPc := range newUpdate.pc {
-					if newPc.Equal(*pc) {
-						isFound = true
-					}
-				}
-				assert.True(t, isFound, "new PC not included in domainCertMap")
+				assert.Contains(t, newUpdate.pc, pc)
 			} else {
-				for _, newPc := range newUpdate.pc {
-					assert.False(t, newPc.Equal(*pc), "PC shouldn't be included in the map")
-				}
+				assert.NotContains(t, newUpdate.pc, pc)
 			}
 		}
-
 	}
 
 	// check affectedDomainsMap and domainCertMap are correct
@@ -58,31 +48,40 @@ func TestRPCAndPC(t *testing.T) {
 		var subjectNameHash projectCommon.SHA256Output
 		copy(subjectNameHash[:], projectCommon.SHA256Hash([]byte(subjectName)))
 
-		_, ok := affectedDomainsMap[subjectNameHash]
+		_, ok := affectedDomainsSet[subjectNameHash]
 		assert.True(t, ok, "domain not found")
 
 		for domainHash, newUpdate := range domainCertMap {
 			if domainHash == subjectName {
-				isFound := false
-				for _, newRPC := range newUpdate.rpc {
-					if newRPC.Equal(rpc) {
-						isFound = true
-					}
-				}
-				assert.True(t, isFound, "new RPC not included in domainCertMap")
+				assert.Contains(t, newUpdate.rpc, rpc)
 			} else {
-				for _, neRPC := range newUpdate.rpc {
-					assert.False(t, neRPC.Equal(rpc), "RPC shouldn't be included in the map")
-				}
+				assert.NotContains(t, newUpdate.rpc, rpc)
 			}
 		}
 	}
-	assert.True(t, len(affectedDomainsMap) == len(domainCertMap))
 
+	// length should be the same
+	assert.Equal(t, len(affectedDomainsSet), len(domainCertMap))
+
+}
+
+// TestUpdateDomainEntriesWithRPCAndPC: test updateDomainEntriesWithRPCAndPC()
+func TestUpdateDomainEntriesWithRPCAndPC(t *testing.T) {
+	parser, err := domain.NewDomainParser()
+	require.NoError(t, err)
+
+	// get PC and RPC
+	pcList, rpcList, err := logpicker.GetPCAndRPC("./testdata/domain_list/domains.txt", 0, 0, 0)
+	require.NoError(t, err, "GetPCAndRPC error")
+
+	// empty map(mock result from db).
 	domainEntriesMap := make(map[projectCommon.SHA256Output]*common.DomainEntry)
 
+	// add the affectedDomainsSet and domainCertMap
+	_, domainCertMap := getAffectedDomainAndCertMapPCAndRPC(rpcList, pcList, parser)
+
 	updatedDomains, err := updateDomainEntriesWithRPCAndPC(domainEntriesMap, domainCertMap)
-	require.NoError(t, err, "updateDomainEntriesWithRPCAndPC error")
+	require.NoError(t, err)
 	assert.Equal(t, len(updatedDomains), len(domainEntriesMap), "size of domainEntriesMap should be the size of updatedDomains")
 
 	// check PC

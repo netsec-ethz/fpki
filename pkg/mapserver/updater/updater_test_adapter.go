@@ -50,5 +50,5 @@ func (a *UpdaterTestAdapter) SetSMT(smt *trie.Trie) {
 }
 
 func (a *UpdaterTestAdapter) CommitChanges(ctx context.Context) error {
-	return (*MapUpdater)(a).CommitChanges(ctx)
+	return (*MapUpdater)(a).CommitSMTChanges(ctx)
 }
