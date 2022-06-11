@@ -156,64 +156,10 @@ func updateDomainEntriesWithRPCAndPC(domainEntries map[projectCommon.SHA256Outpu
 
 // updateDomainEntryWithRPC: insert certificate into correct CAEntry
 func updateDomainEntryWithRPC(domainEntry *common.DomainEntry, rpc *projectCommon.RPC) bool {
-	caName := rpc.CAName
-	isFound := false
-	isUpdated := false
-
-	// iterate CAEntry list, find if the target CA list exists
-	for i := range domainEntry.CAEntry {
-		if domainEntry.CAEntry[i].CAName == caName {
-			isFound = true
-			// check whether this certificate is already registered
-			if !domainEntry.CAEntry[i].CurrentRPC.Equal(rpc) {
-				isUpdated = true
-				domainEntry.CAEntry[i].CurrentRPC = *rpc
-			}
-			break
-		}
-	}
-
-	// if CA list is not found
-	if !isFound {
-		// add a new CA list
-		domainEntry.CAEntry = append(domainEntry.CAEntry, common.CAEntry{
-			CAName:     caName,
-			CAHash:     projectCommon.SHA256Hash([]byte(caName)),
-			CurrentRPC: *rpc,
-		})
-		isUpdated = true
-	}
-	return isUpdated
+	return domainEntry.AddRPC(rpc)
 }
 
 // updateDomainEntryWithPC: insert pc into correct CAEntry
 func updateDomainEntryWithPC(domainEntry *common.DomainEntry, pc *projectCommon.PC) bool {
-	caName := pc.CAName
-	isFound := false
-	isUpdated := false
-
-	// iterate CAEntry list, find if the target CA list exists
-	for i := range domainEntry.CAEntry {
-		if domainEntry.CAEntry[i].CAName == caName {
-			isFound = true
-			// check whether this certificate is already registered
-			if !domainEntry.CAEntry[i].CurrentPC.Equal(*pc) {
-				isUpdated = true
-				domainEntry.CAEntry[i].CurrentPC = *pc
-			}
-			break
-		}
-	}
-
-	// if CA list is not found
-	if !isFound {
-		// add a new CA list
-		domainEntry.CAEntry = append(domainEntry.CAEntry, common.CAEntry{
-			CAName:    caName,
-			CAHash:    projectCommon.SHA256Hash([]byte(caName)),
-			CurrentPC: *pc,
-		})
-		isUpdated = true
-	}
-	return isUpdated
+	return domainEntry.AddPC(pc)
 }

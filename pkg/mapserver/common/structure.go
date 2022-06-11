@@ -30,18 +30,18 @@ type CAEntry struct {
 func SerializedDomainEntry(domainEntry *DomainEntry) ([]byte, error) {
 	result, err := json.Marshal(domainEntry)
 	if err != nil {
-		return nil, fmt.Errorf("SerialisedDomainEntry | Marshal | %w", err)
+		return nil, fmt.Errorf("SerializedDomainEntry | Marshal | %w", err)
 	}
 	return result, nil
 }
 
-// DesrialiseDomainEntry: bytes -> DomainEntry. Use json
-func DesrialiseDomainEntry(input []byte) (*DomainEntry, error) {
+// DeserializeDomainEntry: bytes -> DomainEntry. Use json
+func DeserializeDomainEntry(input []byte) (*DomainEntry, error) {
 	result := &DomainEntry{}
 
 	err := json.Unmarshal(input, result)
 	if err != nil {
-		return nil, fmt.Errorf("DesrialiseDomainEntry | Unmarshal | %w", err)
+		return nil, fmt.Errorf("DeserializeDomainEntry | Unmarshal | %w", err)
 	}
 	return result, nil
 }
@@ -59,7 +59,7 @@ const (
 // MapServerResponse: response from map server to client
 type MapServerResponse struct {
 	Domain string
-	// serialised bytes of DomainEntry
+	// serialized bytes of DomainEntry
 	DomainEntryBytes []byte
 	PoI              PoI
 }

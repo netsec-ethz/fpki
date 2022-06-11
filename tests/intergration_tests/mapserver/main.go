@@ -161,7 +161,7 @@ func checkProof(cert ctX509.Certificate, proofs []mapCommon.MapServerResponse) b
 			}
 		}
 		if proofType == mapCommon.PoP {
-			domainEntry, err := mapCommon.DesrialiseDomainEntry(proof.DomainEntryBytes)
+			domainEntry, err := mapCommon.DeserializeDomainEntry(proof.DomainEntryBytes)
 			if err != nil {
 				panic(err)
 			}

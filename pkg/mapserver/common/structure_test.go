@@ -35,17 +35,17 @@ func TestSerializingDomainEntry(t *testing.T) {
 
 	start := time.Now()
 	domainBytes, err := SerializedDomainEntry(testDomainEntry)
-	require.NoError(t, err, "SerialisedDomainEntry error")
+	require.NoError(t, err, "SerializedDomainEntry error")
 	end := time.Now()
 	fmt.Println(end.Sub(start))
 
 	start = time.Now()
-	testDomainEntryDeserialised, err := DesrialiseDomainEntry(domainBytes)
-	require.NoError(t, err, "SerialisedDomainEntry error")
+	testDomainEntryDeserialized, err := DeserializeDomainEntry(domainBytes)
+	require.NoError(t, err, "DeserializeDomainEntry error")
 	end = time.Now()
 	fmt.Println(end.Sub(start))
 
-	assert.Equal(t, reflect.DeepEqual(testDomainEntry, testDomainEntryDeserialised), true, "structure not equal")
+	assert.Equal(t, reflect.DeepEqual(testDomainEntry, testDomainEntryDeserialized), true, "structure not equal")
 }
 
 func generateRandomBytes() []byte {

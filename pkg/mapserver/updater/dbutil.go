@@ -53,9 +53,9 @@ func (mapUpdater *MapUpdater) writeChangesToDB(ctx context.Context, updatesToDom
 func parseDomainBytes(keyValuePairs []db.KeyValuePair) (map[common.SHA256Output]*mapCommon.DomainEntry, error) {
 	result := make(map[common.SHA256Output]*mapCommon.DomainEntry)
 	for _, pair := range keyValuePairs {
-		newPair, err := mapCommon.DesrialiseDomainEntry(pair.Value)
+		newPair, err := mapCommon.DeserializeDomainEntry(pair.Value)
 		if err != nil {
-			return nil, fmt.Errorf("parseDomainBytes | DesrialiseDomainEntry | %w", err)
+			return nil, fmt.Errorf("parseDomainBytes | DeserializeDomainEntry | %w", err)
 		}
 		result[pair.Key] = newPair
 	}

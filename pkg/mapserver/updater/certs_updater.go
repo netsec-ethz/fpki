@@ -1,7 +1,6 @@
 package updater
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 
@@ -13,7 +12,7 @@ import (
 )
 
 // TODO(yongzhe): make the list if size is already known.
-// TODO(yongzhe): unit test for updateDomainEntryWithRPC and ...
+// TODO(yongzhe): unit test for updateDomainEntryWithRPC and
 
 type uniqueSet map[common.SHA256Output]struct{}
 type uniqueStringSet map[string]struct{}
@@ -147,38 +146,7 @@ func updateDomainEntries(domainEntries map[common.SHA256Output]*mapCommon.Domain
 // updateDomainEntry: insert certificate into correct CAEntry
 // return: if this domain entry is updated
 func updateDomainEntry(domainEntry *mapCommon.DomainEntry, cert *x509.Certificate) bool {
-	caName := cert.Issuer.CommonName
-	isFound := false
-
-	// iterate CAEntry list, find if the target CA list exists
-	for i := range domainEntry.CAEntry {
-		if domainEntry.CAEntry[i].CAName == caName {
-			isFound = true
-			// check whether this certificate is already registered
-			for _, certRaw := range domainEntry.CAEntry[i].DomainCerts {
-				if bytes.Equal(certRaw, cert.Raw) {
-					// cert already exists
-					return false
-				}
-			}
-			// if not, append the raw of the certificate
-			domainEntry.CAEntry[i].DomainCerts = append(domainEntry.CAEntry[i].DomainCerts, cert.Raw)
-
-			return true
-		}
-	}
-
-	// if CA list is not found
-	if !isFound {
-		// add a new CA list
-		domainEntry.CAEntry = append(domainEntry.CAEntry, mapCommon.CAEntry{
-			DomainCerts: [][]byte{cert.Raw},
-			CAName:      caName,
-			CAHash:      common.SHA256Hash([]byte(caName))})
-		return true
-	}
-
-	return false
+	return domainEntry.AddCert(cert)
 }
 
 // getDomainEntriesToWrite: get updated domains, and extract the domain bytes
