@@ -35,10 +35,12 @@ const (
 	MaxSANLength    = 4
 )
 
+// InvalidDomainNameErr: thrown when the domain name is not valid
 var InvalidDomainNameErr = fmt.Errorf("Invalid Domain Name")
 
-var Empty struct{}
+var empty struct{}
 
+// DomainParser: regular expression to filter the domain name
 type DomainParser struct {
 	wildcardDomain *regexp.Regexp
 	viableDomain   *regexp.Regexp
@@ -46,6 +48,7 @@ type DomainParser struct {
 	correctLabel   *regexp.Regexp
 }
 
+// NewDomainParser: return a new domain parser to parse the domain
 func NewDomainParser() (*DomainParser, error) {
 	var err error
 	wildcardDomain, err := regexp.Compile("^\\*\\..*$")
@@ -75,7 +78,7 @@ func NewDomainParser() (*DomainParser, error) {
 	}, nil
 }
 
-// extract the affected domain, given a list of domain name (common name + SANs)
+// ExtractAffectedDomains: extract the affected domain, given a list of domain name (common name + SANs)
 func (parser *DomainParser) ExtractAffectedDomains(domainNames []string) []string {
 	uniqueNames := parser.uniqueValidDomainName(domainNames)
 
@@ -92,7 +95,7 @@ func (parser *DomainParser) ExtractAffectedDomains(domainNames []string) []strin
 		// split the domain name into: E2LD + child domains
 		dividedName, err := SplitE2LD(domainName)
 		if err != nil {
-			// print the error (for debugging), and skip this domain.
+			// TODO(yongzhe): print the error (for debugging), and skip this domain.
 			fmt.Println(err)
 			continue
 		}
@@ -102,7 +105,7 @@ func (parser *DomainParser) ExtractAffectedDomains(domainNames []string) []strin
 		result[e2ld] = append(result[e2ld], prefix)
 	}
 
-	affectedDomains := []string{}
+	affectedDomains := make([]string, 0, len(result))
 	for k, v := range result {
 		// find the longest match of a list of domain names.
 		newDomain := findLongestSuffix(v) + k
@@ -111,13 +114,13 @@ func (parser *DomainParser) ExtractAffectedDomains(domainNames []string) []strin
 	return affectedDomains
 }
 
-// only allow wildcards for the deepest subdomain
+// IsValidDomain: check if this domain is a valid domain
 func (parser *DomainParser) IsValidDomain(domain string) bool {
 	// removes domains with wildcard labels other than the first label
 	if !parser.viableDomain.Match([]byte(domain)) {
 		return false
 	}
-	// remove long domains
+	// max length for a domain
 	if len(domain) > MaxDomainLength {
 		return false
 	}
@@ -182,26 +185,24 @@ func removeWildCardAndWWW(domainName string) string {
 	return domainName
 }
 
-// extract valid domain names
+// uniqueValidDomainName: extract valid domain names
 func (parser *DomainParser) uniqueValidDomainName(domainNames []string) []string {
 	uniqueDomainName := make(map[string]struct{})
 	for _, domainName := range domainNames {
 		if !parser.IsValidDomain(domainName) {
-			//fmt.Println("invalid domain name ", domainName)
 			continue
 		}
-
 		name := removeWildCardAndWWW(domainName)
-		uniqueDomainName[name] = Empty
+		uniqueDomainName[name] = empty
 	}
-	result := []string{}
+	result := make([]string, 0, len(uniqueDomainName))
 	for k := range uniqueDomainName {
 		result = append(result, k)
 	}
 	return result
 }
 
-// find longest match
+// findLongestSuffix: find longest match
 func findLongestSuffix(domainNames [][]string) string {
 	result := ""
 	// shortest length of all the strings
@@ -219,10 +220,10 @@ func findLongestSuffix(domainNames [][]string) string {
 		}
 		result = newName + "." + result
 	}
-
 	return result
 }
 
+// findShortestLength: find shorest length of a list of splited domains
 func findShortestLength(domainNames [][]string) int {
 	length := len(domainNames[0])
 	for _, name := range domainNames {
@@ -233,7 +234,7 @@ func findShortestLength(domainNames [][]string) int {
 	return length
 }
 
-// parseDomainName: get the parent domain until E2LD, return a list of domains(remove the www. and *.)
+// ParseDomainName: get the parent domain until E2LD, return a list of domains(remove the www. and *.)
 // eg: video.google.com -> video.google.com google.com
 // eg: *.google.com -> google.com
 // eg: www.google.com -> google.com
@@ -242,14 +243,7 @@ func (parser *DomainParser) ParseDomainName(domainName string) ([]string, error)
 		return nil, InvalidDomainNameErr
 	}
 
-	if len(domainName) > 2 && domainName[:2] == "*." {
-		domainName = domainName[2:]
-	}
-
-	// remove "www."
-	if len(domainName) > 4 && domainName[:4] == "www." {
-		domainName = domainName[4:]
-	}
+	domainName = removeWildCardAndWWW(domainName)
 
 	result, err := SplitE2LD(domainName)
 	resultString := []string{}
