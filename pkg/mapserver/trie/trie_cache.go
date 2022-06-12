@@ -89,7 +89,7 @@ func (cacheDB *CacheDB) commitChangesToDB(ctx context.Context) error {
 	return nil
 }
 
-// get a key-value pair from db
+// getValue gets a key-value pair from db
 func (cacheDB *CacheDB) getValue(ctx context.Context, key []byte) ([]byte, error) {
 	cacheDB.wholeCacheDBLock.Lock()
 
@@ -124,22 +124,26 @@ func serializeBatch(batch [][]byte) []byte {
 //**************************************************
 //          functions for live cache
 //**************************************************
+// GetLiveCacheSize: get current size of live cache
 func (db *CacheDB) GetLiveCacheSize() int {
 	return len(db.liveCache)
 }
 
+// deleteLiveCache: delete current nodes in live cache
 func (db *CacheDB) deleteLiveCache(node common.SHA256Output) {
 	db.liveMux.Lock()
 	delete(db.liveCache, node)
 	db.liveMux.Unlock()
 }
 
+// updateLiveCache: update the key-value store in the live cache
 func (db *CacheDB) updateLiveCache(node common.SHA256Output, value [][]byte) {
 	db.liveMux.Lock()
 	db.liveCache[node] = value
 	db.liveMux.Unlock()
 }
 
+// getLiveCache: get one node from live cache
 func (db *CacheDB) getLiveCache(node common.SHA256Output) ([][]byte, bool) {
 	db.liveMux.RLock()
 	defer db.liveMux.RUnlock()
@@ -150,7 +154,7 @@ func (db *CacheDB) getLiveCache(node common.SHA256Output) ([][]byte, bool) {
 //**************************************************
 //          functions for updated nodes
 //**************************************************
-
+// getUpdatedNodes: get one node from updated nodes
 func (db *CacheDB) getUpdatedNodes(node common.SHA256Output) ([][]byte, bool) {
 	db.updatedMux.RLock()
 	defer db.updatedMux.RUnlock()
@@ -158,9 +162,17 @@ func (db *CacheDB) getUpdatedNodes(node common.SHA256Output) ([][]byte, bool) {
 	return val, exists
 }
 
+// updateUpdateNodes: update one node in updated nodes
 func (db *CacheDB) updateUpdateNodes(node common.SHA256Output, value [][]byte) {
 	db.updatedMux.Lock()
 	db.updatedNodes[node] = value
+	db.updatedMux.Unlock()
+}
+
+// deleteUpdatedNodes: remove updated nodes
+func (db *CacheDB) deleteUpdatedNodes(node common.SHA256Output) {
+	db.updatedMux.Lock()
+	delete(db.updatedNodes, node)
 	db.updatedMux.Unlock()
 }
 
@@ -168,14 +180,9 @@ func (db *CacheDB) updateUpdateNodes(node common.SHA256Output, value [][]byte) {
 //          functions for removed nodes
 //**************************************************
 
+// addRemoveNode: add node to remove
 func (db *CacheDB) addRemoveNode(node common.SHA256Output) {
 	db.removeMux.Lock()
 	db.removedNode[node] = []byte{0}
 	db.removeMux.Unlock()
-}
-
-func (db *CacheDB) deleteUpdatedNodes(node common.SHA256Output) {
-	db.updatedMux.Lock()
-	delete(db.updatedNodes, node)
-	db.updatedMux.Unlock()
 }
