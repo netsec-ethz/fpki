@@ -11,7 +11,9 @@ func VerifyProofByDomain(proof mapCommon.MapServerResponse) (mapCommon.ProofType
 	if proof.PoI.ProofType == mapCommon.PoP {
 		//TODO(yongzhe): compare h(domainEntry) and proof.poi.proofValue
 		value := common.SHA256Hash(proof.DomainEntryBytes)
-		return mapCommon.PoP, trie.VerifyInclusion(proof.PoI.Root, proof.PoI.Proof, common.SHA256Hash([]byte(proof.Domain)), value), nil
+		return mapCommon.PoP, trie.VerifyInclusion(proof.PoI.Root, proof.PoI.Proof, common.SHA256Hash([]byte(proof.Domain)),
+			value), nil
 	}
-	return mapCommon.PoA, trie.VerifyNonInclusion(proof.PoI.Root, proof.PoI.Proof, common.SHA256Hash([]byte(proof.Domain)), proof.PoI.ProofValue, proof.PoI.ProofKey), nil
+	return mapCommon.PoA, trie.VerifyNonInclusion(proof.PoI.Root, proof.PoI.Proof, common.SHA256Hash([]byte(proof.Domain)),
+		proof.PoI.ProofValue, proof.PoI.ProofKey), nil
 }

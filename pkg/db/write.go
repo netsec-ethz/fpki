@@ -132,7 +132,8 @@ func (c *mysqlDB) doUpdatesPairs(ctx context.Context, stmt *sql.Stmt, keyValuePa
 }
 
 // worker to update keys
-func (c *mysqlDB) doUpdatesKeys(ctx context.Context, stmt *sql.Stmt, keys []common.SHA256Output, tableName tableName) (int64, error) {
+func (c *mysqlDB) doUpdatesKeys(ctx context.Context, stmt *sql.Stmt, keys []common.SHA256Output, tableName tableName) (int64,
+	error) {
 	dataLen := len(keys)
 	var affectedRowsCount int64
 	affectedRowsCount = 0

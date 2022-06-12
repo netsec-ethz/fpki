@@ -27,7 +27,7 @@ func (u *UpdaterTestAdapter) UpdateCerts(ctx context.Context, certs []*ctx509.Ce
 func (u *UpdaterTestAdapter) UpdateDomainEntriesUsingCerts(ctx context.Context,
 	certs []*ctx509.Certificate, readerNum int) (int, error) {
 
-	return (*MapUpdater)(u).UpdateDomainEntriesUsingCerts(ctx, certs, readerNum)
+	return (*MapUpdater)(u).UpdateDomainEntriesTableUsingCerts(ctx, certs, readerNum)
 }
 
 func (a *UpdaterTestAdapter) FetchUpdatedDomainHash(ctx context.Context) (

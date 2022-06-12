@@ -34,7 +34,8 @@ func (responderWorker *responderWorker) work() {
 }
 
 // getDomainProof: generate proof for one client
-func (responderWorker *responderWorker) getDomainProof(ctx context.Context, domainName string) ([]mapCommon.MapServerResponse, error) {
+func (responderWorker *responderWorker) getDomainProof(ctx context.Context, domainName string) ([]mapCommon.MapServerResponse,
+	error) {
 	proofsResult := []mapCommon.MapServerResponse{}
 
 	// check domain name first

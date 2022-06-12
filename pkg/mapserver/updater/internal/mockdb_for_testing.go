@@ -36,7 +36,8 @@ func (d *MockDB) RetrieveOneKeyValuePairDomainEntries(ctx context.Context, key c
 	return &db.KeyValuePair{Key: key, Value: d.DomainEntriesTable[key]}, nil
 }
 
-func (d *MockDB) RetrieveKeyValuePairTreeStruc(ctx context.Context, id []common.SHA256Output, numOfRoutine int) ([]db.KeyValuePair, error) {
+func (d *MockDB) RetrieveKeyValuePairTreeStruc(ctx context.Context, id []common.SHA256Output,
+	numOfRoutine int) ([]db.KeyValuePair, error) {
 	result := []db.KeyValuePair{}
 	for _, key := range id {
 		value, ok := d.TreeTable[key]
@@ -48,7 +49,8 @@ func (d *MockDB) RetrieveKeyValuePairTreeStruc(ctx context.Context, id []common.
 	return result, nil
 }
 
-func (d *MockDB) RetrieveKeyValuePairDomainEntries(ctx context.Context, id []common.SHA256Output, numOfRoutine int) ([]db.KeyValuePair, error) {
+func (d *MockDB) RetrieveKeyValuePairDomainEntries(ctx context.Context, id []common.SHA256Output,
+	numOfRoutine int) ([]db.KeyValuePair, error) {
 	result := []db.KeyValuePair{}
 	for _, key := range id {
 		value, ok := d.DomainEntriesTable[key]
