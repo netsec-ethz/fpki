@@ -24,11 +24,12 @@ type ClientResponse struct {
 	Err   error
 }
 
-// NewMapResponder: A map responder, which is responsible for receiving client's request. Only read from db.
+// MapResponder: A map responder, which is responsible for receiving client's request. Only read from db.
 type MapResponder struct {
 	workerPool []*responderWorker
 	workerChan chan ClientRequest
 	smt        *trie.Trie
+	tempStore  *TempStore
 }
 
 // NewMapResponder: return a new responder
@@ -66,7 +67,7 @@ func NewMapResponder(ctx context.Context, root []byte, cacheHeight int, workerTh
 	}
 
 	clientInputChan := make(chan ClientRequest)
-	workerPool := []*responderWorker{}
+	workerPool := make([]*responderWorker, 0, workerThreadNum)
 
 	// create worker pool
 	for i := 0; i < workerThreadNum; i++ {
@@ -79,10 +80,13 @@ func NewMapResponder(ctx context.Context, root []byte, cacheHeight int, workerTh
 		go newWorker.work()
 	}
 
+	tempStore := newTempStore()
+
 	return &MapResponder{
 		workerChan: clientInputChan,
 		workerPool: workerPool,
 		smt:        smt,
+		tempStore:  tempStore,
 	}, nil
 }
 
@@ -93,6 +97,7 @@ func (responder *MapResponder) GetProof(ctx context.Context, domainName string) 
 	responder.workerChan <- ClientRequest{domainName: domainName, ctx: ctx, resultChan: resultChan}
 	result := <-resultChan
 	close(resultChan)
+
 	return result.Proof, result.Err
 }
 
