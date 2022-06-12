@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
-	//"time"
 )
 
 // used during main thread and worker thread
@@ -19,7 +18,7 @@ type readKeyResult struct {
 //                Read functions for Tree table
 // ********************************************************************
 
-// RetrieveOneKeyValuePair: Retrieve one single key-value pair from tree table
+// RetrieveOneKeyValuePairTreeStruc: Retrieve one single key-value pair from tree table
 // Return sql.ErrNoRows if no row is round
 func (c *mysqlDB) RetrieveOneKeyValuePairTreeStruc(ctx context.Context, key common.SHA256Output) (*KeyValuePair, error) {
 	keyValuePair, err := retrieveOneKeyValuePair(ctx, c.prepGetValueTree, key)
@@ -58,9 +57,6 @@ func (c *mysqlDB) RetrieveOneKeyValuePairDomainEntries(ctx context.Context, key 
 // TO_DISCUSS(yongzhe): keep this or move it to updater
 func (c *mysqlDB) RetrieveKeyValuePairDomainEntries(ctx context.Context, key []common.SHA256Output,
 	numOfWorker int) ([]KeyValuePair, error) {
-
-	stmt := c.prepGetValueDomainEntries
-
 	if len(key) == 0 {
 		return nil, nil
 	}
@@ -74,13 +70,13 @@ func (c *mysqlDB) RetrieveKeyValuePairDomainEntries(ctx context.Context, key []c
 
 	resultChan := make(chan keyValueResult)
 	for r := 0; r < numOfWorker-1; r++ {
-		go fetchKeyValuePairWorker(resultChan, key[r*step:r*step+step], stmt, ctx)
+		go fetchKeyValuePairWorker(resultChan, key[r*step:r*step+step], c.prepGetValueDomainEntries, ctx)
 	}
 	// let the final one do the rest of the work
-	go fetchKeyValuePairWorker(resultChan, key[(numOfWorker-1)*step:count], stmt, ctx)
+	go fetchKeyValuePairWorker(resultChan, key[(numOfWorker-1)*step:count], c.prepGetValueDomainEntries, ctx)
 
 	finishedWorker := 0
-	keyValuePairs := []KeyValuePair{}
+	keyValuePairs := make([]KeyValuePair, 0, len(key))
 
 	for numOfWorker > finishedWorker {
 		newResult := <-resultChan
@@ -138,7 +134,7 @@ func (c *mysqlDB) RetrieveUpdatedDomainHashesUpdates(ctx context.Context, perQue
 	go fetchKeyWorker(resultChan, (numberOfWorker-1)*step, count+1, ctx, c.db)
 
 	finishedWorker := 0
-	keys := []common.SHA256Output{}
+	keys := make([]common.SHA256Output, 0, count)
 
 	// get response
 	for numberOfWorker > finishedWorker {
@@ -155,15 +151,6 @@ func (c *mysqlDB) RetrieveUpdatedDomainHashesUpdates(ctx context.Context, perQue
 	}
 	return keys, nil
 }
-
-//TODO(yongzhe) don't forget to truncate the table
-/*
-	// truncate the update table after retrieving
-	err = c.TruncateUpdatesTableUpdates(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("RetrieveUpdatedDomainHashesUpdates | TruncateUpdatesTableUpdates | %w", err)
-	}
-*/
 
 // ********************************************************************
 //                             Common

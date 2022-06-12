@@ -11,12 +11,13 @@ import (
 
 // used for retrieving entries from updates table
 func fetchKeyWorker(resultChan chan readKeyResult, start, end int, ctx context.Context, db *sql.DB) {
-	var key []byte
-	result := []common.SHA256Output{}
+	key := make([]byte, 0, end-start)
+	result := make([]common.SHA256Output, 0, end-start)
 
 	resultRows, err := db.Query("SELECT * FROM updates LIMIT " + strconv.Itoa(start) + "," + strconv.Itoa(end-start))
 	if err != nil {
 		resultChan <- readKeyResult{Err: fmt.Errorf("fetchKeyWorker | Query | %w", err)}
+		return
 	}
 	defer resultRows.Close()
 
@@ -25,6 +26,7 @@ func fetchKeyWorker(resultChan chan readKeyResult, start, end int, ctx context.C
 		// sql.NoRowErr should not be omitted.
 		if err != nil {
 			resultChan <- readKeyResult{Err: fmt.Errorf("fetchKeyWorker | Scan | %w", err)}
+			return
 		}
 		var key32bytes common.SHA256Output
 		copy(key32bytes[:], key)
@@ -38,7 +40,7 @@ func fetchKeyWorker(resultChan chan readKeyResult, start, end int, ctx context.C
 // TO_DISCUSS(yongzhe): keep this or move it to updater
 func fetchKeyValuePairWorker(resultChan chan keyValueResult, keys []common.SHA256Output, stmt *sql.Stmt, ctx context.Context) {
 	numOfWork := len(keys)
-	pairs := []KeyValuePair{}
+	pairs := make([]KeyValuePair, 0, numOfWork)
 	var value []byte
 
 work_loop:
