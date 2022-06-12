@@ -49,6 +49,6 @@ func (a *UpdaterTestAdapter) SetSMT(smt *trie.Trie) {
 	a.smt = smt
 }
 
-func (a *UpdaterTestAdapter) CommitChanges(ctx context.Context) error {
+func (a *UpdaterTestAdapter) CommitSMTChanges(ctx context.Context) error {
 	return (*MapUpdater)(a).CommitSMTChanges(ctx)
 }

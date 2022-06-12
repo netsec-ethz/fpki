@@ -326,7 +326,7 @@ func benchmarkCommitChanges(b *testing.B, count int) {
 	// exec only once, assume perfect measuring. Because b.N is the number of iterations,
 	// just mimic b.N executions.
 	t0 := time.Now()
-	err = up.CommitChanges(ctx)
+	err = up.CommitSMTChanges(ctx)
 	elapsed := time.Since(t0)
 	require.NoError(b, err)
 	for i := 1; i < b.N; i++ {
