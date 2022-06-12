@@ -155,7 +155,7 @@ func (mapUpdater *MapUpdater) fetchUpdatedDomainHash(ctx context.Context) ([]com
 }
 
 func keyValuePairToSMTInput(keyValuePair []db.KeyValuePair) ([][]byte, [][]byte, error) {
-	updateInput := []UpdateInput{}
+	updateInput := make([]UpdateInput, 0, len(keyValuePair))
 
 	for _, pair := range keyValuePair {
 		updateInput = append(updateInput, UpdateInput{Key: pair.Key, Value: common.SHA256Hash(pair.Value)})
@@ -165,8 +165,8 @@ func keyValuePairToSMTInput(keyValuePair []db.KeyValuePair) ([][]byte, [][]byte,
 		return bytes.Compare(updateInput[i].Key[:], updateInput[j].Key[:]) == -1
 	})
 
-	keyResult := [][]byte{}
-	valueResult := [][]byte{}
+	keyResult := make([][]byte, 0, len(updateInput))
+	valueResult := make([][]byte, 0, len(updateInput))
 
 	for _, pair := range updateInput {
 		// TODO(yongzhe): strange error

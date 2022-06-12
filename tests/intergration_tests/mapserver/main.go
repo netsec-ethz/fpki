@@ -64,23 +64,23 @@ func main() {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	start := time.Now()
+	//start := time.Now()
 	// download the certs and update the domain entries
 	err = mapUpdater.UpdateCerts(ctx, "https://ct.googleapis.com/logs/argon2021", 1120000, 1120999)
 	if err != nil {
 		panic(err)
 	}
 
-	end := time.Now()
-	fmt.Println("time to get 10000 certs: ", end.Sub(start))
+	//end := time.Now()
+	//fmt.Println("time to get 10000 certs: ", end.Sub(start))
 
-	start = time.Now()
+	//start = time.Now()
 	err = mapUpdater.CommitSMTChanges(ctx)
 	if err != nil {
 		panic(err)
 	}
-	end = time.Now()
-	fmt.Println("time to commit changes: ", end.Sub(start))
+	//end = time.Now()
+	//fmt.Println("time to commit changes: ", end.Sub(start))
 
 	root := mapUpdater.GetRoot()
 	err = mapUpdater.Close()
@@ -98,7 +98,7 @@ func main() {
 	collectedCertMap := []ctX509.Certificate{}
 	for i := 0; i < 50; i++ {
 		certList, err := getCerts("https://ct.googleapis.com/logs/argon2021", int64(1120000+i*20), int64(1120000+i*20+19))
-		fmt.Println("downloading : ", int64(1120000+i*20), " - ", int64(1120000+i*20+19))
+		//fmt.Println("downloading : ", int64(1120000+i*20), " - ", int64(1120000+i*20+19))
 		if err != nil {
 			panic(err)
 		}
