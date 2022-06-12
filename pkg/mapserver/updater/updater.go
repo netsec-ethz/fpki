@@ -22,8 +22,9 @@ type MapUpdater struct {
 	domainParser *domain.DomainParser
 }
 
-// NewMapUpdater: return a new map updater. Input paras is similar to NewMapResponder
+// NewMapUpdater: return a new map updater.
 func NewMapUpdater(root []byte, cacheHeight int) (*MapUpdater, error) {
+	// domain parser
 	parser, err := domain.NewDomainParser()
 	if err != nil {
 		return nil, fmt.Errorf("NewMapUpdater | NewDomainParser | %w", err)
@@ -37,11 +38,13 @@ func NewMapUpdater(root []byte, cacheHeight int) (*MapUpdater, error) {
 		},
 	}
 
+	// db conn for map updater
 	dbConn, err := db.Connect(&config)
 	if err != nil {
 		return nil, fmt.Errorf("NewMapUpdater | db.Connect | %w", err)
 	}
 
+	// SMT
 	smt, err := trie.NewTrie(root, common.SHA256Hash, dbConn)
 	if err != nil {
 		return nil, fmt.Errorf("NewMapServer | NewTrie | %w", err)
@@ -52,7 +55,7 @@ func NewMapUpdater(root []byte, cacheHeight int) (*MapUpdater, error) {
 }
 
 // UpdateCerts: download certs from ct log, update the domain entries and update the updates table, and SMT;
-// SMT not committed yet
+// SMT not committed yet!!!
 func (mapUpdater *MapUpdater) UpdateCerts(ctx context.Context, ctUrl string, startIdx, endIdx int) error {
 	certs, err := logpicker.GetCertificates(ctUrl, startIdx, endIdx, 20)
 	if err != nil {
@@ -61,8 +64,9 @@ func (mapUpdater *MapUpdater) UpdateCerts(ctx context.Context, ctUrl string, sta
 	return mapUpdater.updateCerts(ctx, certs)
 }
 
+// updateCerts: update the tables and SMT (in memory) using certificates
 func (mapUpdater *MapUpdater) updateCerts(ctx context.Context, certs []*ctx509.Certificate) error {
-	_, err := mapUpdater.UpdateDomainEntriesUsingCerts(ctx, certs, 10)
+	_, err := mapUpdater.UpdateDomainEntriesTableUsingCerts(ctx, certs, 10)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingCerts | %w", err)
 	}
@@ -90,7 +94,7 @@ func (mapUpdater *MapUpdater) updateCerts(ctx context.Context, certs []*ctx509.C
 	return nil
 }
 
-// UpdateRPCAndPC: update RPC and PC from url. Currently just download
+// UpdateRPCAndPC: update RPC and PC from url. Currently just mock PC and RPC
 func (mapUpdater *MapUpdater) UpdateRPCAndPC(ctx context.Context, ctUrl string, startIdx, endIdx int64) error {
 	// get PC and RPC first
 	pcList, rpcList, err := logpicker.GetPCAndRPC(ctUrl, startIdx, endIdx, 20)
@@ -100,9 +104,10 @@ func (mapUpdater *MapUpdater) UpdateRPCAndPC(ctx context.Context, ctUrl string, 
 	return mapUpdater.updateRPCAndPC(ctx, pcList, rpcList)
 }
 
+// updateRPCAndPC: update the tables and SMT (in memory) using PC and RPC
 func (mapUpdater *MapUpdater) updateRPCAndPC(ctx context.Context, pcList []*common.PC, rpcList []*common.RPC) error {
 	// update the domain and
-	_, err := mapUpdater.UpdateDomainEntriesUsingRPCAndPC(ctx, rpcList, pcList, 10)
+	_, err := mapUpdater.UpdateDomainEntriesTableUsingRPCAndPC(ctx, rpcList, pcList, 10)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingRPCAndPC | %w", err)
 	}
@@ -131,7 +136,7 @@ func (mapUpdater *MapUpdater) updateRPCAndPC(ctx context.Context, pcList []*comm
 	return nil
 }
 
-// CommitSMTChanges: commit changes to DB
+// CommitSMTChanges: commit SMT changes to DB
 func (mapUpdater *MapUpdater) CommitSMTChanges(ctx context.Context) error {
 	err := mapUpdater.smt.Commit(ctx)
 	if err != nil {
@@ -140,6 +145,7 @@ func (mapUpdater *MapUpdater) CommitSMTChanges(ctx context.Context) error {
 	return nil
 }
 
+// fetchUpdatedDomainHash: get hashes of updated domain from updates table, and truncate the table
 func (mapUpdater *MapUpdater) fetchUpdatedDomainHash(ctx context.Context) ([]common.SHA256Output, error) {
 	keys, err := mapUpdater.dbConn.RetrieveUpdatedDomainHashesUpdates(ctx, readBatchSize)
 	if err != nil {
@@ -154,6 +160,7 @@ func (mapUpdater *MapUpdater) fetchUpdatedDomainHash(ctx context.Context) ([]com
 	return keys, nil
 }
 
+// keyValuePairToSMTInput: key value pair -> SMT update input
 func keyValuePairToSMTInput(keyValuePair []db.KeyValuePair) ([][]byte, [][]byte, error) {
 	updateInput := make([]UpdateInput, 0, len(keyValuePair))
 

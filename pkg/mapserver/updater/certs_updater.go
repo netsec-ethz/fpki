@@ -19,8 +19,9 @@ type uniqueStringSet map[string]struct{}
 
 var empty struct{}
 
-// UpdateDomainEntriesUsingCerts: Update the domain entries using the domain certificates
-func (mapUpdater *MapUpdater) UpdateDomainEntriesUsingCerts(ctx context.Context, certs []*x509.Certificate, readerNum int) (int, error) {
+// UpdateDomainEntriesTableUsingCerts: Update the domain entries using the domain certificates
+func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCerts(ctx context.Context, certs []*x509.Certificate,
+	readerNum int) (int, error) {
 	if len(certs) == 0 {
 		return 0, nil
 	}
@@ -37,13 +38,13 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesUsingCerts(ctx context.Context,
 	// It's possible that no records will be changed, because the certs are already recorded.
 	domainEntriesMap, err := mapUpdater.retrieveAffectedDomainFromDB(ctx, affectedDomainsMap, readerNum)
 	if err != nil {
-		return 0, fmt.Errorf("UpdateDomainEntriesUsingCerts | retrieveAffectedDomainFromDB | %w", err)
+		return 0, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | retrieveAffectedDomainFromDB | %w", err)
 	}
 
 	// update the domain entries
 	updatedDomains, err := updateDomainEntries(domainEntriesMap, domainCertMap)
 	if err != nil {
-		return 0, fmt.Errorf("UpdateDomainEntriesUsingCerts | updateDomainEntries | %w", err)
+		return 0, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | updateDomainEntries | %w", err)
 	}
 
 	// if during this updates, no cert is added, directly return
@@ -54,13 +55,13 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesUsingCerts(ctx context.Context,
 	// get the domain entries only if they are updated, from DB
 	domainEntriesToWrite, err := getDomainEntriesToWrite(updatedDomains, domainEntriesMap)
 	if err != nil {
-		return 0, fmt.Errorf("UpdateDomainEntriesUsingCerts | domainEntriesToWrite | %w", err)
+		return 0, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | getDomainEntriesToWrite | %w", err)
 	}
 
 	// serialized the domainEntry -> key-value pair
 	keyValuePairs, updatedDomainNameHashes, err := serializeUpdatedDomainEntries(domainEntriesToWrite)
 	if err != nil {
-		return 0, fmt.Errorf("UpdateDomainEntriesUsingCerts | serializeUpdatedDomainEntries | %w", err)
+		return 0, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | serializeUpdatedDomainEntries | %w", err)
 	}
 
 	// commit changes to db
@@ -71,7 +72,8 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesUsingCerts(ctx context.Context,
 // First return value: map of hashes of updated domain name. TODO(yongzhe): change this to a list maybe
 // Second return value: "domain name" -> certs. So later, one can look through the map to decide which certs to
 //     added to which domain.
-func getAffectedDomainAndCertMap(certs []*x509.Certificate, parser *domain.DomainParser) (uniqueSet, map[string][]*x509.Certificate) {
+func getAffectedDomainAndCertMap(certs []*x509.Certificate, parser *domain.DomainParser) (uniqueSet,
+	map[string][]*x509.Certificate) {
 	// unique list of the updated domains
 	affectedDomainsMap := make(uniqueSet)
 
@@ -166,13 +168,14 @@ func getDomainEntriesToWrite(updatedDomain uniqueSet,
 }
 
 // serializeUpdatedDomainEntries: serialize the updated domains
-func serializeUpdatedDomainEntries(domainEntriesMap map[common.SHA256Output]*mapCommon.DomainEntry) ([]db.KeyValuePair, []common.SHA256Output, error) {
+func serializeUpdatedDomainEntries(domainEntriesMap map[common.SHA256Output]*mapCommon.DomainEntry) ([]db.KeyValuePair,
+	[]common.SHA256Output, error) {
 	result := make([]db.KeyValuePair, 0, len(domainEntriesMap))
 	updatedDomainNameHashes := make([]common.SHA256Output, 0, len(domainEntriesMap))
 	for domainNameHash, domainEntryBytes := range domainEntriesMap {
 		domainBytes, err := mapCommon.SerializedDomainEntry(domainEntryBytes)
 		if err != nil {
-			return nil, nil, fmt.Errorf("serializeUpdatedDomainEntries | SerializeDomainEntry | %w", err)
+			return nil, nil, fmt.Errorf("serializeUpdatedDomainEntries | SerializedDomainEntry | %w", err)
 		}
 
 		result = append(result, db.KeyValuePair{Key: domainNameHash, Value: domainBytes})

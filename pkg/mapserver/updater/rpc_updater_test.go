@@ -12,8 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-//TestRPCAndPC: test UpdateDomainEntriesUsingRPCAndPC()
-//This test tests the sub-functions from the UpdateDomainEntriesUsingRPCAndPC(), except for the db-related sub-functions
+//TestRPCAndPC: test getAffectedDomainAndCertMapPCAndRPC()
 func TestRPCAndPC(t *testing.T) {
 	parser, err := domain.NewDomainParser()
 	require.NoError(t, err)
@@ -65,7 +64,8 @@ func TestRPCAndPC(t *testing.T) {
 
 }
 
-// TestUpdateDomainEntriesWithRPCAndPC: test updateDomainEntriesWithRPCAndPC()
+// TestUpdateDomainEntriesWithRPCAndPC: test updateDomainEntriesWithRPCAndPC(), getDomainEntriesToWrite()
+// and serializeUpdatedDomainEntries()
 func TestUpdateDomainEntriesWithRPCAndPC(t *testing.T) {
 	parser, err := domain.NewDomainParser()
 	require.NoError(t, err)

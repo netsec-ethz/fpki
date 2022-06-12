@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestExtractCertDomains: test extractCertDomains()
 func TestExtractCertDomains(t *testing.T) {
 
 	cert, err := common.CTX509CertFromFile("./testdata/certs/*.adiq.com.br144.cer")

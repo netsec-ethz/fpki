@@ -19,11 +19,11 @@ type UpdateInput struct {
 
 // HashDomainEntriesThenSort: hash the DomainEntry, then sort them according to key
 func HashDomainEntriesThenSort(domainEntries []mapCommon.DomainEntry) ([]UpdateInput, error) {
-	result := []UpdateInput{}
+	result := make([]UpdateInput, 0, len(domainEntries))
 	for _, v := range domainEntries {
 		domainEntryBytes, err := mapCommon.SerializedDomainEntry(&v)
 		if err != nil {
-			return nil, fmt.Errorf("HashDomainEntriesThenSort | SerialisedDomainEntry | %w", err)
+			return nil, fmt.Errorf("HashDomainEntriesThenSort | SerializedDomainEntry | %w", err)
 		}
 		var domainHash common.SHA256Output
 		copy(domainHash[:], common.SHA256Hash([]byte(v.DomainName)))

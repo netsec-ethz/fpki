@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestCerts: test UpdateDomainEntriesUsingCerts
+// TestUpdateDomainEntriesUsingCerts: test UpdateDomainEntriesUsingCerts
 // This test tests the individual functions of the UpdateDomainEntriesUsingCerts()
 func TestUpdateDomainEntriesUsingCerts(t *testing.T) {
 	parser, err := domain.NewDomainParser()
