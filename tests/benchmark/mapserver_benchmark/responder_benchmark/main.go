@@ -37,6 +37,7 @@ func main() {
 		panic(err)
 	}
 
+	names := extractNames(collectedCerts)
 	responder, err := responder.NewMapResponder(ctx, root, 233, 10)
 	if err != nil {
 		panic(err)
@@ -44,34 +45,42 @@ func main() {
 
 	numOfWorker := 20
 
-	step := len(collectedCerts) / numOfWorker
-	fetchStartTime := time.Now()
+	step := len(names) / numOfWorker
+	responderStartTime := time.Now()
 
 	wg.Add(numOfWorker)
 	for i := 0; i < numOfWorker; i++ {
-		go collectProof(responder, collectedCerts[i*step:i*step+step-1])
+		go collectProof(responder, names[i*step:i*step+step-1])
 	}
 	wg.Wait()
+	responderDuration := time.Since(responderStartTime)
 
-	fetchEndTime := time.Now()
-	fmt.Println("time to fetch proofs: ", fetchEndTime.Sub(fetchStartTime))
+	fmt.Printf("time to fetch proofs: %s. 100K ~= %s\n",
+		responderDuration, responderDuration*time.Duration(100*1000/len(names)))
 }
 
-func collectProof(responder *responder.MapResponder, certs []*ctX509.Certificate) {
+func extractNames(certs []*ctX509.Certificate) []string {
+	names := make([]string, len(certs))
+	for i, cert := range certs {
+		names[i] = cert.Subject.CommonName
+	}
+	return names
+}
+
+func collectProof(responder *responder.MapResponder, names []string) {
 	defer wg.Done()
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
 	numOfQuery := 0
-	for _, cert := range certs {
-		if cert.Subject.CommonName != "" {
-			_, err := responder.GetProof(ctx, cert.Subject.CommonName)
+	for _, name := range names {
+		if name != "" {
+			_, err := responder.GetProof(ctx, name)
 			if err != nil && err != domain.InvalidDomainNameErr {
 				panic(err)
 			}
 		}
 		numOfQuery++
-		//fmt.Println(numOfQuery, " / ", len(certs))
 	}
 	fmt.Println("finished !", numOfQuery)
 }
