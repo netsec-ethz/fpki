@@ -43,8 +43,11 @@ func doUpdater() {
 
 	updateStart := time.Now()
 	// collect 1M certs
+	mapUpdater.Fetcher.BatchSize = 10000
+	const baseCTSize = 2 * 1000 * 1000
+	mapUpdater.StartFetching("https://ct.googleapis.com/logs/argon2021",
+		baseCTSize, baseCTSize+100*10000)
 	for i := 0; i < 100; i++ {
-
 		ctx, cancelF := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancelF()
 
@@ -53,8 +56,7 @@ func doUpdater() {
 		fmt.Println(" ---------------------- Iteration ", i, " ---------------------------")
 		wholeStart := time.Now()
 		start := time.Now()
-		err = mapUpdater.UpdateCerts(ctx, "https://ct.googleapis.com/logs/argon2021",
-			2000000+i*10000, 2009999+i*10000)
+		err = mapUpdater.UpdateNextBatch(ctx)
 		if err != nil {
 			panic(err)
 		}

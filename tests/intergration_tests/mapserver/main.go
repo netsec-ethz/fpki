@@ -66,7 +66,9 @@ func main() {
 
 	//start := time.Now()
 	// download the certs and update the domain entries
-	err = mapUpdater.UpdateCerts(ctx, "https://ct.googleapis.com/logs/argon2021", 1120000, 1120999)
+	mapUpdater.Fetcher.BatchSize = 10000
+	mapUpdater.StartFetching("https://ct.googleapis.com/logs/argon2021", 1120000, 1120999)
+	err = mapUpdater.UpdateNextBatch(ctx)
 	if err != nil {
 		panic(err)
 	}

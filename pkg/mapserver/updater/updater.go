@@ -17,6 +17,7 @@ import (
 
 // MapUpdater: map updater. It is responsible for updating the tree, and writing to db
 type MapUpdater struct {
+	Fetcher      logpicker.LogFetcher
 	smt          *trie.Trie
 	dbConn       db.Conn
 	domainParser *domain.DomainParser
@@ -51,17 +52,33 @@ func NewMapUpdater(root []byte, cacheHeight int) (*MapUpdater, error) {
 	}
 	smt.CacheHeightLimit = cacheHeight
 
-	return &MapUpdater{smt: smt, dbConn: dbConn, domainParser: parser}, nil
+	return &MapUpdater{
+		Fetcher: logpicker.LogFetcher{
+			WorkerCount: 32,
+		},
+		smt:          smt,
+		dbConn:       dbConn,
+		domainParser: parser,
+	}, nil
 }
 
-// UpdateCerts: download certs from ct log, update the domain entries and update the updates table, and SMT;
-// SMT not committed yet!!!
-func (mapUpdater *MapUpdater) UpdateCerts(ctx context.Context, ctUrl string, startIdx, endIdx int) error {
-	certs, err := logpicker.GetCertificates(ctUrl, startIdx, endIdx, 20)
+// StartFetching will initiate the CT logs fetching process in the background, trying to
+// obtain the next batch of certificates and have it ready for the next update.
+func (u *MapUpdater) StartFetching(ctURL string, startIndex, endIndex int) {
+	u.Fetcher.URL = ctURL
+	u.Fetcher.Start = startIndex
+	u.Fetcher.End = endIndex
+	u.Fetcher.StartFetching()
+}
+
+// UpdateNextBatch downloads the next batch from the CT log server and updates the domain and
+// Updates tables. Also the SMT.
+func (u *MapUpdater) UpdateNextBatch(ctx context.Context) error {
+	certs, err := u.Fetcher.NextBatch()
 	if err != nil {
 		return fmt.Errorf("CollectCerts | GetCertMultiThread | %w", err)
 	}
-	return mapUpdater.updateCerts(ctx, certs)
+	return u.updateCerts(ctx, certs)
 }
 
 // updateCerts: update the tables and SMT (in memory) using certificates

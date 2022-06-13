@@ -14,27 +14,86 @@ import (
 
 	ct "github.com/google/certificate-transparency-go"
 	ctTls "github.com/google/certificate-transparency-go/tls"
-	"github.com/google/certificate-transparency-go/x509"
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/domain"
 )
 
-// CertData: data structure of leaf from CT log
-type CertData struct {
-	LeafInput string `json:"leaf_input"`
-	ExtraData string `json:"extra_data"`
+// LogFetcher is used to download batches of certificates. It has state and keeps some routines
+// downloading certificates in the background, trying to prefetch the next two batches.
+// By default it uses 16 workers, and batches of size 1K.
+type LogFetcher struct {
+	URL         string
+	Start       int
+	End         int
+	WorkerCount int
+	BatchSize   int
+	resultChan  chan []*ctx509.Certificate // batches of certificates
+	errChan     chan error
 }
 
-// CertLog: Data from CT log
-type CertLog struct {
-	Entries []CertData
+// StartFetching will start fetching certificates in the background, so that there is
+// at most two batches ready to be immediately read by NextBatch.
+func (f *LogFetcher) StartFetching() {
+	if f.BatchSize == 0 {
+		f.BatchSize = 1000
+	}
+	if f.WorkerCount == 0 {
+		f.WorkerCount = 16
+	}
+	f.resultChan = make(chan []*ctx509.Certificate, 2)
+	f.errChan = make(chan error)
+	go f.fetch()
 }
 
-// GetCertificates fetches certificates from CT log.
+// NextBatch returns the next batch of certificates as if it were a channel.
+// The call blocks until a whole batch is available. The last batch may have less elements.
+// Returns nil when there is no more batches, i.e. all certificates have been fetched.
+func (f *LogFetcher) NextBatch() ([]*ctx509.Certificate, error) {
+	select {
+	case certs := <-f.resultChan:
+		return certs, nil
+	case err := <-f.errChan:
+		return nil, err
+	}
+}
+
+// FetchAllCertificates will block until all certificates [start,end] have been fetched.
+func (f *LogFetcher) FetchAllCertificates() ([]*ctx509.Certificate, error) {
+	f.StartFetching()
+	certs := make([]*ctx509.Certificate, 0, f.End-f.Start+1)
+	for {
+		batch, err := f.NextBatch()
+		if err != nil {
+			return nil, err
+		}
+		if len(batch) == 0 {
+			break
+		}
+		certs = append(certs, batch...)
+	}
+	return certs, nil
+}
+
+func (f *LogFetcher) fetch() {
+	for start, end := f.Start, min(f.End, f.Start+f.BatchSize-1); start <= f.End; start, end =
+		start+f.BatchSize, min(end+f.BatchSize, f.End) {
+
+		certs, err := getCertificates(f.URL, start, end, f.WorkerCount)
+		if err != nil {
+			f.errChan <- err
+			return
+		}
+		f.resultChan <- certs
+	}
+	close(f.errChan)
+	close(f.resultChan)
+}
+
+// getCertificates fetches certificates from CT log.
 // It will download end - start + 1 certificates, starting at start, and finishing with end.
-func GetCertificates(ctURL string, startIndex, endIndex, numOfWorker int) (
-	[]*x509.Certificate, error) {
+func getCertificates(ctURL string, startIndex, endIndex, numOfWorker int) (
+	[]*ctx509.Certificate, error) {
 
 	count := endIndex - startIndex + 1
 	if count < numOfWorker {
@@ -65,7 +124,7 @@ func GetCertificates(ctURL string, startIndex, endIndex, numOfWorker int) (
 		}(startIndex+i*stride, startIndex+(i+1)*stride-1, &certsCol[i], &errs[i])
 	}
 
-	certs := make([]*x509.Certificate, 0, count)
+	certs := make([]*ctx509.Certificate, 0, count)
 	wg.Wait()
 	for i := 0; i < numOfWorker; i++ {
 		if errs[i] != nil {
@@ -98,6 +157,12 @@ func getCerts(ctURL string, start, end int) ([]*ctx509.Certificate, error) {
 // parseCertificatesFromCTLogServerResponse iteratively gets all requested certificates,
 // with as many HTTP requests as necessary.
 func parseCertificatesFromCTLogServerResponse(resp *http.Response) ([]*ctx509.Certificate, error) {
+	type CertLog struct {
+		Entries []struct {
+			LeafInput string `json:"leaf_input"`
+			ExtraData string `json:"extra_data"`
+		}
+	}
 	buf := new(bytes.Buffer)
 	buf.ReadFrom(resp.Body)
 	var ctCerts CertLog
@@ -180,4 +245,11 @@ func generateRandomBytes() []byte {
 	token := make([]byte, 40)
 	rand.Read(token)
 	return token
+}
+
+func min(a, b int) int {
+	if b < a {
+		return b
+	}
+	return a
 }

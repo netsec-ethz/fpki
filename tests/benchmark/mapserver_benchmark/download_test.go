@@ -27,8 +27,14 @@ func benchmarkDownload(b *testing.B, count int) {
 	baseSize := 2 * 1000 * 1000
 	// exec only once, assume perfect measuring. Because b.N is the number of iterations,
 	// just mimic b.N executions.
+	fetcher := logpicker.LogFetcher{
+		URL:         ctURL,
+		Start:       baseSize,
+		End:         baseSize + count,
+		WorkerCount: 20,
+	}
 	t0 := time.Now()
-	_, err := logpicker.GetCertificates(ctURL, baseSize, baseSize+count, 20)
+	_, err := fetcher.FetchAllCertificates()
 	elapsed := time.Since(t0)
 	require.NoError(b, err)
 	for i := 1; i < b.N; i++ {
@@ -37,15 +43,18 @@ func benchmarkDownload(b *testing.B, count int) {
 }
 
 func TestCreateCerts(t *testing.T) {
-	// TODO(juagargi) there seems to be a bug in the fetcher.
-	// With the same start and end values, we should get exactly the same certificates, but don't
-	// https://ct.googleapis.com/logs/argon2021/ct/v1/get-entries?start=2000&end=2001&quot
 	if os.Getenv("FPKI_TESTS_GENCERTS") == "" {
 		t.Skip("not generating new certificates")
 	}
 	baseSize := 2 * 1000
 	count := 100 * 1000
-	certs, err := logpicker.GetCertificates(ctURL, baseSize, baseSize+count-1, 32)
+	fetcher := logpicker.LogFetcher{
+		URL:         ctURL,
+		Start:       baseSize,
+		End:         baseSize + count - 1,
+		WorkerCount: 32,
+	}
+	certs, err := fetcher.FetchAllCertificates()
 	require.NoError(t, err)
 	require.Len(t, certs, count, "we have %d certificates", len(certs))
 
