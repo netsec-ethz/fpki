@@ -6,6 +6,7 @@ import (
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
+	"github.com/netsec-ethz/fpki/pkg/domain"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
@@ -47,6 +48,14 @@ func (a *UpdaterTestAdapter) SMT() *trie.Trie {
 
 func (a *UpdaterTestAdapter) SetSMT(smt *trie.Trie) {
 	a.smt = smt
+}
+
+func (a *UpdaterTestAdapter) SetDBConn(dbConn db.Conn) {
+	a.dbConn = dbConn
+}
+
+func (a *UpdaterTestAdapter) SetParser(parser *domain.DomainParser) {
+	a.domainParser = parser
 }
 
 func (a *UpdaterTestAdapter) CommitSMTChanges(ctx context.Context) error {
