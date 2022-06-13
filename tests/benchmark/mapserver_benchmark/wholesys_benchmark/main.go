@@ -44,7 +44,7 @@ func doUpdater() {
 	updateStart := time.Now()
 	// collect 1M certs
 	mapUpdater.Fetcher.BatchSize = 10000
-	const baseCTSize = 2 * 1000 * 1000
+	const baseCTSize = 2 * 1000
 	mapUpdater.StartFetching("https://ct.googleapis.com/logs/argon2021",
 		baseCTSize, baseCTSize+100*10000)
 	for i := 0; i < 100; i++ {

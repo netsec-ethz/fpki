@@ -25,7 +25,7 @@ func main() {
 	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancelF()
 
-	const baseCTSize = 2 * 1000 * 1000
+	const baseCTSize = 2 * 1000
 	const count = 10*1000 - 1 // collect 10,000 certs, for proof fetching
 	fetcher := &logpicker.LogFetcher{
 		URL:   "https://ct.googleapis.com/logs/argon2021",
