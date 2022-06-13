@@ -36,6 +36,7 @@ func TestGetDomainProof(t *testing.T) {
 		certs = append(certs, cert)
 	}
 
+	// update the certificates in a mock updater, then return the mock db
 	smtDB, updaterDB, root, err := getUpdatedUpdater(certs)
 
 	parser, err := domain.NewDomainParser()
@@ -44,6 +45,7 @@ func TestGetDomainProof(t *testing.T) {
 	smt, err := trie.NewTrie(root, common.SHA256Hash, smtDB)
 	require.NoError(t, err)
 
+	// init a new responder worker
 	responderWorker := responderWorker{
 		smt:          smt,
 		dbConn:       updaterDB,
@@ -61,6 +63,7 @@ func TestGetDomainProof(t *testing.T) {
 	}
 }
 
+// get one updater using mockdb, update the certificates and return the mockdb
 func getUpdatedUpdater(certs []*x509.Certificate) (db.Conn, db.Conn, []byte, error) {
 	parser, err := domain.NewDomainParser()
 	if err != nil {
@@ -107,6 +110,7 @@ func getMockUpdater(parser *domain.DomainParser, smt *trie.Trie, updaterDB *inte
 	return updater, nil
 }
 
+// check if the proof is correct, provided the certificate
 func checkProof(cert x509.Certificate, proofs []mapCommon.MapServerResponse) bool {
 	caName := cert.Issuer.CommonName
 	for _, proof := range proofs {
