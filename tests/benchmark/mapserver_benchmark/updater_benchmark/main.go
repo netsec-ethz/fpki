@@ -50,12 +50,12 @@ func main() {
 	defer cancelF()
 
 	updateStart := time.Now()
-	// collect 1M certs
+	// collect 100K certs
 	mapUpdater.Fetcher.BatchSize = 10000
 	const baseCTSize = 2 * 1000 * 1000
 	mapUpdater.StartFetching("https://ct.googleapis.com/logs/argon2021",
-		baseCTSize, baseCTSize+100*10000)
-	for i := 0; i < 100; i++ {
+		baseCTSize, baseCTSize+10*10000)
+	for i := 0; i < 10; i++ {
 		fmt.Println()
 		fmt.Println()
 		fmt.Println(" ---------------------- Iteration ", i, " ---------------------------")
