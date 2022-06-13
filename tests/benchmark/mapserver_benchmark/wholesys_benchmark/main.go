@@ -48,7 +48,7 @@ func doUpdater() {
 	mapUpdater.StartFetching("https://ct.googleapis.com/logs/argon2021",
 		baseCTSize, baseCTSize+100*10000)
 	for i := 0; i < 100; i++ {
-		ctx, cancelF := context.WithTimeout(context.Background(), 5*time.Minute)
+		ctx, cancelF := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancelF()
 
 		fmt.Println()

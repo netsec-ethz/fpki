@@ -104,9 +104,7 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		for _, cert := range certList {
-			collectedCertMap = append(collectedCertMap, cert)
-		}
+		collectedCertMap = append(collectedCertMap, certList...)
 	}
 
 	numberOfWorker := 15
@@ -114,7 +112,7 @@ func main() {
 	step := len(collectedCertMap) / numberOfWorker
 
 	for i := 0; i < numberOfWorker; i++ {
-		worker(collectedCertMap[i*step:i*step+step-1], mapResponder)
+		worker(ctx, collectedCertMap[i*step:i*step+step-1], mapResponder)
 	}
 
 	wg.Wait()
@@ -122,11 +120,9 @@ func main() {
 	fmt.Println("map server succeed!")
 }
 
-func worker(certs []ctX509.Certificate, mapResponder *responder.MapResponder) {
+func worker(ctx context.Context, certs []ctX509.Certificate, mapResponder *responder.MapResponder) {
 	for _, cert := range certs {
 		if cert.Subject.CommonName != "" {
-			ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
-			defer cancelF()
 			proofs, err := mapResponder.GetProof(ctx, cert.Subject.CommonName)
 			if err != nil {
 				if err == domain.InvalidDomainNameErr {

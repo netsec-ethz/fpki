@@ -46,7 +46,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	ctx, cancelF := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancelF()
 
 	updateStart := time.Now()
