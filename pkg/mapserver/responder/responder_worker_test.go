@@ -111,26 +111,26 @@ func checkProof(cert x509.Certificate, proofs []mapCommon.MapServerResponse) boo
 	caName := cert.Issuer.CommonName
 	for _, proof := range proofs {
 		if !strings.Contains(cert.Subject.CommonName, proof.Domain) {
-			panic("wrong domain proofs")
+			return false
 		}
 		proofType, isCorrect, err := prover.VerifyProofByDomain(proof)
 		if err != nil {
-			panic(err)
+			return false
 		}
 
 		if !isCorrect {
-			panic("wrong proof")
+			return false
 		}
 
 		if proofType == mapCommon.PoA {
 			if len(proof.DomainEntryBytes) != 0 {
-				panic("domain entry bytes not empty for PoA")
+				return false
 			}
 		}
 		if proofType == mapCommon.PoP {
 			domainEntry, err := mapCommon.DeserializeDomainEntry(proof.DomainEntryBytes)
 			if err != nil {
-				panic(err)
+				return false
 			}
 			// get the correct CA entry
 			for _, caEntry := range domainEntry.CAEntry {
