@@ -184,7 +184,7 @@ func parseCertificatesFromCTLogServerResponse(resp *http.Response) ([]*ctx509.Ce
 	var ctCerts CertLog
 	err := json.Unmarshal(buf.Bytes(), &ctCerts)
 	if err != nil {
-		return nil, fmt.Errorf("getCerts | json unmarshal %w", err)
+		return nil, fmt.Errorf("getCerts | json unmarshal %w\n%s", err, buf.String())
 	}
 
 	certs := make([]*ctx509.Certificate, len(ctCerts.Entries))
