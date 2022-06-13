@@ -1,7 +1,9 @@
 package logpicker
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/stretchr/testify/require"
@@ -12,9 +14,10 @@ import (
 const ctURL = "https://ct.googleapis.com/logs/argon2021"
 
 func TestGetCerts(t *testing.T) {
+	stopChan := make(chan struct{})
 	start := 1 * 1000 * 1000
 	count := 100
-	certs, err := getCerts(ctURL, start, start+count-1)
+	certs, err := getCerts(ctURL, start, start+count-1, stopChan)
 	require.NoError(t, err)
 	require.Len(t, certs, 100, "got %d", len(certs))
 }
@@ -55,7 +58,8 @@ func TestDownloadCertSize(t *testing.T) {
 		name, tc := name, tc
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			certs, err := getCertificates(ctURL, tc.start, tc.end, tc.numWorkers)
+			stopChan := make(chan struct{})
+			certs, err := getCertificates(ctURL, tc.start, tc.end, tc.numWorkers, stopChan)
 			require.NoError(t, err)
 			require.Len(t, certs, tc.end-tc.start+1,
 				"got %d instead of %d", len(certs), tc.end-tc.start+1)
@@ -112,6 +116,8 @@ func TestLogFetcher(t *testing.T) {
 		name, tc := name, tc
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+			ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancelF()
 			f := &LogFetcher{
 				URL:         ctURL,
 				Start:       tc.start,
@@ -123,7 +129,7 @@ func TestLogFetcher(t *testing.T) {
 
 			allCerts := make([]*ctx509.Certificate, 0)
 			for {
-				certs, err := f.NextBatch()
+				certs, err := f.NextBatch(ctx)
 				require.NoError(t, err)
 				require.LessOrEqual(t, len(certs), f.BatchSize,
 					"got %d instead of %d", len(certs), tc.batchSize)
@@ -135,9 +141,25 @@ func TestLogFetcher(t *testing.T) {
 
 			require.Len(t, allCerts, tc.end-tc.start+1,
 				"got %d instead of %d", len(allCerts), tc.end-tc.start+1)
-			certs, err := f.NextBatch()
+			certs, err := f.NextBatch(ctx)
 			require.NoError(t, err)
 			require.Nil(t, certs)
 		})
 	}
+}
+
+func TestTimeoutLogFetcher(t *testing.T) {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Nanosecond)
+	defer cancelF()
+	f := &LogFetcher{
+		URL:         ctURL,
+		Start:       2000,
+		End:         2000 * 2000,
+		BatchSize:   1,
+		WorkerCount: 1,
+	}
+	certs, err := f.FetchAllCertificates(ctx)
+	require.Error(t, err)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Len(t, certs, 0)
 }

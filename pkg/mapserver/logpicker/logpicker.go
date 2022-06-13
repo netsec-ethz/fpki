@@ -3,6 +3,7 @@ package logpicker
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
@@ -30,6 +31,7 @@ type LogFetcher struct {
 	BatchSize   int
 	resultChan  chan []*ctx509.Certificate // batches of certificates
 	errChan     chan error
+	stopChan    chan struct{} // tells the workers to stop fetching
 }
 
 // StartFetching will start fetching certificates in the background, so that there is
@@ -43,14 +45,22 @@ func (f *LogFetcher) StartFetching() {
 	}
 	f.resultChan = make(chan []*ctx509.Certificate, 2)
 	f.errChan = make(chan error)
+	f.stopChan = make(chan struct{})
 	go f.fetch()
+}
+
+func (f *LogFetcher) StopFetching() {
+	f.stopChan <- struct{}{}
 }
 
 // NextBatch returns the next batch of certificates as if it were a channel.
 // The call blocks until a whole batch is available. The last batch may have less elements.
 // Returns nil when there is no more batches, i.e. all certificates have been fetched.
-func (f *LogFetcher) NextBatch() ([]*ctx509.Certificate, error) {
+func (f *LogFetcher) NextBatch(ctx context.Context) ([]*ctx509.Certificate, error) {
 	select {
+	case <-ctx.Done():
+		f.StopFetching()
+		return nil, fmt.Errorf("NextBatch %w", ctx.Err())
 	case certs := <-f.resultChan:
 		return certs, nil
 	case err := <-f.errChan:
@@ -59,11 +69,11 @@ func (f *LogFetcher) NextBatch() ([]*ctx509.Certificate, error) {
 }
 
 // FetchAllCertificates will block until all certificates [start,end] have been fetched.
-func (f *LogFetcher) FetchAllCertificates() ([]*ctx509.Certificate, error) {
+func (f *LogFetcher) FetchAllCertificates(ctx context.Context) ([]*ctx509.Certificate, error) {
 	f.StartFetching()
 	certs := make([]*ctx509.Certificate, 0, f.End-f.Start+1)
 	for {
-		batch, err := f.NextBatch()
+		batch, err := f.NextBatch(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -79,7 +89,7 @@ func (f *LogFetcher) fetch() {
 	for start, end := f.Start, min(f.End, f.Start+f.BatchSize-1); start <= f.End; start, end =
 		start+f.BatchSize, min(end+f.BatchSize, f.End) {
 
-		certs, err := getCertificates(f.URL, start, end, f.WorkerCount)
+		certs, err := getCertificates(f.URL, start, end, f.WorkerCount, f.stopChan)
 		if err != nil {
 			f.errChan <- err
 			return
@@ -88,11 +98,12 @@ func (f *LogFetcher) fetch() {
 	}
 	close(f.errChan)
 	close(f.resultChan)
+	close(f.stopChan)
 }
 
 // getCertificates fetches certificates from CT log.
 // It will download end - start + 1 certificates, starting at start, and finishing with end.
-func getCertificates(ctURL string, startIndex, endIndex, numOfWorker int) (
+func getCertificates(ctURL string, startIndex, endIndex, numOfWorker int, stopChan chan struct{}) (
 	[]*ctx509.Certificate, error) {
 
 	count := endIndex - startIndex + 1
@@ -114,13 +125,13 @@ func getCertificates(ctURL string, startIndex, endIndex, numOfWorker int) (
 	for i := 0; i < rem; i++ {
 		go func(start, end int, certsPtr *[]*ctx509.Certificate, errPtr *error) {
 			defer wg.Done()
-			*certsPtr, *errPtr = getCerts(ctURL, start, end)
+			*certsPtr, *errPtr = getCerts(ctURL, start, end, stopChan)
 		}(startIndex+i*stride, startIndex+(i+1)*stride, &certsCol[i], &errs[i])
 	}
 	for i := rem; i < numOfWorker; i++ {
 		go func(start, end int, certsPtr *[]*ctx509.Certificate, errPtr *error) {
 			defer wg.Done()
-			*certsPtr, *errPtr = getCerts(ctURL, start, end)
+			*certsPtr, *errPtr = getCerts(ctURL, start, end, stopChan)
 		}(startIndex+i*stride, startIndex+(i+1)*stride-1, &certsCol[i], &errs[i])
 	}
 
@@ -136,13 +147,18 @@ func getCertificates(ctURL string, startIndex, endIndex, numOfWorker int) (
 }
 
 // getCerts gets certificates from CT log. It will request all certs in [start,end] (including both)
-func getCerts(ctURL string, start, end int) ([]*ctx509.Certificate, error) {
+func getCerts(ctURL string, start, end int, stopChan chan struct{}) ([]*ctx509.Certificate, error) {
 	allCerts := make([]*ctx509.Certificate, 0, end-start+1)
 	for end >= start {
 		url := fmt.Sprintf(ctURL+"/ct/v1/get-entries?start=%d&end=%d&quot", start, end)
 		resp, err := http.Get(url)
 		if err != nil {
 			return nil, fmt.Errorf("getCerts | http.Get %w", err)
+		}
+		select {
+		case <-stopChan: // requested to stop
+			return nil, nil
+		default:
 		}
 		newCerts, err := parseCertificatesFromCTLogServerResponse(resp)
 		if err != nil {

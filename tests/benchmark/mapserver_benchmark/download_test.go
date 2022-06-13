@@ -2,6 +2,7 @@ package benchmark
 
 import (
 	"compress/gzip"
+	"context"
 	"encoding/pem"
 	"os"
 	"testing"
@@ -24,6 +25,8 @@ func BenchmarkDownload10K(b *testing.B) {
 }
 
 func benchmarkDownload(b *testing.B, count int) {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Duration(count)*time.Millisecond)
+	defer cancelF()
 	baseSize := 2 * 1000 * 1000
 	// exec only once, assume perfect measuring. Because b.N is the number of iterations,
 	// just mimic b.N executions.
@@ -34,7 +37,7 @@ func benchmarkDownload(b *testing.B, count int) {
 		WorkerCount: 20,
 	}
 	t0 := time.Now()
-	_, err := fetcher.FetchAllCertificates()
+	_, err := fetcher.FetchAllCertificates(ctx)
 	elapsed := time.Since(t0)
 	require.NoError(b, err)
 	for i := 1; i < b.N; i++ {
@@ -46,6 +49,8 @@ func TestCreateCerts(t *testing.T) {
 	if os.Getenv("FPKI_TESTS_GENCERTS") == "" {
 		t.Skip("not generating new certificates")
 	}
+	ctx, cancelF := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancelF()
 	baseSize := 2 * 1000
 	count := 100 * 1000
 	fetcher := logpicker.LogFetcher{
@@ -54,7 +59,7 @@ func TestCreateCerts(t *testing.T) {
 		End:         baseSize + count - 1,
 		WorkerCount: 32,
 	}
-	certs, err := fetcher.FetchAllCertificates()
+	certs, err := fetcher.FetchAllCertificates(ctx)
 	require.NoError(t, err)
 	require.Len(t, certs, count, "we have %d certificates", len(certs))
 
