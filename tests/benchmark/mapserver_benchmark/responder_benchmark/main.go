@@ -24,7 +24,7 @@ func main() {
 	defer cancelF()
 
 	const count = 100 * 1000 // collect 10,000 names, for proof fetching
-	const numOfWorker = 200
+	const numOfWorkers = 200
 	names := getNames()
 	fmt.Printf("%d names available, using only %d\n", len(names), count)
 	rand.Shuffle(len(names), func(i, j int) { names[i], names[j] = names[j], names[i] })
@@ -40,12 +40,12 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println("requesting now ...")
-	step := len(names) / numOfWorker
+	step := len(names) / numOfWorkers
+	fmt.Printf("requesting now (%d each worker, %d workers) ...\n", step, numOfWorkers)
 	responderStartTime := time.Now()
 
-	wg.Add(numOfWorker)
-	for i := 0; i < numOfWorker; i++ {
+	wg.Add(numOfWorkers)
+	for i := 0; i < numOfWorkers; i++ {
 		go collectProof(responder, names[i*step:(i+1)*step])
 	}
 	wg.Wait()
@@ -103,7 +103,6 @@ func collectProof(responder *responder.MapResponder, names []string) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	numOfQuery := 0
 	for _, name := range names {
 		if name != "" {
 			_, err := responder.GetProof(ctx, name)
@@ -111,7 +110,5 @@ func collectProof(responder *responder.MapResponder, names []string) {
 				panic(err)
 			}
 		}
-		numOfQuery++
 	}
-	fmt.Println("finished !", numOfQuery)
 }
