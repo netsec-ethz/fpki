@@ -17,7 +17,6 @@ func TestIsValidDomain(t *testing.T) {
 		"com":                         false,
 		"net":                         false,
 		".baidu.com":                  false,
-		"423525.baidu.com":            false,
 		"_www.baidu.com":              false,
 		"*.*.baidu.com":               false,
 		"device-a6789012.baidu.com":   true,
@@ -31,7 +30,11 @@ func TestIsValidDomain(t *testing.T) {
 	}
 
 	for k, v := range tests {
-		assert.Equal(t, v, parser.IsValidDomain(k))
+		t.Run(k, func(t *testing.T) {
+			k, v := k, v
+			t.Parallel()
+			assert.Equal(t, v, parser.IsValidDomain(k))
+		})
 	}
 }
 

@@ -44,7 +44,6 @@ var empty struct{}
 type DomainParser struct {
 	wildcardDomain *regexp.Regexp
 	viableDomain   *regexp.Regexp
-	incorrectLabel *regexp.Regexp
 	correctLabel   *regexp.Regexp
 }
 
@@ -60,11 +59,6 @@ func NewDomainParser() (*DomainParser, error) {
 		return nil, fmt.Errorf("NewDomainParser | viableDomain | %w", err)
 	}
 
-	incorrectLabel, err := regexp.Compile("^[[:digit:]]*$")
-	if err != nil {
-		return nil, fmt.Errorf("NewDomainParser | incorrectLabel | %w", err)
-	}
-
 	correctLabel, err := regexp.Compile("^(\\*|[[:alnum:]]|[[:alnum:]][[:alnum:]-]{0,61}[[:alnum:]])$")
 	if err != nil {
 		return nil, fmt.Errorf("NewDomainParser | correctLabel | %w", err)
@@ -73,7 +67,6 @@ func NewDomainParser() (*DomainParser, error) {
 	return &DomainParser{
 		wildcardDomain: wildcardDomain,
 		viableDomain:   viableDomain,
-		incorrectLabel: incorrectLabel,
 		correctLabel:   correctLabel,
 	}, nil
 }
@@ -132,10 +125,6 @@ func (parser *DomainParser) IsValidDomain(domain string) bool {
 	}
 
 	for _, n := range strings.Split(domain, ".") {
-		// remove numeric labels
-		if parser.incorrectLabel.Match([]byte(n)) {
-			return false
-		}
 		// remove invalid characters and hyphens at the beginning and end
 		if !parser.correctLabel.Match([]byte(n)) {
 			return false
