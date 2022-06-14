@@ -46,8 +46,8 @@ func doUpdater() {
 	mapUpdater.Fetcher.BatchSize = 10000
 	const baseCTSize = 2 * 1000
 	mapUpdater.StartFetching("https://ct.googleapis.com/logs/argon2021",
-		baseCTSize, baseCTSize+100*10000)
-	for i := 0; i < 100; i++ {
+		baseCTSize, baseCTSize+1000*1000)
+	for i := 0; ; i++ {
 		ctx, cancelF := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancelF()
 
@@ -56,31 +56,31 @@ func doUpdater() {
 		fmt.Println(" ---------------------- Iteration ", i, " ---------------------------")
 		wholeStart := time.Now()
 		start := time.Now()
-		err = mapUpdater.UpdateNextBatch(ctx)
+		n, err := mapUpdater.UpdateNextBatch(ctx)
 		if err != nil {
 			panic(err)
 		}
-		end := time.Now()
 
-		start = time.Now()
+		startCommit := time.Now()
 		err = mapUpdater.CommitSMTChanges(ctx)
 		if err != nil {
 			panic(err)
 		}
-		end = time.Now()
 
 		wholeEnd := time.Now()
 		fmt.Println()
 		fmt.Println("***********************************")
 		fmt.Println("Total time: ", wholeEnd.Sub(wholeStart))
-		fmt.Println("time to update the changes: ", end.Sub(start))
-		fmt.Println("time to commit the changes to SMT: ", end.Sub(start))
+		fmt.Println("time to update the changes: ", time.Since(start))
+		fmt.Println("time to commit the changes to SMT: ", time.Since(startCommit))
 		fmt.Println("***********************************")
 
+		if n == 0 {
+			break
+		}
 	}
-	updateEnd := time.Now()
 	fmt.Println("************************ Update finished ******************************")
-	fmt.Println("time to get and update 1M certs: ", updateEnd.Sub(updateStart))
+	fmt.Println("time to get and update 1M certs: ", time.Since(updateStart))
 
 	root = mapUpdater.GetRoot()
 
