@@ -21,8 +21,8 @@ type tableName int
 
 const (
 	DomainEntries tableName = iota
-	Tree          tableName = iota
-	Updates       tableName = iota
+	Tree
+	Updates
 )
 
 type mysqlDB struct {
