@@ -190,7 +190,7 @@ func (parser *DomainParser) uniqueValidDomainName(domainNames []string) []string
 	uniqueDomainName := make(map[string]struct{})
 	for _, domainName := range domainNames {
 		if !parser.IsValidDomain(domainName) {
-			fmt.Printf("    !!! invalid domain name: %s\n", domainName)
+			fmt.Printf("    !!! invalid domain name: \"%s\"\n", domainName)
 			continue
 		}
 		name := removeWildCardAndWWW(domainName)
