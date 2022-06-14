@@ -125,7 +125,7 @@ func worker(ctx context.Context, certs []ctX509.Certificate, mapResponder *respo
 		if cert.Subject.CommonName != "" {
 			proofs, err := mapResponder.GetProof(ctx, cert.Subject.CommonName)
 			if err != nil {
-				if err == domain.InvalidDomainNameErr {
+				if err == domain.ErrInvalidDomainName {
 					continue
 				}
 				panic(err)

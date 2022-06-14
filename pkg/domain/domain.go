@@ -35,8 +35,8 @@ const (
 	MaxSANLength    = 4
 )
 
-// InvalidDomainNameErr: thrown when the domain name is not valid
-var InvalidDomainNameErr = fmt.Errorf("Invalid Domain Name")
+// ErrInvalidDomainName: thrown when the domain name is not valid
+var ErrInvalidDomainName = fmt.Errorf("Invalid Domain Name")
 
 var empty struct{}
 
@@ -230,7 +230,7 @@ func findShortestLength(domainNames [][]string) int {
 // eg: www.google.com -> google.com
 func (parser *DomainParser) ParseDomainName(domainName string) ([]string, error) {
 	if !parser.IsValidDomain(domainName) {
-		return nil, InvalidDomainNameErr
+		return nil, ErrInvalidDomainName
 	}
 
 	domainName = removeWildCardAndWWW(domainName)

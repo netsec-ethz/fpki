@@ -225,7 +225,7 @@ func collectProof(responder *responder.MapResponder, certs []ctX509.Certificate)
 	for _, cert := range certs {
 		if cert.Subject.CommonName != "" {
 			_, err := responder.GetProof(ctx, cert.Subject.CommonName)
-			if err != nil && err != domain.InvalidDomainNameErr {
+			if err != nil && err != domain.ErrInvalidDomainName {
 				panic(err)
 			}
 		}

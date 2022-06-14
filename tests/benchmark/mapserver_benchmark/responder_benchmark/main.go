@@ -50,7 +50,7 @@ func main() {
 			for i := 0; i < queryCount; i++ {
 				name := names[rand.Intn(len(names))]
 				_, err := responder.GetProof(ctx, name)
-				if err != nil && err != domain.InvalidDomainNameErr {
+				if err != nil && err != domain.ErrInvalidDomainName {
 					panic(err)
 				}
 			}

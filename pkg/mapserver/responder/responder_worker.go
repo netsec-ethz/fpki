@@ -41,7 +41,7 @@ func (responderWorker *responderWorker) getDomainProof(ctx context.Context, doma
 	// check domain name first
 	domainList, err := responderWorker.domainParser.ParseDomainName(domainName)
 	if err != nil {
-		if err == domain.InvalidDomainNameErr {
+		if err == domain.ErrInvalidDomainName {
 			return nil, err
 		}
 		return nil, fmt.Errorf("GetDomainProof | parseDomainName | %w", err)
