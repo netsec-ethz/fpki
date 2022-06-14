@@ -12,11 +12,11 @@ import (
 func extractCertDomains(cert *x509.Certificate) []string {
 	domains := make(uniqueStringSet)
 	if len(cert.Subject.CommonName) != 0 {
-		domains[cert.Subject.CommonName] = empty
+		domains[cert.Subject.CommonName] = struct{}{}
 	}
 
 	for _, dnsName := range cert.DNSNames {
-		domains[dnsName] = empty
+		domains[dnsName] = struct{}{}
 	}
 
 	result := []string{}

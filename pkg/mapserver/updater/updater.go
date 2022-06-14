@@ -10,27 +10,19 @@ import (
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
-	"github.com/netsec-ethz/fpki/pkg/domain"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/logpicker"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
 // MapUpdater: map updater. It is responsible for updating the tree, and writing to db
 type MapUpdater struct {
-	Fetcher      logpicker.LogFetcher
-	smt          *trie.Trie
-	dbConn       db.Conn
-	domainParser *domain.DomainParser
+	Fetcher logpicker.LogFetcher
+	smt     *trie.Trie
+	dbConn  db.Conn
 }
 
 // NewMapUpdater: return a new map updater.
 func NewMapUpdater(root []byte, cacheHeight int) (*MapUpdater, error) {
-	// domain parser
-	parser, err := domain.NewDomainParser()
-	if err != nil {
-		return nil, fmt.Errorf("NewMapUpdater | NewDomainParser | %w", err)
-	}
-
 	config := db.Configuration{
 		Dsn: "root@tcp(localhost)/fpki",
 		Values: map[string]string{
@@ -56,9 +48,8 @@ func NewMapUpdater(root []byte, cacheHeight int) (*MapUpdater, error) {
 		Fetcher: logpicker.LogFetcher{
 			WorkerCount: 32,
 		},
-		smt:          smt,
-		dbConn:       dbConn,
-		domainParser: parser,
+		smt:    smt,
+		dbConn: dbConn,
 	}, nil
 }
 

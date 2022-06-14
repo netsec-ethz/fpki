@@ -8,7 +8,6 @@ import (
 
 	"github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/common"
-	"github.com/netsec-ethz/fpki/pkg/domain"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -48,11 +47,6 @@ func getMockResponder(certs []*x509.Certificate) (*MapResponder, error) {
 	// update the certs, and get the mock db of SMT and db
 	smtDB, updaterDB, root, err := getUpdatedUpdater(certs)
 
-	parser, err := domain.NewDomainParser()
-	if err != nil {
-		return nil, err
-	}
-
 	smt, err := trie.NewTrie(root, common.SHA256Hash, smtDB)
 	if err != nil {
 		return nil, err
@@ -64,7 +58,11 @@ func getMockResponder(certs []*x509.Certificate) (*MapResponder, error) {
 
 	// create worker pool
 	for i := 0; i < 3; i++ {
-		newWorker := &responderWorker{dbConn: updaterDB, clientInputChan: clientInputChan, smt: smt, domainParser: parser}
+		newWorker := &responderWorker{
+			dbConn:          updaterDB,
+			clientInputChan: clientInputChan,
+			smt:             smt,
+		}
 		workerPool = append(workerPool, newWorker)
 		go newWorker.work()
 	}

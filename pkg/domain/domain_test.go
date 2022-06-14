@@ -9,9 +9,6 @@ import (
 
 // TestIsValidDomain: test strange domain names
 func TestIsValidDomain(t *testing.T) {
-	parser, err := NewDomainParser()
-	require.NoError(t, err)
-
 	tests := map[string]bool{
 		".com":                        false,
 		"com":                         false,
@@ -33,16 +30,13 @@ func TestIsValidDomain(t *testing.T) {
 		t.Run(k, func(t *testing.T) {
 			k, v := k, v
 			t.Parallel()
-			assert.Equal(t, v, parser.IsValidDomain(k))
+			assert.Equal(t, v, IsValidDomain(k))
 		})
 	}
 }
 
 // TestUniqueValidDomainName: test uniqueValidDomainName()
 func TestUniqueValidDomainName(t *testing.T) {
-	parser, err := NewDomainParser()
-	require.NoError(t, err)
-
 	test := map[string]struct {
 		input  []string
 		length int
@@ -68,7 +62,7 @@ func TestUniqueValidDomainName(t *testing.T) {
 	for name, v := range test {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, v.length, len(parser.uniqueValidDomainName(v.input)))
+			assert.Equal(t, v.length, len(uniqueValidDomainName(v.input)))
 		})
 	}
 }
@@ -142,9 +136,6 @@ func TestFindLongestSuffix(t *testing.T) {
 
 // TestExtractAffectedDomains: test ExtractAffectedDomains()
 func TestExtractAffectedDomains(t *testing.T) {
-	parser, err := NewDomainParser()
-	require.NoError(t, err)
-
 	test := map[string]struct {
 		input  []string
 		output []string
@@ -175,7 +166,7 @@ func TestExtractAffectedDomains(t *testing.T) {
 	for name, v := range test {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			result := parser.ExtractAffectedDomains(v.input)
+			result := ExtractAffectedDomains(v.input)
 			assert.Equal(t, len(v.output), len(result))
 			for _, outputString := range v.output {
 				assert.Contains(t, result, outputString)
@@ -186,9 +177,6 @@ func TestExtractAffectedDomains(t *testing.T) {
 
 // TestParseDomainName: test ParseDomainName()
 func TestParseDomainName(t *testing.T) {
-	parser, err := NewDomainParser()
-	require.NoError(t, err)
-
 	noErr := map[string]struct {
 		input  string
 		length int
@@ -220,7 +208,7 @@ func TestParseDomainName(t *testing.T) {
 	for name, v := range noErr {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			result, err := parser.ParseDomainName(v.input)
+			result, err := ParseDomainName(v.input)
 			require.NoError(t, err)
 			assert.Equal(t, v.length, len(result))
 			for _, outputString := range v.output {
@@ -232,7 +220,7 @@ func TestParseDomainName(t *testing.T) {
 	for name, v := range hasErr {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			_, err = parser.ParseDomainName(v.input)
+			_, err := ParseDomainName(v.input)
 			require.Error(t, err)
 		})
 	}

@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	projectCommon "github.com/netsec-ethz/fpki/pkg/common"
-	"github.com/netsec-ethz/fpki/pkg/domain"
 
 	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/logpicker"
@@ -14,15 +13,12 @@ import (
 
 //TestRPCAndPC: test getAffectedDomainAndCertMapPCAndRPC()
 func TestRPCAndPC(t *testing.T) {
-	parser, err := domain.NewDomainParser()
-	require.NoError(t, err)
-
 	// get PC and RPC
 	pcList, rpcList, err := logpicker.GetPCAndRPC("./testdata/domain_list/domains.txt", 0, 0, 0)
 	require.NoError(t, err, "GetPCAndRPC error")
 
 	// add the affectedDomainsSet and domainCertMap
-	affectedDomainsSet, domainCertMap := getAffectedDomainAndCertMapPCAndRPC(rpcList, pcList, parser)
+	affectedDomainsSet, domainCertMap := getAffectedDomainAndCertMapPCAndRPC(rpcList, pcList)
 
 	// check affectedDomainsMap and domainCertMap are correct
 	for _, pc := range pcList {
@@ -67,9 +63,6 @@ func TestRPCAndPC(t *testing.T) {
 // TestUpdateDomainEntriesWithRPCAndPC: test updateDomainEntriesWithRPCAndPC(), getDomainEntriesToWrite()
 // and serializeUpdatedDomainEntries()
 func TestUpdateDomainEntriesWithRPCAndPC(t *testing.T) {
-	parser, err := domain.NewDomainParser()
-	require.NoError(t, err)
-
 	// get PC and RPC
 	pcList, rpcList, err := logpicker.GetPCAndRPC("./testdata/domain_list/domains.txt", 0, 0, 0)
 	require.NoError(t, err, "GetPCAndRPC error")
@@ -78,7 +71,7 @@ func TestUpdateDomainEntriesWithRPCAndPC(t *testing.T) {
 	domainEntriesMap := make(map[projectCommon.SHA256Output]*common.DomainEntry)
 
 	// add the affectedDomainsSet and domainCertMap
-	_, domainCertMap := getAffectedDomainAndCertMapPCAndRPC(rpcList, pcList, parser)
+	_, domainCertMap := getAffectedDomainAndCertMapPCAndRPC(rpcList, pcList)
 
 	updatedDomains, err := updateDomainEntriesWithRPCAndPC(domainEntriesMap, domainCertMap)
 	require.NoError(t, err)
@@ -154,10 +147,7 @@ func TestUpdateSameRPCTwice(t *testing.T) {
 	pcList, rpcList, err := logpicker.GetPCAndRPC("./testdata/domain_list/domains.txt", 0, 0, 0)
 	require.NoError(t, err, "GetPCAndRPC error")
 
-	parser, err := domain.NewDomainParser()
-	require.NoError(t, err)
-
-	_, domainCertMap := getAffectedDomainAndCertMapPCAndRPC(rpcList, pcList, parser)
+	_, domainCertMap := getAffectedDomainAndCertMapPCAndRPC(rpcList, pcList)
 
 	domainEntriesMap := make(map[projectCommon.SHA256Output]*common.DomainEntry)
 

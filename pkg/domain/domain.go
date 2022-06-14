@@ -36,44 +36,23 @@ const (
 )
 
 // ErrInvalidDomainName: thrown when the domain name is not valid
-var ErrInvalidDomainName = fmt.Errorf("Invalid Domain Name")
+var ErrInvalidDomainName = fmt.Errorf("invalid domain name")
 
-var empty struct{}
-
-// DomainParser: regular expression to filter the domain name
-type DomainParser struct {
+var (
 	wildcardDomain *regexp.Regexp
 	viableDomain   *regexp.Regexp
 	correctLabel   *regexp.Regexp
-}
+)
 
-// NewDomainParser: return a new domain parser to parse the domain
-func NewDomainParser() (*DomainParser, error) {
-	var err error
-	wildcardDomain, err := regexp.Compile("^\\*\\..*$")
-	if err != nil {
-		return nil, fmt.Errorf("NewDomainParser | wildcardDomain | %w", err)
-	}
-	viableDomain, err := regexp.Compile("^(\\*\\.)?[^*]*$")
-	if err != nil {
-		return nil, fmt.Errorf("NewDomainParser | viableDomain | %w", err)
-	}
-
-	correctLabel, err := regexp.Compile("^(\\*|[[:alnum:]]|[[:alnum:]][[:alnum:]-]{0,61}[[:alnum:]])$")
-	if err != nil {
-		return nil, fmt.Errorf("NewDomainParser | correctLabel | %w", err)
-	}
-
-	return &DomainParser{
-		wildcardDomain: wildcardDomain,
-		viableDomain:   viableDomain,
-		correctLabel:   correctLabel,
-	}, nil
+func init() {
+	wildcardDomain = regexp.MustCompile(`^\*\..*$`)
+	viableDomain = regexp.MustCompile(`^(\*\.)?[^*]*$`)
+	correctLabel = regexp.MustCompile(`^(\*|[[:alnum:]]|[[:alnum:]][[:alnum:]-]{0,61}[[:alnum:]])$`)
 }
 
 // ExtractAffectedDomains: extract the affected domain, given a list of domain name (common name + SANs)
-func (parser *DomainParser) ExtractAffectedDomains(domainNames []string) []string {
-	uniqueNames := parser.uniqueValidDomainName(domainNames)
+func ExtractAffectedDomains(domainNames []string) []string {
+	uniqueNames := uniqueValidDomainName(domainNames)
 
 	// if number of SANs is not too large, we do not divide the domains
 	if len(uniqueNames) <= MaxSANLength {
@@ -108,9 +87,9 @@ func (parser *DomainParser) ExtractAffectedDomains(domainNames []string) []strin
 }
 
 // IsValidDomain: check if this domain is a valid domain
-func (parser *DomainParser) IsValidDomain(domain string) bool {
+func IsValidDomain(domain string) bool {
 	// removes domains with wildcard labels other than the first label
-	if !parser.viableDomain.Match([]byte(domain)) {
+	if !viableDomain.Match([]byte(domain)) {
 		return false
 	}
 	// max length for a domain
@@ -126,7 +105,7 @@ func (parser *DomainParser) IsValidDomain(domain string) bool {
 
 	for _, n := range strings.Split(domain, ".") {
 		// remove invalid characters and hyphens at the beginning and end
-		if !parser.correctLabel.Match([]byte(n)) {
+		if !correctLabel.Match([]byte(n)) {
 			return false
 		}
 	}
@@ -175,15 +154,15 @@ func removeWildCardAndWWW(domainName string) string {
 }
 
 // uniqueValidDomainName: extract valid domain names
-func (parser *DomainParser) uniqueValidDomainName(domainNames []string) []string {
+func uniqueValidDomainName(domainNames []string) []string {
 	uniqueDomainName := make(map[string]struct{})
 	for _, domainName := range domainNames {
-		if !parser.IsValidDomain(domainName) {
+		if !IsValidDomain(domainName) {
 			fmt.Printf("    !!! invalid domain name: \"%s\"\n", domainName)
 			continue
 		}
 		name := removeWildCardAndWWW(domainName)
-		uniqueDomainName[name] = empty
+		uniqueDomainName[name] = struct{}{}
 	}
 	result := make([]string, 0, len(uniqueDomainName))
 	for k := range uniqueDomainName {
@@ -228,8 +207,8 @@ func findShortestLength(domainNames [][]string) int {
 // eg: video.google.com -> video.google.com google.com
 // eg: *.google.com -> google.com
 // eg: www.google.com -> google.com
-func (parser *DomainParser) ParseDomainName(domainName string) ([]string, error) {
-	if !parser.IsValidDomain(domainName) {
+func ParseDomainName(domainName string) ([]string, error) {
+	if !IsValidDomain(domainName) {
 		return nil, ErrInvalidDomainName
 	}
 

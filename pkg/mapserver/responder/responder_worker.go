@@ -16,7 +16,6 @@ type responderWorker struct {
 	dbConn          db.Conn
 	smt             *trie.Trie
 	clientInputChan chan ClientRequest
-	domainParser    *domain.DomainParser
 }
 
 // work for worker
@@ -39,7 +38,7 @@ func (responderWorker *responderWorker) getDomainProof(ctx context.Context, doma
 	proofsResult := []mapCommon.MapServerResponse{}
 
 	// check domain name first
-	domainList, err := responderWorker.domainParser.ParseDomainName(domainName)
+	domainList, err := domain.ParseDomainName(domainName)
 	if err != nil {
 		if err == domain.ErrInvalidDomainName {
 			return nil, err

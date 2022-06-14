@@ -19,15 +19,12 @@ import (
 
 // TestUpdateCerts: test updateCerts()
 func TestUpdateCerts(t *testing.T) {
-	parser, err := domain.NewDomainParser()
-	require.NoError(t, err)
-
 	smt, err := trie.NewTrie(nil, projectCommon.SHA256Hash, internal.NewMockDB())
 	require.NoError(t, err)
 	smt.CacheHeightLimit = 233
 
 	updaterDB := internal.NewMockDB()
-	updater, err := getMockUpdater(parser, smt, updaterDB)
+	updater, err := getMockUpdater(smt, updaterDB)
 	require.NoError(t, err)
 
 	certs := []*x509.Certificate{}
@@ -53,7 +50,7 @@ func TestUpdateCerts(t *testing.T) {
 
 	// check whether certs are correctly added to the db
 	for _, cert := range certs {
-		domains := parser.ExtractAffectedDomains(extractCertDomains(cert))
+		domains := domain.ExtractAffectedDomains(extractCertDomains(cert))
 
 		for _, domain := range domains {
 			domainHash := projectCommon.SHA256Hash32Bytes([]byte(domain))
@@ -84,15 +81,12 @@ func TestUpdateRPCAndPC(t *testing.T) {
 	pcList, rpcList, err := logpicker.GetPCAndRPC("./testdata/domain_list/domains.txt", 0, 0, 20)
 	require.NoError(t, err)
 
-	parser, err := domain.NewDomainParser()
-	require.NoError(t, err)
-
 	smt, err := trie.NewTrie(nil, projectCommon.SHA256Hash, internal.NewMockDB())
 	require.NoError(t, err)
 	smt.CacheHeightLimit = 233
 
 	updaterDB := internal.NewMockDB()
-	updater, err := getMockUpdater(parser, smt, updaterDB)
+	updater, err := getMockUpdater(smt, updaterDB)
 	require.NoError(t, err)
 
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
@@ -150,15 +144,12 @@ func TestUpdateRPCAndPC(t *testing.T) {
 
 // TestFetchUpdatedDomainHash: test fetchUpdatedDomainHash()
 func TestFetchUpdatedDomainHash(t *testing.T) {
-	parser, err := domain.NewDomainParser()
-	require.NoError(t, err)
-
 	smt, err := trie.NewTrie(nil, projectCommon.SHA256Hash, internal.NewMockDB())
 	require.NoError(t, err)
 	smt.CacheHeightLimit = 233
 
 	updaterDB := internal.NewMockDB()
-	updater, err := getMockUpdater(parser, smt, updaterDB)
+	updater, err := getMockUpdater(smt, updaterDB)
 	require.NoError(t, err)
 
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
@@ -167,12 +158,13 @@ func TestFetchUpdatedDomainHash(t *testing.T) {
 	randomKeys := []projectCommon.SHA256Output{}
 	for i := 0; i < 15; i++ {
 		newRandomKey := getRandomHash()
-		updaterDB.UpdatesTable[newRandomKey] = empty
+		updaterDB.UpdatesTable[newRandomKey] = struct{}{}
 		randomKeys = append(randomKeys, newRandomKey)
 	}
 
 	// result is not important.
 	_, err = updater.fetchUpdatedDomainHash(ctx)
+	require.NoError(t, err)
 
 	// make sure the db is cleaned.
 	assert.Equal(t, 0, len(updaterDB.UpdatesTable))
@@ -183,10 +175,9 @@ func getRandomHash() projectCommon.SHA256Output {
 }
 
 // get a updater using mock db
-func getMockUpdater(parser *domain.DomainParser, smt *trie.Trie, updaterDB *internal.MockDB) (*MapUpdater, error) {
+func getMockUpdater(smt *trie.Trie, updaterDB *internal.MockDB) (*MapUpdater, error) {
 	return &MapUpdater{
-		domainParser: parser,
-		smt:          smt,
-		dbConn:       updaterDB,
+		smt:    smt,
+		dbConn: updaterDB,
 	}, nil
 }

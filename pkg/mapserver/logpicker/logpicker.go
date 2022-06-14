@@ -217,10 +217,6 @@ func parseCertificatesFromCTLogServerResponse(resp *http.Response) ([]*ctx509.Ce
 // GetPCAndRPC: get PC and RPC from url
 // TODO(yongzhe): currently just generate random PC and RPC using top 1k domain names
 func GetPCAndRPC(ctURL string, startIndex int64, endIndex int64, numOfWorker int) ([]*common.PC, []*common.RPC, error) {
-	domainParser, err := domain.NewDomainParser()
-	if err != nil {
-		return nil, nil, fmt.Errorf("GetPCAndRPC | NewDomainParser | %w", err)
-	}
 	resultPC := []*common.PC{}
 	resultRPC := []*common.RPC{}
 
@@ -235,7 +231,7 @@ func GetPCAndRPC(ctURL string, startIndex int64, endIndex int64, numOfWorker int
 	for scanner.Scan() {
 		domainName := scanner.Text()
 		// no policy for TLD
-		if !domainParser.IsValidDomain(domainName) {
+		if !domain.IsValidDomain(domainName) {
 			//fmt.Println("invalid domain name: ", domainName)
 			continue
 		}

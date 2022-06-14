@@ -6,7 +6,6 @@ import (
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
-	"github.com/netsec-ethz/fpki/pkg/domain"
 	mapCommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
@@ -34,12 +33,6 @@ type MapResponder struct {
 
 // NewMapResponder: return a new responder
 func NewMapResponder(ctx context.Context, root []byte, cacheHeight int, workerThreadNum int) (*MapResponder, error) {
-	// init domain parser
-	parser, err := domain.NewDomainParser()
-	if err != nil {
-		return nil, fmt.Errorf("NewMapResponder | NewDomainParser | %w", err)
-	}
-
 	config := db.Configuration{
 		Dsn: "root@tcp(localhost)/fpki",
 		Values: map[string]string{
@@ -75,7 +68,11 @@ func NewMapResponder(ctx context.Context, root []byte, cacheHeight int, workerTh
 		if err != nil {
 			return nil, fmt.Errorf("NewUpdatedMapResponder | Connect | %w", err)
 		}
-		newWorker := &responderWorker{dbConn: newDbConn, clientInputChan: clientInputChan, smt: smt, domainParser: parser}
+		newWorker := &responderWorker{
+			dbConn:          newDbConn,
+			clientInputChan: clientInputChan,
+			smt:             smt,
+		}
 		workerPool = append(workerPool, newWorker)
 		go newWorker.work()
 	}

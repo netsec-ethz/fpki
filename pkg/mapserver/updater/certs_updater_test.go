@@ -17,9 +17,6 @@ import (
 // TestUpdateDomainEntriesUsingCerts: test UpdateDomainEntriesUsingCerts
 // This test tests the individual functions of the UpdateDomainEntriesUsingCerts()
 func TestUpdateDomainEntriesUsingCerts(t *testing.T) {
-	parser, err := domain.NewDomainParser()
-	require.NoError(t, err)
-
 	certs := []*x509.Certificate{}
 
 	// load test certs
@@ -32,7 +29,7 @@ func TestUpdateDomainEntriesUsingCerts(t *testing.T) {
 	}
 
 	// get affected domain map and domain cert map
-	affectedDomainsMap, domainCertMap := getAffectedDomainAndCertMap(certs, parser)
+	affectedDomainsMap, domainCertMap := getAffectedDomainAndCertMap(certs)
 
 	// test if all the certs are correctly added to the affectedDomainsMap and domainCertMap
 	for _, cert := range certs {
@@ -40,7 +37,7 @@ func TestUpdateDomainEntriesUsingCerts(t *testing.T) {
 		domainNames := extractCertDomains(cert)
 
 		// get the valid domain name from domainNames list
-		affectedDomains := parser.ExtractAffectedDomains(domainNames)
+		affectedDomains := domain.ExtractAffectedDomains(domainNames)
 		if len(affectedDomains) == 0 {
 			// if cert does not have a valid domain name
 			continue
@@ -86,7 +83,7 @@ func TestUpdateDomainEntriesUsingCerts(t *testing.T) {
 		caName := cert.Issuer.CommonName
 
 		// check if this cert has valid name
-		affectedDomains := parser.ExtractAffectedDomains(domainNames)
+		affectedDomains := domain.ExtractAffectedDomains(domainNames)
 		if len(affectedDomains) == 0 {
 			continue
 		}
@@ -130,9 +127,6 @@ func TestUpdateDomainEntriesUsingCerts(t *testing.T) {
 
 // TestUpdateSameCertTwice: update the same certs twice, number of updates should be zero
 func TestUpdateSameCertTwice(t *testing.T) {
-	parser, err := domain.NewDomainParser()
-	require.NoError(t, err)
-
 	certs := []*x509.Certificate{}
 	// check if
 	files, err := ioutil.ReadDir("./testdata/certs/")
@@ -143,7 +137,7 @@ func TestUpdateSameCertTwice(t *testing.T) {
 		certs = append(certs, cert)
 	}
 
-	_, domainCertMap := getAffectedDomainAndCertMap(certs, parser)
+	_, domainCertMap := getAffectedDomainAndCertMap(certs)
 
 	domainEntriesMap := make(map[projectCommon.SHA256Output]*common.DomainEntry)
 

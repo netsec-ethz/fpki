@@ -22,7 +22,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingRPCAndPC(ctx context.
 		return 0, nil
 	}
 
-	affectedDomainsMap, domainCertMap := getAffectedDomainAndCertMapPCAndRPC(rpc, pc, mapUpdater.domainParser)
+	affectedDomainsMap, domainCertMap := getAffectedDomainAndCertMapPCAndRPC(rpc, pc)
 	if len(affectedDomainsMap) == 0 {
 		return 0, nil
 	}
@@ -57,8 +57,9 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingRPCAndPC(ctx context.
 }
 
 // getAffectedDomainAndCertMapPCAndRPC: return a map of affected domains, and cert map
-func getAffectedDomainAndCertMapPCAndRPC(rpc []*projectCommon.RPC, pc []*projectCommon.PC,
-	domainParser *domain.DomainParser) (uniqueSet, map[string]*newUpdates) {
+func getAffectedDomainAndCertMapPCAndRPC(rpc []*projectCommon.RPC, pc []*projectCommon.PC) (
+	uniqueSet, map[string]*newUpdates) {
+
 	// unique list of the updated domains
 	affectedDomainsMap := make(uniqueSet)
 	domainCertMap := make(map[string]*newUpdates)
@@ -66,7 +67,7 @@ func getAffectedDomainAndCertMapPCAndRPC(rpc []*projectCommon.RPC, pc []*project
 	// deal with RPC
 	for _, newRPC := range rpc {
 		domainName := newRPC.Subject
-		if !domainParser.IsValidDomain(domainName) {
+		if !domain.IsValidDomain(domainName) {
 			continue
 		}
 
@@ -74,7 +75,7 @@ func getAffectedDomainAndCertMapPCAndRPC(rpc []*projectCommon.RPC, pc []*project
 		copy(domainNameHash[:], projectCommon.SHA256Hash([]byte(domainName)))
 
 		// attach domain hash to unique map
-		affectedDomainsMap[domainNameHash] = empty
+		affectedDomainsMap[domainNameHash] = struct{}{}
 		certMapElement, ok := domainCertMap[domainName]
 		if ok {
 			certMapElement.rpc = append(certMapElement.rpc, newRPC)
@@ -86,14 +87,14 @@ func getAffectedDomainAndCertMapPCAndRPC(rpc []*projectCommon.RPC, pc []*project
 	// deal with PC
 	for _, newPC := range pc {
 		domainName := newPC.Subject
-		if !domainParser.IsValidDomain(domainName) {
+		if !domain.IsValidDomain(domainName) {
 			continue
 		}
 
 		var domainNameHash projectCommon.SHA256Output
 		copy(domainNameHash[:], projectCommon.SHA256Hash([]byte(domainName)))
 
-		affectedDomainsMap[domainNameHash] = empty
+		affectedDomainsMap[domainNameHash] = struct{}{}
 		certMapElement, ok := domainCertMap[domainName]
 		if ok {
 			certMapElement.pc = append(certMapElement.pc, newPC)
@@ -129,7 +130,7 @@ func updateDomainEntriesWithRPCAndPC(domainEntries map[projectCommon.SHA256Outpu
 			isUpdated := updateDomainEntryWithRPC(domainEntry, rpc)
 			if isUpdated {
 				// flag the updated domains
-				updatedDomainHash[domainNameHash] = empty
+				updatedDomainHash[domainNameHash] = struct{}{}
 			}
 		}
 
@@ -150,7 +151,7 @@ func updateDomainEntriesWithRPCAndPC(domainEntries map[projectCommon.SHA256Outpu
 			isUpdated := updateDomainEntryWithPC(domainEntry, pc)
 			if isUpdated {
 				// flag the updated domains
-				updatedDomainHash[domainNameHash] = empty
+				updatedDomainHash[domainNameHash] = struct{}{}
 			}
 		}
 	}

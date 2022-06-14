@@ -15,7 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
-	"github.com/netsec-ethz/fpki/pkg/domain"
 	mapCommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/prover"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
@@ -38,8 +37,6 @@ func TestGetDomainProof(t *testing.T) {
 
 	// update the certificates in a mock updater, then return the mock db
 	smtDB, updaterDB, root, err := getUpdatedUpdater(certs)
-
-	parser, err := domain.NewDomainParser()
 	require.NoError(t, err)
 
 	smt, err := trie.NewTrie(root, common.SHA256Hash, smtDB)
@@ -47,9 +44,8 @@ func TestGetDomainProof(t *testing.T) {
 
 	// init a new responder worker
 	responderWorker := responderWorker{
-		smt:          smt,
-		dbConn:       updaterDB,
-		domainParser: parser,
+		smt:    smt,
+		dbConn: updaterDB,
 	}
 
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
@@ -65,11 +61,6 @@ func TestGetDomainProof(t *testing.T) {
 
 // get one updater using mockdb, update the certificates and return the mockdb
 func getUpdatedUpdater(certs []*x509.Certificate) (db.Conn, db.Conn, []byte, error) {
-	parser, err := domain.NewDomainParser()
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
 	smtDB := internal.NewMockDB()
 	smt, err := trie.NewTrie(nil, common.SHA256Hash, smtDB)
 	if err != nil {
@@ -79,7 +70,7 @@ func getUpdatedUpdater(certs []*x509.Certificate) (db.Conn, db.Conn, []byte, err
 	smt.CacheHeightLimit = 233
 
 	updaterDB := internal.NewMockDB()
-	updater, err := getMockUpdater(parser, smt, updaterDB)
+	updater, err := getMockUpdater(smt, updaterDB)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -102,10 +93,9 @@ func getUpdatedUpdater(certs []*x509.Certificate) (db.Conn, db.Conn, []byte, err
 }
 
 // get a updater using mock db
-func getMockUpdater(parser *domain.DomainParser, smt *trie.Trie, updaterDB *internal.MockDB) (*updater.UpdaterTestAdapter, error) {
+func getMockUpdater(smt *trie.Trie, updaterDB *internal.MockDB) (*updater.UpdaterTestAdapter, error) {
 	updater := &updater.UpdaterTestAdapter{}
 	updater.SetDBConn(updaterDB)
-	updater.SetParser(parser)
 	updater.SetSMT(smt)
 	return updater, nil
 }
