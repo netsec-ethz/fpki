@@ -24,6 +24,9 @@ func TestIsValidDomain(t *testing.T) {
 		"150.tum.de":                  true,
 		"601602.com":                  true,
 		"*.9292.nl":                   true,
+		// "dnn_maps.carlisle.gov.uk":    true, // valid DNS entry
+		// "räksmörgås.josefsson.org":    true, // IDN domain
+		// "日本語.idn.icann.org":           true, // IDN domain
 	}
 
 	for k, v := range tests {
