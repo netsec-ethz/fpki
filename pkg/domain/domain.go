@@ -39,13 +39,11 @@ const (
 var ErrInvalidDomainName = fmt.Errorf("invalid domain name")
 
 var (
-	wildcardDomain *regexp.Regexp
-	viableDomain   *regexp.Regexp
-	correctLabel   *regexp.Regexp
+	viableDomain *regexp.Regexp
+	correctLabel *regexp.Regexp
 )
 
 func init() {
-	wildcardDomain = regexp.MustCompile(`^\*\..*$`)
 	viableDomain = regexp.MustCompile(`^(\*\.)?[^*]*$`)
 	correctLabel = regexp.MustCompile(`^(\*|[[:alnum:]]|[[:alnum:]][[:alnum:]-]{0,61}[[:alnum:]])$`)
 }
