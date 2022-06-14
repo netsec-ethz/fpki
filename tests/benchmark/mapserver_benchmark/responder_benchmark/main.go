@@ -1,56 +1,52 @@
 package main
 
 import (
+	"compress/gzip"
 	"context"
+	"encoding/pem"
 	"fmt"
+	"io"
+	"math/rand"
 	"os"
 	"sync"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
-	ctX509 "github.com/google/certificate-transparency-go/x509"
+	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/domain"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/logpicker"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/responder"
 )
 
 var wg sync.WaitGroup
 
 func main() {
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancelF()
+
+	const count = 100 * 1000 // collect 10,000 names, for proof fetching
+	const numOfWorker = 200
+	names := getNames()
+	fmt.Printf("%d names available, using only %d\n", len(names), count)
+	rand.Shuffle(len(names), func(i, j int) { names[i], names[j] = names[j], names[i] })
+	names = names[:count]
+
+	fmt.Println("Loading responder ...")
 	// only use one responder
 	root, err := os.ReadFile("root")
 	if err != nil {
 		panic(err)
 	}
-	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Minute)
-	defer cancelF()
-
-	const baseCTSize = 2 * 1000
-	const count = 10*1000 - 1 // collect 10,000 certs, for proof fetching
-	fetcher := &logpicker.LogFetcher{
-		URL:   "https://ct.googleapis.com/logs/argon2021",
-		Start: baseCTSize,
-		End:   baseCTSize + count,
-	}
-	collectedCerts, err := fetcher.FetchAllCertificates(ctx)
-	if err != nil {
-		panic(err)
-	}
-
-	names := extractNames(collectedCerts)
 	responder, err := responder.NewMapResponder(ctx, root, 233, 10)
 	if err != nil {
 		panic(err)
 	}
-
-	numOfWorker := 20
-
+	fmt.Println("requesting now ...")
 	step := len(names) / numOfWorker
 	responderStartTime := time.Now()
 
 	wg.Add(numOfWorker)
 	for i := 0; i < numOfWorker; i++ {
-		go collectProof(responder, names[i*step:i*step+step-1])
+		go collectProof(responder, names[i*step:(i+1)*step])
 	}
 	wg.Wait()
 	responderDuration := time.Since(responderStartTime)
@@ -59,7 +55,42 @@ func main() {
 		responderDuration, responderDuration*time.Duration(100*1000/len(names)))
 }
 
-func extractNames(certs []*ctX509.Certificate) []string {
+func getNames() []string {
+	f, err := os.Open("tests/benchmark/mapserver_benchmark/testdata/certs.pem.gz")
+	if err != nil {
+		panic(err)
+	}
+	z, err := gzip.NewReader(f)
+	if err != nil {
+		panic(err)
+	}
+	raw, err := io.ReadAll(z)
+	if err != nil {
+		panic(err)
+	}
+
+	certs := make([]*ctx509.Certificate, 0)
+	for len(raw) > 0 {
+		var block *pem.Block
+		block, raw = pem.Decode(raw)
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+		c, err := ctx509.ParseTBSCertificate(block.Bytes)
+		if err != nil {
+			panic(err)
+		}
+		certs = append(certs, c)
+	}
+	err = f.Close()
+	if err != nil {
+		panic(err)
+	}
+
+	return extractNames(certs)
+}
+
+func extractNames(certs []*ctx509.Certificate) []string {
 	names := make([]string, len(certs))
 	for i, cert := range certs {
 		names[i] = cert.Subject.CommonName
