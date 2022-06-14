@@ -54,28 +54,28 @@ func testTreeTable() {
 
 	// insert key 1511 - 2012
 	newKVPair := getKeyValuePair(1511, 2012, []byte("hi this is a test"))
-	_, err = conn.UpdateKeyValuesTreeStruc(ctx, newKVPair)
+	_, err = conn.UpdateKeyValuesTreeStruct(ctx, newKVPair)
 	if err != nil {
 		panic(err)
 	}
 
 	// insert key 2013 - 2055
 	newKVPair = getKeyValuePair(2013, 2055, []byte("hi this is a test"))
-	_, err = conn.UpdateKeyValuesTreeStruc(ctx, newKVPair)
+	_, err = conn.UpdateKeyValuesTreeStruct(ctx, newKVPair)
 	if err != nil {
 		panic(err)
 	}
 
 	// insert key 2056 - 2155
 	newKVPair = getKeyValuePair(2056, 2155, []byte("hi this is a test"))
-	_, err = conn.UpdateKeyValuesTreeStruc(ctx, newKVPair)
+	_, err = conn.UpdateKeyValuesTreeStruct(ctx, newKVPair)
 	if err != nil {
 		panic(err)
 	}
 
 	// insert key 2056 - 4555
 	newKVPair = getKeyValuePair(2056, 4555, []byte("hi this is a test"))
-	_, err = conn.UpdateKeyValuesTreeStruc(ctx, newKVPair)
+	_, err = conn.UpdateKeyValuesTreeStruct(ctx, newKVPair)
 	if err != nil {
 		panic(err)
 	}
@@ -88,7 +88,7 @@ func testTreeTable() {
 	result := []db.KeyValuePair{}
 
 	for _, key := range keys {
-		newResult, err := conn.RetrieveOneKeyValuePairTreeStruc(ctx, key)
+		newResult, err := conn.RetrieveOneKeyValuePairTreeStruct(ctx, key)
 		if err != nil && err != sql.ErrNoRows {
 			panic(err)
 		}
@@ -110,7 +110,7 @@ func testTreeTable() {
 	result = []db.KeyValuePair{}
 
 	for _, key := range keys {
-		newResult, err := conn.RetrieveOneKeyValuePairTreeStruc(ctx, key)
+		newResult, err := conn.RetrieveOneKeyValuePairTreeStruct(ctx, key)
 		if err != nil && err != sql.ErrNoRows {
 			panic(err)
 		}
@@ -134,7 +134,7 @@ func testTreeTable() {
 	result = []db.KeyValuePair{}
 
 	for _, key := range keys {
-		newResult, err := conn.RetrieveOneKeyValuePairTreeStruc(ctx, key)
+		newResult, err := conn.RetrieveOneKeyValuePairTreeStruct(ctx, key)
 		if err != nil && err != sql.ErrNoRows {
 			panic(err)
 		}
@@ -151,7 +151,7 @@ func testTreeTable() {
 	//                       update keys
 	// *****************************************************************
 	newKVPair = getKeyValuePair(2056, 4555, []byte("new value"))
-	_, err = conn.UpdateKeyValuesTreeStruc(ctx, newKVPair)
+	_, err = conn.UpdateKeyValuesTreeStruct(ctx, newKVPair)
 	if err != nil {
 		panic(err)
 	}
@@ -163,7 +163,7 @@ func testTreeTable() {
 	result = []db.KeyValuePair{}
 
 	for _, key := range keys {
-		newResult, err := conn.RetrieveOneKeyValuePairTreeStruc(ctx, key)
+		newResult, err := conn.RetrieveOneKeyValuePairTreeStruct(ctx, key)
 		if err != nil && err != sql.ErrNoRows {
 			panic(err)
 		}
@@ -184,7 +184,7 @@ func testTreeTable() {
 	//                       delete keys
 	// *****************************************************************
 	keys = getKeys(1000, 1200)
-	affectDomainsCount, err := conn.DeleteKeyValuesTreeStruc(ctx, keys)
+	affectDomainsCount, err := conn.DeleteKeyValuesTreeStruct(ctx, keys)
 	if err != nil {
 		panic(err)
 	}
@@ -194,7 +194,7 @@ func testTreeTable() {
 	}
 
 	keys = getKeys(1511, 4222)
-	affectDomainsCount, err = conn.DeleteKeyValuesTreeStruc(ctx, keys)
+	affectDomainsCount, err = conn.DeleteKeyValuesTreeStruct(ctx, keys)
 	if err != nil {
 		panic(err)
 	}
@@ -203,7 +203,7 @@ func testTreeTable() {
 	}
 
 	keys = getKeys(4223, 4555)
-	affectDomainsCount, err = conn.DeleteKeyValuesTreeStruc(ctx, keys)
+	affectDomainsCount, err = conn.DeleteKeyValuesTreeStruct(ctx, keys)
 	if err != nil {
 		panic(err)
 	}
@@ -217,7 +217,7 @@ func testTreeTable() {
 	keys = getKeys(1011, 5555)
 
 	for _, key := range keys {
-		newResult, err := conn.RetrieveOneKeyValuePairTreeStruc(ctx, key)
+		newResult, err := conn.RetrieveOneKeyValuePairTreeStruct(ctx, key)
 		if err != nil && err != sql.ErrNoRows {
 			panic(err)
 		}

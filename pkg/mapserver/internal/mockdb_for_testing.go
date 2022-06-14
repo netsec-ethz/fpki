@@ -28,7 +28,7 @@ func NewMockDB() *MockDB {
 // Close closes the connection.
 func (d *MockDB) Close() error { return nil }
 
-func (d *MockDB) RetrieveOneKeyValuePairTreeStruc(ctx context.Context, id common.SHA256Output) (*db.KeyValuePair, error) {
+func (d *MockDB) RetrieveOneKeyValuePairTreeStruct(ctx context.Context, id common.SHA256Output) (*db.KeyValuePair, error) {
 	return &db.KeyValuePair{Key: id, Value: d.TreeTable[id]}, nil
 }
 
@@ -36,7 +36,7 @@ func (d *MockDB) RetrieveOneKeyValuePairDomainEntries(ctx context.Context, key c
 	return &db.KeyValuePair{Key: key, Value: d.DomainEntriesTable[key]}, nil
 }
 
-func (d *MockDB) RetrieveKeyValuePairTreeStruc(ctx context.Context, id []common.SHA256Output,
+func (d *MockDB) RetrieveKeyValuePairTreeStruct(ctx context.Context, id []common.SHA256Output,
 	numOfRoutine int) ([]db.KeyValuePair, error) {
 	result := []db.KeyValuePair{}
 	for _, key := range id {
@@ -82,7 +82,7 @@ func (d *MockDB) UpdateKeyValuesDomainEntries(ctx context.Context, keyValuePairs
 	return 0, nil
 }
 
-func (d *MockDB) UpdateKeyValuesTreeStruc(ctx context.Context, keyValuePairs []db.KeyValuePair) (int64, error) {
+func (d *MockDB) UpdateKeyValuesTreeStruct(ctx context.Context, keyValuePairs []db.KeyValuePair) (int64, error) {
 	for _, pair := range keyValuePairs {
 		d.TreeTable[pair.Key] = pair.Value
 	}
@@ -90,7 +90,7 @@ func (d *MockDB) UpdateKeyValuesTreeStruc(ctx context.Context, keyValuePairs []d
 	return 0, nil
 }
 
-func (d *MockDB) DeleteKeyValuesTreeStruc(ctx context.Context, keys []common.SHA256Output) (int64, error) {
+func (d *MockDB) DeleteKeyValuesTreeStruct(ctx context.Context, keys []common.SHA256Output) (int64, error) {
 	for _, key := range keys {
 		delete(d.TreeTable, key)
 	}

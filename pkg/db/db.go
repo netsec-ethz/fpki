@@ -29,14 +29,14 @@ type Conn interface {
 	//              Function for Tree table
 	// ************************************************************
 
-	// RetrieveOneKeyValuePairTreeStruc: Retrieve one key-value pair from Tree table.
-	RetrieveOneKeyValuePairTreeStruc(ctx context.Context, id common.SHA256Output) (*KeyValuePair, error)
+	// RetrieveOneKeyValuePairTreeStruct: Retrieve one key-value pair from Tree table.
+	RetrieveOneKeyValuePairTreeStruct(ctx context.Context, id common.SHA256Output) (*KeyValuePair, error)
 
-	// UpdateKeyValuesTreeStruc: Update a list of key-value pairs in Tree table
-	UpdateKeyValuesTreeStruc(ctx context.Context, keyValuePairs []KeyValuePair) (int64, error)
+	// UpdateKeyValuesTreeStruct: Update a list of key-value pairs in Tree table
+	UpdateKeyValuesTreeStruct(ctx context.Context, keyValuePairs []KeyValuePair) (int64, error)
 
-	// DeleteKeyValuesTreeStruc: Delete a list of key-value pairs in Tree table
-	DeleteKeyValuesTreeStruc(ctx context.Context, keys []common.SHA256Output) (int64, error)
+	// DeleteKeyValuesTreeStruct: Delete a list of key-value pairs in Tree table
+	DeleteKeyValuesTreeStruct(ctx context.Context, keys []common.SHA256Output) (int64, error)
 
 	// ************************************************************
 	//             Function for DomainEntries table

@@ -22,7 +22,7 @@ func (c *mysqlDB) UpdateKeyValuesDomainEntries(ctx context.Context, keyValuePair
 }
 
 // DeleteKeyValuesTreeStruc: Delete a list of key-value store
-func (c *mysqlDB) DeleteKeyValuesTreeStruc(ctx context.Context, keys []common.SHA256Output) (int64, error) {
+func (c *mysqlDB) DeleteKeyValuesTreeStruct(ctx context.Context, keys []common.SHA256Output) (int64, error) {
 	numOfDeletedRecords, err := c.doUpdatesKeys(ctx, c.prepDeleteKeyValueTree, keys, Tree)
 	if err != nil {
 		return 0, fmt.Errorf("DeleteKeyValuesTreeStruc | %w", err)
@@ -35,8 +35,8 @@ func (c *mysqlDB) DeleteKeyValuesTreeStruc(ctx context.Context, keys []common.SH
 //                Write functions for domain entries table
 // ********************************************************************
 
-// UpdateKeyValuesTreeStruc: Update a list of key-value store
-func (c *mysqlDB) UpdateKeyValuesTreeStruc(ctx context.Context, keyValuePairs []KeyValuePair) (int64, error) {
+// UpdateKeyValuesTreeStruct: Update a list of key-value store
+func (c *mysqlDB) UpdateKeyValuesTreeStruct(ctx context.Context, keyValuePairs []KeyValuePair) (int64, error) {
 	numOfUpdatedPairs, err := c.doUpdatesPairs(ctx, c.prepUpdateValueTree, keyValuePairs, Tree)
 	if err != nil {
 		return 0, fmt.Errorf("UpdateKeyValuesTreeStruc | %w", err)

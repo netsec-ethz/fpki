@@ -74,13 +74,13 @@ func (cacheDB *CacheDB) commitChangesToDB(ctx context.Context) error {
 	cacheDB.wholeCacheDBLock.Lock()
 	defer cacheDB.wholeCacheDBLock.Unlock()
 
-	_, err := cacheDB.Store.UpdateKeyValuesTreeStruc(ctx, updatesToDB)
+	_, err := cacheDB.Store.UpdateKeyValuesTreeStruct(ctx, updatesToDB)
 	if err != nil {
 		return fmt.Errorf("commitChangesToDB | UpdateKeyValuePairBatches | %w", err)
 	}
 
 	if len(keysToDelete) > 0 {
-		_, err := cacheDB.Store.DeleteKeyValuesTreeStruc(ctx, keysToDelete)
+		_, err := cacheDB.Store.DeleteKeyValuesTreeStruct(ctx, keysToDelete)
 		if err != nil {
 			return fmt.Errorf("commitChangesToDB | DeleteKeyValuePairBatches | %w", err)
 		}
@@ -96,7 +96,7 @@ func (cacheDB *CacheDB) getValue(ctx context.Context, key []byte) ([]byte, error
 	key32Bytes := Hash{}
 	copy(key32Bytes[:], key)
 
-	result, err := cacheDB.Store.RetrieveOneKeyValuePairTreeStruc(ctx, key32Bytes)
+	result, err := cacheDB.Store.RetrieveOneKeyValuePairTreeStruct(ctx, key32Bytes)
 	cacheDB.wholeCacheDBLock.Unlock()
 	if err != nil {
 		return nil, fmt.Errorf("getValue | RetrieveOneKeyValuePair | %w", err)
