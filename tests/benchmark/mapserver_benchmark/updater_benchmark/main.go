@@ -49,20 +49,25 @@ func main() {
 	ctx, cancelF := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancelF()
 
-	updateStart := time.Now()
 	// collect 100K certs
 	mapUpdater.Fetcher.BatchSize = 10000
 	const baseCTSize = 2 * 1000
+	const count = 10 * 10000
 	mapUpdater.StartFetching("https://ct.googleapis.com/logs/argon2021",
-		baseCTSize, baseCTSize+10*10000)
-	for i := 0; i < 10; i++ {
+		baseCTSize, baseCTSize+count-1)
+
+	updateStart := time.Now()
+	for i := 0; ; i++ {
 		fmt.Println()
 		fmt.Println()
-		fmt.Println(" ---------------------- Iteration ", i, " ---------------------------")
+		fmt.Println(" ---------------------- batch ", i, " ---------------------------")
 		start := time.Now()
-		err = mapUpdater.UpdateNextBatch(ctx)
+		n, err := mapUpdater.UpdateNextBatch(ctx)
 		if err != nil {
 			panic(err)
+		}
+		if n == 0 {
+			break
 		}
 		fmt.Println("time to update the changes: ", time.Since(start))
 
@@ -73,9 +78,8 @@ func main() {
 		}
 		fmt.Println("time to commit the changes: ", time.Since(start))
 	}
-	updateEnd := time.Now()
 	fmt.Println("************************ Update finished ******************************")
-	fmt.Println("time to get and update 1,000,000 certs: ", updateEnd.Sub(updateStart))
+	fmt.Printf("time to get and update %d certs: %s\n", count, time.Since(updateStart))
 
 	root := mapUpdater.GetRoot()
 	err = mapUpdater.Close()
