@@ -24,6 +24,10 @@ func TestIsValidDomain(t *testing.T) {
 		"www.baidu.com":               true,
 		"www.google.com":              true,
 		"bqiwodnqwpdq.www.google.com": true,
+		"www.2017.cuni.cz":            true,
+		"150.tum.de":                  true,
+		"601602.com":                  true,
+		"*.9292.nl":                   true,
 	}
 
 	for k, v := range tests {
