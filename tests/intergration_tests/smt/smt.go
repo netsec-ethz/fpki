@@ -30,15 +30,7 @@ func testUpdateWithSameKeys() {
 	//***************************************************************
 	//                     connect to db
 	//***************************************************************
-	config := db.Configuration{
-		Dsn: "root@tcp(localhost)/fpki",
-		Values: map[string]string{
-			"interpolateParams": "true", // 1 round trip per query
-			"collation":         "binary",
-		},
-	}
-
-	db, err := db.Connect(&config)
+	db, err := db.Connect(nil)
 	if err != nil {
 		panic(err)
 	}
@@ -108,14 +100,7 @@ func testTrieMerkleProofAndReloadTree() {
 	//***************************************************************
 	//                     connect to a new db
 	//***************************************************************
-	config := db.Configuration{
-		Dsn: "root@tcp(localhost)/fpki",
-		Values: map[string]string{
-			"interpolateParams": "true", // 1 round trip per query
-			"collation":         "binary",
-		},
-	}
-	dbConn, err := db.Connect(&config)
+	dbConn, err := db.Connect(nil)
 	if err != nil {
 		panic(err)
 	}
@@ -169,7 +154,7 @@ func testTrieMerkleProofAndReloadTree() {
 	//***************************************************************
 	//                          start a new db
 	//***************************************************************
-	dbConn1, err := db.Connect(&config)
+	dbConn1, err := db.Connect(nil)
 	if err != nil {
 		panic(err)
 	}
@@ -217,14 +202,7 @@ func testTrieMerkleProofAndReloadTree() {
 }
 
 func testTrieLoadCache() {
-	config := db.Configuration{
-		Dsn: "root@tcp(localhost)/fpki",
-		Values: map[string]string{
-			"interpolateParams": "true", // 1 round trip per query
-			"collation":         "binary",
-		},
-	}
-	dbConn, err := db.Connect(&config)
+	dbConn, err := db.Connect(nil)
 	if err != nil {
 		panic(err)
 	}

@@ -33,16 +33,8 @@ type MapResponder struct {
 
 // NewMapResponder: return a new responder
 func NewMapResponder(ctx context.Context, root []byte, cacheHeight int, workerThreadNum int) (*MapResponder, error) {
-	config := db.Configuration{
-		Dsn: "root@tcp(localhost)/fpki",
-		Values: map[string]string{
-			"interpolateParams": "true", // 1 round trip per query
-			"collation":         "binary",
-		},
-	}
-
 	// new db connection for SMT
-	dbConn, err := db.Connect(&config)
+	dbConn, err := db.Connect(nil)
 	if err != nil {
 		return nil, fmt.Errorf("NewMapResponder | Connect | %w", err)
 	}
@@ -64,7 +56,7 @@ func NewMapResponder(ctx context.Context, root []byte, cacheHeight int, workerTh
 
 	// create worker pool
 	for i := 0; i < workerThreadNum; i++ {
-		newDbConn, err := db.Connect(&config)
+		newDbConn, err := db.Connect(nil)
 		if err != nil {
 			return nil, fmt.Errorf("NewUpdatedMapResponder | Connect | %w", err)
 		}

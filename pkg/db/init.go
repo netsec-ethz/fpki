@@ -4,13 +4,10 @@ import (
 	"database/sql"
 	"fmt"
 	"net/url"
-	"sync"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 )
-
-var initVars sync.Once
 
 // Configuration for the db connection
 type Configuration struct {
@@ -19,8 +16,22 @@ type Configuration struct {
 	CheckSchema bool // indicates if opening the connection checks the health of the schema
 }
 
+func DefaultConfig() *Configuration {
+	return &Configuration{
+		Dsn: "root@tcp(localhost)/fpki",
+		Values: map[string]string{
+			"interpolateParams": "true", // 1 round trip per query
+			"collation":         "binary",
+			"maxAllowedPacket":  "1G",
+		},
+	}
+}
+
 // Connect: connect to db, using the config file
 func Connect(config *Configuration) (Conn, error) {
+	if config == nil {
+		config = DefaultConfig()
+	}
 	dsn, err := url.Parse(config.Dsn)
 	if err != nil {
 		return nil, fmt.Errorf("bad connection string: %w", err)

@@ -23,16 +23,8 @@ type MapUpdater struct {
 
 // NewMapUpdater: return a new map updater.
 func NewMapUpdater(root []byte, cacheHeight int) (*MapUpdater, error) {
-	config := db.Configuration{
-		Dsn: "root@tcp(localhost)/fpki",
-		Values: map[string]string{
-			"interpolateParams": "true", // 1 round trip per query
-			"collation":         "binary",
-		},
-	}
-
 	// db conn for map updater
-	dbConn, err := db.Connect(&config)
+	dbConn, err := db.Connect(nil)
 	if err != nil {
 		return nil, fmt.Errorf("NewMapUpdater | db.Connect | %w", err)
 	}

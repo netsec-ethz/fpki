@@ -34,14 +34,7 @@ func testTreeTable() {
 	// *****************************************************************
 	//                     open a db connection
 	// *****************************************************************
-	config := db.Configuration{
-		Dsn: "root@tcp(localhost)/fpki",
-		Values: map[string]string{
-			"interpolateParams": "true", // 1 round trip per query
-			"collation":         "binary",
-		},
-	}
-	conn, err := db.Connect(&config)
+	conn, err := db.Connect(nil)
 	if err != nil {
 		panic(err)
 	}
@@ -240,14 +233,7 @@ func testDomainEntriesTable() {
 	// *****************************************************************
 	//                     open a db connection
 	// *****************************************************************
-	config := db.Configuration{
-		Dsn: "root@tcp(localhost)/fpki",
-		Values: map[string]string{
-			"interpolateParams": "true", // 1 round trip per query
-			"collation":         "binary",
-		},
-	}
-	conn, err := db.Connect(&config)
+	conn, err := db.Connect(nil)
 	if err != nil {
 		panic(err)
 	}
@@ -386,14 +372,7 @@ func testUpdateTable() {
 	// *****************************************************************
 	//                     open a db connection
 	// *****************************************************************
-	config := db.Configuration{
-		Dsn: "root@tcp(localhost)/fpki",
-		Values: map[string]string{
-			"interpolateParams": "true", // 1 round trip per query
-			"collation":         "binary",
-		},
-	}
-	conn, err := db.Connect(&config)
+	conn, err := db.Connect(nil)
 	if err != nil {
 		panic(err)
 	}
