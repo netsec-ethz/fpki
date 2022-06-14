@@ -17,18 +17,16 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/mapserver/responder"
 )
 
-var wg sync.WaitGroup
-
 func main() {
 	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancelF()
 
-	const count = 100 * 1000 // collect 10,000 names, for proof fetching
-	const numOfWorkers = 200
-	names := getNames()
-	fmt.Printf("%d names available, using only %d\n", len(names), count)
-	rand.Shuffle(len(names), func(i, j int) { names[i], names[j] = names[j], names[i] })
-	names = names[:count]
+	// 10M queries with 1K workers use ~ 20.3 seconds
+	const totalQueries = 10 * 1000 * 1000
+	const numOfWorkers = 1000
+	names := getNames() // only use the first 100K names, as the updater benchmark
+	_ = 0               // is limited to 100K certificates
+	fmt.Printf("%d names available\n", len(names))
 
 	fmt.Println("Loading responder ...")
 	// only use one responder
@@ -40,19 +38,29 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	step := len(names) / numOfWorkers
-	fmt.Printf("requesting now (%d each worker, %d workers) ...\n", step, numOfWorkers)
+	fmt.Printf("requesting now (%d each worker, %d workers) ...\n",
+		totalQueries/numOfWorkers, numOfWorkers)
 	responderStartTime := time.Now()
 
-	wg.Add(numOfWorkers)
+	var wg sync.WaitGroup
 	for i := 0; i < numOfWorkers; i++ {
-		go collectProof(responder, names[i*step:(i+1)*step])
+		wg.Add(1)
+		go func(queryCount int) {
+			defer wg.Done()
+			for i := 0; i < queryCount; i++ {
+				name := names[rand.Intn(len(names))]
+				_, err := responder.GetProof(ctx, name)
+				if err != nil && err != domain.InvalidDomainNameErr {
+					panic(err)
+				}
+			}
+		}(totalQueries / numOfWorkers)
 	}
 	wg.Wait()
 	responderDuration := time.Since(responderStartTime)
 
-	fmt.Printf("time to fetch proofs: %s. 100K ~= %s\n",
-		responderDuration, responderDuration*time.Duration(100*1000/len(names)))
+	fmt.Printf("time to fetch %d proofs: %s. 100K ~= %s\n", totalQueries,
+		responderDuration, responderDuration*time.Duration(100000)/time.Duration(totalQueries))
 }
 
 func getNames() []string {
@@ -87,28 +95,9 @@ func getNames() []string {
 		panic(err)
 	}
 
-	return extractNames(certs)
-}
-
-func extractNames(certs []*ctx509.Certificate) []string {
 	names := make([]string, len(certs))
 	for i, cert := range certs {
 		names[i] = cert.Subject.CommonName
 	}
 	return names
-}
-
-func collectProof(responder *responder.MapResponder, names []string) {
-	defer wg.Done()
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
-	defer cancelF()
-
-	for _, name := range names {
-		if name != "" {
-			_, err := responder.GetProof(ctx, name)
-			if err != nil && err != domain.InvalidDomainNameErr {
-				panic(err)
-			}
-		}
-	}
 }
