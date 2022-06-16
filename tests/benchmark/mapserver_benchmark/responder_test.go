@@ -33,6 +33,9 @@ func TestResponder(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, n, 0)
 
+	err = mapUpdater.CommitSMTChanges(ctx)
+	require.NoError(t, err)
+
 	root := mapUpdater.GetRoot()
 	err = mapUpdater.Close()
 	require.NoError(t, err)
