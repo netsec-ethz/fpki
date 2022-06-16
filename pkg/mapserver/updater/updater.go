@@ -76,6 +76,10 @@ func (mapUpdater *MapUpdater) updateCerts(ctx context.Context, certs []*ctx509.C
 		return fmt.Errorf("CollectCerts | fetchUpdatedDomainHash | %w", err)
 	}
 
+	if len(updatedDomainHash) == 0 {
+		return nil
+	}
+
 	keyValuePairs, err := mapUpdater.dbConn.RetrieveKeyValuePairDomainEntries(ctx, updatedDomainHash, 10)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | RetrieveKeyValuePairMultiThread | %w", err)
