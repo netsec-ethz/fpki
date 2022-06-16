@@ -14,6 +14,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/domain"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/responder"
 )
 
@@ -42,21 +43,34 @@ func main() {
 		totalQueries/numOfWorkers, numOfWorkers)
 	responderStartTime := time.Now()
 
+	proofTypes := make([]map[common.ProofType]int, numOfWorkers)
 	var wg sync.WaitGroup
-	for i := 0; i < numOfWorkers; i++ {
+	for w := 0; w < numOfWorkers; w++ {
+		w := w
 		wg.Add(1)
 		go func(queryCount int) {
 			defer wg.Done()
+			proofTypes[w] = make(map[common.ProofType]int)
 			for i := 0; i < queryCount; i++ {
 				name := names[rand.Intn(len(names))]
-				_, err := responder.GetProof(ctx, name)
+				proofs, err := responder.GetProof(ctx, name)
 				if err != nil && err != domain.ErrInvalidDomainName {
 					panic(err)
+				}
+				for _, p := range proofs {
+					proofTypes[w][p.PoI.ProofType]++
 				}
 			}
 		}(totalQueries / numOfWorkers)
 	}
 	wg.Wait()
+
+	var presences, absences int
+	for _, types := range proofTypes {
+		presences += types[common.PoP]
+		absences += types[common.PoA]
+	}
+	fmt.Printf("Presences: %d Absences: %d\n", presences, absences)
 	responderDuration := time.Since(responderStartTime)
 
 	fmt.Printf("time to fetch %d proofs: %s. 100K ~= %s\n", totalQueries,
