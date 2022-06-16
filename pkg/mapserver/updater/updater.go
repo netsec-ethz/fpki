@@ -121,6 +121,10 @@ func (mapUpdater *MapUpdater) updateRPCAndPC(ctx context.Context, pcList []*comm
 		return fmt.Errorf("CollectCerts | fetchUpdatedDomainHash | %w", err)
 	}
 
+	if len(updatedDomainHash) == 0 {
+		return nil
+	}
+
 	// fetch domains from DB
 	keyValuePairs, err := mapUpdater.dbConn.RetrieveKeyValuePairDomainEntries(ctx, updatedDomainHash, 10)
 	if err != nil {
