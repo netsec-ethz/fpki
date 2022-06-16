@@ -22,7 +22,7 @@ func DefaultConfig() *Configuration {
 		Values: map[string]string{
 			"interpolateParams": "true", // 1 round trip per query
 			"collation":         "binary",
-			"maxAllowedPacket":  "1G",
+			"maxAllowedPacket":  "1073741824", // 1G (cannot use "1G" as the driver uses Atoi)
 		},
 	}
 }
