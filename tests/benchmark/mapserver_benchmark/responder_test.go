@@ -61,7 +61,7 @@ func TestResponder(t *testing.T) {
 		responses, err := responder.GetProof(ctx, name)
 		require.NoError(t, err)
 		for _, r := range responses {
-			require.Equal(t, common.PoP, r.PoI.ProofType)
+			require.Equal(t, common.PoP, r.PoI.ProofType, "PoP not found for %s", name)
 		}
 	}
 }
