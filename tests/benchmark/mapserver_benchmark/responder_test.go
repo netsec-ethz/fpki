@@ -86,13 +86,14 @@ func TestResponder(t *testing.T) {
 		responses, err := responder.GetProof(ctx, cert.Subject.CommonName)
 		require.NoError(t, err)
 
+		for _, r := range responses {
+			t.Logf("%v : %s", r.PoI.ProofType, r.Domain)
+		}
+
 		require.True(t, checkProof(*cert, responses))
-		/*
-			for _, r := range responses {
-				t.Logf("%v : %s", r.PoI.ProofType, cert.Subject.CommonName)
-				require.Equal(t, common.PoP, r.PoI.ProofType,
-					"PoP not found for %s", r.Domain)
-			}*/
+		require.Greater(t, len(responses), 0)
+		require.Equal(t, common.PoP, responses[len(responses)-1].PoI.ProofType,
+			"PoP not found for %s", cert.Subject.CommonName)
 	}
 }
 
