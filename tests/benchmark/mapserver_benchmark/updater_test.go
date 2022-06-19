@@ -101,6 +101,8 @@ func benchmarkFullUpdate(b *testing.B, count int) {
 	err = up.UpdateCerts(ctx, certs)
 	elapsed := time.Since(t0)
 	require.NoError(b, err)
+	err = up.Close()
+	require.NoError(b, err)
 	for i := 1; i < b.N; i++ {
 		time.Sleep(elapsed)
 	}

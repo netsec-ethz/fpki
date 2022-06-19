@@ -53,6 +53,14 @@ func (a *UpdaterTestAdapter) SetDBConn(dbConn db.Conn) {
 	a.dbConn = dbConn
 }
 
+func (a *UpdaterTestAdapter) GetRoot() []byte {
+	return (*MapUpdater)(a).GetRoot()
+}
+
+func (a *UpdaterTestAdapter) Close() error {
+	return (*MapUpdater)(a).Close()
+}
+
 func (a *UpdaterTestAdapter) CommitSMTChanges(ctx context.Context) error {
 	return (*MapUpdater)(a).CommitSMTChanges(ctx)
 }

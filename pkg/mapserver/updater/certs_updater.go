@@ -3,6 +3,7 @@ package updater
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/common"
@@ -24,32 +25,42 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCerts(ctx context.Con
 		return 0, nil
 	}
 
+	start := time.Now()
 	// get the unique list of affected domains
 	affectedDomainsMap, domainCertMap := getAffectedDomainAndCertMap(certs)
+	end := time.Now()
+	fmt.Println("(memory) time to process certs: ", end.Sub(start))
 
 	// if no domain to update
 	if len(affectedDomainsMap) == 0 {
 		return 0, nil
 	}
 
+	start = time.Now()
 	// retrieve (possibly)affected domain entries from db
 	// It's possible that no records will be changed, because the certs are already recorded.
 	domainEntriesMap, err := mapUpdater.retrieveAffectedDomainFromDB(ctx, affectedDomainsMap, readerNum)
 	if err != nil {
 		return 0, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | retrieveAffectedDomainFromDB | %w", err)
 	}
+	end = time.Now()
+	fmt.Println("(db)     time to retrieve domain entries: ", end.Sub(start))
 
+	start = time.Now()
 	// update the domain entries
 	updatedDomains, err := updateDomainEntries(domainEntriesMap, domainCertMap)
 	if err != nil {
 		return 0, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | updateDomainEntries | %w", err)
 	}
+	end = time.Now()
+	fmt.Println("(db)     time to update domain entries: ", end.Sub(start))
 
 	// if during this updates, no cert is added, directly return
 	if len(updatedDomains) == 0 {
 		return 0, nil
 	}
 
+	start = time.Now()
 	// get the domain entries only if they are updated, from DB
 	domainEntriesToWrite, err := getDomainEntriesToWrite(updatedDomains, domainEntriesMap)
 	if err != nil {
@@ -61,9 +72,19 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCerts(ctx context.Con
 	if err != nil {
 		return 0, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | serializeUpdatedDomainEntries | %w", err)
 	}
+	end = time.Now()
+	fmt.Println("(memory) time to process updated domains: ", end.Sub(start))
 
+	start = time.Now()
 	// commit changes to db
-	return mapUpdater.writeChangesToDB(ctx, keyValuePairs, updatedDomainNameHashes)
+	num, err := mapUpdater.writeChangesToDB(ctx, keyValuePairs, updatedDomainNameHashes)
+	if err != nil {
+		return 0, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | writeChangesToDB | %w", err)
+	}
+	end = time.Now()
+	fmt.Println("(db)     time to write updated domain entries: ", end.Sub(start))
+
+	return num, nil
 }
 
 // return affected domains.
