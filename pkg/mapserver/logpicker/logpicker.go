@@ -199,12 +199,22 @@ func parseCertificatesFromCTLogServerResponse(resp *http.Response) ([]*ctx509.Ce
 		case ct.X509LogEntryType:
 			certificate, err = ctx509.ParseCertificate(merkleLeaf.TimestampedEntry.X509Entry.Data)
 			if err != nil {
-				return nil, fmt.Errorf("getCerts | ParseCertificate %w", err)
+				switch err.(type) {
+				case ctx509.NonFatalErrors:
+					fmt.Println(err.Error())
+				default:
+					return nil, fmt.Errorf("getCerts | ParseCertificate %w", err)
+				}
 			}
 		case ct.PrecertLogEntryType:
 			certificate, err = ctx509.ParseTBSCertificate(merkleLeaf.TimestampedEntry.PrecertEntry.TBSCertificate)
 			if err != nil {
-				return nil, fmt.Errorf("getCerts | ParseTBSCertificate %w", err)
+				switch err.(type) {
+				case ctx509.NonFatalErrors:
+					fmt.Println(err.Error())
+				default:
+					return nil, fmt.Errorf("getCerts | ParseTBSCertificate %w", err)
+				}
 			}
 		default:
 			return nil, fmt.Errorf("getCerts | CT type unknown %v", entryType)
