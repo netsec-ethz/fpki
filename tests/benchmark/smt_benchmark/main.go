@@ -19,6 +19,7 @@ var wg sync.WaitGroup
 
 // benchmark for sparse merkle tree
 func main() {
+	db.TruncateAllTablesWithoutTestObject()
 	BenchmarkCacheHeightLimit233()
 	fmt.Println("benchmark for 5M updating and fetching finished")
 }
