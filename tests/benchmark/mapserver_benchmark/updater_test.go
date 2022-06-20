@@ -177,7 +177,7 @@ func benchmarkUpdateDomainEntriesUsingCerts(b *testing.B, count int) {
 	// exec only once, assume perfect measuring. Because b.N is the number of iterations,
 	// just mimic b.N executions.
 	t0 := time.Now()
-	_, err = up.UpdateDomainEntriesUsingCerts(ctx, certs, 10)
+	_, _, err = up.UpdateDomainEntriesUsingCerts(ctx, certs, 10)
 	elapsed := time.Since(t0)
 	require.NoError(b, err)
 	for i := 1; i < b.N; i++ {
@@ -203,7 +203,7 @@ func benchmarkFetchUpdatedDomainHash(b *testing.B, count int) {
 	defer cancelF()
 	up, err := updater.NewMapTestUpdater(nil, 233)
 	require.NoError(b, err)
-	_, err = up.UpdateDomainEntriesUsingCerts(ctx, certs, 10)
+	_, _, err = up.UpdateDomainEntriesUsingCerts(ctx, certs, 10)
 	require.NoError(b, err)
 
 	b.ResetTimer()
@@ -237,7 +237,7 @@ func benchmarkRetrieveKeyValuePairDomainEntries(b *testing.B, count int) {
 	defer cancelF()
 	up, err := updater.NewMapTestUpdater(nil, 233)
 	require.NoError(b, err)
-	_, err = up.UpdateDomainEntriesUsingCerts(ctx, certs, 10)
+	_, _, err = up.UpdateDomainEntriesUsingCerts(ctx, certs, 10)
 	require.NoError(b, err)
 	updatedDomainHash, err := up.FetchUpdatedDomainHash(ctx)
 	require.NoError(b, err)
@@ -274,7 +274,7 @@ func benchmarkKeyValuePairToSMTInput(b *testing.B, count int) {
 	defer cancelF()
 	up, err := updater.NewMapTestUpdater(nil, 233)
 	require.NoError(b, err)
-	_, err = up.UpdateDomainEntriesUsingCerts(ctx, certs, 10)
+	_, _, err = up.UpdateDomainEntriesUsingCerts(ctx, certs, 10)
 	require.NoError(b, err)
 	updatedDomainHash, err := up.FetchUpdatedDomainHash(ctx)
 	require.NoError(b, err)
@@ -314,7 +314,7 @@ func benchmarkSmtUpdate(b *testing.B, count int) {
 	up, err := updater.NewMapTestUpdater(nil, 233)
 	require.NoError(b, err)
 
-	_, err = up.UpdateDomainEntriesUsingCerts(ctx, certs, 10)
+	_, _, err = up.UpdateDomainEntriesUsingCerts(ctx, certs, 10)
 	require.NoError(b, err)
 	updatedDomainHash, err := up.FetchUpdatedDomainHash(ctx)
 	require.NoError(b, err)
@@ -356,7 +356,7 @@ func benchmarkCommitChanges(b *testing.B, count int) {
 	up, err := updater.NewMapTestUpdater(nil, 233)
 	require.NoError(b, err)
 
-	_, err = up.UpdateDomainEntriesUsingCerts(ctx, certs, 10)
+	_, _, err = up.UpdateDomainEntriesUsingCerts(ctx, certs, 10)
 	require.NoError(b, err)
 	updatedDomainHash, err := up.FetchUpdatedDomainHash(ctx)
 	require.NoError(b, err)

@@ -33,20 +33,13 @@ func (mapUpdater *MapUpdater) retrieveAffectedDomainFromDB(ctx context.Context, 
 }
 
 // writeChangesToDB: commit changes to domain entries table and updates table
-func (mapUpdater *MapUpdater) writeChangesToDB(ctx context.Context, updatesToDomainEntriesTable []db.KeyValuePair,
-	updatesToUpdatesTable []common.SHA256Output) (int, error) {
-
+func (mapUpdater *MapUpdater) writeChangesToDB(ctx context.Context, updatesToDomainEntriesTable []db.KeyValuePair) (int, error) {
 	_, err := mapUpdater.dbConn.UpdateKeyValuesDomainEntries(ctx, updatesToDomainEntriesTable)
 	if err != nil {
 		return 0, fmt.Errorf("writeChangesToDB | UpdateKeyValuesDomainEntries | %w", err)
 	}
 
-	_, err = mapUpdater.dbConn.AddUpdatedDomainHashesUpdates(ctx, updatesToUpdatesTable)
-	if err != nil {
-		return 0, fmt.Errorf("writeChangesToDB | AddUpdatedDomainHashesUpdates | %w", err)
-	}
-
-	return len(updatesToUpdatesTable), nil
+	return len(updatesToDomainEntriesTable), nil
 }
 
 // domain bytes -> domain entries

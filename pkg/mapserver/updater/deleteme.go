@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/certificate-transparency-go/x509"
 	ctx509 "github.com/google/certificate-transparency-go/x509"
+	"github.com/netsec-ethz/fpki/pkg/common"
 )
 
 // functions for measuring the bottlemeck
@@ -23,21 +24,12 @@ func (u *MapUpdater) UpdateNextBatchReturnTimeList(ctx context.Context) (int, []
 func (mapUpdater *MapUpdater) updateCertsReturnTime(ctx context.Context, certs []*ctx509.Certificate) ([]string, error) {
 	timeList := []string{}
 	start := time.Now()
-	_, times, err := mapUpdater.UpdateDomainEntriesTableUsingCertsReturnTime(ctx, certs, 10)
+	updatedDomainHash, _, times, err := mapUpdater.UpdateDomainEntriesTableUsingCertsReturnTime(ctx, certs, 10)
 	if err != nil {
 		return nil, fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingCerts | %w", err)
 	}
 	end := time.Now()
 	fmt.Println("(db and memory) time to update domain entries: ", end.Sub(start))
-	timeList = append(timeList, end.Sub(start).String())
-
-	start = time.Now()
-	updatedDomainHash, err := mapUpdater.fetchUpdatedDomainHash(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("CollectCerts | fetchUpdatedDomainHash | %w", err)
-	}
-	end = time.Now()
-	fmt.Println("(db)     time to fetch domain hashes: ", end.Sub(start))
 	timeList = append(timeList, end.Sub(start).String())
 
 	if len(updatedDomainHash) == 0 {
@@ -74,10 +66,10 @@ func (mapUpdater *MapUpdater) updateCertsReturnTime(ctx context.Context, certs [
 
 // UpdateDomainEntriesTableUsingCerts: Update the domain entries using the domain certificates
 func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCertsReturnTime(ctx context.Context, certs []*x509.Certificate,
-	readerNum int) (int, []string, error) {
+	readerNum int) ([]common.SHA256Output, int, []string, error) {
 	timeList := []string{}
 	if len(certs) == 0 {
-		return 0, nil, nil
+		return nil, 0, nil, nil
 	}
 
 	start := time.Now()
@@ -89,7 +81,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCertsReturnTime(ctx c
 
 	// if no domain to update
 	if len(affectedDomainsMap) == 0 {
-		return 0, nil, nil
+		return nil, 0, nil, nil
 	}
 
 	start = time.Now()
@@ -97,7 +89,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCertsReturnTime(ctx c
 	// It's possible that no records will be changed, because the certs are already recorded.
 	domainEntriesMap, err := mapUpdater.retrieveAffectedDomainFromDB(ctx, affectedDomainsMap, readerNum)
 	if err != nil {
-		return 0, nil, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | retrieveAffectedDomainFromDB | %w", err)
+		return nil, 0, nil, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | retrieveAffectedDomainFromDB | %w", err)
 	}
 	end = time.Now()
 	fmt.Println("(db)     time to retrieve domain entries: ", end.Sub(start))
@@ -107,7 +99,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCertsReturnTime(ctx c
 	// update the domain entries
 	updatedDomains, err := updateDomainEntries(domainEntriesMap, domainCertMap)
 	if err != nil {
-		return 0, nil, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | updateDomainEntries | %w", err)
+		return nil, 0, nil, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | updateDomainEntries | %w", err)
 	}
 	end = time.Now()
 	fmt.Println("(db)     time to update domain entries: ", end.Sub(start))
@@ -115,20 +107,20 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCertsReturnTime(ctx c
 
 	// if during this updates, no cert is added, directly return
 	if len(updatedDomains) == 0 {
-		return 0, nil, nil
+		return nil, 0, nil, nil
 	}
 
 	start = time.Now()
 	// get the domain entries only if they are updated, from DB
 	domainEntriesToWrite, err := getDomainEntriesToWrite(updatedDomains, domainEntriesMap)
 	if err != nil {
-		return 0, nil, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | getDomainEntriesToWrite | %w", err)
+		return nil, 0, nil, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | getDomainEntriesToWrite | %w", err)
 	}
 
 	// serialized the domainEntry -> key-value pair
 	keyValuePairs, updatedDomainNameHashes, err := serializeUpdatedDomainEntries(domainEntriesToWrite)
 	if err != nil {
-		return 0, nil, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | serializeUpdatedDomainEntries | %w", err)
+		return nil, 0, nil, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | serializeUpdatedDomainEntries | %w", err)
 	}
 	end = time.Now()
 	fmt.Println("(memory) time to process updated domains: ", end.Sub(start))
@@ -136,13 +128,13 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCertsReturnTime(ctx c
 
 	start = time.Now()
 	// commit changes to db
-	num, err := mapUpdater.writeChangesToDB(ctx, keyValuePairs, updatedDomainNameHashes)
+	num, err := mapUpdater.writeChangesToDB(ctx, keyValuePairs)
 	if err != nil {
-		return 0, nil, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | writeChangesToDB | %w", err)
+		return nil, 0, nil, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | writeChangesToDB | %w", err)
 	}
 	end = time.Now()
 	fmt.Println("(db)     time to write updated domain entries: ", end.Sub(start))
 	timeList = append(timeList, end.Sub(start).String())
 
-	return num, timeList, nil
+	return updatedDomainNameHashes, num, timeList, nil
 }

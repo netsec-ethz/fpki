@@ -68,32 +68,21 @@ func (u *MapUpdater) UpdateNextBatch(ctx context.Context) (int, error) {
 // updateCerts: update the tables and SMT (in memory) using certificates
 func (mapUpdater *MapUpdater) updateCerts(ctx context.Context, certs []*ctx509.Certificate) error {
 	start := time.Now()
-	_, err := mapUpdater.UpdateDomainEntriesTableUsingCerts(ctx, certs, 10)
+	updatedDomainHash, numOfUpdates, err := mapUpdater.UpdateDomainEntriesTableUsingCerts(ctx, certs, 10)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingCerts | %w", err)
+	} else if numOfUpdates == 0 {
+		return nil
 	}
+
 	end := time.Now()
 	fmt.Println("(db and memory) time to update domain entries: ", end.Sub(start))
-
-	start = time.Now()
-	// TODO(juagargi) XXX(juagargi)
-	// why do we need to retrieve the list of updated nodes again? we had it already inside
-	// UpdateDomainEntriesTableUsingCerts !!
-	updatedDomainHash, err := mapUpdater.fetchUpdatedDomainHash(ctx)
-	if err != nil {
-		return fmt.Errorf("CollectCerts | fetchUpdatedDomainHash | %w", err)
-	}
-	end = time.Now()
-	fmt.Println("(db)     time to fetch domain hashes: ", end.Sub(start))
 
 	if len(updatedDomainHash) == 0 {
 		return nil
 	}
 
 	start = time.Now()
-	// TODO(juagargi) XXX(juagargi)
-	// why do we access the DB again to retrieve this? we had them already inside the function
-	// UpdateDomainEntriesTableUsingCerts
 	keyValuePairs, err := mapUpdater.dbConn.RetrieveKeyValuePairDomainEntries(ctx, updatedDomainHash, 10)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | RetrieveKeyValuePairMultiThread | %w", err)
@@ -130,14 +119,9 @@ func (mapUpdater *MapUpdater) UpdateRPCAndPC(ctx context.Context, ctUrl string, 
 // updateRPCAndPC: update the tables and SMT (in memory) using PC and RPC
 func (mapUpdater *MapUpdater) updateRPCAndPC(ctx context.Context, pcList []*common.PC, rpcList []*common.RPC) error {
 	// update the domain and
-	_, err := mapUpdater.UpdateDomainEntriesTableUsingRPCAndPC(ctx, rpcList, pcList, 10)
+	updatedDomainHash, _, err := mapUpdater.UpdateDomainEntriesTableUsingRPCAndPC(ctx, rpcList, pcList, 10)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingRPCAndPC | %w", err)
-	}
-
-	updatedDomainHash, err := mapUpdater.fetchUpdatedDomainHash(ctx)
-	if err != nil {
-		return fmt.Errorf("CollectCerts | fetchUpdatedDomainHash | %w", err)
 	}
 
 	if len(updatedDomainHash) == 0 {
