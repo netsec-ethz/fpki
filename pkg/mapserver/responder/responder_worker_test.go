@@ -1,17 +1,14 @@
 package responder
 
 import (
-	"bytes"
 	"context"
 	"io/ioutil"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/internal"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
@@ -55,7 +52,7 @@ func TestGetDomainProof(t *testing.T) {
 		proofs, err := responderWorker.getDomainProof(ctx, cert.Subject.CommonName)
 		require.NoError(t, err)
 
-		assert.True(t, checkProof(*cert, proofs))
+		checkProof(t, *cert, proofs)
 	}
 }
 
@@ -101,43 +98,33 @@ func getMockUpdater(smt *trie.Trie, updaterDB *internal.MockDB) (*updater.Update
 }
 
 // check if the proof is correct, provided the certificate
-func checkProof(cert x509.Certificate, proofs []mapCommon.MapServerResponse) bool {
+func checkProof(t *testing.T, cert x509.Certificate, proofs []mapCommon.MapServerResponse) {
 	caName := cert.Issuer.CommonName
+	require.Equal(t, mapCommon.PoP, proofs[len(proofs)-1].PoI.ProofType,
+		"PoP not found for %s", cert.Subject.CommonName)
 	for _, proof := range proofs {
-		if !strings.Contains(cert.Subject.CommonName, proof.Domain) {
-			return false
-		}
+		require.Contains(t, cert.Subject.CommonName, proof.Domain)
 		proofType, isCorrect, err := prover.VerifyProofByDomain(proof)
-		if err != nil {
-			return false
-		}
-
-		if !isCorrect {
-			return false
-		}
+		require.NoError(t, err)
+		require.True(t, isCorrect)
 
 		if proofType == mapCommon.PoA {
-			if len(proof.DomainEntryBytes) != 0 {
-				return false
-			}
+			require.Empty(t, proof.DomainEntryBytes)
 		}
 		if proofType == mapCommon.PoP {
 			domainEntry, err := mapCommon.DeserializeDomainEntry(proof.DomainEntryBytes)
-			if err != nil {
-				return false
-			}
+			require.NoError(t, err)
 			// get the correct CA entry
 			for _, caEntry := range domainEntry.CAEntry {
 				if caEntry.CAName == caName {
 					// check if the cert is in the CA entry
 					for _, certRaw := range caEntry.DomainCerts {
-						if bytes.Equal(certRaw, cert.Raw) {
-							return true
-						}
+						require.Equal(t, certRaw, cert.Raw)
+						return
 					}
 				}
 			}
 		}
 	}
-	return false
+	require.Fail(t, "cert/CA not found")
 }
