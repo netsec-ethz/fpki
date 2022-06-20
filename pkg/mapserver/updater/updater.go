@@ -76,6 +76,9 @@ func (mapUpdater *MapUpdater) updateCerts(ctx context.Context, certs []*ctx509.C
 	fmt.Println("(db and memory) time to update domain entries: ", end.Sub(start))
 
 	start = time.Now()
+	// TODO(juagargi) XXX(juagargi)
+	// why do we need to retrieve the list of updated nodes again? we had it already inside
+	// UpdateDomainEntriesTableUsingCerts !!
 	updatedDomainHash, err := mapUpdater.fetchUpdatedDomainHash(ctx)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | fetchUpdatedDomainHash | %w", err)
@@ -88,6 +91,9 @@ func (mapUpdater *MapUpdater) updateCerts(ctx context.Context, certs []*ctx509.C
 	}
 
 	start = time.Now()
+	// TODO(juagargi) XXX(juagargi)
+	// why do we access the DB again to retrieve this? we had them already inside the function
+	// UpdateDomainEntriesTableUsingCerts
 	keyValuePairs, err := mapUpdater.dbConn.RetrieveKeyValuePairDomainEntries(ctx, updatedDomainHash, 10)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | RetrieveKeyValuePairMultiThread | %w", err)

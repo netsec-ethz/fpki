@@ -88,6 +88,7 @@ func benchmarkFullUpdate(b *testing.B, count int) {
 	raw, err := gunzip(b, "testdata/certs.pem.gz")
 	require.NoError(b, err)
 	certs := loadCertsFromPEM(b, raw)
+
 	require.GreaterOrEqual(b, len(certs), count)
 	certs = certs[:count]
 
