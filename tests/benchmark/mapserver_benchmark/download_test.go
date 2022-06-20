@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/pem"
 	"os"
+	"sort"
 	"testing"
 	"time"
 
@@ -67,6 +68,7 @@ func TestCreateCerts(t *testing.T) {
 	require.NoError(t, err)
 	z, err := gzip.NewWriterLevel(f, gzip.BestCompression)
 	require.NoError(t, err)
+	uniqueNames := make(map[string]struct{})
 	for _, c := range certs {
 		require.NotNil(t, c.RawTBSCertificate)
 		err = pem.Encode(z, &pem.Block{
@@ -74,9 +76,26 @@ func TestCreateCerts(t *testing.T) {
 			Bytes: c.RawTBSCertificate,
 		})
 		require.NoError(t, err)
+
+		uniqueNames[c.Subject.CommonName] = struct{}{}
 	}
 	err = z.Close()
 	require.NoError(t, err)
+	err = f.Close()
+	require.NoError(t, err)
+
+	// write the list of unique names
+	names := make([]string, 0, len(uniqueNames))
+	for n := range uniqueNames {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	f, err = os.Create("testdata/uniqueNames.txt")
+	require.NoError(t, err)
+	for _, n := range names {
+		_, err = f.WriteString(n + "\n")
+		require.NoError(t, err)
+	}
 	err = f.Close()
 	require.NoError(t, err)
 }
