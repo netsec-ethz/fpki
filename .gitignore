@@ -14,4 +14,4 @@ bin/*
 .DS_Store
 
 # root
-root
+./root

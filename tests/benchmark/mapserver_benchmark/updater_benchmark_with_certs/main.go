@@ -3,7 +3,6 @@ package main
 import (
 	"compress/gzip"
 	"context"
-	"database/sql"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
@@ -20,33 +20,7 @@ import (
 
 // collect 1M certs, and update them
 func main() {
-	{ // truncate tables manually
-		db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/fpki?maxAllowedPacket=1073741824")
-		if err != nil {
-			panic(err)
-		}
-
-		// truncate table
-		_, err = db.Exec("TRUNCATE fpki.domainEntries;")
-		if err != nil {
-			panic(err)
-		}
-
-		// truncate table
-		_, err = db.Exec("TRUNCATE fpki.tree;")
-		if err != nil {
-			panic(err)
-		}
-
-		// truncate table
-		_, err = db.Exec("TRUNCATE fpki.updates;")
-		if err != nil {
-			panic(err)
-		}
-		if err = db.Close(); err != nil {
-			panic(err)
-		}
-	}
+	db.TruncateAllTablesWithoutTestObject()
 
 	// new updater
 	mapUpdater, err := updater.NewMapTestUpdater(nil, 233)

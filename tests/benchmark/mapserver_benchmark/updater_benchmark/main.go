@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"encoding/csv"
 	"fmt"
 	"os"
@@ -10,38 +9,13 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 )
 
 // collect 1M certs, and update them
 func main() {
-	{ // truncate tables manually
-		db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/fpki?maxAllowedPacket=1073741824")
-		if err != nil {
-			panic(err)
-		}
-
-		// truncate table
-		_, err = db.Exec("TRUNCATE fpki.domainEntries;")
-		if err != nil {
-			panic(err)
-		}
-
-		// truncate table
-		_, err = db.Exec("TRUNCATE fpki.tree;")
-		if err != nil {
-			panic(err)
-		}
-
-		// truncate table
-		_, err = db.Exec("TRUNCATE fpki.updates;")
-		if err != nil {
-			panic(err)
-		}
-		if err = db.Close(); err != nil {
-			panic(err)
-		}
-	}
+	db.TruncateAllTablesWithoutTestObject()
 
 	csvFile, err := os.Create("result.csv")
 
@@ -62,7 +36,7 @@ func main() {
 	// collect 100K certs
 	mapUpdater.Fetcher.BatchSize = 10000
 	const baseCTSize = 2 * 1000
-	const count = 5000 * 1000
+	const count = 1000 * 1000
 	mapUpdater.StartFetching("https://ct.googleapis.com/logs/argon2021",
 		baseCTSize, baseCTSize+count-1)
 

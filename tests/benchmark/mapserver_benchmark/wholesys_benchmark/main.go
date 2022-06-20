@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/domain"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/responder"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
@@ -24,14 +24,12 @@ import (
 
 var wg sync.WaitGroup
 var root []byte
-var domainMap map[string]byte
 
 func main() {
-	domainMap = make(map[string]byte)
-	truncateTable()
+	db.TruncateAllTablesWithoutTestObject()
 	doUpdater()
 	doResponder()
-	truncateTable()
+	db.TruncateAllTablesWithoutTestObject()
 }
 
 func doUpdater() {
@@ -126,37 +124,6 @@ func doResponder() {
 
 	fetchEndTime := time.Now()
 	fmt.Println("time to fetch proofs: ", fetchEndTime.Sub(fetchStartTime))
-}
-
-func truncateTable() {
-	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/fpki?maxAllowedPacket=1073741824")
-	if err != nil {
-		panic(err)
-	}
-	defer db.Close()
-
-	// truncate table
-	_, err = db.Exec("TRUNCATE fpki.domainEntries;")
-	if err != nil {
-		panic(err)
-	}
-
-	// truncate table
-	_, err = db.Exec("TRUNCATE fpki.tree;")
-	if err != nil {
-		panic(err)
-	}
-
-	// truncate table
-	_, err = db.Exec("TRUNCATE fpki.updates;")
-	if err != nil {
-		panic(err)
-	}
-
-	err = db.Close()
-	if err != nil {
-		panic(err)
-	}
 }
 
 // CertData: merkle tree leaf

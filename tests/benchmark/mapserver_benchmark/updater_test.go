@@ -3,13 +3,16 @@ package benchmark
 import (
 	"compress/gzip"
 	"context"
-	"database/sql"
+	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
+	"os/exec"
 	"testing"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 	"github.com/stretchr/testify/require"
 )
@@ -106,6 +109,47 @@ func benchmarkFullUpdate(b *testing.B, count int) {
 	for i := 1; i < b.N; i++ {
 		time.Sleep(elapsed)
 	}
+}
+
+// TestDoUpdatesFromTestDataCerts replaces the DB with an updated DB
+// from all certificates in the testdata/certs.pem.gz file.
+func TestDoUpdatesFromTestDataCerts(t *testing.T) {
+	if os.Getenv("FPKI_TESTS_GENCERTS") == "" {
+		t.Skip("not generating new certificates")
+	}
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancelF()
+	swapBack := swapDBs(t)
+	defer swapBack()
+	fmt.Println("Loading certs ...")
+	raw, err := gunzip(t, "testdata/certs.pem.gz")
+	require.NoError(t, err)
+	certs := loadCertsFromPEM(t, raw)
+
+	db.TruncateAllTablesForTest(t)
+
+	up, err := updater.NewMapTestUpdater(nil, 233)
+	require.NoError(t, err)
+
+	batchSize := 10 * 1000
+	for i := 0; i < len(certs); i += batchSize {
+		certs := certs[i : i+batchSize]
+		err = up.UpdateCerts(ctx, certs)
+		require.NoError(t, err)
+		err = up.CommitSMTChanges(ctx)
+		require.NoError(t, err)
+		fmt.Printf("Updated %d certs ...\n", i)
+	}
+	root := up.GetRoot()
+	err = up.Close()
+	require.NoError(t, err)
+	err = ioutil.WriteFile("testdata/root100K.bin", root, 0664)
+	require.NoError(t, err)
+
+	// dump contents using mysqldump
+	err = exec.Command("bash", "-c", "mysqldump -u root  fpki |gzip - "+
+		">testdata/dump100K.sql.gz").Run()
+	require.NoError(t, err)
 }
 
 // BenchmarkUpdateDomainEntriesUsingCerts10K uses ~ 1246 ms
@@ -348,18 +392,7 @@ func swapDBs(t require.TestingT) func() {
 		// this will swap the DB back to its original state
 	}
 	// prepare the DB for the benchmark
-	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/fpki?maxAllowedPacket=1073741824")
-	require.NoError(t, err)
-	// truncate tables
-	_, err = db.Exec("TRUNCATE fpki.domainEntries;")
-	require.NoError(t, err)
-	_, err = db.Exec("TRUNCATE fpki.tree;")
-	require.NoError(t, err)
-	_, err = db.Exec("TRUNCATE fpki.updates;")
-	require.NoError(t, err)
-	// done
-	err = db.Close()
-	require.NoError(t, err)
+	db.TruncateAllTablesForTest(t)
 	return swapBack
 }
 
