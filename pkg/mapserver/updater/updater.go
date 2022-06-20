@@ -67,6 +67,7 @@ func (u *MapUpdater) UpdateNextBatch(ctx context.Context) (int, error) {
 
 // updateCerts: update the tables and SMT (in memory) using certificates
 func (mapUpdater *MapUpdater) updateCerts(ctx context.Context, certs []*ctx509.Certificate) error {
+
 	start := time.Now()
 	keyValuePairs, numOfUpdates, err := mapUpdater.UpdateDomainEntriesTableUsingCerts(ctx, certs, 10)
 	if err != nil {

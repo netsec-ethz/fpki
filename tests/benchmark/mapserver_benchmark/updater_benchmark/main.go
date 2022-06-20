@@ -45,7 +45,7 @@ func main() {
 		fmt.Println()
 		fmt.Println()
 		fmt.Println(" ---------------------- batch ", i, " ---------------------------")
-		start := time.Now()
+
 		n, timeList, err := mapUpdater.UpdateNextBatchReturnTimeList(ctx)
 		if err != nil {
 			panic(err)
@@ -54,10 +54,8 @@ func main() {
 		if n == 0 {
 			break
 		}
-		fmt.Println("time to update the changes: ", time.Since(start))
-		timeToUpdateChanges := time.Since(start)
 
-		start = time.Now()
+		start := time.Now()
 		err = mapUpdater.CommitSMTChanges(ctx)
 		if err != nil {
 			panic(err)
@@ -65,7 +63,7 @@ func main() {
 		fmt.Println("time to commit the changes: ", time.Since(start))
 		timeToUpdateSMT := time.Since(start)
 
-		err = csvwriter.Write(append([]string{strconv.Itoa(i), timeToUpdateChanges.String(), timeToUpdateSMT.String()}, timeList...))
+		err = csvwriter.Write(append([]string{strconv.Itoa(i), timeToUpdateSMT.String()}, timeList...))
 		if err != nil {
 			panic(err)
 		}

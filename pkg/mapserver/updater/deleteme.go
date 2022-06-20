@@ -23,6 +23,7 @@ func (u *MapUpdater) UpdateNextBatchReturnTimeList(ctx context.Context) (int, []
 
 func (mapUpdater *MapUpdater) updateCertsReturnTime(ctx context.Context, certs []*ctx509.Certificate) ([]string, error) {
 	timeList := []string{}
+	totalStart := time.Now()
 	start := time.Now()
 	keyValuePairs, _, times, err := mapUpdater.UpdateDomainEntriesTableUsingCertsReturnTime(ctx, certs, 10)
 	if err != nil {
@@ -55,6 +56,9 @@ func (mapUpdater *MapUpdater) updateCertsReturnTime(ctx context.Context, certs [
 	fmt.Println("(memory) time to update tree in memory: ", end.Sub(start))
 	timeList = append(timeList, end.Sub(start).String())
 
+	totalEnd := time.Now()
+
+	timeList = append(timeList, totalEnd.Sub(totalStart).String())
 	timeList = append(timeList, times...)
 
 	return timeList, nil
