@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	projectCommon "github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/domain"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
 )
@@ -17,7 +18,7 @@ type newUpdates struct {
 
 // UpdateDomainEntriesTableUsingRPCAndPC: update the domain entries table, given RPC and PC
 func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingRPCAndPC(ctx context.Context, rpc []*projectCommon.RPC,
-	pc []*projectCommon.PC, readerNum int) ([]projectCommon.SHA256Output, int, error) {
+	pc []*projectCommon.PC, readerNum int) ([]db.KeyValuePair, int, error) {
 	if len(rpc) == 0 && len(pc) == 0 {
 		return nil, 0, nil
 	}
@@ -47,7 +48,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingRPCAndPC(ctx context.
 	}
 
 	// serialize the domainEntry -> key-value pair
-	keyValuePairs, updatedDomainNames, err := serializeUpdatedDomainEntries(domainEntriesToWrite)
+	keyValuePairs, err := serializeUpdatedDomainEntries(domainEntriesToWrite)
 	if err != nil {
 		return nil, 0, fmt.Errorf("UpdateDomainEntriesTableUsingRPCAndPC | serializeUpdatedDomainEntries | %w", err)
 	}
@@ -57,7 +58,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingRPCAndPC(ctx context.
 	if err != nil {
 		return nil, 0, fmt.Errorf("UpdateDomainEntriesTableUsingRPCAndPC | serializeUpdatedDomainEntries | %w", err)
 	}
-	return updatedDomainNames, numOfWrites, nil
+	return keyValuePairs, numOfWrites, nil
 }
 
 // getAffectedDomainAndCertMapPCAndRPC: return a map of affected domains, and cert map

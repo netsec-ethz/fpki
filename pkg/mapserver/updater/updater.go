@@ -68,7 +68,7 @@ func (u *MapUpdater) UpdateNextBatch(ctx context.Context) (int, error) {
 // updateCerts: update the tables and SMT (in memory) using certificates
 func (mapUpdater *MapUpdater) updateCerts(ctx context.Context, certs []*ctx509.Certificate) error {
 	start := time.Now()
-	updatedDomainHash, numOfUpdates, err := mapUpdater.UpdateDomainEntriesTableUsingCerts(ctx, certs, 10)
+	keyValuePairs, numOfUpdates, err := mapUpdater.UpdateDomainEntriesTableUsingCerts(ctx, certs, 10)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingCerts | %w", err)
 	} else if numOfUpdates == 0 {
@@ -78,17 +78,9 @@ func (mapUpdater *MapUpdater) updateCerts(ctx context.Context, certs []*ctx509.C
 	end := time.Now()
 	fmt.Println("(db and memory) time to update domain entries: ", end.Sub(start))
 
-	if len(updatedDomainHash) == 0 {
+	if len(keyValuePairs) == 0 {
 		return nil
 	}
-
-	start = time.Now()
-	keyValuePairs, err := mapUpdater.dbConn.RetrieveKeyValuePairDomainEntries(ctx, updatedDomainHash, 10)
-	if err != nil {
-		return fmt.Errorf("CollectCerts | RetrieveKeyValuePairMultiThread | %w", err)
-	}
-	end = time.Now()
-	fmt.Println("(db)     time to retrieve domain entries: ", end.Sub(start))
 
 	keyInput, valueInput, err := keyValuePairToSMTInput(keyValuePairs)
 	if err != nil {
@@ -119,19 +111,13 @@ func (mapUpdater *MapUpdater) UpdateRPCAndPC(ctx context.Context, ctUrl string, 
 // updateRPCAndPC: update the tables and SMT (in memory) using PC and RPC
 func (mapUpdater *MapUpdater) updateRPCAndPC(ctx context.Context, pcList []*common.PC, rpcList []*common.RPC) error {
 	// update the domain and
-	updatedDomainHash, _, err := mapUpdater.UpdateDomainEntriesTableUsingRPCAndPC(ctx, rpcList, pcList, 10)
+	keyValuePairs, _, err := mapUpdater.UpdateDomainEntriesTableUsingRPCAndPC(ctx, rpcList, pcList, 10)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingRPCAndPC | %w", err)
 	}
 
-	if len(updatedDomainHash) == 0 {
+	if len(keyValuePairs) == 0 {
 		return nil
-	}
-
-	// fetch domains from DB
-	keyValuePairs, err := mapUpdater.dbConn.RetrieveKeyValuePairDomainEntries(ctx, updatedDomainHash, 10)
-	if err != nil {
-		return fmt.Errorf("CollectCerts | RetrieveKeyValuePairMultiThread | %w", err)
 	}
 
 	keyInput, valueInput, err := keyValuePairToSMTInput(keyValuePairs)

@@ -138,7 +138,7 @@ func TestUpdateDomainEntriesWithRPCAndPC(t *testing.T) {
 	require.NoError(t, err)
 
 	// serialize the domainEntry -> key-value pair
-	_, _, err = serializeUpdatedDomainEntries(domainEntriesToWrite)
+	_, err = serializeUpdatedDomainEntries(domainEntriesToWrite)
 	require.NoError(t, err)
 }
 

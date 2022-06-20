@@ -20,7 +20,7 @@ type uniqueStringSet map[string]struct{}
 
 // UpdateDomainEntriesTableUsingCerts: Update the domain entries using the domain certificates
 func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCerts(ctx context.Context, certs []*x509.Certificate,
-	readerNum int) ([]common.SHA256Output, int, error) {
+	readerNum int) ([]db.KeyValuePair, int, error) {
 	if len(certs) == 0 {
 		return nil, 0, nil
 	}
@@ -68,7 +68,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCerts(ctx context.Con
 	}
 
 	// serialized the domainEntry -> key-value pair
-	keyValuePairs, updatedDomainNameHashes, err := serializeUpdatedDomainEntries(domainEntriesToWrite)
+	keyValuePairs, err := serializeUpdatedDomainEntries(domainEntriesToWrite)
 	if err != nil {
 		return nil, 0, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | serializeUpdatedDomainEntries | %w", err)
 	}
@@ -84,7 +84,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCerts(ctx context.Con
 	end = time.Now()
 	fmt.Println("(db)     time to write updated domain entries: ", end.Sub(start))
 
-	return updatedDomainNameHashes, num, nil
+	return keyValuePairs, num, nil
 }
 
 // return affected domains.
@@ -187,18 +187,16 @@ func getDomainEntriesToWrite(updatedDomain uniqueSet,
 }
 
 // serializeUpdatedDomainEntries: serialize the updated domains
-func serializeUpdatedDomainEntries(domainEntriesMap map[common.SHA256Output]*mapCommon.DomainEntry) ([]db.KeyValuePair,
-	[]common.SHA256Output, error) {
+func serializeUpdatedDomainEntries(domainEntriesMap map[common.SHA256Output]*mapCommon.DomainEntry) ([]db.KeyValuePair, error) {
 	result := make([]db.KeyValuePair, 0, len(domainEntriesMap))
-	updatedDomainNameHashes := make([]common.SHA256Output, 0, len(domainEntriesMap))
+
 	for domainNameHash, domainEntryBytes := range domainEntriesMap {
 		domainBytes, err := mapCommon.SerializedDomainEntry(domainEntryBytes)
 		if err != nil {
-			return nil, nil, fmt.Errorf("serializeUpdatedDomainEntries | SerializedDomainEntry | %w", err)
+			return nil, fmt.Errorf("serializeUpdatedDomainEntries | SerializedDomainEntry | %w", err)
 		}
 
 		result = append(result, db.KeyValuePair{Key: domainNameHash, Value: domainBytes})
-		updatedDomainNameHashes = append(updatedDomainNameHashes, domainNameHash)
 	}
-	return result, updatedDomainNameHashes, nil
+	return result, nil
 }

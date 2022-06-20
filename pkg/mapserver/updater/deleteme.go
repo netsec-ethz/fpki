@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/certificate-transparency-go/x509"
 	ctx509 "github.com/google/certificate-transparency-go/x509"
-	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/db"
 )
 
 // functions for measuring the bottlemeck
@@ -24,26 +24,19 @@ func (u *MapUpdater) UpdateNextBatchReturnTimeList(ctx context.Context) (int, []
 func (mapUpdater *MapUpdater) updateCertsReturnTime(ctx context.Context, certs []*ctx509.Certificate) ([]string, error) {
 	timeList := []string{}
 	start := time.Now()
-	updatedDomainHash, _, times, err := mapUpdater.UpdateDomainEntriesTableUsingCertsReturnTime(ctx, certs, 10)
+	keyValuePairs, _, times, err := mapUpdater.UpdateDomainEntriesTableUsingCertsReturnTime(ctx, certs, 10)
 	if err != nil {
 		return nil, fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingCerts | %w", err)
 	}
 	end := time.Now()
+	fmt.Println()
+	fmt.Println("============================================")
 	fmt.Println("(db and memory) time to update domain entries: ", end.Sub(start))
 	timeList = append(timeList, end.Sub(start).String())
 
-	if len(updatedDomainHash) == 0 {
+	if len(keyValuePairs) == 0 {
 		return nil, nil
 	}
-
-	start = time.Now()
-	keyValuePairs, err := mapUpdater.dbConn.RetrieveKeyValuePairDomainEntries(ctx, updatedDomainHash, 10)
-	if err != nil {
-		return nil, fmt.Errorf("CollectCerts | RetrieveKeyValuePairMultiThread | %w", err)
-	}
-	end = time.Now()
-	fmt.Println("(db)     time to retrieve domain entries: ", end.Sub(start))
-	timeList = append(timeList, end.Sub(start).String())
 
 	keyInput, valueInput, err := keyValuePairToSMTInput(keyValuePairs)
 	if err != nil {
@@ -56,6 +49,9 @@ func (mapUpdater *MapUpdater) updateCertsReturnTime(ctx context.Context, certs [
 		return nil, fmt.Errorf("CollectCerts | Update | %w", err)
 	}
 	end = time.Now()
+
+	fmt.Println()
+	fmt.Println("============================================")
 	fmt.Println("(memory) time to update tree in memory: ", end.Sub(start))
 	timeList = append(timeList, end.Sub(start).String())
 
@@ -66,7 +62,7 @@ func (mapUpdater *MapUpdater) updateCertsReturnTime(ctx context.Context, certs [
 
 // UpdateDomainEntriesTableUsingCerts: Update the domain entries using the domain certificates
 func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCertsReturnTime(ctx context.Context, certs []*x509.Certificate,
-	readerNum int) ([]common.SHA256Output, int, []string, error) {
+	readerNum int) ([]db.KeyValuePair, int, []string, error) {
 	timeList := []string{}
 	if len(certs) == 0 {
 		return nil, 0, nil, nil
@@ -118,7 +114,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCertsReturnTime(ctx c
 	}
 
 	// serialized the domainEntry -> key-value pair
-	keyValuePairs, updatedDomainNameHashes, err := serializeUpdatedDomainEntries(domainEntriesToWrite)
+	keyValuePairs, err := serializeUpdatedDomainEntries(domainEntriesToWrite)
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | serializeUpdatedDomainEntries | %w", err)
 	}
@@ -136,5 +132,5 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCertsReturnTime(ctx c
 	fmt.Println("(db)     time to write updated domain entries: ", end.Sub(start))
 	timeList = append(timeList, end.Sub(start).String())
 
-	return updatedDomainNameHashes, num, timeList, nil
+	return keyValuePairs, num, timeList, nil
 }
