@@ -35,7 +35,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	responder, err := responder.NewMapResponder(ctx, root, 233, 10)
+	responder, err := responder.NewMapResponder(ctx, root, 233)
 	if err != nil {
 		panic(err)
 	}

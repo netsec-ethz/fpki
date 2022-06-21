@@ -33,7 +33,7 @@ func TestGetDomainProof(t *testing.T) {
 	}
 
 	// update the certificates in a mock updater, then return the mock db
-	smtDB, updaterDB, root, err := getUpdatedUpdater(certs)
+	smtDB, root, err := getUpdatedUpdater(certs)
 	require.NoError(t, err)
 
 	smt, err := trie.NewTrie(root, common.SHA256Hash, smtDB)
@@ -42,7 +42,7 @@ func TestGetDomainProof(t *testing.T) {
 	// init a new responder worker
 	responderWorker := responderWorker{
 		smt:    smt,
-		dbConn: updaterDB,
+		dbConn: smtDB,
 	}
 
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
@@ -57,19 +57,18 @@ func TestGetDomainProof(t *testing.T) {
 }
 
 // get one updater using mockdb, update the certificates and return the mockdb
-func getUpdatedUpdater(certs []*x509.Certificate) (db.Conn, db.Conn, []byte, error) {
+func getUpdatedUpdater(certs []*x509.Certificate) (db.Conn, []byte, error) {
 	smtDB := internal.NewMockDB()
 	smt, err := trie.NewTrie(nil, common.SHA256Hash, smtDB)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
 	smt.CacheHeightLimit = 233
 
-	updaterDB := internal.NewMockDB()
-	updater, err := getMockUpdater(smt, updaterDB)
+	updater, err := getMockUpdater(smt, smtDB)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
@@ -78,15 +77,15 @@ func getUpdatedUpdater(certs []*x509.Certificate) (db.Conn, db.Conn, []byte, err
 	// update the db using the certs
 	err = updater.UpdateCerts(ctx, certs)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
 	err = updater.CommitSMTChanges(ctx)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
-	return smtDB, updaterDB, updater.SMT().Root, nil
+	return smtDB, updater.SMT().Root, nil
 }
 
 // get a updater using mock db
@@ -99,6 +98,7 @@ func getMockUpdater(smt *trie.Trie, updaterDB *internal.MockDB) (*updater.Update
 
 // check if the proof is correct, provided the certificate
 func checkProof(t *testing.T, cert x509.Certificate, proofs []mapCommon.MapServerResponse) {
+	t.Helper()
 	caName := cert.Issuer.CommonName
 	require.Equal(t, mapCommon.PoP, proofs[len(proofs)-1].PoI.ProofType,
 		"PoP not found for %s", cert.Subject.CommonName)

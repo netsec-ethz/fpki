@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"os"
 	"os/exec"
+	"runtime/pprof"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -91,6 +92,67 @@ func benchmarkResponderGetProof(b *testing.B, count int) {
 	}
 	wg.Wait()
 	fmt.Printf("done %d requests, used %s\n", numRequests, time.Since(t0))
+	elapsed := time.Since(t0)
+	require.NoError(b, err)
+	for i := 1; i < b.N; i++ {
+		time.Sleep(elapsed)
+	}
+}
+
+// BenchmarkResponderGetProofNoPrepareDB10K uses 541ms
+func BenchmarkResponderGetProofNoPrepareDB10K(b *testing.B) {
+	benchmarkResponderGetProofNoPrepareDB(b, 10*1000)
+}
+
+// BenchmarkResponderGetProofNoPrepareDB100K uses 6286ms
+func BenchmarkResponderGetProofNoPrepareDB100K(b *testing.B) {
+	benchmarkResponderGetProofNoPrepareDB(b, 100*1000)
+}
+
+func benchmarkResponderGetProofNoPrepareDB(b *testing.B, count int) {
+	pprof.StopCPUProfile()
+	names := make([]string, 0)
+	f, err := os.Open("testdata/uniqueNames.txt")
+	require.NoError(b, err)
+	s := bufio.NewScanner(f)
+	for s.Scan() {
+		names = append(names, s.Text())
+	}
+	err = f.Close()
+	require.NoError(b, err)
+
+	// create responder and request proof for those names
+	ctx, cancelF := context.WithTimeout(context.Background(), 15*time.Minute)
+	defer cancelF()
+	root, err := ioutil.ReadFile("testdata/root100K.bin")
+	require.NoError(b, err)
+	require.NotEmpty(b, root)
+	responder, err := responder.NewMapResponder(ctx, root, 233)
+	require.NoError(b, err)
+
+	profileF, err := os.Create("cpuprofile.pprof")
+	require.NoError(b, err)
+	defer profileF.Close()
+
+	b.ResetTimer()
+	// runtime.SetCPUProfileRate(1000000)
+	err = pprof.StartCPUProfile(profileF)
+	require.NoError(b, err)
+	defer pprof.StopCPUProfile()
+
+	// exec only once, assume perfect measuring. Because b.N is the number of iterations,
+	// just mimic b.N executions.
+	t0 := time.Now()
+	work := func(count int, names []string) {
+		for i := 0; i < count; i++ {
+			name := names[rand.Intn(len(names))]
+			responses, err := responder.GetProof(ctx, name)
+			// require.NoError(b, err)
+			_ = err
+			_ = responses
+		}
+	}
+	work(count, names)
 	elapsed := time.Since(t0)
 	require.NoError(b, err)
 	for i := 1; i < b.N; i++ {

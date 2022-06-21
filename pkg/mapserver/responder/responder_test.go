@@ -88,7 +88,7 @@ func TestResponderWithPoP(t *testing.T) {
 	require.Len(t, certs, count)
 
 	// create responder and request proof for those names
-	responder, err := NewMapResponder(ctx, root, 233, 10)
+	responder, err := NewMapResponder(ctx, root, 233)
 	require.NoError(t, err)
 	for _, cert := range certs {
 		responses, err := responder.GetProof(ctx, cert.Subject.CommonName)
@@ -109,7 +109,7 @@ func TestResponderWithPoP(t *testing.T) {
 // get a mock responder
 func getMockResponder(certs []*x509.Certificate) (*MapResponder, error) {
 	// update the certs, and get the mock db of SMT and db
-	smtDB, updaterDB, root, err := getUpdatedUpdater(certs)
+	smtDB, root, err := getUpdatedUpdater(certs)
 
 	smt, err := trie.NewTrie(root, common.SHA256Hash, smtDB)
 	if err != nil {
@@ -117,24 +117,9 @@ func getMockResponder(certs []*x509.Certificate) (*MapResponder, error) {
 	}
 	smt.CacheHeightLimit = 233
 
-	clientInputChan := make(chan ClientRequest)
-	workerPool := make([]*responderWorker, 0, 3)
-
-	// create worker pool
-	for i := 0; i < 3; i++ {
-		newWorker := &responderWorker{
-			dbConn:          updaterDB,
-			clientInputChan: clientInputChan,
-			smt:             smt,
-		}
-		workerPool = append(workerPool, newWorker)
-		go newWorker.work()
-	}
-
 	responder := &MapResponder{
-		workerPool: workerPool,
-		workerChan: clientInputChan,
-		smt:        smt,
+		smt:  smt,
+		conn: smtDB,
 	}
 
 	return responder, nil
