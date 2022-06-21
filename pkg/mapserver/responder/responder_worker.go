@@ -11,6 +11,19 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
+// ClientRequest: client's request
+type ClientRequest struct {
+	domainName string
+	ctx        context.Context
+	resultChan chan ClientResponse
+}
+
+// ClientResponse: response to client's request
+type ClientResponse struct {
+	Proof []mapCommon.MapServerResponse
+	Err   error
+}
+
 // responderWorker: worker
 type responderWorker struct {
 	dbConn          db.Conn

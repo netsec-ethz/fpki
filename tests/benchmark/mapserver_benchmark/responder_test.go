@@ -22,6 +22,11 @@ func BenchmarkResponderGetProof1M(b *testing.B) {
 	benchmarkResponderGetProof(b, 1000*1000)
 }
 
+// BenchmarkResponderGetProof10M uses:
+// Parallel req.	Time
+// 			  64 	53.75s
+// 			2000	55.17s
+//		   20000	63.90s
 func BenchmarkResponderGetProof10M(b *testing.B) {
 	benchmarkResponderGetProof(b, 10*1000*1000)
 }
@@ -53,7 +58,7 @@ func benchmarkResponderGetProof(b *testing.B, count int) {
 	root, err := ioutil.ReadFile("testdata/root100K.bin")
 	require.NoError(b, err)
 	require.NotEmpty(b, root)
-	responder, err := responder.NewMapResponder(ctx, root, 233, 10)
+	responder, err := responder.NewMapResponder(ctx, root, 233)
 	require.NoError(b, err)
 
 	fmt.Println("Requesting ...")
@@ -62,7 +67,7 @@ func benchmarkResponderGetProof(b *testing.B, count int) {
 	// exec only once, assume perfect measuring. Because b.N is the number of iterations,
 	// just mimic b.N executions.
 	t0 = time.Now()
-	numWorkers := 64
+	parallelRequestLimit := 2000 // 2K requests simultaneously
 	wg := &sync.WaitGroup{}
 	var numRequests int64 = 0
 	work := func(count int, names []string) {
@@ -76,13 +81,13 @@ func benchmarkResponderGetProof(b *testing.B, count int) {
 			atomic.AddInt64(&numRequests, 1)
 		}
 	}
-	wg.Add(numWorkers)
+	wg.Add(parallelRequestLimit)
 	i := 0
-	for ; i < count%numWorkers; i++ {
-		go work(count/numWorkers+1, names)
+	for ; i < count%parallelRequestLimit; i++ {
+		go work(count/parallelRequestLimit+1, names)
 	}
-	for ; i < numWorkers; i++ {
-		go work(count/numWorkers, names)
+	for ; i < parallelRequestLimit; i++ {
+		go work(count/parallelRequestLimit, names)
 	}
 	wg.Wait()
 	fmt.Printf("done %d requests, used %s\n", numRequests, time.Since(t0))
