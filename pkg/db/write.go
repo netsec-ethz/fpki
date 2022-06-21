@@ -8,53 +8,42 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/common"
 )
 
-// ********************************************************************
-//                Write functions for Tree table
-// ********************************************************************
-
 // UpdateKeyValuesDomainEntries: Update a list of key-value store
-func (c *mysqlDB) UpdateKeyValuesDomainEntries(ctx context.Context, keyValuePairs []KeyValuePair) (int64, error) {
-	numOfUpdatedRecords, err := c.doUpdatesPairs(ctx, c.prepUpdateValueDomainEntries, keyValuePairs, DomainEntries)
+func (c *mysqlDB) UpdateKeyValuesDomainEntries(ctx context.Context, keyValuePairs []KeyValuePair) (int, error) {
+	numOfUpdatedRecords, err := c.doUpdatePairs(ctx, keyValuePairs, c.getDomainEntriesUpdateStmts)
 	if err != nil {
 		return 0, fmt.Errorf("UpdateKeyValuesDomainEntries | %w", err)
 	}
 	return numOfUpdatedRecords, nil
 }
 
-// DeleteKeyValuesTreeStruc: Delete a list of key-value store
-func (c *mysqlDB) DeleteKeyValuesTreeStruct(ctx context.Context, keys []common.SHA256Output) (int64, error) {
-	numOfDeletedRecords, err := c.doUpdatesKeys(ctx, c.prepDeleteKeyValueTree, keys, Tree)
+// DeleteKeyValuesTreeStruct  deletes a list of key-value stored in the tree table.
+func (c *mysqlDB) DeleteKeyValuesTreeStruct(ctx context.Context, keys []common.SHA256Output) (int, error) {
+	n, err := c.doUpdateKeys(ctx, keys, c.getTreeDeleteStmts)
 	if err != nil {
-		return 0, fmt.Errorf("DeleteKeyValuesTreeStruc | %w", err)
+		return 0, fmt.Errorf("DeleteKeyValuesTreeStruct | %w", err)
 	}
 
-	return numOfDeletedRecords, nil
+	return n, nil
 }
 
-// ********************************************************************
-//                Write functions for domain entries table
-// ********************************************************************
-
 // UpdateKeyValuesTreeStruct: Update a list of key-value store
-func (c *mysqlDB) UpdateKeyValuesTreeStruct(ctx context.Context, keyValuePairs []KeyValuePair) (int64, error) {
-	numOfUpdatedPairs, err := c.doUpdatesPairs(ctx, c.prepUpdateValueTree, keyValuePairs, Tree)
+func (c *mysqlDB) UpdateKeyValuesTreeStruct(ctx context.Context, keyValuePairs []KeyValuePair) (int, error) {
+	numOfUpdatedPairs, err := c.doUpdatePairs(ctx, keyValuePairs, c.getTreeStructureUpdateStmts)
 	if err != nil {
 		return 0, fmt.Errorf("UpdateKeyValuesTreeStruc | %w", err)
 	}
 	return numOfUpdatedPairs, nil
 }
 
-// ********************************************************************
-//                Write functions for updates table
-// ********************************************************************
-
-// AddUpdatedDomainHashesUpdates: Insert a list of keys into the updates table. If key exists, ignore it.
-func (c *mysqlDB) AddUpdatedDomainHashesUpdates(ctx context.Context, keys []common.SHA256Output) (int64, error) {
-	numOfUpdatedPairs, err := c.doUpdatesKeys(ctx, c.prepInsertKeysUpdates, keys, Updates)
+// AddUpdatedDomainHashesUpdates inserts a list of keys into the updates table.
+// If a key exists, ignores it.
+func (c *mysqlDB) AddUpdatedDomainHashesUpdates(ctx context.Context, keys []common.SHA256Output) (int, error) {
+	n, err := c.doUpdateKeys(ctx, keys, c.getUpdatesInsertStmts)
 	if err != nil {
 		return 0, fmt.Errorf("AddUpdatedDomainHashesUpdates | %w", err)
 	}
-	return numOfUpdatedPairs, nil
+	return n, nil
 }
 
 // TruncateUpdatesTableUpdates: truncate updates table
@@ -70,124 +59,97 @@ func (c *mysqlDB) TruncateUpdatesTableUpdates(ctx context.Context) error {
 //                              Common
 // ********************************************************************
 // worker to update key-value pairs
-func (c *mysqlDB) doUpdatesPairs(ctx context.Context, stmt *sql.Stmt, keyValuePairs []KeyValuePair, tableName tableName) (int64, error) {
+func (c *mysqlDB) doUpdatePairs(ctx context.Context, keyValuePairs []KeyValuePair,
+	stmtGetter prepStmtGetter) (int, error) {
+
 	dataLen := len(keyValuePairs)
-	var affectedRowsCount int64
-	affectedRowsCount = 0
+	affectedRowsCount := 0
 
-	// write in batch of batchSize
-	for i := 0; i < dataLen/batchSize; i++ {
-		data := make([]interface{}, 2*batchSize) // 2 elements per record ()
-
-		for j := 0; j < batchSize; j++ {
-			data[2*j] = keyValuePairs[i*batchSize+j].Key[:]
-			data[2*j+1] = keyValuePairs[i*batchSize+j].Value
+	data := make([]interface{}, 2*batchSize) // 2 elements per record
+	// updateFcn updates the DB using keyValuePairs starting at index/batch, until the end of the
+	// batch or the end of keyValuePairs
+	updateFcn := func(stmt *sql.Stmt, index int) (int, error) {
+		data := data[:2*min(batchSize, dataLen-batchSize*index)]
+		for j := 0; j < len(data)/2; j++ {
+			data[2*j] = keyValuePairs[index*batchSize+j].Key[:]
+			data[2*j+1] = keyValuePairs[index*batchSize+j].Value
 		}
-
 		result, err := stmt.Exec(data...)
 		if err != nil {
-			return 0, fmt.Errorf("doUpdatesPairs | Exec | %w", err)
+			return 0, fmt.Errorf("updateFcn | Exec | %w", err)
 		}
-
-		numOfRows, err := result.RowsAffected()
+		n, err := result.RowsAffected()
 		if err != nil {
-			return 0, fmt.Errorf("doUpdatesKeys | RowsAffected | %w", err)
+			return 0, fmt.Errorf("updateFcn | RowsAffected | %w", err)
 		}
-
-		affectedRowsCount = affectedRowsCount + numOfRows
+		return int(n), nil
 	}
 
-	// if remaining data is less than batchSize
+	updateWholeBatchStmt, updatePartialBatchStmt := stmtGetter(dataLen % batchSize)
+	for i := 0; i < dataLen/batchSize; i++ {
+		n, err := updateFcn(updateWholeBatchStmt, i)
+		if err != nil {
+			return 0, fmt.Errorf("doUpdatePairs | wholeBatch | %w", err)
+		}
+		affectedRowsCount += n
+	}
 	if dataLen%batchSize > 0 {
-		var repeatedStmt string
-		// prepare new stmt according to table name
-		switch tableName {
-		case Tree:
-			repeatedStmt = "REPLACE into tree (`key`, `value`) values " + repeatStmt(dataLen%batchSize, 2)
-		case DomainEntries:
-			repeatedStmt = "REPLACE into domainEntries (`key`, `value`) values " + repeatStmt(dataLen%batchSize, 2)
-		}
-
-		// prepare data
-		data := make([]interface{}, 2*(dataLen%batchSize)) // 2 elements per record ()
-
-		for j := 0; j < dataLen%batchSize; j++ {
-			data[2*j] = keyValuePairs[dataLen-dataLen%batchSize+j].Key[:]
-			data[2*j+1] = keyValuePairs[dataLen-dataLen%batchSize+j].Value
-		}
-
-		result, err := c.db.Exec(repeatedStmt, data...)
+		n, err := updateFcn(updatePartialBatchStmt, dataLen/batchSize)
 		if err != nil {
-			return 0, fmt.Errorf("doUpdatesPairs | Exec remaining | %w", err)
+			return 0, fmt.Errorf("doUpdatePairs | partialBatch | %w", err)
 		}
-
-		numOfRows, err := result.RowsAffected()
-		if err != nil {
-			return 0, fmt.Errorf("doUpdatesKeys | RowsAffected | %w", err)
-		}
-
-		affectedRowsCount = affectedRowsCount + numOfRows
+		affectedRowsCount += n
 	}
 	return affectedRowsCount, nil
 }
 
 // worker to update keys
-func (c *mysqlDB) doUpdatesKeys(ctx context.Context, stmt *sql.Stmt, keys []common.SHA256Output, tableName tableName) (int64,
-	error) {
+func (c *mysqlDB) doUpdateKeys(ctx context.Context, keys []common.SHA256Output,
+	stmtGetter prepStmtGetter) (int, error) {
+
 	dataLen := len(keys)
-	var affectedRowsCount int64
-	affectedRowsCount = 0
+	affectedRowsCount := 0
 
-	// write in batch of batchSize
-	for i := 0; i < dataLen/batchSize; i++ {
-		data := make([]interface{}, batchSize)
-
-		for j := 0; j < batchSize; j++ {
-			data[j] = keys[i*batchSize+j][:]
+	data := make([]interface{}, batchSize)
+	// updateFcn updates the DB using keys starting at index/batch, until the end of the
+	// batch or the end of keyValuePairs
+	updateFcn := func(stmt *sql.Stmt, index int) (int, error) {
+		data := data[:min(batchSize, dataLen-batchSize*index)]
+		for j := 0; j < len(data); j++ {
+			data[j] = keys[index*batchSize+j][:]
 		}
-
 		result, err := stmt.Exec(data...)
 		if err != nil {
-			return 0, fmt.Errorf("doUpdatesKeys | Exec | %w", err)
+			return 0, fmt.Errorf("updateFcn | Exec | %w", err)
 		}
-
-		numOfRows, err := result.RowsAffected()
+		n, err := result.RowsAffected()
 		if err != nil {
-			return 0, fmt.Errorf("doUpdatesKeys | RowsAffected | %w", err)
+			return 0, fmt.Errorf("updateFcn | RowsAffected | %w", err)
 		}
-
-		affectedRowsCount = affectedRowsCount + numOfRows
+		return int(n), nil
 	}
 
-	// if remaining data is less than batchSize, finish the remaining deleting
+	updateWholeBatchStmt, updatePartialBatchStmt := stmtGetter(dataLen % batchSize)
+	for i := 0; i < dataLen/batchSize; i++ {
+		n, err := updateFcn(updateWholeBatchStmt, i)
+		if err != nil {
+			return 0, fmt.Errorf("doUpdateKeys | wholeBatch | %w", err)
+		}
+		affectedRowsCount += n
+	}
 	if dataLen%batchSize > 0 {
-		// prepare new stmt according to table name
-		var repeatedStmt string
-		switch tableName {
-		case Tree:
-			repeatedStmt = repeatStmtForDelete("tree", dataLen%batchSize)
-		case Updates:
-			repeatedStmt = "INSERT IGNORE into `updates` (`key`) VALUES " + repeatStmt(dataLen%batchSize, 1)
-		}
-
-		// prepare data
-		data := make([]interface{}, dataLen%batchSize)
-
-		for j := 0; j < dataLen%batchSize; j++ {
-			data[j] = keys[dataLen-dataLen%batchSize+j][:]
-		}
-
-		result, err := c.db.Exec(repeatedStmt, data...)
+		n, err := updateFcn(updatePartialBatchStmt, dataLen/batchSize)
 		if err != nil {
-			return 0, fmt.Errorf("doUpdatesKeys | Exec remaining | %w", err)
+			return 0, fmt.Errorf("doUpdateKeys | partialBatch | %w", err)
 		}
-
-		numOfRows, err := result.RowsAffected()
-		if err != nil {
-			return 0, fmt.Errorf("doUpdatesKeys | RowsAffected | %w", err)
-		}
-
-		affectedRowsCount = affectedRowsCount + numOfRows
+		affectedRowsCount += n
 	}
 	return affectedRowsCount, nil
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

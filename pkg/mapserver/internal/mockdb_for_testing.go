@@ -74,7 +74,7 @@ func (d *MockDB) GetCountOfUpdatesDomainsUpdates(ctx context.Context) (int, erro
 	return len(d.UpdatesTable), nil
 }
 
-func (d *MockDB) UpdateKeyValuesDomainEntries(ctx context.Context, keyValuePairs []db.KeyValuePair) (int64, error) {
+func (d *MockDB) UpdateKeyValuesDomainEntries(ctx context.Context, keyValuePairs []db.KeyValuePair) (int, error) {
 	for _, pair := range keyValuePairs {
 		d.DomainEntriesTable[pair.Key] = pair.Value
 	}
@@ -82,7 +82,7 @@ func (d *MockDB) UpdateKeyValuesDomainEntries(ctx context.Context, keyValuePairs
 	return 0, nil
 }
 
-func (d *MockDB) UpdateKeyValuesTreeStruct(ctx context.Context, keyValuePairs []db.KeyValuePair) (int64, error) {
+func (d *MockDB) UpdateKeyValuesTreeStruct(ctx context.Context, keyValuePairs []db.KeyValuePair) (int, error) {
 	for _, pair := range keyValuePairs {
 		d.TreeTable[pair.Key] = pair.Value
 	}
@@ -90,14 +90,14 @@ func (d *MockDB) UpdateKeyValuesTreeStruct(ctx context.Context, keyValuePairs []
 	return 0, nil
 }
 
-func (d *MockDB) DeleteKeyValuesTreeStruct(ctx context.Context, keys []common.SHA256Output) (int64, error) {
+func (d *MockDB) DeleteKeyValuesTreeStruct(ctx context.Context, keys []common.SHA256Output) (int, error) {
 	for _, key := range keys {
 		delete(d.TreeTable, key)
 	}
 	return 0, nil
 }
 
-func (d *MockDB) AddUpdatedDomainHashesUpdates(ctx context.Context, keys []common.SHA256Output) (int64, error) {
+func (d *MockDB) AddUpdatedDomainHashesUpdates(ctx context.Context, keys []common.SHA256Output) (int, error) {
 	for _, key := range keys {
 		d.UpdatesTable[key] = empty
 	}
@@ -107,14 +107,4 @@ func (d *MockDB) AddUpdatedDomainHashesUpdates(ctx context.Context, keys []commo
 func (d *MockDB) TruncateUpdatesTableUpdates(ctx context.Context) error {
 	d.UpdatesTable = make(map[common.SHA256Output]struct{})
 	return nil
-}
-
-//*********************************************************
-//                 Not used
-//*********************************************************
-
-func (d *MockDB) RetrieveValue(ctx context.Context, id db.FullID) ([]byte, error) { return nil, nil }
-
-func (d *MockDB) RetrieveNode(ctx context.Context, id db.FullID) ([]byte, []byte, error) {
-	return nil, nil, nil
 }

@@ -3,6 +3,7 @@ package db
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -16,87 +17,108 @@ import (
 // * updates table: contains the domain hashes of the changed domains during this update.
 //   updates table will be truncated after the Sparse Merkle Tree is updated.
 
-// TableName: enum type of tables
-type tableName int
-
-const (
-	DomainEntries tableName = iota
-	Tree
-	Updates
-)
+type prepStmtGetter func(count int) (*sql.Stmt, *sql.Stmt)
 
 type mysqlDB struct {
-	db                 *sql.DB
-	prepValueProofPath *sql.Stmt // returns the value and the complete proof path
-	prepGetValue       *sql.Stmt // returns the value for a node
+	db *sql.DB
 
-	prepGetValueDomainEntries    *sql.Stmt // returns the domain entries
-	prepUpdateValueDomainEntries *sql.Stmt // update the DomainEntries table
+	prepGetValueDomainEntries *sql.Stmt // returns the domain entries
+	prepGetValueTree          *sql.Stmt // get key-value pair from tree table
 
-	prepUpdateValueTree    *sql.Stmt // update tree table
-	prepGetValueTree       *sql.Stmt // get key-value pair from tree table
-	prepDeleteKeyValueTree *sql.Stmt // delete key-value pair from tree table
+	prepReplaceDomainEntries    *sql.Stmt      // replace key-values into domain entries
+	prepReplaceTree             *sql.Stmt      // replace key-values into tree
+	prepReplaceUpdates          *sql.Stmt      // replace keys into updates
+	prepDeleteUpdates           *sql.Stmt      // delete keys from updates
+	getDomainEntriesUpdateStmts prepStmtGetter // used to update key-values in domain entries
+	getTreeStructureUpdateStmts prepStmtGetter // used to update key-values in the tree table
+	getUpdatesInsertStmts       prepStmtGetter // used to insert entries in the updates table
+	getTreeDeleteStmts          prepStmtGetter // used to delete entries in the tree table
 
-	prepInsertKeysUpdates *sql.Stmt // update updates table
 }
 
 // NewMysqlDB is called to create a new instance of the mysqlDB, initializing certain values,
 // like stored procedures.
 func NewMysqlDB(db *sql.DB) (*mysqlDB, error) {
-	prepValueProofPath, err := db.Prepare("CALL val_and_proof_path(?)")
-	if err != nil {
-		return nil, fmt.Errorf("NewMysqlDB | preparing statement prepValueProofPath: %w", err)
-	}
-
-	prepGetValue, err := db.Prepare("SELECT value from nodes WHERE idhash=?")
-	if err != nil {
-		return nil, fmt.Errorf("NewMysqlDB | preparing statement prepGetValue: %w", err)
-	}
-
 	prepGetValueDomainEntries, err := db.Prepare("SELECT `value` from `domainEntries` WHERE `key`=?")
 	if err != nil {
 		return nil, fmt.Errorf("NewMysqlDB | preparing statement prepGetValueDomainEntries: %w", err)
 	}
-
-	prepUpdateValueDomainEntries, err := db.Prepare("REPLACE into domainEntries (`key`, `value`) values " + repeatStmt(batchSize, 2))
-	if err != nil {
-		return nil, fmt.Errorf("NewMysqlDB | preparing statement prepUpdateValueDomainEntries: %w", err)
-	}
-
-	prepUpdateValueTree, err := db.Prepare("REPLACE into tree (`key`, `value`) values " + repeatStmt(batchSize, 2))
-	if err != nil {
-		return nil, fmt.Errorf("NewMysqlDB | preparing statement prepUpdateValueTree: %w", err)
-	}
-
 	prepGetValueTree, err := db.Prepare("SELECT `value` from `tree` WHERE `key`=?")
 	if err != nil {
 		return nil, fmt.Errorf("NewMysqlDB | preparing statement prepGetValueTree: %w", err)
 	}
 
-	prepDeleteKeyValueTree, err := db.Prepare(repeatStmtForDelete("tree", batchSize))
+	str := "REPLACE into domainEntries (`key`, `value`) values " + repeatStmt(batchSize, 2)
+	prepReplaceDomainEntries, err := db.Prepare(str)
 	if err != nil {
-		return nil, fmt.Errorf("NewMysqlDB | preparing statement prepDeleteKeyValueTree: %w", err)
+		return nil, fmt.Errorf("NewMysqlDB | preparing statement prepReplaceDomainEntries: %w", err)
 	}
-
-	prepInsertKeysUpdates, err := db.Prepare("INSERT IGNORE into `updates` (`key`) VALUES " + repeatStmt(batchSize, 1))
+	str = "REPLACE into tree (`key`, `value`) values " + repeatStmt(batchSize, 2)
+	prepReplaceTree, err := db.Prepare(str)
 	if err != nil {
-		return nil, fmt.Errorf("NewMysqlDB | preparing statement prepInsertKeysUpdates: %w", err)
+		return nil, fmt.Errorf("NewMysqlDB | preparing statement prepReplaceTree: %w", err)
+	}
+	str = "REPLACE into `updates` (`key`) VALUES " + repeatStmt(batchSize, 1)
+	prepReplaceUpdates, err := db.Prepare(str)
+	if err != nil {
+		return nil, fmt.Errorf("NewMysqlDB | preparing statement prepReplaceUpdates: %w", err)
+	}
+	str = "DELETE from `tree` WHERE `key` IN " + repeatStmt(1, batchSize)
+	prepDeleteUpdates, err := db.Prepare(str)
+	if err != nil {
+		return nil, fmt.Errorf("NewMysqlDB | preparing statement prepDeleteUpdates: %w", err)
 	}
 
 	return &mysqlDB{
-		db:                           db,
-		prepValueProofPath:           prepValueProofPath,
-		prepGetValue:                 prepGetValue,
-		prepGetValueDomainEntries:    prepGetValueDomainEntries,
-		prepUpdateValueDomainEntries: prepUpdateValueDomainEntries,
-		prepUpdateValueTree:          prepUpdateValueTree,
-		prepGetValueTree:             prepGetValueTree,
-		prepDeleteKeyValueTree:       prepDeleteKeyValueTree,
-		prepInsertKeysUpdates:        prepInsertKeysUpdates,
+		db:                        db,
+		prepGetValueDomainEntries: prepGetValueDomainEntries,
+		prepGetValueTree:          prepGetValueTree,
+		getDomainEntriesUpdateStmts: func(count int) (*sql.Stmt, *sql.Stmt) {
+			str = "REPLACE into domainEntries (`key`, `value`) values " + repeatStmt(count, 2)
+			prepPartial, err := db.Prepare(str)
+			if err != nil {
+				panic(err)
+			}
+			return prepReplaceDomainEntries, prepPartial
+		},
+		getTreeStructureUpdateStmts: func(count int) (*sql.Stmt, *sql.Stmt) {
+			str := "REPLACE into tree (`key`, `value`) values " + repeatStmt(count, 2)
+			prepPartial, err := db.Prepare(str)
+			if err != nil {
+				panic(err)
+			}
+			return prepReplaceTree, prepPartial
+		},
+		getUpdatesInsertStmts: func(count int) (*sql.Stmt, *sql.Stmt) {
+			str := "REPLACE into `updates` (`key`) VALUES " + repeatStmt(count, 1)
+			prepPartial, err := db.Prepare(str)
+			if err != nil {
+				panic(err)
+			}
+			return prepReplaceUpdates, prepPartial
+		},
+		getTreeDeleteStmts: func(count int) (*sql.Stmt, *sql.Stmt) {
+			str := "DELETE from `tree` WHERE `key` IN " + repeatStmt(1, count)
+			prepPartial, err := db.Prepare(str)
+			if err != nil {
+				panic(err)
+			}
+			return prepDeleteUpdates, prepPartial
+		},
 	}, nil
 }
 
 // Close: close connection
 func (c *mysqlDB) Close() error {
 	return c.db.Close()
+}
+
+// repeatStmt returns  ( (?,..inner..,?), ...outer...  )
+func repeatStmt(outer int, inner int) string {
+	components := make([]string, inner)
+	for i := 0; i < len(components); i++ {
+		components[i] = "?"
+	}
+	toRepeat := "(" + strings.Join(components, ",") + ")"
+	return strings.Repeat(toRepeat+",", outer-1) + toRepeat
 }

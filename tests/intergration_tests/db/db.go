@@ -191,7 +191,7 @@ func testTreeTable() {
 	if err != nil {
 		panic(err)
 	}
-	if affectDomainsCount != int64(len(keys)) {
+	if affectDomainsCount != len(keys) {
 		panic("Tree Table Read test 5: affected number error (1511-4222)")
 	}
 
@@ -200,7 +200,7 @@ func testTreeTable() {
 	if err != nil {
 		panic(err)
 	}
-	if affectDomainsCount != int64(len(keys)) {
+	if affectDomainsCount != len(keys) {
 		panic("Tree Table Read test 5: affected number error (4223-4555)")
 	}
 

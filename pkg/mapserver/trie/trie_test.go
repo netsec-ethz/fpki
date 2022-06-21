@@ -14,13 +14,13 @@ import (
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
-	"github.com/netsec-ethz/fpki/pkg/db"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/internal"
 	"github.com/stretchr/testify/require"
 )
 
 // TestTrieEmpty: test empty SMT
 func TestTrieEmpty(t *testing.T) {
-	db := &MockDB{}
+	db := internal.NewMockDB()
 	smt, err := NewTrie(nil, common.SHA256Hash, db)
 	require.NoError(t, err)
 
@@ -34,7 +34,7 @@ func TestTrieUpdateAndGet(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	db := &MockDB{}
+	db := internal.NewMockDB()
 	smt, err := NewTrie(nil, common.SHA256Hash, db)
 	require.NoError(t, err)
 
@@ -79,7 +79,7 @@ func TestTrieAtomicUpdate(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	db := &MockDB{}
+	db := internal.NewMockDB()
 	smt, err := NewTrie(nil, common.SHA256Hash, db)
 	require.NoError(t, err)
 
@@ -114,7 +114,7 @@ func TestTriePublicUpdateAndGet(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	db := &MockDB{}
+	db := internal.NewMockDB()
 	smt, err := NewTrie(nil, common.SHA256Hash, db)
 	require.NoError(t, err)
 
@@ -160,7 +160,7 @@ func TestTrieUpdateAndDelete(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	db := &MockDB{}
+	db := internal.NewMockDB()
 	smt, err := NewTrie(nil, common.SHA256Hash, db)
 	require.NoError(t, err)
 
@@ -202,7 +202,7 @@ func TestTrieMerkleProof(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	db := &MockDB{}
+	db := internal.NewMockDB()
 	smt, err := NewTrie(nil, common.SHA256Hash, db)
 	require.NoError(t, err)
 
@@ -237,7 +237,7 @@ func TestTrieMerkleProofCompressed(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	db := &MockDB{}
+	db := internal.NewMockDB()
 	smt, err := NewTrie(nil, common.SHA256Hash, db)
 	require.NoError(t, err)
 
@@ -270,7 +270,7 @@ func TestHeight0LeafShortcut(t *testing.T) {
 	defer cancelF()
 
 	keySize := 32
-	db := &MockDB{}
+	db := internal.NewMockDB()
 	smt, err := NewTrie(nil, common.SHA256Hash, db)
 	require.NoError(t, err)
 
@@ -342,59 +342,3 @@ func getFreshData(size, length int) [][]byte {
 	sort.Sort(DataArray(data))
 	return data
 }
-
-type MockDB struct{}
-
-// Close closes the connection.
-func (d *MockDB) Close() error { return nil }
-
-// RetrieveValue returns the value associated with the node.
-func (d *MockDB) RetrieveValue(ctx context.Context, id db.FullID) ([]byte, error) { return nil, nil }
-
-// RetrieveNode returns the value and the proof path (without the root) for a given node.
-// Since each one of the steps of the proof path has a fixed size, returning the path
-// as a slice is sufficient to know how many steps there were in the proof path.
-func (d *MockDB) RetrieveNode(ctx context.Context, id db.FullID) ([]byte, []byte, error) {
-	return nil, nil, nil
-}
-
-func (d *MockDB) RetrieveOneKeyValuePairTreeStruct(ctx context.Context, id common.SHA256Output) (*db.KeyValuePair, error) {
-	return nil, nil
-}
-
-func (d *MockDB) RetrieveOneKeyValuePairDomainEntries(ctx context.Context, key common.SHA256Output) (*db.KeyValuePair, error) {
-	return nil, nil
-}
-
-// RetrieveKeyValuePairFromTreeStruc: Retrieve a list of key-value pairs from Tree tables. Used by SMT lib.
-func (d *MockDB) RetrieveKeyValuePairTreeStruct(ctx context.Context, id []common.SHA256Output, numOfRoutine int) ([]db.KeyValuePair, error) {
-	return nil, nil
-}
-
-// RetrieveKeyValuePairFromDomainEntries: Retrieve a list of domain entries
-func (d *MockDB) RetrieveKeyValuePairDomainEntries(ctx context.Context, id []common.SHA256Output, numOfRoutine int) ([]db.KeyValuePair, error) {
-	return nil, nil
-}
-func (d *MockDB) RetrieveUpdatedDomainHashesUpdates(ctx context.Context, perQueryLimit int) ([]common.SHA256Output, error) {
-	return nil, nil
-}
-
-func (d *MockDB) GetCountOfUpdatesDomainsUpdates(ctx context.Context) (int, error) { return 0, nil }
-
-func (d *MockDB) UpdateKeyValuesDomainEntries(ctx context.Context, keyValuePairs []db.KeyValuePair) (int64, error) {
-	return 0, nil
-}
-
-func (d *MockDB) UpdateKeyValuesTreeStruct(ctx context.Context, keyValuePairs []db.KeyValuePair) (int64, error) {
-	return 0, nil
-}
-
-func (d *MockDB) DeleteKeyValuesTreeStruct(ctx context.Context, keys []common.SHA256Output) (int64, error) {
-	return 0, nil
-}
-
-func (d *MockDB) AddUpdatedDomainHashesUpdates(ctx context.Context, keys []common.SHA256Output) (int64, error) {
-	return 0, nil
-}
-
-func (d *MockDB) TruncateUpdatesTableUpdates(ctx context.Context) error { return nil }

@@ -2,13 +2,13 @@ package responder
 
 import (
 	"context"
-	"database/sql"
 	"io/ioutil"
 	"testing"
 	"time"
 
 	"github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/db"
 	mapcommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/logpicker"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
@@ -46,26 +46,7 @@ func TestGetProof(t *testing.T) {
 }
 
 func TestResponderWithPoP(t *testing.T) {
-	// truncate tables
-	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/fpki?maxAllowedPacket=1073741824")
-	if err != nil {
-		panic(err)
-	}
-
-	_, err = db.Exec("TRUNCATE domainEntries;")
-	if err != nil {
-		panic(err)
-	}
-
-	_, err = db.Exec("TRUNCATE updates;")
-	if err != nil {
-		panic(err)
-	}
-
-	_, err = db.Exec("TRUNCATE tree;")
-	if err != nil {
-		panic(err)
-	}
+	db.TruncateAllTablesForTest(t)
 
 	mapUpdater, err := updater.NewMapUpdater(nil, 233)
 	require.NoError(t, err)

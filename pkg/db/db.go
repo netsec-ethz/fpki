@@ -33,10 +33,10 @@ type Conn interface {
 	RetrieveOneKeyValuePairTreeStruct(ctx context.Context, id common.SHA256Output) (*KeyValuePair, error)
 
 	// UpdateKeyValuesTreeStruct: Update a list of key-value pairs in Tree table
-	UpdateKeyValuesTreeStruct(ctx context.Context, keyValuePairs []KeyValuePair) (int64, error)
+	UpdateKeyValuesTreeStruct(ctx context.Context, keyValuePairs []KeyValuePair) (int, error)
 
 	// DeleteKeyValuesTreeStruct: Delete a list of key-value pairs in Tree table
-	DeleteKeyValuesTreeStruct(ctx context.Context, keys []common.SHA256Output) (int64, error)
+	DeleteKeyValuesTreeStruct(ctx context.Context, keys []common.SHA256Output) (int, error)
 
 	// ************************************************************
 	//             Function for DomainEntries table
@@ -50,17 +50,17 @@ type Conn interface {
 	RetrieveKeyValuePairDomainEntries(ctx context.Context, id []common.SHA256Output, numOfRoutine int) ([]KeyValuePair, error)
 
 	// UpdateKeyValuesDomainEntries: Update a list of key-value pairs in domain entries table
-	UpdateKeyValuesDomainEntries(ctx context.Context, keyValuePairs []KeyValuePair) (int64, error)
+	UpdateKeyValuesDomainEntries(ctx context.Context, keyValuePairs []KeyValuePair) (int, error)
 
 	// ************************************************************
 	//           Function for Updates table
 	// ************************************************************
 
 	// GetCountOfUpdatesDomainsUpdates: Retrieve number of updated domains during this updates.
-	GetCountOfUpdatesDomainsUpdates(ctx context.Context) (int, error)
+	GetCountOfUpdatesDomainsUpdates(ctx context.Context) (int, error) // TODO(juagargi) review usage
 
 	// AddUpdatedDomainHashesUpdates: Add a list of hashes of updated domain into the updates table. If key exists, ignore it.
-	AddUpdatedDomainHashesUpdates(ctx context.Context, keys []common.SHA256Output) (int64, error)
+	AddUpdatedDomainHashesUpdates(ctx context.Context, keys []common.SHA256Output) (int, error)
 
 	// TODO(yongzhe): investigate whether perQueryLimit is necessary
 	// RetrieveUpdatedDomainHashesUpdates: Retrieve all updated domain hashes from update table
@@ -68,16 +68,4 @@ type Conn interface {
 
 	// TruncateUpdatesTableUpdates: Truncate updates table; Called after updating is finished
 	TruncateUpdatesTableUpdates(ctx context.Context) error
-
-	// ************************************************************
-	//         Not used functions; Used for flatten tree
-	// ************************************************************
-
-	// RetrieveValue returns the value associated with the node.
-	RetrieveValue(ctx context.Context, id FullID) ([]byte, error)
-
-	// RetrieveNode returns the value and the proof path (without the root) for a given node.
-	// Since each one of the steps of the proof path has a fixed size, returning the path
-	// as a slice is sufficient to know how many steps there were in the proof path.
-	RetrieveNode(ctx context.Context, id FullID) ([]byte, []byte, error)
 }
