@@ -14,13 +14,22 @@ import (
 )
 
 // deleteme! only used to print extra info in benchmarks:
-// functions for measuring the bottlemeck
+// functions for measuring the bottleneck
 
-func (u *MapUpdater) UpdateNextBatchReturnTimeList(ctx context.Context) (int, []string, []string, error, []*db.KeyValuePair, []*db.KeyValuePair, int) {
+func (u *MapUpdater) UpdateNextBatchReturnTimeList(ctx context.Context) (
+	int, []string, []string, error, []*db.KeyValuePair, []*db.KeyValuePair, int) {
+
 	certs, err := u.Fetcher.NextBatch(ctx)
 	if err != nil {
 		return 0, nil, nil, fmt.Errorf("CollectCerts | GetCertMultiThread | %w", err), nil, nil, 0
 	}
+
+	certSize := 0.0
+	for _, cert := range certs {
+		certSize = certSize + float64(len(cert.Raw))
+	}
+	fmt.Println("certs size: ", certSize/1024/1024, " MB")
+
 	names := parseCertDomainName(certs)
 	timeList, err, writePair, readPair, smtSize := u.updateCertsReturnTime(ctx, certs)
 	return len(certs), timeList, names, err, writePair, readPair, smtSize
@@ -47,29 +56,17 @@ func (mapUpdater *MapUpdater) updateCertsReturnTime(ctx context.Context, certs [
 		return nil, nil, []*db.KeyValuePair{}, []*db.KeyValuePair{}, 0
 	}
 
-	keyInput, valueInput, err := keyValuePairToSMTInput(keyValuePairs)
+	_, _, err = keyValuePairToSMTInput(keyValuePairs)
 	if err != nil {
 		return nil, fmt.Errorf("CollectCerts | keyValuePairToSMTInput | %w", err), nil, nil, 0
 	}
-
-	start = time.Now()
-	_, err = mapUpdater.smt.Update(ctx, keyInput, valueInput)
-	if err != nil {
-		return nil, fmt.Errorf("CollectCerts | Update | %w", err), nil, nil, 0
-	}
-	end = time.Now()
-
-	fmt.Println()
-	fmt.Println("============================================")
-	fmt.Println("(memory) time to update tree in memory: ", end.Sub(start))
-	timeList = append(timeList, end.Sub(start).String())
 
 	totalEnd := time.Now()
 
 	timeList = append(timeList, totalEnd.Sub(totalStart).String())
 	timeList = append(timeList, times...)
 
-	return timeList, nil, writePairs, readPairs, len(keyInput)
+	return timeList, nil, writePairs, readPairs, len(keyValuePairs)
 }
 
 // UpdateDomainEntriesTableUsingCerts: Update the domain entries using the domain certificates
@@ -101,8 +98,15 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCertsReturnTime(ctx c
 		return nil, 0, nil, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | retrieveAffectedDomainFromDB | %w", err), nil, nil
 	}
 	end = time.Now()
-	fmt.Println("(db)     time to retrieve domain entries: ", end.Sub(start))
+
 	timeList = append(timeList, end.Sub(start).String())
+	fmt.Println("(db)     time to retrieve domain entries: ", end.Sub(start))
+
+	//readSize := 0.0
+	//for _, v := range domainEntriesMap {
+	//	readSize = readSize + float64(countDomainEntriesSize(v))
+	//}
+	//fmt.Println("(db)     time to retrieve domain entries: ", end.Sub(start), "                ", readSize/1024/1024, " MB")
 
 	start = time.Now()
 	// update the domain entries
@@ -125,6 +129,11 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCertsReturnTime(ctx c
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | getDomainEntriesToWrite | %w", err), nil, nil
 	}
+	//readSize = 0.0
+	//for _, v := range domainEntriesToWrite {
+	//	readSize = readSize + float64(countDomainEntriesSize(v))
+	//}
+	//fmt.Println(" domain entries size:                                                          ", readSize/1024/1024, " MB")
 
 	// serialized the domainEntry -> key-value pair
 	keyValuePairs, err := serializeUpdatedDomainEntries(domainEntriesToWrite)
@@ -232,4 +241,16 @@ func (mapUpdater *MapUpdater) retrieveAffectedDomainFromDBReturnReadDomains(ctx 
 	fmt.Println("time to parse domain entries", end.Sub(start))
 	//fmt.Println(len(domainEntriesMap))
 	return domainEntriesMap, domainEntries, nil
+}
+
+func countDomainEntriesSize(entry *common.DomainEntry) int {
+	totalSize := len(entry.DomainName)
+
+	for _, ca := range entry.CAEntry {
+		totalSize = totalSize + len(ca.CAName) + len(ca.CAHash)
+		for _, cert := range ca.DomainCerts {
+			totalSize = totalSize + len(cert)
+		}
+	}
+	return totalSize
 }
