@@ -14,28 +14,15 @@ type readKeyResult struct {
 	Err  error
 }
 
-// ********************************************************************
-//                Read functions for Tree table
-// ********************************************************************
-
-// RetrieveOneKeyValuePairTreeStruct: Retrieve one single key-value pair from tree table
+// RetrieveOneKeyValuePairTreeStruct retrieves one single key-value pair from tree table
 // Return sql.ErrNoRows if no row is round
 func (c *mysqlDB) RetrieveOneKeyValuePairTreeStruct(ctx context.Context, key common.SHA256Output) (*KeyValuePair, error) {
 	keyValuePair, err := retrieveOneKeyValuePair(ctx, c.prepGetValueTree, key)
-	if err != nil {
-		if err != sql.ErrNoRows {
-			return nil, fmt.Errorf("RetrieveOneKeyValuePairTreeStruct | %w", err)
-		} else {
-			// return sql.ErrNoRows
-			return nil, err
-		}
+	if err != nil && err != sql.ErrNoRows {
+		return nil, fmt.Errorf("RetrieveOneKeyValuePairTreeStruct | %w", err)
 	}
-	return keyValuePair, nil
+	return keyValuePair, err
 }
-
-// ********************************************************************
-//                Read functions for domain entries table
-// ********************************************************************
 
 // RetrieveOneKeyValuePairDomainEntries: Retrieve one key-value pair from domain entries table
 // Return sql.ErrNoRows if no row is round

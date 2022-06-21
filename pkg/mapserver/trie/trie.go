@@ -604,8 +604,7 @@ func (s *Trie) ResetLiveCache() {
 
 // parseBatch decodes the byte data into a slice of nodes and bitmap
 func parseBatch(val []byte) [][]byte {
-	batch := make([][]byte, 31, 31)
-	bitmap := val[:4]
+	batch := make([][]byte, 31)
 	// check if the batch root is a shortcut
 	if bitIsSet(val, 31) {
 		batch[0] = []byte{1}
@@ -615,7 +614,7 @@ func parseBatch(val []byte) [][]byte {
 		batch[0] = []byte{0}
 		j := 0
 		for i := 1; i <= 30; i++ {
-			if bitIsSet(bitmap, i-1) {
+			if bitIsSet(val[:4], i-1) {
 				batch[i] = val[4+33*j : 4+33*(j+1)]
 				j++
 			}
