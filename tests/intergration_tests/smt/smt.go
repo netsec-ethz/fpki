@@ -2,82 +2,113 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"fmt"
 	"sort"
+	"time"
 
+	_ "github.com/go-sql-driver/mysql"
+	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
 func main() {
+	truncateTable()
 	testUpdateWithSameKeys()
 	testTrieMerkleProofAndReloadTree()
 	testTrieLoadCache()
-	fmt.Println("test succeed!")
+	truncateTable()
+	fmt.Println("smt test succeed!")
 }
 
+// update the db twice, with the same keys but different values
+// to check whether db size grows
 func testUpdateWithSameKeys() {
-	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/map?multiStatements=true")
+	//***************************************************************
+	//                     connect to db
+	//***************************************************************
+	db, err := db.Connect(nil)
 	if err != nil {
 		panic(err)
 	}
 
-	err = dropTestTable(db)
-	if err != nil {
-		panic(err)
-	}
+	//***************************************************************
+	//                    get a new SMT
+	//***************************************************************
+	smt, err := trie.NewTrie(nil, common.SHA256Hash, db)
 
-	smt, err := trie.NewTrie(nil, trie.Hasher, db, "deleteTest", true)
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
 
 	smt.CacheHeightLimit = 0
 	// Add 10000 key-value pair
 	keys := getFreshData(10000, 32)
 	values := getFreshData(10000, 32)
-	smt.Update(keys, values)
-	err = smt.Commit()
+
+	//***************************************************************
+	//             update and commit the tree to db
+	//***************************************************************
+	smt.Update(ctx, keys, values)
+
+	err = smt.Commit(ctx)
 	if err != nil {
 		panic(err)
 	}
 
-	prevDBSize, err := getDbEntries(db)
+	prevDBSize, err := getDbEntries()
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Println("table size", prevDBSize)
-
+	//***************************************************************
+	//           update the same key with different values
+	//***************************************************************
 	// get 10000 new values
 	newValues := getFreshData(10000, 32)
-	smt.Update(keys, newValues)
+	smt.Update(ctx, keys, newValues)
 
-	err = smt.Commit()
+	err = smt.Commit(ctx)
 	if err != nil {
 		panic(err)
 	}
 
-	newDBSize, err := getDbEntries(db)
+	newDBSize, err := getDbEntries()
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Println("table size", newDBSize)
-
+	//***************************************************************
+	//              check if db size does not change
+	//***************************************************************
 	if prevDBSize != newDBSize {
 		panic("db size not equal")
 	}
 
-	smt.Close()
+	err = smt.Close()
+	if err != nil {
+		panic(err)
+	}
 }
 
+// update a tree, commit to db, reload the tree, and test proofs
 func testTrieMerkleProofAndReloadTree() {
-	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/map?multiStatements=true")
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+	//***************************************************************
+	//                     connect to a new db
+	//***************************************************************
+	dbConn, err := db.Connect(nil)
 	if err != nil {
 		panic(err)
 	}
 
-	defer db.Close()
-	smt, err := trie.NewTrie(nil, trie.Hasher, db, "cacheStore", true)
+	//***************************************************************
+	//                    get a new SMT
+	//***************************************************************
+	smt, err := trie.NewTrie(nil, common.SHA256Hash, dbConn)
 	if err != nil {
 		panic(err)
 	}
@@ -85,20 +116,34 @@ func testTrieMerkleProofAndReloadTree() {
 	// Add data to empty trie
 	keys := getFreshData(100, 32)
 	values := getFreshData(100, 32)
-	smt.Update(keys, values)
-	smt.Commit()
+	smt.Update(ctx, keys, values)
 
+	//***************************************************************
+	//                   commit changes to db
+	//***************************************************************
+	smt.Commit(ctx)
+
+	//***************************************************************
+	//          generate Proof of Presence, and verify them
+	//***************************************************************
 	for i, key := range keys {
-		ap, _, k, v, _ := smt.MerkleProof(key)
+		ap, isIncluded, k, v, _ := smt.MerkleProof(ctx, key)
+		if !isIncluded {
+			panic("proof type error")
+		}
 		if !trie.VerifyInclusion(smt.Root, ap, key, values[i]) {
 			panic("failed to verify inclusion proof")
 		}
 		if !bytes.Equal(key, k) && !bytes.Equal(values[i], v) {
-			panic("merkle proof didnt return the correct key-value pair")
+			panic("merkle proof didn't return the correct key-value pair")
 		}
 	}
-	emptyKey := trie.Hasher([]byte("non-memvqbdqwdqwdqber"))
-	ap_, included_, proofKey_, proofValue_, _ := smt.MerkleProof(emptyKey)
+
+	//***************************************************************
+	//          generate Proof of Absence, and verify them
+	//***************************************************************
+	emptyKey := common.SHA256Hash([]byte("non-memvqbdqwdqwdqber"))
+	ap_, included_, proofKey_, proofValue_, _ := smt.MerkleProof(ctx, emptyKey)
 	if included_ {
 		panic("failed to verify non inclusion proof")
 	}
@@ -106,46 +151,68 @@ func testTrieMerkleProofAndReloadTree() {
 		panic("failed to verify non inclusion proof")
 	}
 
-	db1, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/map?multiStatements=true")
+	//***************************************************************
+	//                          start a new db
+	//***************************************************************
+	dbConn1, err := db.Connect(nil)
+	if err != nil {
+		panic(err)
+	}
+	//***************************************************************
+	//                   start a new SMT
+	//***************************************************************
+	smt1, err := trie.NewTrie(smt.Root, common.SHA256Hash, dbConn1)
+
+	//***************************************************************
+	//                   reload cache
+	//***************************************************************
+	err = smt1.LoadCache(ctx, smt.Root)
 	if err != nil {
 		panic(err)
 	}
 
-	defer db1.Close()
-
-	smt1, err := trie.NewTrie(smt.Root, trie.Hasher, db1, "cacheStore", true)
-
+	//***************************************************************
+	//                   verify PoP
+	//***************************************************************
 	for i, key_ := range keys {
-		ap_, _, k_, v_, _ := smt1.MerkleProof(key_)
+		ap_, included_, k_, v_, _ := smt1.MerkleProof(ctx, key_)
 		if !trie.VerifyInclusion(smt1.Root, ap_, key_, values[i]) {
 			panic("failed to verify new inclusion proof")
 		}
+		if !included_ {
+			panic("PoP failed")
+		}
 		if !bytes.Equal(key_, k_) && !bytes.Equal(values[i], v_) {
-			panic("new merkle proof didnt return the correct key-value pair")
+			panic("new merkle proof didn't return the correct key-value pair")
 		}
 	}
 
-	emptyKey = trie.Hasher([]byte("non-member"))
-	ap_, included_, proofKey_, proofValue_, _ = smt1.MerkleProof(emptyKey)
+	//***************************************************************
+	//                   verify PoA
+	//***************************************************************
+	emptyKey = common.SHA256Hash([]byte("non-member"))
+	ap_, included_, proofKey_, proofValue_, _ = smt1.MerkleProof(ctx, emptyKey)
 	if included_ {
 		panic("failed to verify new non inclusion proof")
 	}
 	if !trie.VerifyNonInclusion(smt1.Root, ap_, emptyKey, proofValue_, proofKey_) {
 		panic("failed to verify new non inclusion proof")
 	}
+
 }
 
 func testTrieLoadCache() {
-	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/map?multiStatements=true")
+	dbConn, err := db.Connect(nil)
 	if err != nil {
 		panic(err)
 	}
 
-	defer db.Close()
-	smt, err := trie.NewTrie(nil, trie.Hasher, db, "cacheStore", true)
+	smt, err := trie.NewTrie(nil, common.SHA256Hash, dbConn)
 	if err != nil {
 		panic(err)
 	}
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
 
 	// Test size of cache
 	smt.CacheHeightLimit = 0
@@ -153,7 +220,7 @@ func testTrieLoadCache() {
 	key1 := make([]byte, 32, 32)
 	bitSet(key1, 255)
 	values := getFreshData(2, 32)
-	smt.Update([][]byte{key0, key1}, values)
+	smt.Update(ctx, [][]byte{key0, key1}, values)
 	if smt.GetLiveCacheSize() != 66 {
 		// the nodes are at the tip, so 64 + 2 = 66
 		panic("cache size incorrect")
@@ -162,8 +229,9 @@ func testTrieLoadCache() {
 	// Add data to empty trie
 	keys := getFreshData(10, 32)
 	values = getFreshData(10, 32)
-	smt.Update(keys, values)
-	err = smt.Commit()
+	smt.Update(ctx, keys, values)
+
+	err = smt.Commit(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -172,38 +240,31 @@ func testTrieLoadCache() {
 	cacheSize := smt.GetLiveCacheSize()
 	smt.ResetLiveCache()
 
-	err = smt.LoadCache(smt.Root)
-
+	err = smt.LoadCache(ctx, smt.Root)
 	if err != nil {
 		panic(err)
 	}
+
 	if cacheSize != smt.GetLiveCacheSize() {
 		panic("Cache loading from db incorrect")
 	}
 }
 
 // get number of rows in the table
-func getDbEntries(db *sql.DB) (int, error) {
-	queryStr := "SELECT COUNT(*) FROM map.deleteTest;"
+func getDbEntries() (int, error) {
+	db, err := sql.Open("mysql", "root@tcp(localhost)/fpki")
+	if err != nil {
+		return 0, fmt.Errorf("getDbEntries | sql.Open | %w", err)
+	}
+	queryStr := "SELECT COUNT(*) FROM tree;"
 
 	var number int
-	err := db.QueryRow(queryStr).Scan(&number)
+	err = db.QueryRow(queryStr).Scan(&number)
 	if err != nil {
 		return 0, fmt.Errorf("getDbEntries | SELECT COUNT(*) | %w", err)
 	}
 
 	return number, nil
-}
-
-func dropTestTable(db *sql.DB) error {
-	queryStr := "DROP TABLE `map`.`deleteTest`;"
-
-	_, err := db.Exec(queryStr)
-	if err != nil && err.Error() != "Error 1051: Unknown table 'map.deletetest'" {
-		return fmt.Errorf("dropTestTable | DROP | %w", err)
-	}
-
-	return nil
 }
 
 func getFreshData(size, length int) [][]byte {
@@ -214,7 +275,7 @@ func getFreshData(size, length int) [][]byte {
 		if err != nil {
 			panic(err)
 		}
-		data = append(data, trie.Hasher(key)[:length])
+		data = append(data, common.SHA256Hash(key)[:length])
 	}
 	sort.Sort(trie.DataArray(data))
 	return data
@@ -222,4 +283,17 @@ func getFreshData(size, length int) [][]byte {
 
 func bitSet(bits []byte, i int) {
 	bits[i/8] |= 1 << uint(7-i%8)
+}
+
+func truncateTable() {
+	db, err := sql.Open("mysql", "root@tcp(localhost)/fpki")
+	if err != nil {
+		panic(fmt.Errorf("truncateTable | sql.Open | %w", err))
+	}
+	queryStr := "TRUNCATE `fpki`.`tree`;"
+
+	_, err = db.Exec(queryStr)
+	if err != nil {
+		panic(fmt.Errorf("truncateTable |  db.Exec | %w", err))
+	}
 }

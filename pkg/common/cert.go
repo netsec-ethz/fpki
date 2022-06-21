@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+
+	ctX509 "github.com/google/certificate-transparency-go/x509"
 )
 
 // RsaPublicKeyToPemBytes: marshall public key to bytes
@@ -24,7 +26,7 @@ func RsaPublicKeyToPemBytes(pubkey *rsa.PublicKey) ([]byte, error) {
 	), nil
 }
 
-// PemBytesToRsaPublicKey: unmarshall bytes to public key
+// PemBytesToRsaPublicKey: unmarshal bytes to public key
 func PemBytesToRsaPublicKey(pubkey []byte) (*rsa.PublicKey, error) {
 	block, _ := pem.Decode(pubkey)
 	if block == nil {
@@ -82,4 +84,32 @@ func LoadRSAKeyPairFromFile(keyPath string) (*rsa.PrivateKey, error) {
 		return nil, fmt.Errorf("LoadRSAKeyPairFromFile | ParsePKCS1PrivateKey | %w", err)
 	}
 	return keyPair, nil
+}
+
+// X509CertFromFile: read x509 cert from files
+func CTX509CertFromFile(fileName string) (*ctX509.Certificate, error) {
+	content, err := ioutil.ReadFile(fileName)
+	if err != nil {
+		return nil, fmt.Errorf("X509CertFromFile | failed to read %s: %w", fileName, err)
+	}
+
+	var block *pem.Block
+	block, _ = pem.Decode(content)
+
+	switch {
+	case block == nil:
+		return nil, fmt.Errorf("X509CertFromFile | no pem block in %s", fileName)
+	case block.Type != "CERTIFICATE":
+		return nil, fmt.Errorf("X509CertFromFile | %s contains data other than certificate", fileName)
+	}
+
+	cert, err := ctX509.ParseCertificate(block.Bytes)
+	if err != nil {
+		cert, err = ctX509.ParseTBSCertificate(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("X509CertFromFile | ParseTBSCertificate | %w", err)
+		}
+	}
+
+	return cert, nil
 }

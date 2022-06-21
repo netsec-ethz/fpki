@@ -1,0 +1,2 @@
+For functions which retrieves one key-value pair, sql.ErrNoRows will be thrown if no rows is founded.
+For functions which retrieves a list of key-value pairs, sql.ErrNoRows will be omitted. So please check the length of the output to decide if the fetching is incomplete. 

@@ -6,238 +6,113 @@
 package trie
 
 import (
-	"encoding/hex"
+	"context"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/db"
 )
-
-// ReadRequest: Read request from client
-// contains one channel to return the result
-type ReadRequest struct {
-	key        []byte
-	resultChan chan<- ReadResult
-}
-
-// ReadResult: Read result to client
-type ReadResult struct {
-	result []byte
-	err    error
-}
 
 // CacheDB: a cached db. It has one map in memory.
 type CacheDB struct {
 	// cachedNodes contains the first levels of the tree (nodes that have 2 non default children)
 	liveCache map[Hash][][]byte
-
-	// cacheMux is a lock for cachedNodes
-	liveMux sync.RWMutex
+	liveMux   sync.RWMutex
 
 	// updatedNodes that have will be flushed to disk
 	updatedNodes map[Hash][][]byte
+	updatedMux   sync.RWMutex
 
-	// updatedMux is a lock for updatedNodes
-	updatedMux sync.RWMutex
-
-	// lock for CacheDB
-	lock sync.RWMutex
+	// wholeCacheDBLock for CacheDB
+	wholeCacheDBLock sync.RWMutex
 
 	// dbConn is the conn to mysql db
-	Store SQLDB
+	Store db.Conn
 
+	// nodes to be removed from db
 	removedNode map[Hash][]byte
-
-	removeMux sync.RWMutex
-
-	// Client is the channel for user input; Used to get read request from client
-	ClientInput chan ReadRequest
-
-	tableName string
+	removeMux   sync.RWMutex
 }
 
 // NewCacheDB: return a cached db
-func NewCacheDB(store SQLDB, tableName string, iniTable bool) (*CacheDB, error) {
-	// check if the table exists
-	// if not, create a new one
-	if iniTable {
-		_, err := initValueMap(store, tableName)
-		if err != nil {
-			return nil, fmt.Errorf("NewCacheDB | initValueMap | %w", err)
-		}
-	}
-
-	// channel for the client input
-	clientInput := make(chan ReadRequest)
-
+func NewCacheDB(store db.Conn) (*CacheDB, error) {
 	return &CacheDB{
 		liveCache:    make(map[Hash][][]byte),
 		updatedNodes: make(map[Hash][][]byte),
 		removedNode:  make(map[Hash][]byte),
 		Store:        store,
-		ClientInput:  clientInput,
-		tableName:    tableName,
 	}, nil
 }
 
-// Start: creates workers and starts the worker distributor thread,
-func (db *CacheDB) Start() {
-	workerChan := make(chan ReadRequest)
-	for i := 0; i < 10; i++ {
-		go workerThread(workerChan, db.Store, db.tableName)
-	}
-	workerDistributor(db.ClientInput, workerChan)
-}
-
-// worker distributor func
-func workerDistributor(clientInpuht chan ReadRequest, workerChan chan ReadRequest) {
-	for {
-		select {
-		case newRequest := <-clientInpuht:
-			{
-				workerChan <- newRequest
-			}
-		}
-	}
-}
-
-// queries the data, and return the result to the client
-func workerThread(workerChan chan ReadRequest, db SQLDB, tableName string) {
-	for {
-		select {
-		case newRequest := <-workerChan:
-			readResult := ReadResult{}
-
-			keyString := hex.EncodeToString(newRequest.key[:])
-			queryGetStr := "SELECT value FROM `map`.`" + tableName + "` WHERE `key` = '" + keyString + "';"
-
-			var valueString string
-			err := db.QueryRow(queryGetStr).Scan(&valueString)
-			if err != nil {
-				readResult.err = fmt.Errorf("workerThread | QueryRow | %w", err)
-				newRequest.resultChan <- readResult
-				continue
-			}
-
-			value, err := hex.DecodeString(valueString)
-			if err != nil {
-				readResult.err = fmt.Errorf("workerThread | DecodeString | %w", err)
-				newRequest.resultChan <- readResult
-				continue
-			}
-
-			readResult.result = value
-			newRequest.resultChan <- readResult
-		}
-	}
-}
-
-// Create or load a table (every table represnets one tree)
-func initValueMap(db SQLDB, tableName string) (bool, error) {
-	// query to check if table exists
-	// defeult db schema = 'map'
-	queryTableStr := "SELECT COUNT(*) FROM information_schema.tables  WHERE table_schema = 'map'  AND table_name = '" + tableName + "';"
-
-	result, err := db.Query(queryTableStr)
-	if err != nil {
-		return false, fmt.Errorf("initValueMap | SELECT COUNT(*) | %w", err)
-	}
-	defer result.Close()
-
-	// check if table exists
-	var tableIsExisted bool
-	result.Next()
-	err = result.Scan(&tableIsExisted)
-	if err != nil {
-		return false, fmt.Errorf("initValueMap | Scan | %w", err)
-	}
-
-	// if table not exists -> this is a new tree (treeID does not exist)
-	if !tableIsExisted {
-		// create a new table with two columns
-		// key             VARCHAR(64)             Primary Key
-		// value           VARCHAR(4096)
-		createMapStr := "CREATE TABLE `map`.`" + tableName + "` (`key` VARCHAR(64) NOT NULL, `value` VARCHAR(2048) NOT NULL, PRIMARY KEY (`key`));"
-		newTable, err := db.Query(createMapStr)
-		if err != nil {
-			return false, fmt.Errorf("initValueMap | CREATE TABLE | %w", err)
-		}
-		defer newTable.Close()
-	}
-	return tableIsExisted, nil
-}
-
 // commitChangesToDB stores the updated nodes to disk.
-func (db *CacheDB) commitChangesToDB() error {
-	db.updatedMux.Lock()
-	defer db.updatedMux.Unlock()
-	// string builder for query
-	var sb strings.Builder
+func (cacheDB *CacheDB) commitChangesToDB(ctx context.Context) error {
+	// prepare value to store
+	updatesToDB := []db.KeyValuePair{}
+	keysToDelete := []common.SHA256Output{}
 
-	// TODO(yongzhe): maybe update is more efficient?
-	// replace the current (key, value) pair in DB; If exists, update it; If not, add one
-	queryStr := "REPLACE into `map`.`" + db.tableName + "` (`key`, `value`) values "
-	sb.WriteString(queryStr)
-
-	isFirst := true
-	// prepare queries
-	for k, v := range db.updatedNodes {
-		value := hex.EncodeToString(serializeBatch(v))
-		key := hex.EncodeToString(k[:])
-		if isFirst {
-			sb.WriteString("('" + key + "', '" + value + "')")
-			isFirst = false
-		} else {
-			sb.WriteString(",('" + key + "', '" + value + "')")
-		}
+	// get nodes from update map
+	cacheDB.updatedMux.Lock()
+	for k, v := range cacheDB.updatedNodes {
+		updatesToDB = append(updatesToDB, db.KeyValuePair{Key: k, Value: serializeBatch(v)})
 	}
-	sb.WriteString(";")
+	cacheDB.updatedNodes = make(map[Hash][][]byte)
+	cacheDB.updatedMux.Unlock()
 
-	fmt.Println("size of writes: ", len(db.updatedNodes))
+	// get nodes from remove map
+	cacheDB.removeMux.Lock()
 
-	_, err := db.Store.Exec(sb.String())
-	if err != nil {
-		return fmt.Errorf("commit | Query | %w", err)
+	for k := range cacheDB.removedNode {
+		keysToDelete = append(keysToDelete, k)
 	}
 
-	db.updatedNodes = make(map[Hash][][]byte)
+	cacheDB.removedNode = make(map[Hash][]byte)
+	cacheDB.removeMux.Unlock()
+
+	// lock the db; other thread should not read or write to db during the updates
+	cacheDB.wholeCacheDBLock.Lock()
+	defer cacheDB.wholeCacheDBLock.Unlock()
 
 	start := time.Now()
-	if len(db.removedNode) != 0 {
-		var deleteSB strings.Builder
-		queryStr = "DELETE from `map`.`" + db.tableName + "` WHERE `key` IN ("
-		deleteSB.WriteString(queryStr)
-
-		isFirst = true
-		for k := range db.removedNode {
-			key := hex.EncodeToString(k[:])
-			if isFirst {
-				deleteSB.WriteString("'" + key + "'")
-				isFirst = false
-			} else {
-				deleteSB.WriteString(",'" + key + "'")
-			}
-		}
-
-		deleteSB.WriteString(");")
-
-		fmt.Println("size of remove: ", len(db.removedNode))
-
-		_, err := db.Store.Exec(deleteSB.String())
-		if err != nil {
-			return fmt.Errorf("commit | DELETE | %w", err)
-		}
-
-		db.removedNode = make(map[Hash][]byte)
+	_, err := cacheDB.Store.UpdateKeyValuesTreeStruct(ctx, updatesToDB)
+	if err != nil {
+		return fmt.Errorf("commitChangesToDB | UpdateKeyValuePairBatches | %w", err)
 	}
 	end := time.Now()
-	fmt.Println("time to delete nodes: ", end.Sub(start))
+	fmt.Println(" time to update:", end.Sub(start))
+
+	start = time.Now()
+	if len(keysToDelete) > 0 {
+		_, err := cacheDB.Store.DeleteKeyValuesTreeStruct(ctx, keysToDelete)
+		if err != nil {
+			return fmt.Errorf("commitChangesToDB | DeleteKeyValuePairBatches | %w", err)
+		}
+	}
+	end = time.Now()
+	fmt.Println(" time to delete:", end.Sub(start))
+
 	return nil
 }
 
-// serializeBatch serialises the 2D [][]byte into a []byte for db
+// getValue gets a key-value pair from db
+func (cacheDB *CacheDB) getValue(ctx context.Context, key []byte) ([]byte, error) {
+	cacheDB.wholeCacheDBLock.Lock()
+
+	key32Bytes := Hash{}
+	copy(key32Bytes[:], key)
+
+	result, err := cacheDB.Store.RetrieveOneKeyValuePairTreeStruct(ctx, key32Bytes)
+	cacheDB.wholeCacheDBLock.Unlock()
+	if err != nil {
+		return nil, fmt.Errorf("getValue | RetrieveOneKeyValuePair | %w", err)
+	}
+
+	return result.Value, nil
+}
+
+// serializeBatch serializes the 2D [][]byte into a []byte for db
 func serializeBatch(batch [][]byte) []byte {
 	serialized := make([]byte, 4) //, 30*33)
 	if batch[0][0] == 1 {
@@ -253,6 +128,68 @@ func serializeBatch(batch [][]byte) []byte {
 	return serialized
 }
 
+//**************************************************
+//          functions for live cache
+//**************************************************
+// GetLiveCacheSize: get current size of live cache
 func (db *CacheDB) GetLiveCacheSize() int {
 	return len(db.liveCache)
+}
+
+// deleteLiveCache: delete current nodes in live cache
+func (db *CacheDB) deleteLiveCache(node common.SHA256Output) {
+	db.liveMux.Lock()
+	delete(db.liveCache, node)
+	db.liveMux.Unlock()
+}
+
+// updateLiveCache: update the key-value store in the live cache
+func (db *CacheDB) updateLiveCache(node common.SHA256Output, value [][]byte) {
+	db.liveMux.Lock()
+	db.liveCache[node] = value
+	db.liveMux.Unlock()
+}
+
+// getLiveCache: get one node from live cache
+func (db *CacheDB) getLiveCache(node common.SHA256Output) ([][]byte, bool) {
+	db.liveMux.RLock()
+	defer db.liveMux.RUnlock()
+	val, exists := db.liveCache[node]
+	return val, exists
+}
+
+//**************************************************
+//          functions for updated nodes
+//**************************************************
+// getUpdatedNodes: get one node from updated nodes
+func (db *CacheDB) getUpdatedNodes(node common.SHA256Output) ([][]byte, bool) {
+	db.updatedMux.RLock()
+	defer db.updatedMux.RUnlock()
+	val, exists := db.updatedNodes[node]
+	return val, exists
+}
+
+// updateUpdateNodes: update one node in updated nodes
+func (db *CacheDB) updateUpdateNodes(node common.SHA256Output, value [][]byte) {
+	db.updatedMux.Lock()
+	db.updatedNodes[node] = value
+	db.updatedMux.Unlock()
+}
+
+// deleteUpdatedNodes: remove updated nodes
+func (db *CacheDB) deleteUpdatedNodes(node common.SHA256Output) {
+	db.updatedMux.Lock()
+	delete(db.updatedNodes, node)
+	db.updatedMux.Unlock()
+}
+
+//**************************************************
+//          functions for removed nodes
+//**************************************************
+
+// addRemoveNode: add node to remove
+func (db *CacheDB) addRemoveNode(node common.SHA256Output) {
+	db.removeMux.Lock()
+	db.removedNode[node] = []byte{0}
+	db.removeMux.Unlock()
 }

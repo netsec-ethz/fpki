@@ -52,7 +52,7 @@ func JsonStrucToBytes(struc interface{}) ([]byte, error) {
 }
 
 //--------------------------------------------------------------------------------
-//                               Bytes to strucs
+//                               Bytes to struct
 //--------------------------------------------------------------------------------
 // JsonBytesToPoI: bytes -> PoI in json
 func JsonBytesToPoI(poiBytes []byte) (*trillian.Proof, error) {
@@ -78,7 +78,7 @@ func JsonBytesToLogRoot(logRootBytes []byte) (*types.LogRootV1, error) {
 }
 
 //--------------------------------------------------------------------------------
-//                               File to strucs
+//                               File to struct
 //--------------------------------------------------------------------------------
 
 // JsonFileToRPC: read json files and unmarshal it to Root Policy Certificate

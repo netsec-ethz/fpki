@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-//TestSerialisingDomainEntry: Serialising and deserialising of DomainEntry
-func TestSerialisingDomainEntry(t *testing.T) {
+//TestSerializingDomainEntry: Serializing and deserializing of DomainEntry
+func TestSerializingDomainEntry(t *testing.T) {
 	cert, err := common.X509CertFromFile("./testdata/cert.pem")
 	require.NoError(t, err, "X509CertFromFile error")
 
@@ -34,18 +34,18 @@ func TestSerialisingDomainEntry(t *testing.T) {
 	}
 
 	start := time.Now()
-	domainBytes, err := SerialiseDomainEnrty(testDomainEntry)
-	require.NoError(t, err, "SerialiseDomainEnrty error")
+	domainBytes, err := SerializedDomainEntry(testDomainEntry)
+	require.NoError(t, err, "SerializedDomainEntry error")
 	end := time.Now()
 	fmt.Println(end.Sub(start))
 
 	start = time.Now()
-	testDomainEntryDeserialised, err := DesrialiseDomainEnrty(domainBytes)
-	require.NoError(t, err, "DesrialiseDomainEnrty error")
+	testDomainEntryDeserialized, err := DeserializeDomainEntry(domainBytes)
+	require.NoError(t, err, "DeserializeDomainEntry error")
 	end = time.Now()
 	fmt.Println(end.Sub(start))
 
-	assert.Equal(t, reflect.DeepEqual(testDomainEntry, testDomainEntryDeserialised), true, "structure not equal")
+	assert.Equal(t, reflect.DeepEqual(testDomainEntry, testDomainEntryDeserialized), true, "structure not equal")
 }
 
 func generateRandomBytes() []byte {

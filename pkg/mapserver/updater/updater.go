@@ -2,163 +2,191 @@ package updater
 
 import (
 	"bytes"
-	"database/sql"
-	"encoding/hex"
+	"context"
 	"fmt"
 	"sort"
-	"strings"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	ctx509 "github.com/google/certificate-transparency-go/x509"
+	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/logpicker"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
-// MapUpdater: map updator. It is responsible for updating the tree, and writing to db
+// MapUpdater: map updater. It is responsible for updating the tree, and writing to db
 type MapUpdater struct {
-	smt       *trie.Trie
-	logpicker *logpicker.LogPicker
+	Fetcher logpicker.LogFetcher
+	smt     *trie.Trie
+	dbConn  db.Conn
 }
 
-// NewMapUpdater: return a new map updator. Input paras is similiar to NewMapResponder
-func NewMapUpdater(db *sql.DB, root []byte, cacheHeight int, initTable bool) (*MapUpdater, error) {
-	smt, err := trie.NewTrie(root, trie.Hasher, db, "cacheStore", initTable)
+// NewMapUpdater: return a new map updater.
+func NewMapUpdater(root []byte, cacheHeight int) (*MapUpdater, error) {
+	// db conn for map updater
+	dbConn, err := db.Connect(nil)
+	if err != nil {
+		return nil, fmt.Errorf("NewMapUpdater | db.Connect | %w", err)
+	}
+
+	// SMT
+	smt, err := trie.NewTrie(root, common.SHA256Hash, dbConn)
 	if err != nil {
 		return nil, fmt.Errorf("NewMapServer | NewTrie | %w", err)
 	}
 	smt.CacheHeightLimit = cacheHeight
 
-	logpicker, err := logpicker.NewLogPicker(20)
-	if err != nil {
-		return nil, fmt.Errorf("NewMapServer | NewLogPicker | %w", err)
-	}
-
-	return &MapUpdater{smt: smt, logpicker: logpicker}, nil
+	return &MapUpdater{
+		Fetcher: logpicker.LogFetcher{
+			WorkerCount: 32,
+		},
+		smt:    smt,
+		dbConn: dbConn,
+	}, nil
 }
 
-func (mapUpdator *MapUpdater) CollectCertsAndUpdate(ctUrl string, startIdx, endIdx int64) error {
-	numOfAffectedDomains, numOfUpdatedCerts, err := mapUpdator.logpicker.UpdateDomainFromLog(ctUrl, startIdx, endIdx, 30, 600)
-	if err != nil {
-		return fmt.Errorf("CollectCertsAndUpdate | UpdateDomainFromLog | %w", err)
-	}
-	fmt.Println("number of affected domains: ", numOfAffectedDomains)
-	fmt.Println("number of updated certs: ", numOfUpdatedCerts)
+// StartFetching will initiate the CT logs fetching process in the background, trying to
+// obtain the next batch of certificates and have it ready for the next update.
+func (u *MapUpdater) StartFetching(ctURL string, startIndex, endIndex int) {
+	u.Fetcher.URL = ctURL
+	u.Fetcher.Start = startIndex
+	u.Fetcher.End = endIndex
+	u.Fetcher.StartFetching()
+}
 
-	effectedDomains, err := mapUpdator.fetchUpdatedDomainIndex()
+// UpdateNextBatch downloads the next batch from the CT log server and updates the domain and
+// Updates tables. Also the SMT.
+func (u *MapUpdater) UpdateNextBatch(ctx context.Context) (int, error) {
+	certs, err := u.Fetcher.NextBatch(ctx)
 	if err != nil {
-		return fmt.Errorf("CollectCertsAndUpdate | fetchUpdatedDomainIndex | %w", err)
+		return 0, fmt.Errorf("CollectCerts | GetCertMultiThread | %w", err)
 	}
+	return len(certs), u.updateCerts(ctx, certs)
+}
 
-	if len(effectedDomains) == 0 {
-		fmt.Println("nothing to update")
+// updateCerts: update the tables and SMT (in memory) using certificates
+func (mapUpdater *MapUpdater) updateCerts(ctx context.Context, certs []*ctx509.Certificate) error {
+
+	start := time.Now()
+	keyValuePairs, numOfUpdates, err := mapUpdater.UpdateDomainEntriesTableUsingCerts(ctx, certs, 10)
+	if err != nil {
+		return fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingCerts | %w", err)
+	} else if numOfUpdates == 0 {
 		return nil
 	}
 
-	updateInputs, err := mapUpdator.fetchDomainContent(effectedDomains)
+	end := time.Now()
+	fmt.Println("(db and memory) time to update domain entries: ", end.Sub(start))
 
-	keys := [][]byte{}
-	values := [][]byte{}
-
-	for _, v := range updateInputs {
-		keys = append(keys, v.Key)
-		values = append(values, v.Value)
+	if len(keyValuePairs) == 0 {
+		return nil
 	}
 
-	_, err = mapUpdator.smt.Update(keys, values)
+	keyInput, valueInput, err := keyValuePairToSMTInput(keyValuePairs)
 	if err != nil {
-		return fmt.Errorf("CollectCertsAndUpdate | Update | %w", err)
+		return fmt.Errorf("CollectCerts | keyValuePairToSMTInput | %w", err)
 	}
 
-	// commit the changes to db
-	err = mapUpdator.smt.Commit()
+	start = time.Now()
+	_, err = mapUpdater.smt.Update(ctx, keyInput, valueInput)
 	if err != nil {
-		return fmt.Errorf("CollectCertsAndUpdate | StoreUpdatedNode | %w", err)
+		return fmt.Errorf("CollectCerts | Update | %w", err)
 	}
-	// TODO(yongzhe): remove it later. for debuging onlu
-	mapUpdator.smt.PrintCacheSize()
+	end = time.Now()
+	fmt.Println("(memory) time to update tree in memory: ", end.Sub(start))
 
 	return nil
 }
 
-func (mapUpdator *MapUpdater) fetchDomainContent(domainNames []string) ([]UpdateInput, error) {
-	updateInputs := []UpdateInput{}
-
-	var querySB strings.Builder
-	querySB.WriteString("SELECT * FROM `map`.`domainEntries` WHERE `key` IN (")
-
-	isFirst := true
-	// prepare queries
-	for _, key := range domainNames {
-		if isFirst {
-			querySB.WriteString("'" + key + "'")
-			isFirst = false
-		} else {
-			querySB.WriteString(",'" + key + "'")
-		}
-	}
-	querySB.WriteString(");")
-
-	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/map?maxAllowedPacket=1073741824")
-	defer db.Close()
+// UpdateRPCAndPC: update RPC and PC from url. Currently just mock PC and RPC
+func (mapUpdater *MapUpdater) UpdateRPCAndPC(ctx context.Context, ctUrl string, startIdx, endIdx int64) error {
+	// get PC and RPC first
+	pcList, rpcList, err := logpicker.GetPCAndRPC(ctUrl, startIdx, endIdx, 20)
 	if err != nil {
-		return nil, fmt.Errorf("fetchDomainContent | sql.Open | %w", err)
+		return fmt.Errorf("CollectCerts | GetPCAndRPC | %w", err)
 	}
-
-	result, err := db.Query(querySB.String())
-	if err != nil {
-		return nil, fmt.Errorf("fetchDomainContent | db.Query | %w", err)
-	}
-
-	var key string
-	var value string
-	for result.Next() {
-		err := result.Scan(&key, &value)
-		if err != nil {
-			return nil, fmt.Errorf("fetchDomainContent | Scan | %w", err)
-		}
-		keyBytes, err := hex.DecodeString(key)
-		if err != nil {
-			return nil, fmt.Errorf("fetchDomainContent | DecodeString | %w", err)
-		}
-		updateInputs = append(updateInputs, UpdateInput{Key: keyBytes, Value: trie.Hasher([]byte(value))})
-	}
-
-	sort.Slice(updateInputs, func(i, j int) bool {
-		return bytes.Compare(updateInputs[i].Key, updateInputs[j].Key) == -1
-	})
-
-	return updateInputs, nil
+	return mapUpdater.updateRPCAndPC(ctx, pcList, rpcList)
 }
 
-func (mapUpdator *MapUpdater) fetchUpdatedDomainIndex() ([]string, error) {
-	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/map?maxAllowedPacket=1073741824")
-	defer db.Close()
+// updateRPCAndPC: update the tables and SMT (in memory) using PC and RPC
+func (mapUpdater *MapUpdater) updateRPCAndPC(ctx context.Context, pcList []*common.PC, rpcList []*common.RPC) error {
+	// update the domain and
+	keyValuePairs, _, err := mapUpdater.UpdateDomainEntriesTableUsingRPCAndPC(ctx, rpcList, pcList, 10)
 	if err != nil {
-		return nil, fmt.Errorf("fetchUpdatedDomainIndex | sql.Open | %w", err)
+		return fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingRPCAndPC | %w", err)
 	}
 
-	result, err := db.Query("SELECT * FROM `map`.`updatedDomains`;")
+	if len(keyValuePairs) == 0 {
+		return nil
+	}
+
+	keyInput, valueInput, err := keyValuePairToSMTInput(keyValuePairs)
 	if err != nil {
-		return nil, fmt.Errorf("fetchUpdatedDomainIndex | db.Query | %w", err)
-	}
-	defer result.Close()
-
-	domainList := []string{}
-	var newDomainName string
-	for result.Next() {
-		err := result.Scan(&newDomainName)
-		if err != nil {
-			return nil, fmt.Errorf("fetchUpdatedDomainIndex | Scan | %w", err)
-		}
-		domainList = append(domainList, newDomainName)
+		return fmt.Errorf("CollectCerts | keyValuePairToSMTInput | %w", err)
 	}
 
-	// clear the table
-	_, err = db.Exec("TRUNCATE `map`.`updatedDomains`;")
+	// update Sparse Merkle Tree
+	_, err = mapUpdater.smt.Update(ctx, keyInput, valueInput)
 	if err != nil {
-		return nil, fmt.Errorf("fetchUpdatedDomainIndex | db.Exec TRANCATE | %w", err)
+		return fmt.Errorf("CollectCerts | Update | %w", err)
+	}
+	return nil
+}
+
+// CommitSMTChanges: commit SMT changes to DB
+func (mapUpdater *MapUpdater) CommitSMTChanges(ctx context.Context) error {
+	err := mapUpdater.smt.Commit(ctx)
+	if err != nil {
+		return fmt.Errorf("CommitChanges | Commit | %w", err)
+	}
+	return nil
+}
+
+// fetchUpdatedDomainHash: get hashes of updated domain from updates table, and truncate the table
+func (mapUpdater *MapUpdater) fetchUpdatedDomainHash(ctx context.Context) ([]common.SHA256Output, error) {
+	keys, err := mapUpdater.dbConn.RetrieveUpdatedDomainHashesUpdates(ctx, readBatchSize)
+	if err != nil {
+		return nil, fmt.Errorf("fetchUpdatedDomainHash | RetrieveUpdatedDomainMultiThread | %w", err)
 	}
 
-	return domainList, nil
+	err = mapUpdater.dbConn.TruncateUpdatesTableUpdates(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("fetchUpdatedDomainHash | TruncateUpdatesTableUpdates | %w", err)
+	}
+
+	return keys, nil
+}
+
+// keyValuePairToSMTInput: key value pair -> SMT update input
+func keyValuePairToSMTInput(keyValuePair []db.KeyValuePair) ([][]byte, [][]byte, error) {
+	updateInput := make([]UpdateInput, 0, len(keyValuePair))
+
+	for _, pair := range keyValuePair {
+		updateInput = append(updateInput, UpdateInput{Key: pair.Key, Value: common.SHA256Hash(pair.Value)})
+	}
+
+	sort.Slice(updateInput, func(i, j int) bool {
+		return bytes.Compare(updateInput[i].Key[:], updateInput[j].Key[:]) == -1
+	})
+
+	keyResult := make([][]byte, 0, len(updateInput))
+	valueResult := make([][]byte, 0, len(updateInput))
+
+	for _, pair := range updateInput {
+		// TODO(yongzhe): strange error
+		// if I do : append(keyResult, pair.Key[:]), the other elements in the slice will be affected
+		// Looks like the slice is storing the pointer of the value.
+		// However, append(valueResult, pair.Value) also works. I will have a look later
+		var newKey [32]byte
+		copy(newKey[:], pair.Key[:])
+		keyResult = append(keyResult, newKey[:])
+
+		valueResult = append(valueResult, pair.Value)
+
+	}
+
+	return keyResult, valueResult, nil
 }
 
 // GetRoot: get current root

@@ -17,53 +17,31 @@ type DomainEntry struct {
 // TODO(yongzhe): add PC
 type CAEntry struct {
 	CAName           string
+	CAHash           []byte
 	CurrentRPC       common.RPC
 	FutureRPC        common.RPC
+	CurrentPC        common.PC
 	Revocation       [][]byte
 	FutureRevocation [][]byte
 	DomainCerts      [][]byte
 }
 
-/*
-// SerialiseDomainEnrty: DomainEntry -> bytes. Use gob
-func SerialiseDomainEnrty(domainEntry *DomainEntry) ([]byte, error) {
-	var buf bytes.Buffer
-	enc := gob.NewEncoder(&buf)
-	if err := enc.Encode(*domainEntry); err != nil {
-		return nil, fmt.Errorf("SerialiseDomainEnrty | Encode | %w", err)
-	}
-	return buf.Bytes(), nil
-}
-
-// DesrialiseDomainEnrty: bytes -> DomainEntry. Use gob
-func DesrialiseDomainEnrty(input []byte) (*DomainEntry, error) {
-	buf := bytes.NewBuffer(input)
-	dec := gob.NewDecoder(buf)
-
-	result := &DomainEntry{}
-	if err := dec.Decode(result); err != nil {
-		return nil, fmt.Errorf("DesrialiseDomainEnrty | Decode | %w", err)
-	}
-	return result, nil
-}
-*/
-
-// SerialiseDomainEnrty: DomainEntry -> bytes. Use json
-func SerialiseDomainEnrty(domainEntry *DomainEntry) ([]byte, error) {
+// SerializedDomainEntry: DomainEntry -> bytes. Use json
+func SerializedDomainEntry(domainEntry *DomainEntry) ([]byte, error) {
 	result, err := json.Marshal(domainEntry)
 	if err != nil {
-		return nil, fmt.Errorf("SerialiseDomainEnrty | Marshal | %w", err)
+		return nil, fmt.Errorf("SerializedDomainEntry | Marshal | %w", err)
 	}
 	return result, nil
 }
 
-// DesrialiseDomainEnrty: bytes -> DomainEntry. Use json
-func DesrialiseDomainEnrty(input []byte) (*DomainEntry, error) {
+// DeserializeDomainEntry: bytes -> DomainEntry. Use json
+func DeserializeDomainEntry(input []byte) (*DomainEntry, error) {
 	result := &DomainEntry{}
 
 	err := json.Unmarshal(input, result)
 	if err != nil {
-		return nil, fmt.Errorf("DesrialiseDomainEnrty | Unmarshal | %w", err)
+		return nil, fmt.Errorf("DeserializeDomainEntry | Unmarshal | %w", err)
 	}
 	return result, nil
 }
@@ -81,7 +59,7 @@ const (
 // MapServerResponse: response from map server to client
 type MapServerResponse struct {
 	Domain string
-	// serialised bytes of DomainEntry
+	// serialized bytes of DomainEntry
 	DomainEntryBytes []byte
 	PoI              PoI
 }

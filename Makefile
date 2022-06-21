@@ -12,31 +12,20 @@ build_policy_log:
 	@go build -o bin/logserver_exec cmd/logserver/logserver_exec.go
 	@go build -o bin/logsigner_exec cmd/logsigner/logsigner_exec.go
 
-setup_db: start_db create_smt_database create_log_database create_tables
+setup_db: create_log_database create_fpki_table
 
-start_db:
-	@mysql.server start
-
-create_smt_database:
-	@mysql -u root -e "CREATE SCHEMA IF NOT EXISTS \`map\`;"
-
-create_tables:
-	@mysql -u root -e "CREATE TABLE IF NOT EXISTS \`map\`.\`cacheStore\` (\`key\` VARCHAR(64) NOT NULL,\`value\` VARCHAR(2048) NOT NULL, PRIMARY KEY (\`key\`));"
-	@mysql -u root -e "CREATE TABLE IF NOT EXISTS \`map\`.\`deleteTest\` (\`key\` VARCHAR(64) NOT NULL,\`value\` VARCHAR(2048) NOT NULL, PRIMARY KEY (\`key\`));"
-	@mysql -u root -e "CREATE TABLE IF NOT EXISTS \`map\`.\`domainEntries\` (\`key\` VARCHAR(64) NOT NULL,\`value\` LONGTEXT NOT NULL, PRIMARY KEY (\`key\`));"
-	@mysql -u root -e "CREATE TABLE IF NOT EXISTS \`map\`.\`updatedDomains\` (\`domainHash\` VARCHAR(64) NOT NULL, PRIMARY KEY (\`domainHash\`));"
+create_fpki_schema_replace_old:
+	@./tools/create_schema.sh
 
 create_log_database:
 	@./scripts/reset_db/resetdb.sh
 
-
-
 build_integration_test:
-	@go build -o ./bin/policylog_interaction  ./tests/intergration_tests/policylog_interaction
-	@go build -o ./bin/domainowner_pca_policlog_interaction  ./tests/intergration_tests/domainowner_pca_policlog_interaction
-	@go build -o ./bin/mapserver  ./tests/intergration_tests/mapserver
-	@go build -o ./bin/smt  ./tests/intergration_tests/smt
-	@go build -o ./bin/log_picker  ./tests/intergration_tests/log_picker
+	@go build -o ./bin/test_policylog_interaction  ./tests/intergration_tests/policylog_interaction
+	@go build -o ./bin/test_domainowner_pca_policlog_interaction  ./tests/intergration_tests/domainowner_pca_policlog_interaction
+	@go build -o ./bin/test_mapserver  ./tests/intergration_tests/mapserver
+	@go build -o ./bin/test_smt  ./tests/intergration_tests/smt
+	@go build -o ./bin/test_db  ./tests/intergration_tests/db
 
 drop_cacheTable:
 	@mysql -u root -e "DROP TABLE map.deleteTest;"
@@ -47,9 +36,21 @@ run_integration_test:
 build_benchmark:
 	@go build -o ./bin/log_benchmark  ./tests/benchmark/logserver_benchmark
 	@go build -o ./bin/smt_benchmark  ./tests/benchmark/smt_benchmark
+	@go build -o ./bin/db_benchmark  ./tests/benchmark/db_benchmark
+	@go build -o ./bin/updater_benchmark  ./tests/benchmark/mapserver_benchmark/updater_benchmark
+	@go build -o ./bin/responder_benchmark  ./tests/benchmark/mapserver_benchmark/responder_benchmark
 
 run_log_benchmark:
 	@./scripts/log_benchmark.sh
 
 run_smt_benchmark:
 	@./bin/smt_benchmark
+
+run_db_benchmark:
+	@./bin/db_benchmark
+
+run_updater_benchmark:
+	@./bin/updater_benchmark
+
+run_responder_benchmark:
+	@./bin/responder_benchmark

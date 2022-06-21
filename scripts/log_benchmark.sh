@@ -1,3 +1,7 @@
+#!/bin/bash
+
+./tools/create_schema.sh
+
 # Start log server
 ./bin/logserver_exec >/dev/null& 
 
@@ -9,5 +13,7 @@ sleep 2
 ./bin/log_benchmark
 
 # stop log
+pkill -f logserver_exec
+pkill -f logsigner_exec
 pkill -f logserver_exec
 pkill -f logsigner_exec

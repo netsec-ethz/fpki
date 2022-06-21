@@ -18,7 +18,7 @@ import (
 
 // TODO(yongzhe):
 //       How to handle Cool-off period?
-//       SuspeciousSPTs
+//       SuspiciousSPTs
 //       Let domain owner sends the previous RPC (PCA needs to store the RPC anyway, right?
 //           If domain owner loses the RPC, PCA can return the missing RPC)
 //       More complete logic
@@ -33,7 +33,7 @@ type PCA struct {
 	// store valid RPC (with SPT) in memory; Later replaced by data base
 	validRPCsByDomains map[string]*common.RPC
 
-	// RPC whitout SPT; pre-certificate
+	// RPC without SPT; pre-certificate
 	preRPCByDomains map[string]*common.RPC
 
 	// PCA's output path; sends RPC
@@ -145,7 +145,7 @@ func (pca *PCA) ReceiveSPTFromPolicyLog() error {
 			pca.validRPCsByDomains[k] = v
 		} else {
 			log.Printf("fail to verify")
-			// TODO(yongzhe): change this to soft-fail, or add it the spicious SPT; for testing, we use hard-fail here
+			// TODO(yongzhe): change this to soft-fail, or add it the suspicious SPT; for testing, we use hard-fail here
 			return fmt.Errorf("Fail to verify one SPT")
 		}
 	}
@@ -209,7 +209,7 @@ func (pca *PCA) checkRPCSignature(rcsr *common.RCSR) bool {
 
 	// check if there is any valid rpc
 	if rpc, found := pca.validRPCsByDomains[rcsr.Subject]; found {
-		err := common.RCSRVerifyRPCSIgnature(rcsr, rpc)
+		err := common.RCSRVerifyRPCSignature(rcsr, rpc)
 		if err == nil {
 			return true
 		} else {

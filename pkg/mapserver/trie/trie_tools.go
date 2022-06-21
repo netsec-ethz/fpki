@@ -7,49 +7,45 @@ package trie
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 )
 
 // LoadCache loads the first layers of the merkle tree given a root
-// This is called after a node restarts so that it doesnt become slow with db reads
+// This is called after a node restarts so that it doesn't become slow with db reads
 // LoadCache also updates the Root with the given root.
-func (s *Trie) LoadCache(root []byte) error {
+func (s *Trie) LoadCache(ctx context.Context, root []byte) error {
 	if s.db.Store == nil {
 		return fmt.Errorf("DB not connected to trie")
 	}
 	s.db.liveCache = make(map[Hash][][]byte)
 	ch := make(chan error, 1)
-	s.loadCache(root, nil, 0, s.TrieHeight, ch)
+	s.loadCache(ctx, root, nil, 0, s.TrieHeight, ch)
 	s.Root = root
 	return <-ch
 }
 
 // loadCache loads the first layers of the merkle tree given a root
-func (s *Trie) loadCache(root []byte, batch [][]byte, iBatch, height int, ch chan<- (error)) {
+func (s *Trie) loadCache(ctx context.Context, root []byte, batch [][]byte, iBatch, height int, ch chan<- (error)) {
 	if height < s.CacheHeightLimit || len(root) == 0 {
 		ch <- nil
 		return
 	}
 	if height%4 == 0 {
 		// Load the node from db
-		s.db.lock.Lock()
-		//dbval := s.db.Store.Get(root[:HashLength])
+		value, err := s.db.getValue(ctx, root[:HashLength])
 
-		resultChan := make(chan ReadResult)
-		s.db.ClientInput <- ReadRequest{key: root[:HashLength], resultChan: resultChan}
-		readResult := <-resultChan
-		close(resultChan)
-
-		s.db.lock.Unlock()
-		if len(readResult.result) == 0 {
-			ch <- fmt.Errorf("the trie node %x is unavailable in the disk db, db may be corrupted", root)
+		if err != nil {
+			ch <- fmt.Errorf("the trie node %x is unavailable in the disk db, db may be corrupted | %w", root, err)
 			return
 		}
 		//Store node in cache.
 		var node Hash
 		copy(node[:], root)
-		batch = s.parseBatch(readResult.result)
+		batch = s.parseBatch(value)
+
 		s.db.liveMux.Lock()
+
 		s.db.liveCache[node] = batch
 		s.db.liveMux.Unlock()
 		iBatch = 0
@@ -68,8 +64,8 @@ func (s *Trie) loadCache(root []byte, batch [][]byte, iBatch, height int, ch cha
 
 		lch := make(chan error, 1)
 		rch := make(chan error, 1)
-		go s.loadCache(lnode, batch, 2*iBatch+1, height-1, lch)
-		go s.loadCache(rnode, batch, 2*iBatch+2, height-1, rch)
+		go s.loadCache(ctx, lnode, batch, 2*iBatch+1, height-1, lch)
+		go s.loadCache(ctx, rnode, batch, 2*iBatch+2, height-1, rch)
 		if err := <-lch; err != nil {
 			ch <- err
 			return
@@ -83,21 +79,21 @@ func (s *Trie) loadCache(root []byte, batch [][]byte, iBatch, height int, ch cha
 }
 
 // Get fetches the value of a key by going down the current trie root.
-func (s *Trie) Get(key []byte) ([]byte, error) {
+func (s *Trie) Get(ctx context.Context, key []byte) ([]byte, error) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 	s.atomicUpdate = false
-	return s.get(s.Root, key, nil, 0, s.TrieHeight)
+	return s.get(ctx, s.Root, key, nil, 0, s.TrieHeight)
 }
 
 // get fetches the value of a key given a trie root
-func (s *Trie) get(root, key []byte, batch [][]byte, iBatch, height int) ([]byte, error) {
+func (s *Trie) get(ctx context.Context, root, key []byte, batch [][]byte, iBatch, height int) ([]byte, error) {
 	if len(root) == 0 {
 		// the trie does not contain the key
 		return nil, nil
 	}
 	// Fetch the children of the node
-	batch, iBatch, lnode, rnode, isShortcut, err := s.loadChildren(root, height, iBatch, batch)
+	batch, iBatch, lnode, rnode, isShortcut, err := s.loadChildren(ctx, root, height, iBatch, batch)
 	if err != nil {
 		return nil, err
 	}
@@ -109,30 +105,13 @@ func (s *Trie) get(root, key []byte, batch [][]byte, iBatch, height int) ([]byte
 		return nil, nil
 	}
 	if bitIsSet(key, s.TrieHeight-height) {
-		return s.get(rnode, key, batch, 2*iBatch+2, height-1)
+		return s.get(ctx, rnode, key, batch, 2*iBatch+2, height-1)
 	}
-	return s.get(lnode, key, batch, 2*iBatch+1, height-1)
+	return s.get(ctx, lnode, key, batch, 2*iBatch+1, height-1)
 }
 
-// TrieRootExists returns true if the root exists in Database.
-func (s *Trie) TrieRootExists(root []byte) bool {
-	s.db.lock.RLock()
-	//dbval := s.db.Store.Get(root)
-
-	resultChan := make(chan ReadResult)
-	s.db.ClientInput <- ReadRequest{key: root[:HashLength], resultChan: resultChan}
-	readResult := <-resultChan
-	close(resultChan)
-
-	s.db.lock.RUnlock()
-	if len(readResult.result) != 0 {
-		return true
-	}
-	return false
-}
-
-func (s *Trie) Commit() error {
-	err := s.db.commitChangesToDB()
+func (s *Trie) Commit(ctx context.Context) error {
+	err := s.db.commitChangesToDB(ctx)
 	if err != nil {
 		return err
 	}

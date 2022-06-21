@@ -32,7 +32,7 @@ CREATE TABLE nodes (
   value       blob,
   proof       VARBINARY(32) DEFAULT NULL,
   UNIQUE KEY idhash (idhash)
-) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
+) ENGINE=InnoDB CHARSET=\`binary\` COLLATE=\`binary\`;
 EOF
 )
 echo "$CMD" | mysql -u root
@@ -96,3 +96,54 @@ DELIMITER ;
 EOF
 )
 echo "$CMD" | mysql -u root
+
+
+
+CMD=$(cat <<EOF
+CREATE TABLE \`fpki\`.\`domainEntries\` (
+   \`key\` VARBINARY(32) NOT NULL,
+   \`value\` LONGBLOB NOT NULL,
+   \`id\` BIGINT(64) NOT NULL AUTO_INCREMENT,
+   PRIMARY KEY (\`id\`),
+   UNIQUE INDEX \`key_UNIQUE\` (\`key\` ASC));
+EOF
+)
+echo "$CMD" | mysql -u root
+
+
+
+CMD=$(cat <<EOF
+CREATE TABLE \`fpki\`.\`tree\` (
+   \`key\` VARBINARY(32) NOT NULL,
+   \`value\` LONGBLOB NOT NULL,
+   \`id\` BIGINT(64) NOT NULL AUTO_INCREMENT,
+   PRIMARY KEY (\`id\`),
+   UNIQUE INDEX \`key_UNIQUE\` (\`key\` ASC));
+EOF
+)
+echo "$CMD" | mysql -u root
+
+
+
+CMD=$(cat <<EOF
+CREATE TABLE \`fpki\`.\`deleteTest\` (
+   \`key\` VARCHAR(64) NOT NULL,
+   \`value\` BLOB NOT NULL,
+   \`id\` BIGINT(64) NOT NULL AUTO_INCREMENT,
+    PRIMARY KEY (\`id\`),
+   UNIQUE INDEX \`key_UNIQUE\` (\`key\` ASC));
+EOF
+)
+echo "$CMD" | mysql -u root
+
+
+CMD=$(cat <<EOF
+  CREATE TABLE \`fpki\`.\`updates\` (
+   \`key\` VARBINARY(32) NOT NULL,
+   PRIMARY KEY (\`key\`));
+EOF
+)
+echo "$CMD" | mysql -u root
+
+
+

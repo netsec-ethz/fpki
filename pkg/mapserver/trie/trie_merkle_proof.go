@@ -7,50 +7,53 @@ package trie
 
 import (
 	"bytes"
+	"context"
+
+	"github.com/netsec-ethz/fpki/pkg/common"
 )
 
-// MerkleProof generates a Merke proof of inclusion or non-inclusion
+// MerkleProof generates a Merkle proof of inclusion or non-inclusion
 // for the current trie root
 // returns the audit path, bool (key included), key, value, error
 // (key,value) can be 1- (nil, value), value of the included key, 2- the kv of a LeafNode
 // on the path of the non-included key, 3- (nil, nil) for a non-included key
 // with a DefaultLeaf on the path
-func (s *Trie) MerkleProof(key []byte) ([][]byte, bool, []byte, []byte, error) {
+func (s *Trie) MerkleProof(ctx context.Context, key []byte) ([][]byte, bool, []byte, []byte, error) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
-	s.atomicUpdate = false // so loadChildren doesnt return a copy
-	return s.merkleProof(s.Root, key, nil, s.TrieHeight, 0)
+	s.atomicUpdate = false // so loadChildren doesn't return a copy
+	return s.merkleProof(ctx, s.Root, key, nil, s.TrieHeight, 0)
 }
 
-// MerkleProofPast generates a Merke proof of inclusion or non-inclusion
+// MerkleProofPast generates a Merkle proof of inclusion or non-inclusion
 // for a given past trie root
 // returns the audit path, bool (key included), key, value, error
 // (key,value) can be 1- (nil, value), value of the included key, 2- the kv of a LeafNode
 // on the path of the non-included key, 3- (nil, nil) for a non-included key
 // with a DefaultLeaf on the path
-func (s *Trie) MerkleProofR(key, root []byte) ([][]byte, bool, []byte, []byte, error) {
+func (s *Trie) MerkleProofR(ctx context.Context, key, root []byte) ([][]byte, bool, []byte, []byte, error) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
-	s.atomicUpdate = false // so loadChildren doesnt return a copy
-	return s.merkleProof(root, key, nil, s.TrieHeight, 0)
+	s.atomicUpdate = false // so loadChildren doesn't return a copy
+	return s.merkleProof(ctx, root, key, nil, s.TrieHeight, 0)
 }
 
 // MerkleProofCompressed returns a compressed merkle proof in the given trie
-func (s *Trie) MerkleProofCompressedR(key, root []byte) ([]byte, [][]byte, int, bool, []byte, []byte, error) {
-	return s.merkleProofCompressed(key, root)
+func (s *Trie) MerkleProofCompressedR(ctx context.Context, key, root []byte) ([]byte, [][]byte, int, bool, []byte, []byte, error) {
+	return s.merkleProofCompressed(ctx, key, root)
 }
 
 // MerkleProofCompressed returns a compressed merkle proof
-func (s *Trie) MerkleProofCompressed(key []byte) ([]byte, [][]byte, int, bool, []byte, []byte, error) {
-	return s.merkleProofCompressed(key, s.Root)
+func (s *Trie) MerkleProofCompressed(ctx context.Context, key []byte) ([]byte, [][]byte, int, bool, []byte, []byte, error) {
+	return s.merkleProofCompressed(ctx, key, s.Root)
 }
 
-func (s *Trie) merkleProofCompressed(key, root []byte) ([]byte, [][]byte, int, bool, []byte, []byte, error) {
+func (s *Trie) merkleProofCompressed(ctx context.Context, key, root []byte) ([]byte, [][]byte, int, bool, []byte, []byte, error) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
-	s.atomicUpdate = false // so loadChildren doesnt return a copy
+	s.atomicUpdate = false // so loadChildren doesn't return a copy
 	// create a regular merkle proof and then compress it
-	mpFull, included, proofKey, proofVal, err := s.merkleProof(root, key, nil, s.TrieHeight, 0)
+	mpFull, included, proofKey, proofVal, err := s.merkleProof(ctx, root, key, nil, s.TrieHeight, 0)
 	if err != nil {
 		return nil, nil, 0, true, nil, nil, err
 	}
@@ -67,19 +70,19 @@ func (s *Trie) merkleProofCompressed(key, root []byte) ([]byte, [][]byte, int, b
 	return bitmap, mp, height, included, proofKey, proofVal, nil
 }
 
-// merkleProof generates a Merke proof of inclusion or non-inclusion
+// merkleProof generates a Merkle proof of inclusion or non-inclusion
 // for a given trie root.
 // returns the audit path, bool (key included), key, value, error
 // (key,value) can be 1- (nil, value), value of the included key, 2- the kv of a LeafNode
 // on the path of the non-included key, 3- (nil, nil) for a non-included key
 // with a DefaultLeaf on the path
-func (s *Trie) merkleProof(root, key []byte, batch [][]byte, height, iBatch int) ([][]byte, bool, []byte, []byte, error) {
+func (s *Trie) merkleProof(ctx context.Context, root, key []byte, batch [][]byte, height, iBatch int) ([][]byte, bool, []byte, []byte, error) {
 	if len(root) == 0 {
-		// proove that an empty subtree is on the path of the key
+		// prove that an empty subtree is on the path of the key
 		return nil, false, nil, nil, nil
 	}
 	// Fetch the children of the node
-	batch, iBatch, lnode, rnode, isShortcut, err := s.loadChildren(root, height, iBatch, batch)
+	batch, iBatch, lnode, rnode, isShortcut, err := s.loadChildren(ctx, root, height, iBatch, batch)
 	if err != nil {
 		return nil, false, nil, nil, err
 	}
@@ -94,7 +97,7 @@ func (s *Trie) merkleProof(root, key []byte, batch [][]byte, height, iBatch int)
 
 	// append the left or right node to the proof
 	if bitIsSet(key, s.TrieHeight-height) {
-		mp, included, proofKey, proofValue, err := s.merkleProof(rnode, key, batch, height-1, 2*iBatch+2)
+		mp, included, proofKey, proofValue, err := s.merkleProof(ctx, rnode, key, batch, height-1, 2*iBatch+2)
 		if err != nil {
 			return nil, false, nil, nil, err
 		}
@@ -105,7 +108,7 @@ func (s *Trie) merkleProof(root, key []byte, batch [][]byte, height, iBatch int)
 		}
 
 	}
-	mp, included, proofKey, proofValue, err := s.merkleProof(lnode, key, batch, height-1, 2*iBatch+1)
+	mp, included, proofKey, proofValue, err := s.merkleProof(ctx, lnode, key, batch, height-1, 2*iBatch+1)
 	if err != nil {
 		return nil, false, nil, nil, err
 	}
@@ -118,7 +121,7 @@ func (s *Trie) merkleProof(root, key []byte, batch [][]byte, height, iBatch int)
 
 // VerifyInclusion verifies that key/value is included in the trie with latest root
 func VerifyInclusion(root []byte, ap [][]byte, key, value []byte) bool {
-	leafHash := Hasher(key, value, []byte{byte(256 - len(ap))})
+	leafHash := common.SHA256Hash(key, value, []byte{byte(256 - len(ap))})
 	return bytes.Equal(root, verifyInclusion(ap, 0, key, leafHash))
 }
 
@@ -128,9 +131,9 @@ func verifyInclusion(ap [][]byte, keyIndex int, key, leafHash []byte) []byte {
 		return leafHash
 	}
 	if bitIsSet(key, keyIndex) {
-		return Hasher(ap[len(ap)-keyIndex-1], verifyInclusion(ap, keyIndex+1, key, leafHash))
+		return common.SHA256Hash(ap[len(ap)-keyIndex-1], verifyInclusion(ap, keyIndex+1, key, leafHash))
 	}
-	return Hasher(verifyInclusion(ap, keyIndex+1, key, leafHash), ap[len(ap)-keyIndex-1])
+	return common.SHA256Hash(verifyInclusion(ap, keyIndex+1, key, leafHash), ap[len(ap)-keyIndex-1])
 }
 
 // VerifyNonInclusion verifies a proof of non inclusion,

@@ -2,41 +2,53 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
-	"database/sql"
 	"fmt"
 	"runtime"
 	"sort"
+	"sync"
 	"time"
 
+	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
+var wg sync.WaitGroup
+
+// benchmark for sparse merkle tree
 func main() {
+	db.TruncateAllTablesWithoutTestObject()
 	BenchmarkCacheHeightLimit233()
-	fmt.Println("bench mark for 300,000 updating and fetching finished")
+	fmt.Println("benchmark for 5M updating and fetching finished")
 }
 
 func benchmark10MAccounts10Ktps(smt *trie.Trie) ([][]byte, [][]byte) {
 	allKeys := [][]byte{}
 	allValues := [][]byte{}
-	for i := 0; i < 30; i++ {
-		newkeys := getFreshData(10000, 32)
-		newvalues := getFreshData(10000, 32)
-		allKeys = append(allKeys, newkeys...)
-		allValues = append(allValues, newvalues...)
+	for i := 0; i < 50; i++ {
+		fmt.Println("Iteration ", i, " ------------------------------")
+		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+		defer cancelF()
+
+		newKeys := getFreshData(100000, 32)
+		newValues := getFreshData(100000, 32)
+		allKeys = append(allKeys, newKeys...)
+		allValues = append(allValues, newValues...)
 
 		start := time.Now()
-		smt.Update(newkeys, newvalues)
+		smt.Update(ctx, newKeys, newValues)
 		end := time.Now()
-		err := smt.Commit()
+
+		err := smt.Commit(ctx)
 		if err != nil {
 			panic(err)
 		}
 		end2 := time.Now()
-		for j, key := range newkeys {
-			val, _ := smt.Get(key)
-			if !bytes.Equal(val, newvalues[j]) {
+		for j, key := range newKeys {
+			val, _ := smt.Get(ctx, key)
+			if !bytes.Equal(val, newValues[j]) {
 				panic("new key not included")
 			}
 		}
@@ -46,47 +58,57 @@ func benchmark10MAccounts10Ktps(smt *trie.Trie) ([][]byte, [][]byte) {
 		elapsed3 := end3.Sub(end2)
 		var m runtime.MemStats
 		runtime.ReadMemStats(&m)
-		fmt.Println(i, " : update time : ", elapsed, "commit time : ", elapsed2,
-			"\n1000 Get time : ", elapsed3,
-			"\ndb read : ", smt.LoadDbCounter, "    cache read : ", smt.LoadCacheCounter,
+		fmt.Println("update time for 100,000 leaves in memory: ", elapsed,
+			"\ntime to commit changes to db : ", elapsed2,
+			"\nTime to get new keys : ", elapsed3,
 			"\ncache size : ", smt.GetLiveCacheSize(),
 			"\nRAM : ", m.Sys/1024/1024, " MiB")
+		fmt.Println()
+		fmt.Println()
 	}
 	return allKeys, allValues
 }
 
 //go test -run=xxx -bench=BenchmarkCacheHeightLimit233
 func BenchmarkCacheHeightLimit233() {
-	db, err := sql.Open("mysql", "root:@tcp(127.0.0.1:3306)/map?maxAllowedPacket=1073741824")
+	conn, err := db.Connect(nil)
 	if err != nil {
 		panic(err)
 	}
 
-	defer db.Close()
-	smt, err := trie.NewTrie(nil, trie.Hasher, db, "cacheStore", true)
+	smt, err := trie.NewTrie(nil, common.SHA256Hash, conn)
 	if err != nil {
 		panic(err)
 	}
 
 	smt.CacheHeightLimit = 233
-	allKeys, allValues := benchmark10MAccounts10Ktps(smt)
+	allKeys, _ := benchmark10MAccounts10Ktps(smt)
 	//benchmark10MAccounts10Ktps(smt, b)
 
 	fmt.Println("length of keys: ", len(allKeys))
 
-	for i := 0; i < 30; i++ {
-		start := time.Now()
-		for j := 0; j < 10000; j++ {
-
-			ap_, _, _, _, _ := smt.MerkleProof(allKeys[i*10000+j])
-
-			if !trie.VerifyInclusion(smt.Root, ap_, allKeys[i*10000+j], allValues[i*10000+j]) {
-				panic("failed to verify inclusion proof")
-			}
-		}
-		end := time.Now()
-		fmt.Println("batch ", i, " passed time: ", end.Sub(start))
+	wg.Add(20)
+	start := time.Now()
+	for i := 0; i < 20; i++ {
+		go worker(allKeys[i*10000:i*10000+9999], smt)
 	}
+	wg.Wait()
+	end := time.Now()
+	fmt.Println("time to retrieve 200,000 proofs: ", end.Sub(start))
+}
+
+func worker(input [][]byte, smt *trie.Trie) {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
+	for _, key := range input {
+		_, _, _, _, err := smt.MerkleProof(ctx, key)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	wg.Done()
 }
 
 func getFreshData(size, length int) [][]byte {
@@ -97,7 +119,7 @@ func getFreshData(size, length int) [][]byte {
 		if err != nil {
 			panic(err)
 		}
-		data = append(data, trie.Hasher(key)[:length])
+		data = append(data, common.SHA256Hash(key)[:length])
 	}
 	sort.Sort(trie.DataArray(data))
 	return data

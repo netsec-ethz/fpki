@@ -4,21 +4,34 @@ import (
 	"database/sql"
 	"fmt"
 	"net/url"
-	"sync"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 )
 
-var initVars sync.Once
-
+// Configuration for the db connection
 type Configuration struct {
 	Dsn         string
 	Values      map[string]string
 	CheckSchema bool // indicates if opening the connection checks the health of the schema
 }
 
+func DefaultConfig() *Configuration {
+	return &Configuration{
+		Dsn: "root@tcp(localhost)/fpki",
+		Values: map[string]string{
+			"interpolateParams": "true", // 1 round trip per query
+			"collation":         "binary",
+			"maxAllowedPacket":  "1073741824", // 1G (cannot use "1G" as the driver uses Atoi)
+		},
+	}
+}
+
+// Connect: connect to db, using the config file
 func Connect(config *Configuration) (Conn, error) {
+	if config == nil {
+		config = DefaultConfig()
+	}
 	dsn, err := url.Parse(config.Dsn)
 	if err != nil {
 		return nil, fmt.Errorf("bad connection string: %w", err)
@@ -32,6 +45,7 @@ func Connect(config *Configuration) (Conn, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot open DB: %w", err)
 	}
+
 	db.SetMaxOpenConns(512) // TODO(juagargi) set higher for production
 	db.SetMaxIdleConns(512)
 	db.SetConnMaxLifetime(2 * time.Second)
@@ -42,36 +56,6 @@ func Connect(config *Configuration) (Conn, error) {
 			return nil, fmt.Errorf("checking schema on connection: %w", err)
 		}
 	}
-
-	return &mysqlDB{db: db}, nil
-}
-
-func Connect_old() (Conn, error) {
-	dsn, err := url.Parse("root@tcp(localhost)/fpki")
-	if err != nil {
-		panic(err) // logic error
-	}
-	val := dsn.Query()
-	val.Add("interpolateParams", "true") // 1 round trip per query
-	val.Add("collation", "binary")
-	dsn.RawQuery = val.Encode()
-
-	db, err := sql.Open("mysql", dsn.String()) // TODO(juagargi) DSN should be a parameter
-	if err != nil {
-		return nil, err
-	}
-
-	db.SetMaxOpenConns(512) // TODO(juagargi) set higher for production
-	db.SetMaxIdleConns(512)
-	db.SetConnMaxLifetime(2 * time.Second)
-	db.SetConnMaxIdleTime(1 * time.Second) // lower or equal than above
-	// check schema
-	initVars.Do(func() {
-		if err := checkSchema(db); err != nil {
-			panic(err)
-		}
-	})
-
 	return NewMysqlDB(db)
 }
 

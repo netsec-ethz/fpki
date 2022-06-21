@@ -6,3 +6,12 @@ bin/*
 
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
+
+# VScode setting
+.vscode
+
+# DS_Store
+.DS_Store
+
+# root
+./root
