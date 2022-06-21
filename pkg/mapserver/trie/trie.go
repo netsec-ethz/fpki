@@ -507,11 +507,7 @@ func (s *Trie) loadBatch(ctx context.Context, root []byte, height int) ([][]byte
 		return val, nil
 	}
 	//Fetch node in disk database
-	if s.db.Store == nil {
-		return nil, fmt.Errorf("DB not connected to trie")
-	}
-
-	value, err := s.db.getValue(ctx, root[:HashLength])
+	value, err := s.db.getValueLockFree(ctx, root[:HashLength])
 	if err != nil {
 		return nil, fmt.Errorf("the trie node %x is unavailable in the disk db, db may be corrupted | %w", root, err)
 	}
@@ -522,36 +518,13 @@ func (s *Trie) loadBatch(ctx context.Context, root []byte, height int) ([][]byte
 	nodeSize := len(value)
 	if nodeSize != 0 {
 		// Added: add the newly fetched nodes, and cache them into memory
-		resultBytes := s.parseBatch(value)
+		resultBytes := parseBatch(value)
 		if height >= s.CacheHeightLimit && height%4 == 0 {
-
 			s.db.liveCache[rootCopy] = resultBytes
 		}
 		return resultBytes, nil
 	}
 	return nil, fmt.Errorf("the trie node %x is unavailable in the disk db, db may be corrupted", root)
-}
-
-// parseBatch decodes the byte data into a slice of nodes and bitmap
-func (s *Trie) parseBatch(val []byte) [][]byte {
-	batch := make([][]byte, 31, 31)
-	bitmap := val[:4]
-	// check if the batch root is a shortcut
-	if bitIsSet(val, 31) {
-		batch[0] = []byte{1}
-		batch[1] = val[4 : 4+33]
-		batch[2] = val[4+33 : 4+33*2]
-	} else {
-		batch[0] = []byte{0}
-		j := 0
-		for i := 1; i <= 30; i++ {
-			if bitIsSet(bitmap, i-1) {
-				batch[i] = val[4+33*j : 4+33*(j+1)]
-				j++
-			}
-		}
-	}
-	return batch
 }
 
 // leafHash returns the hash of key_value_byte(height) concatenated, stores it in the updatedNodes and maybe in liveCache.
@@ -627,4 +600,26 @@ func (s *Trie) GetLiveCacheSize() int {
 
 func (s *Trie) ResetLiveCache() {
 	s.db.liveCache = make(map[Hash][][]byte)
+}
+
+// parseBatch decodes the byte data into a slice of nodes and bitmap
+func parseBatch(val []byte) [][]byte {
+	batch := make([][]byte, 31, 31)
+	bitmap := val[:4]
+	// check if the batch root is a shortcut
+	if bitIsSet(val, 31) {
+		batch[0] = []byte{1}
+		batch[1] = val[4 : 4+33]
+		batch[2] = val[4+33 : 4+33*2]
+	} else {
+		batch[0] = []byte{0}
+		j := 0
+		for i := 1; i <= 30; i++ {
+			if bitIsSet(bitmap, i-1) {
+				batch[i] = val[4+33*j : 4+33*(j+1)]
+				j++
+			}
+		}
+	}
+	return batch
 }

@@ -99,16 +99,20 @@ func (cacheDB *CacheDB) commitChangesToDB(ctx context.Context) error {
 // getValue gets a key-value pair from db
 func (cacheDB *CacheDB) getValue(ctx context.Context, key []byte) ([]byte, error) {
 	cacheDB.wholeCacheDBLock.Lock()
-
-	key32Bytes := Hash{}
-	copy(key32Bytes[:], key)
-
-	result, err := cacheDB.Store.RetrieveOneKeyValuePairTreeStruct(ctx, key32Bytes)
+	result, err := cacheDB.Store.RetrieveOneKeyValuePairTreeStruct(ctx, *(*[32]byte)(key))
 	cacheDB.wholeCacheDBLock.Unlock()
 	if err != nil {
 		return nil, fmt.Errorf("getValue | RetrieveOneKeyValuePair | %w", err)
 	}
 
+	return result.Value, nil
+}
+
+func (cacheDB *CacheDB) getValueLockFree(ctx context.Context, key []byte) ([]byte, error) {
+	result, err := cacheDB.Store.RetrieveOneKeyValuePairTreeStruct(ctx, *(*[32]byte)(key))
+	if err != nil {
+		return nil, fmt.Errorf("getValue | RetrieveOneKeyValuePair | %w", err)
+	}
 	return result.Value, nil
 }
 
