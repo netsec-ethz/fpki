@@ -42,7 +42,7 @@ func main() {
 	// collect 100K certs
 	mapUpdater.Fetcher.BatchSize = 40000
 	const baseCTSize = 2*1000 + 1600000
-	const count = 10000 * 1000
+	const count = 2000 * 1000
 	mapUpdater.StartFetching("https://ct.googleapis.com/logs/argon2021",
 		baseCTSize, baseCTSize+count-1)
 

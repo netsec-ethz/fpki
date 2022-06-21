@@ -143,6 +143,14 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCertsReturnTime(ctx c
 	}
 	end = time.Now()
 	fmt.Println("(db)     time to write updated domain entries: ", end.Sub(start))
+	fmt.Println("*******************")
+	fmt.Println("num of writes: ", len(keyValuePairs))
+	size := 0.0
+	for _, pair := range keyValuePairs {
+		size = size + float64(len(pair.Value))
+	}
+	fmt.Println("write size: ", size/1024/1024, " MB")
+	fmt.Println("*******************")
 	timeList = append(timeList, end.Sub(start).String())
 
 	return keyValuePairs, num, timeList, nil, keyValuePairs, readData
