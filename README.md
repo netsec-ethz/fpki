@@ -18,7 +18,7 @@
     │   └── performance_test_output           # Some results of the policy log performance
     ├── pkg                                   # Packages of the project
     ├── scripts                               # Scripts to clean and build the executables
-    └── tests                                 # Some intergration tests. Unit tests are in the individual pkg 
+    └── tests                                 # Some integration tests. Unit tests are in the individual pkg
     
     
  ## Overview

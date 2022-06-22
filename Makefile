@@ -21,11 +21,11 @@ create_log_database:
 	@./scripts/reset_db/resetdb.sh
 
 build_integration_test:
-	@go build -o ./bin/test_policylog_interaction  ./tests/intergration_tests/policylog_interaction
-	@go build -o ./bin/test_domainowner_pca_policlog_interaction  ./tests/intergration_tests/domainowner_pca_policlog_interaction
-	@go build -o ./bin/test_mapserver  ./tests/intergration_tests/mapserver
-	@go build -o ./bin/test_smt  ./tests/intergration_tests/smt
-	@go build -o ./bin/test_db  ./tests/intergration_tests/db
+	@go build -o ./bin/test_policylog_interaction  ./tests/integration/policylog_interaction
+	@go build -o ./bin/test_domainowner_pca_policlog_interaction  ./tests/integration/domainowner_pca_policlog_interaction
+	@go build -o ./bin/test_mapserver  ./tests/integration/mapserver
+	@go build -o ./bin/test_smt  ./tests/integration/smt
+	@go build -o ./bin/test_db  ./tests/integration/db
 
 drop_cacheTable:
 	@mysql -u root -e "DROP TABLE map.deleteTest;"
