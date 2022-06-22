@@ -10,7 +10,9 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	mapcommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/internal"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/logpicker"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/prover"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 	"github.com/stretchr/testify/require"
@@ -106,15 +108,100 @@ func TestResponderWithPoP(t *testing.T) {
 	}
 }
 
-// get a mock responder
-func getMockResponder(t require.TestingT, certs []*x509.Certificate) *MapResponder {
-	// update the certs, and get the mock db of SMT and db
-	smtDB, root, err := getUpdatedUpdater(certs)
+// TestGetDomainProof: test getDomainProof()
+func TestGetDomainProof(t *testing.T) {
+	certs := []*x509.Certificate{}
+
+	// load test certs
+	files, err := ioutil.ReadDir("../updater/testdata/certs/")
 	require.NoError(t, err)
 
-	smt, err := trie.NewTrie(root, common.SHA256Hash, smtDB)
+	for _, file := range files {
+		cert, err := common.CTX509CertFromFile("../updater/testdata/certs/" + file.Name())
+		require.NoError(t, err)
+		certs = append(certs, cert)
+	}
+
+	responderWorker := getMockResponder(t, certs)
+
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
+	for _, cert := range certs {
+		proofs, err := responderWorker.getProof(ctx, cert.Subject.CommonName)
+		require.NoError(t, err)
+
+		checkProof(t, *cert, proofs)
+	}
+}
+
+// getMockResponder builds a mock responder.
+func getMockResponder(t require.TestingT, certs []*x509.Certificate) *MapResponder {
+	// update the certs, and get the mock db of SMT and db
+	conn, root, err := getUpdatedUpdater(t, certs)
+	require.NoError(t, err)
+
+	smt, err := trie.NewTrie(root, common.SHA256Hash, conn)
 	require.NoError(t, err)
 	smt.CacheHeightLimit = 233
 
-	return newMapResponder(smtDB, smt)
+	return newMapResponder(conn, smt)
+}
+
+// getUpdatedUpdater builds an updater using a mock db, updates the certificates
+// and returns the mock db.
+func getUpdatedUpdater(t require.TestingT, certs []*x509.Certificate) (db.Conn, []byte, error) {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
+	conn := internal.NewMockDB()
+	smt, err := trie.NewTrie(nil, common.SHA256Hash, conn)
+	require.NoError(t, err)
+	smt.CacheHeightLimit = 233
+
+	updater := &updater.UpdaterTestAdapter{}
+	updater.SetDBConn(conn)
+	updater.SetSMT(smt)
+
+	// update the db using the certs
+	err = updater.UpdateCerts(ctx, certs)
+	require.NoError(t, err)
+
+	err = updater.CommitSMTChanges(ctx)
+	require.NoError(t, err)
+
+	return conn, updater.SMT().Root, nil
+}
+
+// checkProof checks the proof to be correct.
+func checkProof(t *testing.T, cert x509.Certificate, proofs []mapcommon.MapServerResponse) {
+	t.Helper()
+	caName := cert.Issuer.CommonName
+	require.Equal(t, mapcommon.PoP, proofs[len(proofs)-1].PoI.ProofType,
+		"PoP not found for %s", cert.Subject.CommonName)
+	for _, proof := range proofs {
+		require.Contains(t, cert.Subject.CommonName, proof.Domain)
+		proofType, isCorrect, err := prover.VerifyProofByDomain(proof)
+		require.NoError(t, err)
+		require.True(t, isCorrect)
+
+		if proofType == mapcommon.PoA {
+			require.Empty(t, proof.DomainEntryBytes)
+		}
+		if proofType == mapcommon.PoP {
+			domainEntry, err := mapcommon.DeserializeDomainEntry(proof.DomainEntryBytes)
+			require.NoError(t, err)
+			// get the correct CA entry
+			for _, caEntry := range domainEntry.CAEntry {
+				if caEntry.CAName == caName {
+					// check if the cert is in the CA entry
+					for _, certRaw := range caEntry.DomainCerts {
+						require.Equal(t, certRaw, cert.Raw)
+						return
+					}
+				}
+			}
+		}
+	}
+	require.Fail(t, "cert/CA not found")
 }

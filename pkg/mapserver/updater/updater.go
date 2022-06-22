@@ -145,14 +145,14 @@ func (mapUpdater *MapUpdater) CommitSMTChanges(ctx context.Context) error {
 
 // fetchUpdatedDomainHash: get hashes of updated domain from updates table, and truncate the table
 func (mapUpdater *MapUpdater) fetchUpdatedDomainHash(ctx context.Context) ([]common.SHA256Output, error) {
-	keys, err := mapUpdater.dbConn.RetrieveUpdatedDomainHashesUpdates(ctx, readBatchSize)
+	keys, err := mapUpdater.dbConn.RetrieveUpdatedDomains(ctx, readBatchSize)
 	if err != nil {
-		return nil, fmt.Errorf("fetchUpdatedDomainHash | RetrieveUpdatedDomainMultiThread | %w", err)
+		return nil, fmt.Errorf("fetchUpdatedDomainHash | %w", err)
 	}
 
-	err = mapUpdater.dbConn.TruncateUpdatesTableUpdates(ctx)
+	err = mapUpdater.dbConn.RemoveAllUpdatedDomains(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("fetchUpdatedDomainHash | TruncateUpdatesTableUpdates | %w", err)
+		return nil, fmt.Errorf("fetchUpdatedDomainHash | %w", err)
 	}
 
 	return keys, nil

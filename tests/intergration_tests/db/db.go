@@ -47,28 +47,28 @@ func testTreeTable() {
 
 	// insert key 1511 - 2012
 	newKVPair := getKeyValuePair(1511, 2012, []byte("hi this is a test"))
-	_, err = conn.UpdateKeyValuesTreeStruct(ctx, newKVPair)
+	_, err = conn.UpdateTreeNodes(ctx, newKVPair)
 	if err != nil {
 		panic(err)
 	}
 
 	// insert key 2013 - 2055
 	newKVPair = getKeyValuePair(2013, 2055, []byte("hi this is a test"))
-	_, err = conn.UpdateKeyValuesTreeStruct(ctx, newKVPair)
+	_, err = conn.UpdateTreeNodes(ctx, newKVPair)
 	if err != nil {
 		panic(err)
 	}
 
 	// insert key 2056 - 2155
 	newKVPair = getKeyValuePair(2056, 2155, []byte("hi this is a test"))
-	_, err = conn.UpdateKeyValuesTreeStruct(ctx, newKVPair)
+	_, err = conn.UpdateTreeNodes(ctx, newKVPair)
 	if err != nil {
 		panic(err)
 	}
 
 	// insert key 2056 - 4555
 	newKVPair = getKeyValuePair(2056, 4555, []byte("hi this is a test"))
-	_, err = conn.UpdateKeyValuesTreeStruct(ctx, newKVPair)
+	_, err = conn.UpdateTreeNodes(ctx, newKVPair)
 	if err != nil {
 		panic(err)
 	}
@@ -81,7 +81,7 @@ func testTreeTable() {
 	result := []db.KeyValuePair{}
 
 	for _, key := range keys {
-		newResult, err := conn.RetrieveOneKeyValuePairTreeStruct(ctx, key)
+		newResult, err := conn.RetrieveTreeNode(ctx, key)
 		if err != nil && err != sql.ErrNoRows {
 			panic(err)
 		}
@@ -103,7 +103,7 @@ func testTreeTable() {
 	result = []db.KeyValuePair{}
 
 	for _, key := range keys {
-		newResult, err := conn.RetrieveOneKeyValuePairTreeStruct(ctx, key)
+		newResult, err := conn.RetrieveTreeNode(ctx, key)
 		if err != nil && err != sql.ErrNoRows {
 			panic(err)
 		}
@@ -127,7 +127,7 @@ func testTreeTable() {
 	result = []db.KeyValuePair{}
 
 	for _, key := range keys {
-		newResult, err := conn.RetrieveOneKeyValuePairTreeStruct(ctx, key)
+		newResult, err := conn.RetrieveTreeNode(ctx, key)
 		if err != nil && err != sql.ErrNoRows {
 			panic(err)
 		}
@@ -144,7 +144,7 @@ func testTreeTable() {
 	//                       update keys
 	// *****************************************************************
 	newKVPair = getKeyValuePair(2056, 4555, []byte("new value"))
-	_, err = conn.UpdateKeyValuesTreeStruct(ctx, newKVPair)
+	_, err = conn.UpdateTreeNodes(ctx, newKVPair)
 	if err != nil {
 		panic(err)
 	}
@@ -156,7 +156,7 @@ func testTreeTable() {
 	result = []db.KeyValuePair{}
 
 	for _, key := range keys {
-		newResult, err := conn.RetrieveOneKeyValuePairTreeStruct(ctx, key)
+		newResult, err := conn.RetrieveTreeNode(ctx, key)
 		if err != nil && err != sql.ErrNoRows {
 			panic(err)
 		}
@@ -177,7 +177,7 @@ func testTreeTable() {
 	//                       delete keys
 	// *****************************************************************
 	keys = getKeys(1000, 1200)
-	affectDomainsCount, err := conn.DeleteKeyValuesTreeStruct(ctx, keys)
+	affectDomainsCount, err := conn.DeleteTreeNodes(ctx, keys)
 	if err != nil {
 		panic(err)
 	}
@@ -187,7 +187,7 @@ func testTreeTable() {
 	}
 
 	keys = getKeys(1511, 4222)
-	affectDomainsCount, err = conn.DeleteKeyValuesTreeStruct(ctx, keys)
+	affectDomainsCount, err = conn.DeleteTreeNodes(ctx, keys)
 	if err != nil {
 		panic(err)
 	}
@@ -196,7 +196,7 @@ func testTreeTable() {
 	}
 
 	keys = getKeys(4223, 4555)
-	affectDomainsCount, err = conn.DeleteKeyValuesTreeStruct(ctx, keys)
+	affectDomainsCount, err = conn.DeleteTreeNodes(ctx, keys)
 	if err != nil {
 		panic(err)
 	}
@@ -210,7 +210,7 @@ func testTreeTable() {
 	keys = getKeys(1011, 5555)
 
 	for _, key := range keys {
-		newResult, err := conn.RetrieveOneKeyValuePairTreeStruct(ctx, key)
+		newResult, err := conn.RetrieveTreeNode(ctx, key)
 		if err != nil && err != sql.ErrNoRows {
 			panic(err)
 		}
@@ -245,42 +245,42 @@ func testDomainEntriesTable() {
 
 	// insert key 1511 - 2012
 	newKVPair := getKeyValuePair(1511, 2012, []byte("hi this is a test"))
-	_, err = conn.UpdateKeyValuesDomainEntries(ctx, newKVPair)
+	_, err = conn.UpdateDomainEntries(ctx, newKVPair)
 	if err != nil {
 		panic(err)
 	}
 
 	// insert key 2013 - 2055
 	newKVPair = getKeyValuePair(2013, 2055, []byte("hi this is a test"))
-	_, err = conn.UpdateKeyValuesDomainEntries(ctx, newKVPair)
+	_, err = conn.UpdateDomainEntries(ctx, newKVPair)
 	if err != nil {
 		panic(err)
 	}
 
 	// insert key 2056 - 2155
 	newKVPair = getKeyValuePair(2056, 2155, []byte("hi this is a test"))
-	_, err = conn.UpdateKeyValuesDomainEntries(ctx, newKVPair)
+	_, err = conn.UpdateDomainEntries(ctx, newKVPair)
 	if err != nil {
 		panic(err)
 	}
 
 	// insert key 2056 - 4555
 	newKVPair = getKeyValuePair(2056, 4555, []byte("hi this is a test"))
-	_, err = conn.UpdateKeyValuesDomainEntries(ctx, newKVPair)
+	_, err = conn.UpdateDomainEntries(ctx, newKVPair)
 	if err != nil {
 		panic(err)
 	}
 
 	// *****************************************************************
 	//              check if value is correctly inserted
-	//              RetrieveOneKeyValuePairDomainEntries()
+	//              RetrieveDomainEntry()
 	// *****************************************************************
 	keys := getKeys(1511, 4555)
 	prevKeySize := len(keys)
 	result := []db.KeyValuePair{}
 
 	for _, key := range keys {
-		newResult, err := conn.RetrieveOneKeyValuePairDomainEntries(ctx, key)
+		newResult, err := conn.RetrieveDomainEntry(ctx, key)
 		if err != nil && err != sql.ErrNoRows {
 			panic(err)
 		}
@@ -302,7 +302,7 @@ func testDomainEntriesTable() {
 	result = []db.KeyValuePair{}
 
 	for _, key := range keys {
-		newResult, err := conn.RetrieveOneKeyValuePairDomainEntries(ctx, key)
+		newResult, err := conn.RetrieveDomainEntry(ctx, key)
 		if err != nil && err != sql.ErrNoRows {
 			panic(err)
 		}
@@ -321,9 +321,9 @@ func testDomainEntriesTable() {
 
 	// *****************************************************************
 	//              check if value is correctly inserted
-	//              RetrieveKeyValuePairDomainEntries()
+	//              RetrieveDomainEntries()
 	// *****************************************************************
-	result, err = conn.RetrieveKeyValuePairDomainEntries(ctx, keys, 10)
+	result, err = conn.RetrieveDomainEntries(ctx, keys, 10)
 	if err != nil {
 		panic(err)
 	}
@@ -345,7 +345,7 @@ func testDomainEntriesTable() {
 	result = []db.KeyValuePair{}
 
 	for _, key := range keys {
-		newResult, err := conn.RetrieveOneKeyValuePairDomainEntries(ctx, key)
+		newResult, err := conn.RetrieveDomainEntry(ctx, key)
 		if err != nil && err != sql.ErrNoRows {
 			panic(err)
 		}
@@ -386,14 +386,14 @@ func testUpdateTable() {
 	totalRecordsNum := 0
 
 	keys := getKeys(100, 200)
-	_, err = conn.AddUpdatedDomainHashesUpdates(ctx, keys)
+	_, err = conn.AddUpdatedDomains(ctx, keys)
 	if err != nil {
 		panic(err)
 	}
 	totalRecordsNum = totalRecordsNum + len(keys)
 
 	keys = getKeys(333, 409)
-	_, err = conn.AddUpdatedDomainHashesUpdates(ctx, keys)
+	_, err = conn.AddUpdatedDomains(ctx, keys)
 	if err != nil {
 		panic(err)
 	}
@@ -402,7 +402,7 @@ func testUpdateTable() {
 	// *****************************************************************
 	//                        query updates
 	// *****************************************************************
-	numOfUpdates, err := conn.GetCountOfUpdatesDomainsUpdates(ctx)
+	numOfUpdates, err := conn.CountUpdatedDomains(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -411,7 +411,7 @@ func testUpdateTable() {
 		panic("Updates table test: missing some records")
 	}
 
-	keys, err = conn.RetrieveUpdatedDomainHashesUpdates(ctx, 1000)
+	keys, err = conn.RetrieveUpdatedDomains(ctx, 1000)
 	if len(keys) != numOfUpdates {
 		panic("Updates table test: length not equal")
 	}
@@ -419,7 +419,7 @@ func testUpdateTable() {
 	// *****************************************************************
 	//                       truncate tables
 	// *****************************************************************
-	err = conn.TruncateUpdatesTableUpdates(ctx)
+	err = conn.RemoveAllUpdatedDomains(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -427,7 +427,7 @@ func testUpdateTable() {
 	// *****************************************************************
 	//                      read records after truncation
 	// *****************************************************************
-	numOfUpdates, err = conn.GetCountOfUpdatesDomainsUpdates(ctx)
+	numOfUpdates, err = conn.CountUpdatedDomains(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -435,7 +435,7 @@ func testUpdateTable() {
 		panic("Updates table test: table not truncated")
 	}
 
-	keys, err = conn.RetrieveUpdatedDomainHashesUpdates(ctx, 1000)
+	keys, err = conn.RetrieveUpdatedDomains(ctx, 1000)
 	if len(keys) != 0 {
 		panic("Updates table test: read values after truncation")
 	}

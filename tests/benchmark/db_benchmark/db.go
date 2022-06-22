@@ -30,7 +30,7 @@ func main() {
 		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 		defer cancelF()
 		start := time.Now()
-		_, err = conn.UpdateKeyValuesTreeStruct(ctx, newKVPair)
+		_, err = conn.UpdateTreeNodes(ctx, newKVPair)
 		if err != nil {
 			panic(err)
 		}
@@ -48,7 +48,7 @@ func main() {
 		defer cancelF()
 		start := time.Now()
 		for _, k := range keys {
-			result, err := conn.RetrieveOneKeyValuePairTreeStruct(ctx, k)
+			result, err := conn.RetrieveTreeNode(ctx, k)
 			if err != nil {
 				panic(err)
 			}
@@ -70,7 +70,7 @@ func main() {
 		keys := getKeys(i*1000, i*1000+999)
 
 		start := time.Now()
-		_, err := conn.DeleteKeyValuesTreeStruct(ctx, keys)
+		_, err := conn.DeleteTreeNodes(ctx, keys)
 		if err != nil {
 			panic(err)
 		}

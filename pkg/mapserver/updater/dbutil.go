@@ -19,24 +19,24 @@ func (mapUpdater *MapUpdater) retrieveAffectedDomainFromDB(ctx context.Context, 
 		affectedDomainHash = append(affectedDomainHash, k)
 	}
 	// read key-value pair from DB
-	domainPair, err := mapUpdater.dbConn.RetrieveKeyValuePairDomainEntries(ctx, affectedDomainHash, readerNum)
+	domainPair, err := mapUpdater.dbConn.RetrieveDomainEntries(ctx, affectedDomainHash, readerNum)
 	if err != nil {
-		return nil, fmt.Errorf("retrieveAffectedDomainFromDB | RetrieveKeyValuePairDomainEntries | %w", err)
+		return nil, fmt.Errorf("retrieveAffectedDomainFromDB | %w", err)
 	}
 
 	// parse the key-value pair -> domain map
 	domainEntriesMap, err := parseDomainBytes(domainPair)
 	if err != nil {
-		return nil, fmt.Errorf("retrieveAffectedDomainFromDB | parseDomainBytes | %w", err)
+		return nil, fmt.Errorf("retrieveAffectedDomainFromDB | %w", err)
 	}
 	return domainEntriesMap, nil
 }
 
 // writeChangesToDB: commit changes to domain entries table and updates table
 func (mapUpdater *MapUpdater) writeChangesToDB(ctx context.Context, updatesToDomainEntriesTable []db.KeyValuePair) (int, error) {
-	_, err := mapUpdater.dbConn.UpdateKeyValuesDomainEntries(ctx, updatesToDomainEntriesTable)
+	_, err := mapUpdater.dbConn.UpdateDomainEntries(ctx, updatesToDomainEntriesTable)
 	if err != nil {
-		return 0, fmt.Errorf("writeChangesToDB | UpdateKeyValuesDomainEntries | %w", err)
+		return 0, fmt.Errorf("writeChangesToDB | %w", err)
 	}
 
 	return len(updatesToDomainEntriesTable), nil
@@ -48,7 +48,7 @@ func parseDomainBytes(keyValuePairs []db.KeyValuePair) (map[common.SHA256Output]
 	for _, pair := range keyValuePairs {
 		newPair, err := mapCommon.DeserializeDomainEntry(pair.Value)
 		if err != nil {
-			return nil, fmt.Errorf("parseDomainBytes | DeserializeDomainEntry | %w", err)
+			return nil, fmt.Errorf("parseDomainBytes | %w", err)
 		}
 		result[pair.Key] = newPair
 	}
