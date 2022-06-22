@@ -1,4 +1,3 @@
-
 *.004dev.com
 *.010pay.co.kr
 *.023piao.com
@@ -16482,8 +16481,6 @@
 9986c611-22b9-4448-b63f-8ba2cc2a3c34.cloudapp.net
 9998416.com
 99998416.com
-99999973K REPRESENTANTE FICTICIO (R: A01111114)
-99999974E REPRESENTANTESPJ FICTICIO (R: A01111114)
 999a02e1-cc81-45ee-b259-27f3902a1105.cloudapp.net
 99a3b412-1bd8-4e4a-92f2-cfb121de88e6.cloudapp.net
 99a50b94-cea9-4e4c-86c8-67b786fff83c.cloudapp.net
@@ -16796,7 +16793,6 @@ AS.IT.DHBW-RAVENSBURG.DE
 AS9565.myqnapcloud.com
 ASIAVPN1.RRD.COM
 AbelNas.myqnapcloud.com
-Actalis Extended Validation Server CA G1 - OCSP Responder
 AdrianVlad.myqnapcloud.com
 AetherNAS.myqnapcloud.com
 AgendaQuick.ch.ofallon.mo.us
@@ -16840,7 +16836,6 @@ Balarama.myqnapcloud.com
 BalinNAS.myqnapcloud.com
 Baume1.myqnapcloud.com
 Bealemb.myqnapcloud.com
-Beame.io CA 1
 BelNAS2.myqnapcloud.com
 BensStorage17.myqnapcloud.com
 BettyLou1.myqnapcloud.com
@@ -16884,21 +16879,11 @@ CERULLO.myqnapcloud.com
 CGHSFASTAPP.COM
 CGSDirect.cwt.ca
 CHASESSO.EQUATOR.COM
-CIUDADANO FICTICIO ACTIVO
-CIUDADANO FICTICIO REVOCADO
 CJBoekema.myqnapcloud.com
 CLOCKER.myqnapcloud.com
 CLomibaoNAS.myqnapcloud.com
 CORP-ASA9.divrad.com
 CORPORATE.EQUATOR.COM
-CORPORATIVO FICTICIO ACTIVO
-CORPORATIVO FICTICIO REVOCADO
-CORPPRIVADO FICTICIO ACTIVO
-CORPPRIVADO FICTICIO REVOCADO
-CORPPRIVREC FICTICIO ACTIVO
-CORPPRIVREC FICTICIO REVOCADO
-CORPREC FICTICIO ACTIVO
-CORPREC FICTICIO REVOCADO
 COSMOSANDROMEDA.myqnapcloud.com
 CP-7921G-SEPC89C1D91F44A
 CP-7942G-SEP0008308B1827
@@ -16947,7 +16932,6 @@ Controlexpert.de
 CoruscantBMO.myqnapcloud.com
 Courcheval.myqnapcloud.com
 CoxMedia.myqnapcloud.com
-CrossTrust DV CA1
 CuW.myqnapcloud.com
 CubeBeast.myqnapcloud.com
 CustomerASCS.myqnapcloud.com
@@ -16959,8 +16943,6 @@ DENDELNAS.myqnapcloud.com
 DEV.IDPSRV2.FMGLOBAL.COM
 DGRsip.aramarkuc.net
 DKennyCo.myqnapcloud.com
-DOD ID SW CA-37
-DOD ID SW CA-38
 DOROO.myqnapcloud.com
 DRA.myqnapcloud.com
 DRATKINSON.myqnapcloud.com
@@ -16983,13 +16965,10 @@ Dhillon.myqnapcloud.com
 Dhrservices.hr.sharjah.ae
 DickButtNAS.myqnapcloud.com
 DidgeFnas.myqnapcloud.com
-DigiCert Assured ID CA-1
 DonsTS453B.myqnapcloud.com
 DoonsNAS.myqnapcloud.com
 DribServer.myqnapcloud.com
 Dynam.myqnapcloud.com
-Dynamita Sarl
-E-ME PSI (PCA)
 ECHEVERRI.myqnapcloud.com
 EDGE.SABERIN.COM
 EKTS419PNas.myqnapcloud.com
@@ -17024,8 +17003,6 @@ FLYDOCNAS.myqnapcloud.com
 FMGIQNAP2.myqnapcloud.com
 FORDHAMQNAS.myqnapcloud.com
 FPHomeNas.myqnapcloud.com
-FUNCIONARIO FICTICIO ACTIVO
-FUNCIONARIO FICTICIO REVOCADO
 FV94.myqnapcloud.com
 Faibl.realm.com
 Fairwyn.myqnapcloud.com
@@ -17073,9 +17050,6 @@ GerryNAS.myqnapcloud.com
 Geticsostorage.myqnapcloud.com
 Gilliard01.myqnapcloud.com
 GladishNAS.myqnapcloud.com
-GlobalSign R6 Admin CA - SHA256 - G3
-Go Daddy Root Validation Authority - G1
-Go Daddy Validation Authority - G1
 GoTrimQNapTS231P.myqnapcloud.com
 GodsHell.myqnapcloud.com
 GoldmanNAS.myqnapcloud.com
@@ -17109,7 +17083,6 @@ Huey.CavendishFoods.co.uk
 Hummiserver.myqnapcloud.com
 Hydac-NA.com
 Hypercloud.myqnapcloud.com
-IDM_ESB
 IDPSRV2.FMGLOBAL.COM
 IFP-Adbuilder.iridium.com
 IFP-ApprovalMgr.iridium.com
@@ -17193,9 +17166,6 @@ Live2jet.myqnapcloud.com
 LiveWebGrid.bilborough.ac.uk
 Lmff.myqnapcloud.com
 Longfamily.myqnapcloud.com
-Luciano Kaefer
-LuxTrust Global Root
-LuxTrust SSL CA 4
 Lync.mof.gov.kw
 M-WEB-WC-01.hawk-hhg.de
 MA-ISE-01.divcowest.com
@@ -17340,10 +17310,6 @@ NEURONT.duoplus.nl
 NOVATEGIA.myqnapcloud.com
 NRTSNAS.myqnapcloud.com
 NUAGEV.myqnapcloud.com
-NUEVOCIUD FICTICIO ACTIVO
-NUEVOCIUD FICTICIO REVOCADO
-NUEVOFUNC FICTICIO ACTIVO - 99999975T
-NUEVOFUNC FICTICIO REVOCADO - 99999975T
 NasBelco.myqnapcloud.com
 NasEindegooi.myqnapcloud.com
 NasFtp.myqnapcloud.com
@@ -17359,7 +17325,6 @@ NightEye.myqnapcloud.com
 Noobsy.myqnapcloud.com
 NovaCleanroomsNAS.myqnapcloud.com
 OCSP2-SIGOV2
-OFAC VPN CA
 OMEGA3.myqnapcloud.com
 OMVICEX-D.omvic.on.ca
 OberonNAS.myqnapcloud.com
@@ -17382,8 +17347,6 @@ PATERNAS.myqnapcloud.com
 PHOEBE.myqnapcloud.com
 PILOT.PORTALBANK.DK
 PRIMESNT1.myqnapcloud.com
-PROFESIONAL FICTICIO ACTIVO - 99999970H
-PROFESIONAL FICTICIO REVOCADO - 99999970H
 PROWS.EQUATOR.COM
 PSLaw.myqnapcloud.com
 PTurner45.myqnapcloud.com
@@ -17461,8 +17424,6 @@ Qnapjensbarthel.myqnapcloud.com
 Qnapmaximus9999.myqnapcloud.com
 Qnappiaziano.myqnapcloud.com
 Qnashenkm3.myqnapcloud.com
-QuoVadis Belgium Issuing CA G1
-QuoVadis QVRCA1G1 SSL ICA
 RBServer.myqnapcloud.com
 RCQNAP1.myqnapcloud.com
 RDAX28.myqnapcloud.com
@@ -17519,7 +17480,6 @@ SGW.c-nexco-hen.jp
 SHORTSALE.EQUATOR.COM
 SHOtime.myqnapcloud.com
 SI2G.myqnapcloud.com
-SMARAPD Informática Ltda
 SMS.UKM.UM.SI
 SMTP.GilletteEquipment.com
 SNalerQNAP.myqnapcloud.com
@@ -17564,8 +17524,6 @@ Soutercloud.myqnapcloud.com
 SpeedTom.myqnapcloud.com
 SpideyFanNAS.myqnapcloud.com
 SpieringsSwart2.myqnapcloud.com
-Starfield Root Validation Authority - G1
-Starfield Validation Authority - G1
 StarsNorth.myqnapcloud.com
 Steadimedia.myqnapcloud.com
 Stefano.myqnapcloud.com
@@ -17598,14 +17556,9 @@ TYGRNET.myqnapcloud.com
 TechnoQNAP.myqnapcloud.com
 Tecnofield.myqnapcloud.com
 TekDev.myqnapcloud.com
-TeleSec ServerPass CA 2
 Telge.myqnapcloud.com
 Terraspeicher.myqnapcloud.com
 Texastrinis.myqnapcloud.com
-Thawte Personal Basic CA
-Thawte Personal Freemail CA
-Thawte Personal Premium CA
-Thawte Timestamping CA
 TheBoyleSB.myqnapcloud.com
 TheBoyleSBQNAP.myqnapcloud.com
 TheKarminskis.myqnapcloud.com
@@ -17649,19 +17602,14 @@ VPN-DE07001.bsnconnect.com
 VPN.E-Farmcredit.com
 VPN.MICHAELKORS.CA
 VPQ.myqnapcloud.com
-VR IDENT EXTERNAL ROOT CA 2011
-VR IDENT SSL CA 2011
 VSD.myqnapcloud.com
 VULIWCWEB1.ad.vu.edu.au
 VendorRDG.lw.com
-VeriSign Class 3 Public Primary Certification Authority - G3
-VeriSign Class 3 Public Primary Certification Authority - G5
 Vhagar.myqnapcloud.com
 ViaEntradaWest.myqnapcloud.com
 VicNAS3004.myqnapcloud.com
 VillaplusCMG1.villaplus.com
 Vinylaundry.myqnapcloud.com
-Vodafone (Secure Sites)
 VoleNAS.myqnapcloud.com
 VonBraunNAS.myqnapcloud.com
 Vysyo.myqnapcloud.com
@@ -28740,7 +28688,6 @@ dn.thepondusgroup.com
 dnacollects.com
 dnbmechanical.com
 dnd-express.bg
-dnn_maps.carlisle.gov.uk
 dns.sqldoctor.net
 dns1.innova-it.at
 dnsassociates.com
