@@ -21,11 +21,14 @@ func (u *MapUpdater) UpdateNextBatchReturnTimeList(ctx context.Context) (int, []
 	return len(certs), timeList, err
 }
 
-func (mapUpdater *MapUpdater) updateCertsReturnTime(ctx context.Context, certs []*ctx509.Certificate) ([]string, error) {
+func (mapUpdater *MapUpdater) updateCertsReturnTime(ctx context.Context, certs []*ctx509.Certificate) (
+	[]string, error) {
+
 	timeList := []string{}
 	totalStart := time.Now()
 	start := time.Now()
-	keyValuePairs, _, times, err := mapUpdater.UpdateDomainEntriesTableUsingCertsReturnTime(ctx, certs, 10)
+	keyValuePairs, _, times, err :=
+		mapUpdater.UpdateDomainEntriesTableUsingCertsReturnTime(ctx, certs)
 	if err != nil {
 		return nil, fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingCerts | %w", err)
 	}
@@ -65,8 +68,9 @@ func (mapUpdater *MapUpdater) updateCertsReturnTime(ctx context.Context, certs [
 }
 
 // UpdateDomainEntriesTableUsingCerts: Update the domain entries using the domain certificates
-func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCertsReturnTime(ctx context.Context, certs []*x509.Certificate,
-	readerNum int) ([]db.KeyValuePair, int, []string, error) {
+func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCertsReturnTime(ctx context.Context,
+	certs []*x509.Certificate) ([]*db.KeyValuePair, int, []string, error) {
+
 	timeList := []string{}
 	if len(certs) == 0 {
 		return nil, 0, nil, nil
@@ -87,7 +91,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCertsReturnTime(ctx c
 	start = time.Now()
 	// retrieve (possibly)affected domain entries from db
 	// It's possible that no records will be changed, because the certs are already recorded.
-	domainEntriesMap, err := mapUpdater.retrieveAffectedDomainFromDB(ctx, affectedDomainsMap, readerNum)
+	domainEntriesMap, err := mapUpdater.retrieveAffectedDomainFromDB(ctx, affectedDomainsMap)
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | retrieveAffectedDomainFromDB | %w", err)
 	}

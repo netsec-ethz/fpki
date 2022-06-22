@@ -16,18 +16,20 @@ type readKeyResult struct {
 
 // RetrieveTreeNode retrieves one single key-value pair from tree table
 // Return sql.ErrNoRows if no row is round
-func (c *mysqlDB) RetrieveTreeNode(ctx context.Context, key common.SHA256Output) (*KeyValuePair, error) {
-	keyValuePair, err := retrieveOneKeyValuePair(ctx, c.prepGetValueTree, key)
+func (c *mysqlDB) RetrieveTreeNode(ctx context.Context, key common.SHA256Output) ([]byte, error) {
+	value, err := retrieveValue(ctx, c.prepGetValueTree, key)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, fmt.Errorf("RetrieveTreeNode | %w", err)
 	}
-	return keyValuePair, err
+	return value, err
 }
 
 // RetrieveDomainEntry: Retrieve one key-value pair from domain entries table
 // Return sql.ErrNoRows if no row is round
-func (c *mysqlDB) RetrieveDomainEntry(ctx context.Context, key common.SHA256Output) (*KeyValuePair, error) {
-	keyValuePair, err := retrieveOneKeyValuePair(ctx, c.prepGetValueDomainEntries, key)
+func (c *mysqlDB) RetrieveDomainEntry(ctx context.Context, key common.SHA256Output) (
+	[]byte, error) {
+
+	keyValuePair, err := retrieveValue(ctx, c.prepGetValueDomainEntries, key)
 	if err != nil {
 		if err != sql.ErrNoRows {
 			return nil, fmt.Errorf("RetrieveDomainEntry | %w", err)
@@ -41,40 +43,38 @@ func (c *mysqlDB) RetrieveDomainEntry(ctx context.Context, key common.SHA256Outp
 
 // RetrieveDomainEntries: Retrieve a list of key-value pairs from domain entries table
 // No sql.ErrNoRows will be thrown, if some records does not exist. Check the length of result
-// TO_DISCUSS(yongzhe): keep this or move it to updater
-func (c *mysqlDB) RetrieveDomainEntries(ctx context.Context, key []common.SHA256Output,
-	numOfWorker int) ([]KeyValuePair, error) {
-	if len(key) == 0 {
-		return nil, nil
+func (c *mysqlDB) RetrieveDomainEntries(ctx context.Context, key []common.SHA256Output) (
+	[]*KeyValuePair, error) {
+
+	return c.retrieveDomainEntries(ctx, key)
+}
+
+// used for retrieving key value pair
+func (c *mysqlDB) retrieveDomainEntries(ctx context.Context, keys []common.SHA256Output) (
+	[]*KeyValuePair, error) {
+
+	str := "SELECT `key`, `value` FROM domainEntries WHERE `key` IN " + repeatStmt(1, len(keys))
+	args := make([]interface{}, len(keys))
+	for i, k := range keys {
+		args[i] = k[:]
 	}
-	// if work is less than number of worker
-	if len(key) < numOfWorker {
-		numOfWorker = len(key)
+	rows, err := c.db.QueryContext(ctx, str, args...)
+	if err != nil {
+		return nil, err
 	}
-
-	count := len(key)
-	step := count / numOfWorker
-
-	resultChan := make(chan keyValueResult)
-	for r := 0; r < numOfWorker-1; r++ {
-		go fetchKeyValuePairWorker(resultChan, key[r*step:r*step+step], c.prepGetValueDomainEntries, ctx)
-	}
-	// let the final one do the rest of the work
-	go fetchKeyValuePairWorker(resultChan, key[(numOfWorker-1)*step:count], c.prepGetValueDomainEntries, ctx)
-
-	finishedWorker := 0
-	keyValuePairs := make([]KeyValuePair, 0, len(key))
-
-	for numOfWorker > finishedWorker {
-		newResult := <-resultChan
-		if newResult.Err != nil {
-			return nil, fmt.Errorf("RetrieveDomainEntries | %w", newResult.Err)
+	defer rows.Close()
+	var k, v []byte
+	domainEntries := make([]*KeyValuePair, 0, len(keys))
+	for rows.Next() {
+		if err = rows.Scan(&k, &v); err != nil {
+			return nil, err
 		}
-		keyValuePairs = append(keyValuePairs, newResult.Pairs...)
-		finishedWorker++
+		domainEntries = append(domainEntries, &KeyValuePair{
+			Key:   *(*common.SHA256Output)(k),
+			Value: v,
+		})
 	}
-
-	return keyValuePairs, nil
+	return domainEntries, nil
 }
 
 // ********************************************************************
@@ -139,9 +139,9 @@ func (c *mysqlDB) RetrieveUpdatedDomains(ctx context.Context, perQueryLimit int)
 	return keys, nil
 }
 
-func retrieveOneKeyValuePair(ctx context.Context, stmt *sql.Stmt, key common.SHA256Output) (*KeyValuePair, error) {
+func retrieveValue(ctx context.Context, stmt *sql.Stmt, key common.SHA256Output) ([]byte, error) {
 	var value []byte
 	row := stmt.QueryRow(key[:])
 	err := row.Scan(&value)
-	return &KeyValuePair{Key: key, Value: value}, err
+	return value, err
 }

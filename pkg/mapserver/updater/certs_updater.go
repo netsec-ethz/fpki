@@ -9,7 +9,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/domain"
-	mapCommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
+	mcommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
 )
 
 // TODO(yongzhe): make the list if size is already known.
@@ -19,8 +19,9 @@ type uniqueSet map[common.SHA256Output]struct{}
 type uniqueStringSet map[string]struct{}
 
 // UpdateDomainEntriesTableUsingCerts: Update the domain entries using the domain certificates
-func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCerts(ctx context.Context, certs []*x509.Certificate,
-	readerNum int) ([]db.KeyValuePair, int, error) {
+func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCerts(ctx context.Context,
+	certs []*x509.Certificate) ([]*db.KeyValuePair, int, error) {
+
 	if len(certs) == 0 {
 		return nil, 0, nil
 	}
@@ -39,9 +40,9 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCerts(ctx context.Con
 	start = time.Now()
 	// retrieve (possibly)affected domain entries from db
 	// It's possible that no records will be changed, because the certs are already recorded.
-	domainEntriesMap, err := mapUpdater.retrieveAffectedDomainFromDB(ctx, affectedDomainsMap, readerNum)
+	domainEntriesMap, err := mapUpdater.retrieveAffectedDomainFromDB(ctx, affectedDomainsMap)
 	if err != nil {
-		return nil, 0, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | retrieveAffectedDomainFromDB | %w", err)
+		return nil, 0, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | %w", err)
 	}
 	end = time.Now()
 	fmt.Println("(db)     time to retrieve domain entries: ", end.Sub(start))
@@ -130,7 +131,7 @@ func getAffectedDomainAndCertMap(certs []*x509.Certificate) (uniqueSet,
 }
 
 // update domain entries
-func updateDomainEntries(domainEntries map[common.SHA256Output]*mapCommon.DomainEntry,
+func updateDomainEntries(domainEntries map[common.SHA256Output]*mcommon.DomainEntry,
 	certDomainMap map[string][]*x509.Certificate) (uniqueSet, error) {
 
 	updatedDomainHash := make(uniqueSet)
@@ -147,7 +148,7 @@ func updateDomainEntries(domainEntries map[common.SHA256Output]*mapCommon.Domain
 			// if domain entry does not exist in the db
 			if !ok {
 				// create an empty domain entry
-				newDomainEntry := &mapCommon.DomainEntry{DomainName: domainName}
+				newDomainEntry := &mcommon.DomainEntry{DomainName: domainName}
 				domainEntries[domainNameHash] = newDomainEntry
 				domainEntry = newDomainEntry
 			}
@@ -166,15 +167,15 @@ func updateDomainEntries(domainEntries map[common.SHA256Output]*mapCommon.Domain
 
 // updateDomainEntry: insert certificate into correct CAEntry
 // return: if this domain entry is updated
-func updateDomainEntry(domainEntry *mapCommon.DomainEntry, cert *x509.Certificate) bool {
+func updateDomainEntry(domainEntry *mcommon.DomainEntry, cert *x509.Certificate) bool {
 	return domainEntry.AddCert(cert)
 }
 
 // getDomainEntriesToWrite: get updated domains, and extract the domain bytes
 func getDomainEntriesToWrite(updatedDomain uniqueSet,
-	domainEntries map[common.SHA256Output]*mapCommon.DomainEntry) (map[common.SHA256Output]*mapCommon.DomainEntry, error) {
+	domainEntries map[common.SHA256Output]*mcommon.DomainEntry) (map[common.SHA256Output]*mcommon.DomainEntry, error) {
 
-	result := make(map[common.SHA256Output]*mapCommon.DomainEntry)
+	result := make(map[common.SHA256Output]*mcommon.DomainEntry)
 	for k := range updatedDomain {
 		domainEntry, ok := domainEntries[k]
 		if !ok {
@@ -187,16 +188,18 @@ func getDomainEntriesToWrite(updatedDomain uniqueSet,
 }
 
 // serializeUpdatedDomainEntries: serialize the updated domains
-func serializeUpdatedDomainEntries(domainEntriesMap map[common.SHA256Output]*mapCommon.DomainEntry) ([]db.KeyValuePair, error) {
-	result := make([]db.KeyValuePair, 0, len(domainEntriesMap))
+func serializeUpdatedDomainEntries(domains map[common.SHA256Output]*mcommon.DomainEntry) (
+	[]*db.KeyValuePair, error) {
 
-	for domainNameHash, domainEntryBytes := range domainEntriesMap {
-		domainBytes, err := mapCommon.SerializedDomainEntry(domainEntryBytes)
+	result := make([]*db.KeyValuePair, 0, len(domains))
+
+	for domainNameHash, domainEntryBytes := range domains {
+		domainBytes, err := mcommon.SerializedDomainEntry(domainEntryBytes)
 		if err != nil {
 			return nil, fmt.Errorf("serializeUpdatedDomainEntries | SerializedDomainEntry | %w", err)
 		}
 
-		result = append(result, db.KeyValuePair{Key: domainNameHash, Value: domainBytes})
+		result = append(result, &db.KeyValuePair{Key: domainNameHash, Value: domainBytes})
 	}
 	return result, nil
 }

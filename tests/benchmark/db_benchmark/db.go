@@ -48,11 +48,11 @@ func main() {
 		defer cancelF()
 		start := time.Now()
 		for _, k := range keys {
-			result, err := conn.RetrieveTreeNode(ctx, k)
+			value, err := conn.RetrieveTreeNode(ctx, k)
 			if err != nil {
 				panic(err)
 			}
-			if result.Value == nil {
+			if value == nil {
 				panic("no result")
 			}
 		}
@@ -107,13 +107,13 @@ func getKeys(startIdx, endIdx int) []common.SHA256Output {
 	return result
 }
 
-func getKeyValuePair(startIdx, endIdx int, content []byte) []db.KeyValuePair {
-	result := []db.KeyValuePair{}
+func getKeyValuePair(startIdx, endIdx int, content []byte) []*db.KeyValuePair {
+	result := []*db.KeyValuePair{}
 	for i := startIdx; i <= endIdx; i++ {
 		keyHash := common.SHA256Hash([]byte(strconv.Itoa(i)))
 		keyHash32Bytes := [32]byte{}
 		copy(keyHash32Bytes[:], keyHash)
-		result = append(result, db.KeyValuePair{Key: keyHash32Bytes, Value: content})
+		result = append(result, &db.KeyValuePair{Key: keyHash32Bytes, Value: content})
 	}
 	return result
 }

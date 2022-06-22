@@ -67,9 +67,8 @@ func (u *MapUpdater) UpdateNextBatch(ctx context.Context) (int, error) {
 
 // updateCerts: update the tables and SMT (in memory) using certificates
 func (mapUpdater *MapUpdater) updateCerts(ctx context.Context, certs []*ctx509.Certificate) error {
-
 	start := time.Now()
-	keyValuePairs, numOfUpdates, err := mapUpdater.UpdateDomainEntriesTableUsingCerts(ctx, certs, 10)
+	keyValuePairs, numOfUpdates, err := mapUpdater.UpdateDomainEntriesTableUsingCerts(ctx, certs)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingCerts | %w", err)
 	} else if numOfUpdates == 0 {
@@ -159,7 +158,7 @@ func (mapUpdater *MapUpdater) fetchUpdatedDomainHash(ctx context.Context) ([]com
 }
 
 // keyValuePairToSMTInput: key value pair -> SMT update input
-func keyValuePairToSMTInput(keyValuePair []db.KeyValuePair) ([][]byte, [][]byte, error) {
+func keyValuePairToSMTInput(keyValuePair []*db.KeyValuePair) ([][]byte, [][]byte, error) {
 	updateInput := make([]UpdateInput, 0, len(keyValuePair))
 
 	for _, pair := range keyValuePair {

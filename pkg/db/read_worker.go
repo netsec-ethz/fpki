@@ -9,6 +9,12 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/common"
 )
 
+// keyValueResult: used in worker thread; in multi-thread read
+type keyValueResult struct {
+	Pairs []*KeyValuePair
+	Err   error
+}
+
 // used for retrieving entries from updates table
 func fetchKeyWorker(resultChan chan readKeyResult, start, end int, ctx context.Context, db *sql.DB) {
 	key := make([]byte, 0, end-start)
@@ -34,31 +40,4 @@ func fetchKeyWorker(resultChan chan readKeyResult, start, end int, ctx context.C
 	}
 
 	resultChan <- readKeyResult{Keys: result}
-}
-
-// used for retrieving key value pair
-// TO_DISCUSS(yongzhe): keep this or move it to updater
-func fetchKeyValuePairWorker(resultChan chan keyValueResult, keys []common.SHA256Output, stmt *sql.Stmt, ctx context.Context) {
-	numOfWork := len(keys)
-	pairs := make([]KeyValuePair, 0, numOfWork)
-	var value []byte
-
-work_loop:
-	for i := 0; i < numOfWork; i++ {
-		result := stmt.QueryRow(keys[i][:])
-		err := result.Scan(&value)
-		if err != nil {
-			switch {
-			case err != sql.ErrNoRows:
-				resultChan <- keyValueResult{Err: fmt.Errorf("fetchKeyValuePairWorker | result.Scan | %w", err)}
-				return
-			// omit sql.ErrNoRows
-			case err == sql.ErrNoRows:
-				continue work_loop
-			}
-		}
-		pairs = append(pairs, KeyValuePair{Key: keys[i], Value: value})
-	}
-
-	resultChan <- keyValueResult{Pairs: pairs}
 }

@@ -52,13 +52,13 @@ func NewCacheDB(store db.Conn) (*CacheDB, error) {
 // commitChangesToDB stores the updated nodes to disk.
 func (cacheDB *CacheDB) commitChangesToDB(ctx context.Context) error {
 	// prepare value to store
-	updatesToDB := []db.KeyValuePair{}
+	updatesToDB := []*db.KeyValuePair{}
 	keysToDelete := []common.SHA256Output{}
 
 	// get nodes from update map
 	cacheDB.updatedMux.Lock()
 	for k, v := range cacheDB.updatedNodes {
-		updatesToDB = append(updatesToDB, db.KeyValuePair{Key: k, Value: serializeBatch(v)})
+		updatesToDB = append(updatesToDB, &db.KeyValuePair{Key: k, Value: serializeBatch(v)})
 	}
 	cacheDB.updatedNodes = make(map[Hash][][]byte)
 	cacheDB.updatedMux.Unlock()
@@ -105,11 +105,11 @@ func (cacheDB *CacheDB) getValueLimit(ctx context.Context, key []byte) ([]byte, 
 }
 
 func (cacheDB *CacheDB) getValueLockFree(ctx context.Context, key []byte) ([]byte, error) {
-	result, err := cacheDB.Store.RetrieveTreeNode(ctx, *(*[32]byte)(key))
+	value, err := cacheDB.Store.RetrieveTreeNode(ctx, *(*[32]byte)(key))
 	if err != nil {
 		return nil, fmt.Errorf("getValue | RetrieveOneKeyValuePair | %w", err)
 	}
-	return result.Value, nil
+	return value, nil
 }
 
 // serializeBatch serializes the 2D [][]byte into a []byte for db

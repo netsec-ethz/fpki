@@ -8,12 +8,6 @@ import (
 
 const batchSize = 1000
 
-// keyValueResult: used in worker thread; in multi-thread read
-type keyValueResult struct {
-	Pairs []KeyValuePair
-	Err   error
-}
-
 // KeyValuePair: key-value pair
 type KeyValuePair struct {
 	Key   common.SHA256Output
@@ -30,10 +24,10 @@ type Conn interface {
 	// ************************************************************
 
 	// RetrieveTreeNode: Retrieve one key-value pair from Tree table.
-	RetrieveTreeNode(ctx context.Context, id common.SHA256Output) (*KeyValuePair, error)
+	RetrieveTreeNode(ctx context.Context, id common.SHA256Output) ([]byte, error)
 
 	// UpdateTreeNodes: Update a list of key-value pairs in Tree table
-	UpdateTreeNodes(ctx context.Context, keyValuePairs []KeyValuePair) (int, error)
+	UpdateTreeNodes(ctx context.Context, keyValuePairs []*KeyValuePair) (int, error)
 
 	// DeleteTreeNodes: Delete a list of key-value pairs in Tree table
 	DeleteTreeNodes(ctx context.Context, keys []common.SHA256Output) (int, error)
@@ -43,14 +37,13 @@ type Conn interface {
 	// ************************************************************
 
 	// RetrieveDomainEntry: Retrieve one key-value pair from domain entries table
-	RetrieveDomainEntry(ctx context.Context, id common.SHA256Output) (*KeyValuePair, error)
+	RetrieveDomainEntry(ctx context.Context, id common.SHA256Output) ([]byte, error)
 
 	// RetrieveDomainEntries: Retrieve a list of domain entries table
-	// TO_DISCUSS(yongzhe): keep this, or move this to updater
-	RetrieveDomainEntries(ctx context.Context, id []common.SHA256Output, numOfRoutine int) ([]KeyValuePair, error)
+	RetrieveDomainEntries(ctx context.Context, id []common.SHA256Output) ([]*KeyValuePair, error)
 
 	// UpdateDomainEntries: Update a list of key-value pairs in domain entries table
-	UpdateDomainEntries(ctx context.Context, keyValuePairs []KeyValuePair) (int, error)
+	UpdateDomainEntries(ctx context.Context, keyValuePairs []*KeyValuePair) (int, error)
 
 	// ************************************************************
 	//           Function for Updates table

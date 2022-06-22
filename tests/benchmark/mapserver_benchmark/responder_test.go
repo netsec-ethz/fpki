@@ -19,6 +19,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// BenchmarkResponderGetProof1M uses 5.6s
 func BenchmarkResponderGetProof1M(b *testing.B) {
 	benchmarkResponderGetProof(b, 1000*1000)
 }

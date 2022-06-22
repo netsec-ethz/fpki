@@ -9,7 +9,7 @@ import (
 )
 
 // UpdateDomainEntries: Update a list of key-value store
-func (c *mysqlDB) UpdateDomainEntries(ctx context.Context, keyValuePairs []KeyValuePair) (int, error) {
+func (c *mysqlDB) UpdateDomainEntries(ctx context.Context, keyValuePairs []*KeyValuePair) (int, error) {
 	numOfUpdatedRecords, err := c.doUpdatePairs(ctx, keyValuePairs, c.getDomainEntriesUpdateStmts)
 	if err != nil {
 		return 0, fmt.Errorf("UpdateDomainEntries | %w", err)
@@ -28,7 +28,7 @@ func (c *mysqlDB) DeleteTreeNodes(ctx context.Context, keys []common.SHA256Outpu
 }
 
 // UpdateTreeNodes: Update a list of key-value store
-func (c *mysqlDB) UpdateTreeNodes(ctx context.Context, keyValuePairs []KeyValuePair) (int, error) {
+func (c *mysqlDB) UpdateTreeNodes(ctx context.Context, keyValuePairs []*KeyValuePair) (int, error) {
 	numOfUpdatedPairs, err := c.doUpdatePairs(ctx, keyValuePairs, c.getTreeStructureUpdateStmts)
 	if err != nil {
 		return 0, fmt.Errorf("UpdateTreeNodes | %w", err)
@@ -59,7 +59,7 @@ func (c *mysqlDB) RemoveAllUpdatedDomains(ctx context.Context) error {
 //                              Common
 // ********************************************************************
 // worker to update key-value pairs
-func (c *mysqlDB) doUpdatePairs(ctx context.Context, keyValuePairs []KeyValuePair,
+func (c *mysqlDB) doUpdatePairs(ctx context.Context, keyValuePairs []*KeyValuePair,
 	stmtGetter prepStmtGetter) (int, error) {
 
 	dataLen := len(keyValuePairs)
