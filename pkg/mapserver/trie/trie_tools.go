@@ -33,7 +33,7 @@ func (s *Trie) loadCache(ctx context.Context, root []byte, batch [][]byte, iBatc
 	}
 	if height%4 == 0 {
 		// Load the node from db
-		value, err := s.db.getValue(ctx, root[:HashLength])
+		value, err := s.db.getValueLimit(ctx, root[:HashLength])
 		if err != nil {
 			ch <- fmt.Errorf("the trie node %x is unavailable in the disk db, db may be corrupted | %w", root, err)
 			return

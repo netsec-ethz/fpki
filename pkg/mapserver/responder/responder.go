@@ -13,8 +13,9 @@ import (
 
 // MapResponder: A map responder, which is responsible for receiving client's request. Only read from db.
 type MapResponder struct {
-	conn db.Conn
-	smt  *trie.Trie
+	conn            db.Conn
+	getProofLimiter chan struct{}
+	smt             *trie.Trie
 }
 
 // NewMapResponder: return a new responder
@@ -38,14 +39,17 @@ func NewMapResponder(ctx context.Context, root []byte, cacheHeight int) (*MapRes
 	}
 
 	return &MapResponder{
-		smt:  smt,
-		conn: conn,
+		conn:            conn,
+		getProofLimiter: make(chan struct{}, 64), // limit getProof to 64 concurrent routines
+		smt:             smt,
 	}, nil
 }
 
 // GetProof: get proofs for one domain
-func (responder *MapResponder) GetProof(ctx context.Context, domainName string) ([]mapCommon.MapServerResponse, error) {
-	return responder.getProof(ctx, domainName)
+func (r *MapResponder) GetProof(ctx context.Context, domainName string) ([]mapCommon.MapServerResponse, error) {
+	r.getProofLimiter <- struct{}{}
+	defer func() { <-r.getProofLimiter }()
+	return r.getProof(ctx, domainName)
 }
 
 // GetRoot: get current root of the smt

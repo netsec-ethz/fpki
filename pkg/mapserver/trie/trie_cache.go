@@ -30,7 +30,8 @@ type CacheDB struct {
 	wholeCacheDBLock sync.RWMutex
 
 	// dbConn is the conn to mysql db
-	Store db.Conn
+	Store       db.Conn
+	readLimiter chan struct{}
 
 	// nodes to be removed from db
 	removedNode map[Hash][]byte
@@ -44,6 +45,7 @@ func NewCacheDB(store db.Conn) (*CacheDB, error) {
 		updatedNodes: make(map[Hash][][]byte),
 		removedNode:  make(map[Hash][]byte),
 		Store:        store,
+		readLimiter:  make(chan struct{}, 1),
 	}, nil
 }
 
@@ -96,16 +98,10 @@ func (cacheDB *CacheDB) commitChangesToDB(ctx context.Context) error {
 	return nil
 }
 
-// getValue gets a key-value pair from db
-func (cacheDB *CacheDB) getValue(ctx context.Context, key []byte) ([]byte, error) {
-	cacheDB.wholeCacheDBLock.Lock()
-	result, err := cacheDB.Store.RetrieveOneKeyValuePairTreeStruct(ctx, *(*[32]byte)(key))
-	cacheDB.wholeCacheDBLock.Unlock()
-	if err != nil {
-		return nil, fmt.Errorf("getValue | RetrieveOneKeyValuePair | %w", err)
-	}
-
-	return result.Value, nil
+func (cacheDB *CacheDB) getValueLimit(ctx context.Context, key []byte) ([]byte, error) {
+	cacheDB.readLimiter <- struct{}{}        // block until there is some slack
+	defer func() { <-cacheDB.readLimiter }() // ensure we'll give some slack
+	return cacheDB.getValueLockFree(ctx, key)
 }
 
 func (cacheDB *CacheDB) getValueLockFree(ctx context.Context, key []byte) ([]byte, error) {

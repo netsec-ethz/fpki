@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"fmt"
 	"net/url"
-	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -46,10 +45,16 @@ func Connect(config *Configuration) (Conn, error) {
 		return nil, fmt.Errorf("cannot open DB: %w", err)
 	}
 
-	db.SetMaxOpenConns(512) // TODO(juagargi) set higher for production
-	db.SetMaxIdleConns(512)
-	db.SetConnMaxLifetime(2 * time.Second)
-	db.SetConnMaxIdleTime(1 * time.Second) // lower or equal than above
+	// value set higher could trigger issues in the system
+	maxConnections := 512
+	db.SetMaxOpenConns(maxConnections)
+	db.SetMaxIdleConns(maxConnections)
+	db.SetConnMaxLifetime(-1) // don't close them
+	db.SetConnMaxIdleTime(-1) // don't close them
+	if _, err = db.Exec("SET GLOBAL max_connections = ?", maxConnections); err != nil {
+		return nil, err
+	}
+
 	// check schema
 	if config.CheckSchema {
 		if err := checkSchema(db); err != nil {

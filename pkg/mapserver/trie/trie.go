@@ -455,7 +455,7 @@ func (s *Trie) loadChildren(ctx context.Context, root []byte, height, iBatch int
 	if height%4 == 0 {
 		if len(root) == 0 {
 			// create a new default batch
-			batch = make([][]byte, 31, 31)
+			batch = make([][]byte, 31)
 			batch[0] = []byte{0}
 		} else {
 			var err error
@@ -488,7 +488,7 @@ func (s *Trie) loadBatch(ctx context.Context, root []byte, height int) ([][]byte
 			// Return a copy so that Commit() doesn't have to be called at
 			// each block and still commit every state transition.
 			// Before Commit, the same batch is in liveCache and in updatedNodes
-			newVal := make([][]byte, 31, 31)
+			newVal := make([][]byte, 31)
 			copy(newVal, val)
 			return newVal, nil
 		}
@@ -500,7 +500,7 @@ func (s *Trie) loadBatch(ctx context.Context, root []byte, height int) ([][]byte
 		if s.atomicUpdate {
 			// Return a copy so that Commit() doesn't have to be called at
 			// each block and still commit every state transition.
-			newVal := make([][]byte, 31, 31)
+			newVal := make([][]byte, 31)
 			copy(newVal, val)
 			return newVal, nil
 		}

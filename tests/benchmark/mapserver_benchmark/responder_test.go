@@ -23,6 +23,10 @@ func BenchmarkResponderGetProof1M(b *testing.B) {
 	benchmarkResponderGetProof(b, 1000*1000)
 }
 
+func BenchmarkResponderGetProof2M(b *testing.B) {
+	benchmarkResponderGetProof(b, 1000*1000)
+}
+
 // BenchmarkResponderGetProof10M uses:
 // Parallel req.	Time
 // 			  64 	53.75s
