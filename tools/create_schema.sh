@@ -103,8 +103,6 @@ CMD=$(cat <<EOF
 CREATE TABLE \`fpki\`.\`domainEntries\` (
    \`key\` VARBINARY(32) NOT NULL,
    \`value\` LONGBLOB NOT NULL,
-   \`id\` BIGINT(64) NOT NULL AUTO_INCREMENT,
-   PRIMARY KEY (\`id\`),
    UNIQUE INDEX \`key_UNIQUE\` (\`key\` ASC));
 EOF
 )
