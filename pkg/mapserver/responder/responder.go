@@ -90,8 +90,7 @@ func (r *MapResponder) getProof(ctx context.Context, domainName string) (
 		var proofType mapCommon.ProofType
 		domainBytes := []byte{}
 		// If it is PoP, query the domain entry. If it is PoA, directly return the PoA
-		switch {
-		case isPoP:
+		if isPoP {
 			proofType = mapCommon.PoP
 			result, err := r.conn.RetrieveOneKeyValuePairDomainEntries(ctx, domainHash)
 			if err != nil {
@@ -99,7 +98,7 @@ func (r *MapResponder) getProof(ctx context.Context, domainName string) (
 			}
 
 			domainBytes = result.Value
-		case !isPoP:
+		} else {
 			proofType = mapCommon.PoA
 		}
 

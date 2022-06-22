@@ -139,22 +139,9 @@ func (c *mysqlDB) RetrieveUpdatedDomainHashesUpdates(ctx context.Context, perQue
 	return keys, nil
 }
 
-// ********************************************************************
-//                             Common
-// ********************************************************************
-
-// omit sql.ErrNoRows error
 func retrieveOneKeyValuePair(ctx context.Context, stmt *sql.Stmt, key common.SHA256Output) (*KeyValuePair, error) {
 	var value []byte
 	row := stmt.QueryRow(key[:])
-
 	err := row.Scan(&value)
-	if err != nil {
-		if err != sql.ErrNoRows {
-			return nil, fmt.Errorf("retrieveOneKeyValuePair | Scan | %w", err)
-		} else {
-			return nil, err
-		}
-	}
-	return &KeyValuePair{Key: key, Value: value}, nil
+	return &KeyValuePair{Key: key, Value: value}, err
 }
