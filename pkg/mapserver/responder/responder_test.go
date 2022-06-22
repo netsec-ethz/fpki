@@ -31,7 +31,7 @@ func TestGetProof(t *testing.T) {
 	}
 
 	// get mock responder
-	responder, err := getMockResponder(certs)
+	responder := getMockResponder(t, certs)
 	require.NoError(t, err)
 
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
@@ -107,20 +107,14 @@ func TestResponderWithPoP(t *testing.T) {
 }
 
 // get a mock responder
-func getMockResponder(certs []*x509.Certificate) (*MapResponder, error) {
+func getMockResponder(t require.TestingT, certs []*x509.Certificate) *MapResponder {
 	// update the certs, and get the mock db of SMT and db
 	smtDB, root, err := getUpdatedUpdater(certs)
+	require.NoError(t, err)
 
 	smt, err := trie.NewTrie(root, common.SHA256Hash, smtDB)
-	if err != nil {
-		return nil, err
-	}
+	require.NoError(t, err)
 	smt.CacheHeightLimit = 233
 
-	responder := &MapResponder{
-		smt:  smt,
-		conn: smtDB,
-	}
-
-	return responder, nil
+	return newMapResponder(smtDB, smt)
 }

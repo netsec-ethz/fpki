@@ -38,11 +38,15 @@ func NewMapResponder(ctx context.Context, root []byte, cacheHeight int) (*MapRes
 		return nil, fmt.Errorf("NewMapResponder | LoadCache | %w", err)
 	}
 
+	return newMapResponder(conn, smt), nil
+}
+
+func newMapResponder(conn db.Conn, smt *trie.Trie) *MapResponder {
 	return &MapResponder{
 		conn:            conn,
 		getProofLimiter: make(chan struct{}, 64), // limit getProof to 64 concurrent routines
 		smt:             smt,
-	}, nil
+	}
 }
 
 // GetProof: get proofs for one domain
