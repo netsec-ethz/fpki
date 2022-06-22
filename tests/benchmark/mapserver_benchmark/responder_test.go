@@ -76,15 +76,17 @@ func benchmarkResponderGetProof(b *testing.B, count int) {
 	parallelRequestLimit := 2000 // 2K requests simultaneously
 	wg := &sync.WaitGroup{}
 	var numRequests int64 = 0
+	var domainData int64 = 0
 	work := func(count int, names []string) {
 		defer wg.Done()
 		for i := 0; i < count; i++ {
 			name := names[rand.Intn(len(names))]
 			responses, err := responder.GetProof(ctx, name)
-			// require.NoError(b, err)
-			_ = err
-			_ = responses
+			require.NoError(b, err)
 			atomic.AddInt64(&numRequests, 1)
+			for _, p := range responses {
+				atomic.AddInt64(&domainData, int64(len(p.DomainEntryBytes)))
+			}
 		}
 	}
 	wg.Add(parallelRequestLimit)
@@ -96,7 +98,8 @@ func benchmarkResponderGetProof(b *testing.B, count int) {
 		go work(count/parallelRequestLimit, names)
 	}
 	wg.Wait()
-	fmt.Printf("done %d requests, used %s\n", numRequests, time.Since(t0))
+	fmt.Printf("done %d requests, transferred %dMb, used %s\n",
+		numRequests, domainData/1024/1024, time.Since(t0))
 	elapsed := time.Since(t0)
 	require.NoError(b, err)
 	for i := 1; i < b.N; i++ {
@@ -114,6 +117,12 @@ func BenchmarkResponderGetProofNoPrepareDB100K(b *testing.B) {
 	benchmarkResponderGetProofNoPrepareDB(b, 100*1000)
 }
 
+// benchmarkResponderGetProofNoPrepareDB runs a micro benchmark, making count requests
+// for random domains in uniqueNames.txt, and writing a cpu profile for the
+// request part. It assumes the DB contains the data for the first 100K entries
+// from testdata/dump100K.sql.
+// The created cpu profile can be visualized with:
+// go tool pprof -http=localhost:8000 tests/benchmark/mapserver_benchmark/cpuprofile.pprof
 func benchmarkResponderGetProofNoPrepareDB(b *testing.B, count int) {
 	pprof.StopCPUProfile()
 	names := make([]string, 0)
@@ -152,9 +161,8 @@ func benchmarkResponderGetProofNoPrepareDB(b *testing.B, count int) {
 		for i := 0; i < count; i++ {
 			name := names[rand.Intn(len(names))]
 			responses, err := responder.GetProof(ctx, name)
-			// require.NoError(b, err)
-			_ = err
 			_ = responses
+			_ = err
 		}
 	}
 	work(count, names)
