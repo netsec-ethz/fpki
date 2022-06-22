@@ -52,11 +52,11 @@ func (c *mysqlDB) RetrieveDomainEntries(ctx context.Context, key []common.SHA256
 // used for retrieving key value pair
 func (c *mysqlDB) retrieveDomainEntries(ctx context.Context, keys []common.SHA256Output) (
 	[]*KeyValuePair, error) {
-
 	str := "SELECT `key`, `value` FROM domainEntries WHERE `key` IN " + repeatStmt(1, len(keys))
 	args := make([]interface{}, len(keys))
 	for i, k := range keys {
-		args[i] = k[:]
+		k := k         // XXX(juagargi): create a copy
+		args[i] = k[:] // assign the slice covering the copy (the original k changes !!)
 	}
 	rows, err := c.db.QueryContext(ctx, str, args...)
 	if err != nil {
@@ -73,6 +73,9 @@ func (c *mysqlDB) retrieveDomainEntries(ctx context.Context, keys []common.SHA25
 			Key:   *(*common.SHA256Output)(k),
 			Value: v,
 		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return domainEntries, nil
 }
