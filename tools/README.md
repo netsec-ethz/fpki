@@ -6,8 +6,15 @@
 Based on [https://linuxhint.com/installing_mysql_workbench_ubuntu/](https://linuxhint.com/installing_mysql_workbench_ubuntu/).
 - Download [mysql-apt-config](https://dev.mysql.com/downloads/repo/apt/) and install it with e.g. `sudo apt install mysql-apt-config_0.8.22-1_all.deb`.
 - Select the version if the preselected one is not good.
-- Install mysql-server
-- Install mysql-workbench-community
+- Install "mysql-server"
+- Install "mysql-workbench-community"
+
+To allow root without password:
+- run `sudo mysql`
+- enter `ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '';`
+- enter `FLUSH PRIVILEGES;`
+- you should see "mysql_native_password" as plugin for root when displaying the root user:
+  `SELECT user,authentication_string,plugin,host FROM mysql.user;`
 
 
 ## Analyze performance
