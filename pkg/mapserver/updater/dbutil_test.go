@@ -28,7 +28,7 @@ func TestParseDomainBytes(t *testing.T) {
 	serializedBytes, err := common.SerializedDomainEntry(domainEntry)
 	require.NoError(t, err)
 
-	keyValuePairs := []db.KeyValuePair{
+	keyValuePairs := []*db.KeyValuePair{
 		{
 			Key:   [32]byte{1},
 			Value: serializedBytes,

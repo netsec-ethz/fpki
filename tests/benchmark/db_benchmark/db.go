@@ -30,7 +30,7 @@ func main() {
 		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 		defer cancelF()
 		start := time.Now()
-		_, err = conn.UpdateKeyValuesTreeStruct(ctx, newKVPair)
+		_, err = conn.UpdateTreeNodes(ctx, newKVPair)
 		if err != nil {
 			panic(err)
 		}
@@ -48,11 +48,11 @@ func main() {
 		defer cancelF()
 		start := time.Now()
 		for _, k := range keys {
-			result, err := conn.RetrieveOneKeyValuePairTreeStruct(ctx, k)
+			value, err := conn.RetrieveTreeNode(ctx, k)
 			if err != nil {
 				panic(err)
 			}
-			if result.Value == nil {
+			if value == nil {
 				panic("no result")
 			}
 		}
@@ -70,7 +70,7 @@ func main() {
 		keys := getKeys(i*1000, i*1000+999)
 
 		start := time.Now()
-		_, err := conn.DeleteKeyValuesTreeStruct(ctx, keys)
+		_, err := conn.DeleteTreeNodes(ctx, keys)
 		if err != nil {
 			panic(err)
 		}
@@ -107,13 +107,13 @@ func getKeys(startIdx, endIdx int) []common.SHA256Output {
 	return result
 }
 
-func getKeyValuePair(startIdx, endIdx int, content []byte) []db.KeyValuePair {
-	result := []db.KeyValuePair{}
+func getKeyValuePair(startIdx, endIdx int, content []byte) []*db.KeyValuePair {
+	result := []*db.KeyValuePair{}
 	for i := startIdx; i <= endIdx; i++ {
 		keyHash := common.SHA256Hash([]byte(strconv.Itoa(i)))
 		keyHash32Bytes := [32]byte{}
 		copy(keyHash32Bytes[:], keyHash)
-		result = append(result, db.KeyValuePair{Key: keyHash32Bytes, Value: content})
+		result = append(result, &db.KeyValuePair{Key: keyHash32Bytes, Value: content})
 	}
 	return result
 }

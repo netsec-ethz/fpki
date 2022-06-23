@@ -91,7 +91,7 @@ func main() {
 	}
 
 	// get a new responder, and load an existing tree
-	mapResponder, err := responder.NewMapResponder(ctx, root, 233, 10)
+	mapResponder, err := responder.NewMapResponder(ctx, root, 233)
 	if err != nil {
 		panic(err)
 	}

@@ -213,7 +213,7 @@ func ParseDomainName(domainName string) ([]string, error) {
 	domainName = removeWildCardAndWWW(domainName)
 
 	result, err := SplitE2LD(domainName)
-	resultString := []string{}
+	resultString := make([]string, 0, len(result))
 	var domain string
 	if err != nil {
 		return nil, fmt.Errorf("parseDomainName | SplitE2LD | %w", err)

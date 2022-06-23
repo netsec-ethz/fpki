@@ -93,7 +93,7 @@ func doResponder() {
 	defer cancelF()
 
 	// only use one responder
-	responder, err := responder.NewMapResponder(ctx, root, 233, 10)
+	responder, err := responder.NewMapResponder(ctx, root, 233)
 	if err != nil {
 		panic(err)
 	}

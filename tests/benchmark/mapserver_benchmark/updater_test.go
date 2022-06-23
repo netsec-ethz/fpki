@@ -219,12 +219,12 @@ func benchmarkFetchUpdatedDomainHash(b *testing.B, count int) {
 	}
 }
 
-// BenchmarkRetrieveKeyValuePairDomainEntries10K uses ~ 114 ms
-func BenchmarkRetrieveKeyValuePairDomainEntries10K(b *testing.B) {
-	benchmarkRetrieveKeyValuePairDomainEntries(b, 10*1000)
+// BenchmarkRetrieveDomainEntries10K uses ~ 114 ms
+func BenchmarkRetrieveDomainEntries10K(b *testing.B) {
+	benchmarkRetrieveDomainEntries(b, 10*1000)
 }
 
-func benchmarkRetrieveKeyValuePairDomainEntries(b *testing.B, count int) {
+func benchmarkRetrieveDomainEntries(b *testing.B, count int) {
 	swapBack := swapDBs(b)
 	defer swapBack()
 	raw, err := gunzip(b, "testdata/certs.pem.gz")
@@ -247,8 +247,7 @@ func benchmarkRetrieveKeyValuePairDomainEntries(b *testing.B, count int) {
 	// exec only once, assume perfect measuring. Because b.N is the number of iterations,
 	// just mimic b.N executions.
 	t0 := time.Now()
-	_, err = up.Conn().RetrieveKeyValuePairDomainEntries(
-		ctx, updatedDomainHash, 10)
+	_, err = up.Conn().RetrieveDomainEntries(ctx, updatedDomainHash)
 	elapsed := time.Since(t0)
 	require.NoError(b, err)
 	for i := 1; i < b.N; i++ {
@@ -279,7 +278,7 @@ func benchmarkKeyValuePairToSMTInput(b *testing.B, count int) {
 	updatedDomainHash, err := up.FetchUpdatedDomainHash(ctx)
 	require.NoError(b, err)
 	keyValuePairs, err := up.Conn().
-		RetrieveKeyValuePairDomainEntries(ctx, updatedDomainHash, 10)
+		RetrieveDomainEntries(ctx, updatedDomainHash)
 	require.NoError(b, err)
 
 	b.ResetTimer()
@@ -319,7 +318,7 @@ func benchmarkSmtUpdate(b *testing.B, count int) {
 	updatedDomainHash, err := up.FetchUpdatedDomainHash(ctx)
 	require.NoError(b, err)
 	keyValuePairs, err := up.Conn().
-		RetrieveKeyValuePairDomainEntries(ctx, updatedDomainHash, 10)
+		RetrieveDomainEntries(ctx, updatedDomainHash)
 	require.NoError(b, err)
 	k, v, err := up.KeyValuePairToSMTInput(keyValuePairs)
 	require.NoError(b, err)
@@ -360,8 +359,7 @@ func benchmarkCommitChanges(b *testing.B, count int) {
 	require.NoError(b, err)
 	updatedDomainHash, err := up.FetchUpdatedDomainHash(ctx)
 	require.NoError(b, err)
-	keyValuePairs, err := up.Conn().
-		RetrieveKeyValuePairDomainEntries(ctx, updatedDomainHash, 10)
+	keyValuePairs, err := up.Conn().RetrieveDomainEntries(ctx, updatedDomainHash)
 	require.NoError(b, err)
 	k, v, err := up.KeyValuePairToSMTInput(keyValuePairs)
 	require.NoError(b, err)

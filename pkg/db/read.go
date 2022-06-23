@@ -14,17 +14,25 @@ type readKeyResult struct {
 	Err  error
 }
 
-// ********************************************************************
-//                Read functions for Tree table
-// ********************************************************************
-
-// RetrieveOneKeyValuePairTreeStruct: Retrieve one single key-value pair from tree table
+// RetrieveTreeNode retrieves one single key-value pair from tree table
 // Return sql.ErrNoRows if no row is round
-func (c *mysqlDB) RetrieveOneKeyValuePairTreeStruct(ctx context.Context, key common.SHA256Output) (*KeyValuePair, error) {
-	keyValuePair, err := retrieveOneKeyValuePair(ctx, c.prepGetValueTree, key)
+func (c *mysqlDB) RetrieveTreeNode(ctx context.Context, key common.SHA256Output) ([]byte, error) {
+	value, err := retrieveValue(ctx, c.prepGetValueTree, key)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, fmt.Errorf("RetrieveTreeNode | %w", err)
+	}
+	return value, err
+}
+
+// RetrieveDomainEntry: Retrieve one key-value pair from domain entries table
+// Return sql.ErrNoRows if no row is round
+func (c *mysqlDB) RetrieveDomainEntry(ctx context.Context, key common.SHA256Output) (
+	[]byte, error) {
+
+	keyValuePair, err := retrieveValue(ctx, c.prepGetValueDomainEntries, key)
 	if err != nil {
 		if err != sql.ErrNoRows {
-			return nil, fmt.Errorf("RetrieveOneKeyValuePairTreeStruct | %w", err)
+			return nil, fmt.Errorf("RetrieveDomainEntry | %w", err)
 		} else {
 			// return sql.ErrNoRows
 			return nil, err
@@ -33,81 +41,63 @@ func (c *mysqlDB) RetrieveOneKeyValuePairTreeStruct(ctx context.Context, key com
 	return keyValuePair, nil
 }
 
-// ********************************************************************
-//                Read functions for domain entries table
-// ********************************************************************
-
-// RetrieveOneKeyValuePairDomainEntries: Retrieve one key-value pair from domain entries table
-// Return sql.ErrNoRows if no row is round
-func (c *mysqlDB) RetrieveOneKeyValuePairDomainEntries(ctx context.Context, key common.SHA256Output) (*KeyValuePair, error) {
-	keyValuePair, err := retrieveOneKeyValuePair(ctx, c.prepGetValueDomainEntries, key)
-	if err != nil {
-		if err != sql.ErrNoRows {
-			return nil, fmt.Errorf("RetrieveOneKeyValuePairDomainEntries | %w", err)
-		} else {
-			// return sql.ErrNoRows
-			return nil, err
-		}
-	}
-	return keyValuePair, nil
-}
-
-// RetrieveKeyValuePairDomainEntries: Retrieve a list of key-value pairs from domain entries table
+// RetrieveDomainEntries: Retrieve a list of key-value pairs from domain entries table
 // No sql.ErrNoRows will be thrown, if some records does not exist. Check the length of result
-// TO_DISCUSS(yongzhe): keep this or move it to updater
-func (c *mysqlDB) RetrieveKeyValuePairDomainEntries(ctx context.Context, key []common.SHA256Output,
-	numOfWorker int) ([]KeyValuePair, error) {
-	if len(key) == 0 {
-		return nil, nil
+func (c *mysqlDB) RetrieveDomainEntries(ctx context.Context, key []common.SHA256Output) (
+	[]*KeyValuePair, error) {
+
+	return c.retrieveDomainEntries(ctx, key)
+}
+
+// used for retrieving key value pair
+func (c *mysqlDB) retrieveDomainEntries(ctx context.Context, keys []common.SHA256Output) (
+	[]*KeyValuePair, error) {
+	str := "SELECT `key`, `value` FROM domainEntries WHERE `key` IN " + repeatStmt(1, len(keys))
+	args := make([]interface{}, len(keys))
+	for i, k := range keys {
+		k := k         // XXX(juagargi): create a copy
+		args[i] = k[:] // assign the slice covering the copy (the original k changes !!)
 	}
-	// if work is less than number of worker
-	if len(key) < numOfWorker {
-		numOfWorker = len(key)
+	rows, err := c.db.QueryContext(ctx, str, args...)
+	if err != nil {
+		return nil, err
 	}
-
-	count := len(key)
-	step := count / numOfWorker
-
-	resultChan := make(chan keyValueResult)
-	for r := 0; r < numOfWorker-1; r++ {
-		go fetchKeyValuePairWorker(resultChan, key[r*step:r*step+step], c.prepGetValueDomainEntries, ctx)
-	}
-	// let the final one do the rest of the work
-	go fetchKeyValuePairWorker(resultChan, key[(numOfWorker-1)*step:count], c.prepGetValueDomainEntries, ctx)
-
-	finishedWorker := 0
-	keyValuePairs := make([]KeyValuePair, 0, len(key))
-
-	for numOfWorker > finishedWorker {
-		newResult := <-resultChan
-		if newResult.Err != nil {
-			return nil, fmt.Errorf("RetrieveKeyValuePairDomainEntries | %w", newResult.Err)
+	defer rows.Close()
+	var k, v []byte
+	domainEntries := make([]*KeyValuePair, 0, len(keys))
+	for rows.Next() {
+		if err = rows.Scan(&k, &v); err != nil {
+			return nil, err
 		}
-		keyValuePairs = append(keyValuePairs, newResult.Pairs...)
-		finishedWorker++
+		domainEntries = append(domainEntries, &KeyValuePair{
+			Key:   *(*common.SHA256Output)(k),
+			Value: v,
+		})
 	}
-
-	return keyValuePairs, nil
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return domainEntries, nil
 }
 
 // ********************************************************************
 //                Read functions for updates table
 // ********************************************************************
-// GetCountOfUpdatesDomainsUpdates: Get number of entries in updates table
-func (c *mysqlDB) GetCountOfUpdatesDomainsUpdates(ctx context.Context) (int, error) {
+// CountUpdatedDomains: Get number of entries in updates table
+func (c *mysqlDB) CountUpdatedDomains(ctx context.Context) (int, error) {
 	var number int
 	err := c.db.QueryRow("SELECT COUNT(*) FROM updates").Scan(&number)
 	if err != nil {
-		return 0, fmt.Errorf("GetCountOfUpdatesDomainsUpdates | Scan | %w", err)
+		return 0, fmt.Errorf("CountUpdatedDomains | Scan | %w", err)
 	}
 	return number, nil
 }
 
-// RetrieveUpdatedDomainHashesUpdates: Get updated domains name hashes from updates table.
-func (c *mysqlDB) RetrieveUpdatedDomainHashesUpdates(ctx context.Context, perQueryLimit int) ([]common.SHA256Output, error) {
-	count, err := c.GetCountOfUpdatesDomainsUpdates(ctx)
+// RetrieveUpdatedDomains: Get updated domains name hashes from updates table.
+func (c *mysqlDB) RetrieveUpdatedDomains(ctx context.Context, perQueryLimit int) ([]common.SHA256Output, error) {
+	count, err := c.CountUpdatedDomains(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("RetrieveUpdatedDomainHashesUpdates | Retrieve update table count | %w", err)
+		return nil, fmt.Errorf("RetrieveUpdatedDomains | %w", err)
 	}
 
 	// calculate the number of workers
@@ -140,35 +130,21 @@ func (c *mysqlDB) RetrieveUpdatedDomainHashesUpdates(ctx context.Context, perQue
 	for numberOfWorker > finishedWorker {
 		newResult := <-resultChan
 		if newResult.Err != nil {
-			return nil, fmt.Errorf("RetrieveUpdatedDomainHashesUpdates | %w", newResult.Err)
+			return nil, fmt.Errorf("RetrieveUpdatedDomains | %w", newResult.Err)
 		}
 		keys = append(keys, newResult.Keys...)
 		finishedWorker++
 	}
 
 	if count != len(keys) {
-		return nil, fmt.Errorf("RetrieveUpdatedDomainHashesUpdates | incomplete fetching")
+		return nil, fmt.Errorf("RetrieveUpdatedDomains | incomplete fetching")
 	}
 	return keys, nil
 }
 
-// ********************************************************************
-//                             Common
-// ********************************************************************
-
-// omit sql.ErrNoRows error
-func retrieveOneKeyValuePair(ctx context.Context, stmt *sql.Stmt, key common.SHA256Output) (*KeyValuePair, error) {
+func retrieveValue(ctx context.Context, stmt *sql.Stmt, key common.SHA256Output) ([]byte, error) {
 	var value []byte
-	result := stmt.QueryRow(key[:])
-
-	err := result.Scan(&value)
-	if err != nil {
-		if err != sql.ErrNoRows {
-			return nil, fmt.Errorf("retrieveOneKeyValuePair | Scan | %w", err)
-		} else {
-			return nil, err
-		}
-	}
-
-	return &KeyValuePair{Key: key, Value: value}, nil
+	row := stmt.QueryRow(key[:])
+	err := row.Scan(&value)
+	return value, err
 }

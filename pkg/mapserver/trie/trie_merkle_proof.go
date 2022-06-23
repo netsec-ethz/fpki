@@ -19,10 +19,7 @@ import (
 // on the path of the non-included key, 3- (nil, nil) for a non-included key
 // with a DefaultLeaf on the path
 func (s *Trie) MerkleProof(ctx context.Context, key []byte) ([][]byte, bool, []byte, []byte, error) {
-	s.lock.RLock()
-	defer s.lock.RUnlock()
-	s.atomicUpdate = false // so loadChildren doesn't return a copy
-	return s.merkleProof(ctx, s.Root, key, nil, s.TrieHeight, 0)
+	return s.MerkleProofR(ctx, key, s.Root)
 }
 
 // MerkleProofPast generates a Merkle proof of inclusion or non-inclusion
@@ -32,10 +29,12 @@ func (s *Trie) MerkleProof(ctx context.Context, key []byte) ([][]byte, bool, []b
 // on the path of the non-included key, 3- (nil, nil) for a non-included key
 // with a DefaultLeaf on the path
 func (s *Trie) MerkleProofR(ctx context.Context, key, root []byte) ([][]byte, bool, []byte, []byte, error) {
+	auditPath := make([][]byte, 0, 32) // 32 levels should cover the whole tree: no new allocations
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 	s.atomicUpdate = false // so loadChildren doesn't return a copy
-	return s.merkleProof(ctx, root, key, nil, s.TrieHeight, 0)
+	included, newKey, value, err := s.merkleProof(ctx, &auditPath, root, key, nil, s.TrieHeight, 0)
+	return auditPath, included, newKey, value, err
 }
 
 // MerkleProofCompressed returns a compressed merkle proof in the given trie
@@ -49,11 +48,12 @@ func (s *Trie) MerkleProofCompressed(ctx context.Context, key []byte) ([]byte, [
 }
 
 func (s *Trie) merkleProofCompressed(ctx context.Context, key, root []byte) ([]byte, [][]byte, int, bool, []byte, []byte, error) {
+	mpFull := make([][]byte, 0, 32) // 32 levels should cover the whole tree: no new allocations
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 	s.atomicUpdate = false // so loadChildren doesn't return a copy
 	// create a regular merkle proof and then compress it
-	mpFull, included, proofKey, proofVal, err := s.merkleProof(ctx, root, key, nil, s.TrieHeight, 0)
+	included, proofKey, proofVal, err := s.merkleProof(ctx, &mpFull, root, key, nil, s.TrieHeight, 0)
 	if err != nil {
 		return nil, nil, 0, true, nil, nil, err
 	}
@@ -72,50 +72,58 @@ func (s *Trie) merkleProofCompressed(ctx context.Context, key, root []byte) ([]b
 
 // merkleProof generates a Merkle proof of inclusion or non-inclusion
 // for a given trie root.
-// returns the audit path, bool (key included), key, value, error
+// auditPath is the returned audit path (passed by reference).
+// returns bool (key included), key, value, error
 // (key,value) can be 1- (nil, value), value of the included key, 2- the kv of a LeafNode
 // on the path of the non-included key, 3- (nil, nil) for a non-included key
 // with a DefaultLeaf on the path
-func (s *Trie) merkleProof(ctx context.Context, root, key []byte, batch [][]byte, height, iBatch int) ([][]byte, bool, []byte, []byte, error) {
+func (s *Trie) merkleProof(ctx context.Context, auditPath *[][]byte, root, key []byte,
+	batch [][]byte, height, iBatch int) (bool, []byte, []byte, error) {
+
+	// pathToReturn := make([][]byte, 0, 32) // we estimate 32 levels is enough to cover all tree
 	if len(root) == 0 {
 		// prove that an empty subtree is on the path of the key
-		return nil, false, nil, nil, nil
+		return false, nil, nil, nil
 	}
 	// Fetch the children of the node
 	batch, iBatch, lnode, rnode, isShortcut, err := s.loadChildren(ctx, root, height, iBatch, batch)
 	if err != nil {
-		return nil, false, nil, nil, err
+		return false, nil, nil, err
 	}
 	if isShortcut || height == 0 {
 		if bytes.Equal(lnode[:HashLength], key) {
 			// return the value so a call to trie.Get() is not needed.
-			return nil, true, nil, rnode[:HashLength], nil
+			return true, nil, rnode[:HashLength], nil
 		}
 		// Return the proof of the leaf key that is on the path of the non included key
-		return nil, false, lnode[:HashLength], rnode[:HashLength], nil
+		return false, lnode[:HashLength], rnode[:HashLength], nil
 	}
 
 	// append the left or right node to the proof
 	if bitIsSet(key, s.TrieHeight-height) {
-		mp, included, proofKey, proofValue, err := s.merkleProof(ctx, rnode, key, batch, height-1, 2*iBatch+2)
+		included, proofKey, proofValue, err := s.merkleProof(ctx, auditPath, rnode, key, batch, height-1, 2*iBatch+2)
 		if err != nil {
-			return nil, false, nil, nil, err
+			return false, nil, nil, err
 		}
 		if len(lnode) != 0 {
-			return append(mp, lnode[:HashLength]), included, proofKey, proofValue, nil
+			*auditPath = append(*auditPath, lnode[:HashLength])
+			return included, proofKey, proofValue, nil
 		} else {
-			return append(mp, DefaultLeaf), included, proofKey, proofValue, nil
+			*auditPath = append(*auditPath, DefaultLeaf)
+			return included, proofKey, proofValue, nil
 		}
 
 	}
-	mp, included, proofKey, proofValue, err := s.merkleProof(ctx, lnode, key, batch, height-1, 2*iBatch+1)
+	included, proofKey, proofValue, err := s.merkleProof(ctx, auditPath, lnode, key, batch, height-1, 2*iBatch+1)
 	if err != nil {
-		return nil, false, nil, nil, err
+		return false, nil, nil, err
 	}
 	if len(rnode) != 0 {
-		return append(mp, rnode[:HashLength]), included, proofKey, proofValue, nil
+		*auditPath = append(*auditPath, rnode[:HashLength])
+		return included, proofKey, proofValue, nil
 	} else {
-		return append(mp, DefaultLeaf), included, proofKey, proofValue, nil
+		*auditPath = append(*auditPath, DefaultLeaf)
+		return included, proofKey, proofValue, nil
 	}
 }
 

@@ -33,21 +33,19 @@ func (s *Trie) loadCache(ctx context.Context, root []byte, batch [][]byte, iBatc
 	}
 	if height%4 == 0 {
 		// Load the node from db
-		value, err := s.db.getValue(ctx, root[:HashLength])
-
+		value, err := s.db.getValueLimit(ctx, root[:HashLength])
 		if err != nil {
 			ch <- fmt.Errorf("the trie node %x is unavailable in the disk db, db may be corrupted | %w", root, err)
 			return
 		}
+		batch = parseBatch(value)
+
 		//Store node in cache.
-		var node Hash
-		copy(node[:], root)
-		batch = s.parseBatch(value)
-
+		var node Hash = *(*[32]byte)(root) // cast root to [32]byte
 		s.db.liveMux.Lock()
-
 		s.db.liveCache[node] = batch
 		s.db.liveMux.Unlock()
+
 		iBatch = 0
 		if batch[0][0] == 1 {
 			// if height == 0 this will also return

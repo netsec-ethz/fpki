@@ -8,49 +8,49 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/common"
 )
 
-// UpdateKeyValuesDomainEntries: Update a list of key-value store
-func (c *mysqlDB) UpdateKeyValuesDomainEntries(ctx context.Context, keyValuePairs []KeyValuePair) (int, error) {
+// UpdateDomainEntries: Update a list of key-value store
+func (c *mysqlDB) UpdateDomainEntries(ctx context.Context, keyValuePairs []*KeyValuePair) (int, error) {
 	numOfUpdatedRecords, err := c.doUpdatePairs(ctx, keyValuePairs, c.getDomainEntriesUpdateStmts)
 	if err != nil {
-		return 0, fmt.Errorf("UpdateKeyValuesDomainEntries | %w", err)
+		return 0, fmt.Errorf("UpdateDomainEntries | %w", err)
 	}
 	return numOfUpdatedRecords, nil
 }
 
-// DeleteKeyValuesTreeStruct  deletes a list of key-value stored in the tree table.
-func (c *mysqlDB) DeleteKeyValuesTreeStruct(ctx context.Context, keys []common.SHA256Output) (int, error) {
+// DeleteTreeNodes  deletes a list of key-value stored in the tree table.
+func (c *mysqlDB) DeleteTreeNodes(ctx context.Context, keys []common.SHA256Output) (int, error) {
 	n, err := c.doUpdateKeys(ctx, keys, c.getTreeDeleteStmts)
 	if err != nil {
-		return 0, fmt.Errorf("DeleteKeyValuesTreeStruct | %w", err)
+		return 0, fmt.Errorf("DeleteTreeNodes | %w", err)
 	}
 
 	return n, nil
 }
 
-// UpdateKeyValuesTreeStruct: Update a list of key-value store
-func (c *mysqlDB) UpdateKeyValuesTreeStruct(ctx context.Context, keyValuePairs []KeyValuePair) (int, error) {
+// UpdateTreeNodes: Update a list of key-value store
+func (c *mysqlDB) UpdateTreeNodes(ctx context.Context, keyValuePairs []*KeyValuePair) (int, error) {
 	numOfUpdatedPairs, err := c.doUpdatePairs(ctx, keyValuePairs, c.getTreeStructureUpdateStmts)
 	if err != nil {
-		return 0, fmt.Errorf("UpdateKeyValuesTreeStruc | %w", err)
+		return 0, fmt.Errorf("UpdateTreeNodes | %w", err)
 	}
 	return numOfUpdatedPairs, nil
 }
 
-// AddUpdatedDomainHashesUpdates inserts a list of keys into the updates table.
+// AddUpdatedDomains inserts a list of keys into the updates table.
 // If a key exists, ignores it.
-func (c *mysqlDB) AddUpdatedDomainHashesUpdates(ctx context.Context, keys []common.SHA256Output) (int, error) {
+func (c *mysqlDB) AddUpdatedDomains(ctx context.Context, keys []common.SHA256Output) (int, error) {
 	n, err := c.doUpdateKeys(ctx, keys, c.getUpdatesInsertStmts)
 	if err != nil {
-		return 0, fmt.Errorf("AddUpdatedDomainHashesUpdates | %w", err)
+		return 0, fmt.Errorf("AddUpdatedDomains | %w", err)
 	}
 	return n, nil
 }
 
-// TruncateUpdatesTableUpdates: truncate updates table
-func (c *mysqlDB) TruncateUpdatesTableUpdates(ctx context.Context) error {
+// RemoveAllUpdatedDomains: truncate updates table
+func (c *mysqlDB) RemoveAllUpdatedDomains(ctx context.Context) error {
 	_, err := c.db.Exec("TRUNCATE `fpki`.`updates`;")
 	if err != nil {
-		return fmt.Errorf("TruncateUpdatesTableUpdates | TRUNCATE | %w", err)
+		return fmt.Errorf("RemoveAllUpdatedDomains | TRUNCATE | %w", err)
 	}
 	return nil
 }
@@ -59,7 +59,7 @@ func (c *mysqlDB) TruncateUpdatesTableUpdates(ctx context.Context) error {
 //                              Common
 // ********************************************************************
 // worker to update key-value pairs
-func (c *mysqlDB) doUpdatePairs(ctx context.Context, keyValuePairs []KeyValuePair,
+func (c *mysqlDB) doUpdatePairs(ctx context.Context, keyValuePairs []*KeyValuePair,
 	stmtGetter prepStmtGetter) (int, error) {
 
 	dataLen := len(keyValuePairs)

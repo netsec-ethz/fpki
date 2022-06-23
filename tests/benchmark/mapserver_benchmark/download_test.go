@@ -10,6 +10,7 @@ import (
 	"time"
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
+	"github.com/netsec-ethz/fpki/pkg/domain"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/logpicker"
 	"github.com/stretchr/testify/require"
 )
@@ -87,7 +88,9 @@ func TestCreateCerts(t *testing.T) {
 	// write the list of unique names
 	names := make([]string, 0, len(uniqueNames))
 	for n := range uniqueNames {
-		names = append(names, n)
+		if domain.IsValidDomain(n) {
+			names = append(names, n)
+		}
 	}
 	sort.Strings(names)
 	f, err = os.Create("testdata/uniqueNames.txt")

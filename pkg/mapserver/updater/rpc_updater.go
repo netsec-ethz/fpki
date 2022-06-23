@@ -17,8 +17,10 @@ type newUpdates struct {
 }
 
 // UpdateDomainEntriesTableUsingRPCAndPC: update the domain entries table, given RPC and PC
-func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingRPCAndPC(ctx context.Context, rpc []*projectCommon.RPC,
-	pc []*projectCommon.PC, readerNum int) ([]db.KeyValuePair, int, error) {
+func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingRPCAndPC(ctx context.Context,
+	rpc []*projectCommon.RPC, pc []*projectCommon.PC, readerNum int) (
+	[]*db.KeyValuePair, int, error) {
+
 	if len(rpc) == 0 && len(pc) == 0 {
 		return nil, 0, nil
 	}
@@ -30,7 +32,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingRPCAndPC(ctx context.
 
 	// retrieve (possibly)affected domain entries from db
 	// It's possible that no records will be changed, because the certs are already recorded.
-	domainEntriesMap, err := mapUpdater.retrieveAffectedDomainFromDB(ctx, affectedDomainsMap, readerNum)
+	domainEntriesMap, err := mapUpdater.retrieveAffectedDomainFromDB(ctx, affectedDomainsMap)
 	if err != nil {
 		return nil, 0, fmt.Errorf("UpdateDomainEntriesTableUsingRPCAndPC | retrieveAffectedDomainFromDB | %w", err)
 	}

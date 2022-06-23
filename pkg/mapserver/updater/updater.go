@@ -67,9 +67,8 @@ func (u *MapUpdater) UpdateNextBatch(ctx context.Context) (int, error) {
 
 // updateCerts: update the tables and SMT (in memory) using certificates
 func (mapUpdater *MapUpdater) updateCerts(ctx context.Context, certs []*ctx509.Certificate) error {
-
 	start := time.Now()
-	keyValuePairs, numOfUpdates, err := mapUpdater.UpdateDomainEntriesTableUsingCerts(ctx, certs, 10)
+	keyValuePairs, numOfUpdates, err := mapUpdater.UpdateDomainEntriesTableUsingCerts(ctx, certs)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingCerts | %w", err)
 	} else if numOfUpdates == 0 {
@@ -145,21 +144,21 @@ func (mapUpdater *MapUpdater) CommitSMTChanges(ctx context.Context) error {
 
 // fetchUpdatedDomainHash: get hashes of updated domain from updates table, and truncate the table
 func (mapUpdater *MapUpdater) fetchUpdatedDomainHash(ctx context.Context) ([]common.SHA256Output, error) {
-	keys, err := mapUpdater.dbConn.RetrieveUpdatedDomainHashesUpdates(ctx, readBatchSize)
+	keys, err := mapUpdater.dbConn.RetrieveUpdatedDomains(ctx, readBatchSize)
 	if err != nil {
-		return nil, fmt.Errorf("fetchUpdatedDomainHash | RetrieveUpdatedDomainMultiThread | %w", err)
+		return nil, fmt.Errorf("fetchUpdatedDomainHash | %w", err)
 	}
 
-	err = mapUpdater.dbConn.TruncateUpdatesTableUpdates(ctx)
+	err = mapUpdater.dbConn.RemoveAllUpdatedDomains(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("fetchUpdatedDomainHash | TruncateUpdatesTableUpdates | %w", err)
+		return nil, fmt.Errorf("fetchUpdatedDomainHash | %w", err)
 	}
 
 	return keys, nil
 }
 
 // keyValuePairToSMTInput: key value pair -> SMT update input
-func keyValuePairToSMTInput(keyValuePair []db.KeyValuePair) ([][]byte, [][]byte, error) {
+func keyValuePairToSMTInput(keyValuePair []*db.KeyValuePair) ([][]byte, [][]byte, error) {
 	updateInput := make([]UpdateInput, 0, len(keyValuePair))
 
 	for _, pair := range keyValuePair {

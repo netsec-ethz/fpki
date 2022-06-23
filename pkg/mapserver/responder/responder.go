@@ -6,40 +6,27 @@ import (
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
+	"github.com/netsec-ethz/fpki/pkg/domain"
 	mapCommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
-// ClientRequest: client's request
-type ClientRequest struct {
-	domainName string
-	ctx        context.Context
-	resultChan chan ClientResponse
-}
-
-// ClientResponse: response to client's request
-type ClientResponse struct {
-	Proof []mapCommon.MapServerResponse
-	Err   error
-}
-
 // MapResponder: A map responder, which is responsible for receiving client's request. Only read from db.
 type MapResponder struct {
-	workerPool []*responderWorker
-	workerChan chan ClientRequest
-	smt        *trie.Trie
-	tempStore  *TempStore
+	conn            db.Conn
+	getProofLimiter chan struct{}
+	smt             *trie.Trie
 }
 
 // NewMapResponder: return a new responder
-func NewMapResponder(ctx context.Context, root []byte, cacheHeight int, workerThreadNum int) (*MapResponder, error) {
+func NewMapResponder(ctx context.Context, root []byte, cacheHeight int) (*MapResponder, error) {
 	// new db connection for SMT
-	dbConn, err := db.Connect(nil)
+	conn, err := db.Connect(nil)
 	if err != nil {
 		return nil, fmt.Errorf("NewMapResponder | Connect | %w", err)
 	}
 
-	smt, err := trie.NewTrie(root, common.SHA256Hash, dbConn)
+	smt, err := trie.NewTrie(root, common.SHA256Hash, conn)
 	if err != nil {
 		return nil, fmt.Errorf("NewMapResponder | NewTrie | %w", err)
 	}
@@ -51,43 +38,22 @@ func NewMapResponder(ctx context.Context, root []byte, cacheHeight int, workerTh
 		return nil, fmt.Errorf("NewMapResponder | LoadCache | %w", err)
 	}
 
-	clientInputChan := make(chan ClientRequest)
-	workerPool := make([]*responderWorker, 0, workerThreadNum)
+	return newMapResponder(conn, smt), nil
+}
 
-	// create worker pool
-	for i := 0; i < workerThreadNum; i++ {
-		newDbConn, err := db.Connect(nil)
-		if err != nil {
-			return nil, fmt.Errorf("NewUpdatedMapResponder | Connect | %w", err)
-		}
-		newWorker := &responderWorker{
-			dbConn:          newDbConn,
-			clientInputChan: clientInputChan,
-			smt:             smt,
-		}
-		workerPool = append(workerPool, newWorker)
-		go newWorker.work()
-	}
-
-	tempStore := newTempStore()
-
+func newMapResponder(conn db.Conn, smt *trie.Trie) *MapResponder {
 	return &MapResponder{
-		workerChan: clientInputChan,
-		workerPool: workerPool,
-		smt:        smt,
-		tempStore:  tempStore,
-	}, nil
+		conn:            conn,
+		getProofLimiter: make(chan struct{}, 64), // limit getProof to 64 concurrent routines
+		smt:             smt,
+	}
 }
 
 // GetProof: get proofs for one domain
-func (responder *MapResponder) GetProof(ctx context.Context, domainName string) ([]mapCommon.MapServerResponse, error) {
-	resultChan := make(chan ClientResponse)
-
-	responder.workerChan <- ClientRequest{domainName: domainName, ctx: ctx, resultChan: resultChan}
-	result := <-resultChan
-	close(resultChan)
-
-	return result.Proof, result.Err
+func (r *MapResponder) GetProof(ctx context.Context, domainName string) ([]mapCommon.MapServerResponse, error) {
+	r.getProofLimiter <- struct{}{}
+	defer func() { <-r.getProofLimiter }()
+	return r.getProof(ctx, domainName)
 }
 
 // GetRoot: get current root of the smt
@@ -97,12 +63,54 @@ func (mapResponder *MapResponder) GetRoot() []byte {
 
 // Close: close db
 func (mapResponder *MapResponder) Close() error {
-	for _, worker := range mapResponder.workerPool {
-		close(worker.clientInputChan)
-		err := worker.dbConn.Close()
-		if err != nil {
-			return fmt.Errorf("Close | %w", err)
-		}
-	}
 	return mapResponder.smt.Close()
+}
+
+func (r *MapResponder) getProof(ctx context.Context, domainName string) (
+	[]mapCommon.MapServerResponse, error) {
+
+	// check domain name first
+	domainList, err := domain.ParseDomainName(domainName)
+	if err != nil {
+		if err == domain.ErrInvalidDomainName {
+			return nil, err
+		}
+		return nil, fmt.Errorf("GetDomainProof | parseDomainName | %w", err)
+	}
+	proofsResult := make([]mapCommon.MapServerResponse, 0, len(domainList))
+
+	for _, domain := range domainList {
+		domainHash := common.SHA256Hash32Bytes([]byte(domain))
+
+		proof, isPoP, proofKey, ProofValue, err := r.smt.MerkleProof(ctx, domainHash[:])
+		if err != nil {
+			return nil, fmt.Errorf("getDomainProof | MerkleProof | %w", err)
+		}
+
+		var proofType mapCommon.ProofType
+		domainBytes := []byte{}
+		// If it is PoP, query the domain entry. If it is PoA, directly return the PoA
+		if isPoP {
+			proofType = mapCommon.PoP
+			domainBytes, err = r.conn.RetrieveDomainEntry(ctx, domainHash)
+			if err != nil {
+				return nil, fmt.Errorf("GetDomainProof | %w", err)
+			}
+		} else {
+			proofType = mapCommon.PoA
+		}
+
+		proofsResult = append(proofsResult, mapCommon.MapServerResponse{
+			Domain: domain,
+			PoI: mapCommon.PoI{
+				Proof:      proof,
+				Root:       r.smt.Root,
+				ProofType:  proofType,
+				ProofKey:   proofKey,
+				ProofValue: ProofValue},
+			DomainEntryBytes: domainBytes,
+		})
+	}
+
+	return proofsResult, nil
 }

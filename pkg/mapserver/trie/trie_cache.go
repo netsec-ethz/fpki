@@ -30,7 +30,8 @@ type CacheDB struct {
 	wholeCacheDBLock sync.RWMutex
 
 	// dbConn is the conn to mysql db
-	Store db.Conn
+	Store       db.Conn
+	readLimiter chan struct{}
 
 	// nodes to be removed from db
 	removedNode map[Hash][]byte
@@ -44,19 +45,20 @@ func NewCacheDB(store db.Conn) (*CacheDB, error) {
 		updatedNodes: make(map[Hash][][]byte),
 		removedNode:  make(map[Hash][]byte),
 		Store:        store,
+		readLimiter:  make(chan struct{}, 1),
 	}, nil
 }
 
 // commitChangesToDB stores the updated nodes to disk.
 func (cacheDB *CacheDB) commitChangesToDB(ctx context.Context) error {
 	// prepare value to store
-	updatesToDB := []db.KeyValuePair{}
+	updatesToDB := []*db.KeyValuePair{}
 	keysToDelete := []common.SHA256Output{}
 
 	// get nodes from update map
 	cacheDB.updatedMux.Lock()
 	for k, v := range cacheDB.updatedNodes {
-		updatesToDB = append(updatesToDB, db.KeyValuePair{Key: k, Value: serializeBatch(v)})
+		updatesToDB = append(updatesToDB, &db.KeyValuePair{Key: k, Value: serializeBatch(v)})
 	}
 	cacheDB.updatedNodes = make(map[Hash][][]byte)
 	cacheDB.updatedMux.Unlock()
@@ -76,7 +78,7 @@ func (cacheDB *CacheDB) commitChangesToDB(ctx context.Context) error {
 	defer cacheDB.wholeCacheDBLock.Unlock()
 
 	start := time.Now()
-	_, err := cacheDB.Store.UpdateKeyValuesTreeStruct(ctx, updatesToDB)
+	_, err := cacheDB.Store.UpdateTreeNodes(ctx, updatesToDB)
 	if err != nil {
 		return fmt.Errorf("commitChangesToDB | UpdateKeyValuePairBatches | %w", err)
 	}
@@ -85,7 +87,7 @@ func (cacheDB *CacheDB) commitChangesToDB(ctx context.Context) error {
 
 	start = time.Now()
 	if len(keysToDelete) > 0 {
-		_, err := cacheDB.Store.DeleteKeyValuesTreeStruct(ctx, keysToDelete)
+		_, err := cacheDB.Store.DeleteTreeNodes(ctx, keysToDelete)
 		if err != nil {
 			return fmt.Errorf("commitChangesToDB | DeleteKeyValuePairBatches | %w", err)
 		}
@@ -96,20 +98,18 @@ func (cacheDB *CacheDB) commitChangesToDB(ctx context.Context) error {
 	return nil
 }
 
-// getValue gets a key-value pair from db
-func (cacheDB *CacheDB) getValue(ctx context.Context, key []byte) ([]byte, error) {
-	cacheDB.wholeCacheDBLock.Lock()
+func (cacheDB *CacheDB) getValueLimit(ctx context.Context, key []byte) ([]byte, error) {
+	cacheDB.readLimiter <- struct{}{}        // block until there is some slack
+	defer func() { <-cacheDB.readLimiter }() // ensure we'll give some slack
+	return cacheDB.getValueLockFree(ctx, key)
+}
 
-	key32Bytes := Hash{}
-	copy(key32Bytes[:], key)
-
-	result, err := cacheDB.Store.RetrieveOneKeyValuePairTreeStruct(ctx, key32Bytes)
-	cacheDB.wholeCacheDBLock.Unlock()
+func (cacheDB *CacheDB) getValueLockFree(ctx context.Context, key []byte) ([]byte, error) {
+	value, err := cacheDB.Store.RetrieveTreeNode(ctx, *(*[32]byte)(key))
 	if err != nil {
 		return nil, fmt.Errorf("getValue | RetrieveOneKeyValuePair | %w", err)
 	}
-
-	return result.Value, nil
+	return value, nil
 }
 
 // serializeBatch serializes the 2D [][]byte into a []byte for db
