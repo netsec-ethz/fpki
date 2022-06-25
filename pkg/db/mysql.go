@@ -106,6 +106,8 @@ func NewMysqlDB(db *sql.DB) (*mysqlDB, error) {
 
 // Close: close connection
 func (c *mysqlDB) Close() error {
+	c.prepGetValueTree.Close()
+	c.prepGetValueDomainEntries.Close()
 	return c.db.Close()
 }
 

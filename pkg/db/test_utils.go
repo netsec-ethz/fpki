@@ -41,3 +41,26 @@ func TruncateAllTablesForTest(t require.TestingT) {
 	err = db.Close()
 	require.NoError(t, err)
 }
+
+// GetDomainNamesForTest will get rows count of domain entries table
+// be used only while testing.
+func GetDomainNamesForTest() int {
+	t := &testingT{}
+	return getDomainNames(t)
+}
+
+func getDomainNames(t require.TestingT) int {
+	db, err := Connect(nil)
+	require.NoError(t, err)
+	c := db.(*mysqlDB)
+	require.NotNil(t, c)
+
+	var count int
+	err = c.db.QueryRow("SELECT COUNT(*) FROM domainEntries;").Scan(&count)
+	require.NoError(t, err)
+
+	err = db.Close()
+	require.NoError(t, err)
+
+	return count
+}
