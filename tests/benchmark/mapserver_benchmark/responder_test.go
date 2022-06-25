@@ -176,6 +176,6 @@ func benchmarkResponderGetProofNoPrepareDB(b *testing.B, count int) {
 func resetDB(t require.TestingT) {
 	db.TruncateAllTablesForTest(t)
 
-	err := exec.Command("bash", "-c", "zcat testdata/dump100K.sql.gz | mysql -u root fpki").Run()
+	err := exec.Command("bash", "-c", "zcat < testdata/dump100K.sql.gz | mysql -u root fpki").Run()
 	require.NoError(t, err)
 }
