@@ -8,17 +8,19 @@ import (
 	"github.com/google/certificate-transparency-go/x509"
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/db"
+	"github.com/netsec-ethz/fpki/pkg/domain"
 )
 
 // functions for measuring the bottlemeck
 
-func (u *MapUpdater) UpdateNextBatchReturnTimeList(ctx context.Context) (int, []string, error) {
+func (u *MapUpdater) UpdateNextBatchReturnTimeList(ctx context.Context) (int, []string, []string, error) {
 	certs, err := u.Fetcher.NextBatch(ctx)
 	if err != nil {
-		return 0, nil, fmt.Errorf("CollectCerts | GetCertMultiThread | %w", err)
+		return 0, nil, nil, fmt.Errorf("CollectCerts | GetCertMultiThread | %w", err)
 	}
+	names := parseCertDomainName(certs)
 	timeList, err := u.updateCertsReturnTime(ctx, certs)
-	return len(certs), timeList, err
+	return len(certs), timeList, names, err
 }
 
 func (mapUpdater *MapUpdater) updateCertsReturnTime(ctx context.Context, certs []*ctx509.Certificate) (
@@ -141,4 +143,15 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCertsReturnTime(ctx c
 	timeList = append(timeList, end.Sub(start).String())
 
 	return keyValuePairs, num, timeList, nil
+}
+
+func parseCertDomainName(certs []*ctx509.Certificate) []string {
+	result := []string{}
+	for _, cert := range certs {
+		_, err := domain.ParseDomainName(cert.Subject.CommonName)
+		if err == nil {
+			result = append(result, cert.Subject.CommonName)
+		}
+	}
+	return result
 }

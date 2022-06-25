@@ -39,7 +39,7 @@ func NewMapUpdater(root []byte, cacheHeight int) (*MapUpdater, error) {
 
 	return &MapUpdater{
 		Fetcher: logpicker.LogFetcher{
-			WorkerCount: 32,
+			WorkerCount: 16,
 		},
 		smt:    smt,
 		dbConn: dbConn,

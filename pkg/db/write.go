@@ -100,6 +100,8 @@ func (c *mysqlDB) doUpdatePairs(ctx context.Context, keyValuePairs []*KeyValuePa
 		}
 		affectedRowsCount += n
 	}
+	//defer updateWholeBatchStmt.Close()
+	//defer updatePartialBatchStmt.Close()
 	return affectedRowsCount, nil
 }
 
@@ -144,6 +146,8 @@ func (c *mysqlDB) doUpdateKeys(ctx context.Context, keys []common.SHA256Output,
 		}
 		affectedRowsCount += n
 	}
+	//defer updateWholeBatchStmt.Close()
+	//defer updatePartialBatchStmt.Close()
 	return affectedRowsCount, nil
 }
 

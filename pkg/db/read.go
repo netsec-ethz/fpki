@@ -77,6 +77,10 @@ func (c *mysqlDB) retrieveDomainEntries(ctx context.Context, keys []common.SHA25
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	//if len(domainEntries) != len(keys) {
+	//	fmt.Println("incomplete fetching")
+	//	fmt.Println(len(domainEntries), "  ", len(keys))
+	//}
 	return domainEntries, nil
 }
 
