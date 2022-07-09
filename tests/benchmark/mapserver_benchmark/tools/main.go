@@ -148,6 +148,8 @@ func main() {
 				testSet[cert.Subject.CommonName] = 1
 			}
 		}
+
+		fmt.Println(len(testSet))
 	}
 
 	fmt.Println(getCerts)
