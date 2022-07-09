@@ -22,6 +22,7 @@ var domainCount int
 
 // collect 1M certs, and update them
 func main() {
+
 	domainCount = 0
 	db.TruncateAllTablesWithoutTestObject()
 
