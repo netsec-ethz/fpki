@@ -112,6 +112,10 @@ func (c *mysqlDB) doUpdateKeys(ctx context.Context, keys []common.SHA256Output,
 	dataLen := len(keys)
 	affectedRowsCount := 0
 
+	if dataLen == 0 {
+		return 0, nil
+	}
+
 	data := make([]interface{}, batchSize)
 	// updateFcn updates the DB using keys starting at index/batch, until the end of the
 	// batch or the end of keyValuePairs

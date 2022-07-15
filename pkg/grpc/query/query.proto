@@ -21,8 +21,6 @@ message MapClientRequest {
 // The response message containing the greetings
 message MapClientReply {
     string domainName = 1;
-    bytes materials = 2;
-    ProofType ProofType = 3;
-    bytes proof = 4;
+    bytes proof =2;
 }
   

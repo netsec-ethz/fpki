@@ -30,6 +30,7 @@ type mysqlDB struct {
 	getUpdatesInsertStmts       prepStmtGetter // used to insert entries in the updates table
 	getTreeDeleteStmts          prepStmtGetter // used to delete entries in the tree table
 
+	getProofLimiter chan struct{}
 }
 
 // NewMysqlDB is called to create a new instance of the mysqlDB, initializing certain values,
@@ -94,6 +95,9 @@ func NewMysqlDB(db *sql.DB) (*mysqlDB, error) {
 			return prepReplaceUpdates, prepPartial
 		},
 		getTreeDeleteStmts: func(count int) (*sql.Stmt, *sql.Stmt) {
+			if count == 0 {
+				return prepDeleteUpdates, nil
+			}
 			str := "DELETE from `tree` WHERE `key` IN " + repeatStmt(1, count)
 			prepPartial, err := db.Prepare(str)
 			if err != nil {
@@ -101,6 +105,7 @@ func NewMysqlDB(db *sql.DB) (*mysqlDB, error) {
 			}
 			return prepDeleteUpdates, prepPartial
 		},
+		getProofLimiter: make(chan struct{}, 128),
 	}, nil
 }
 
