@@ -1,10 +1,11 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/csv"
 	"fmt"
+	"os"
 	"runtime"
 	"sort"
 	"sync"
@@ -20,57 +21,7 @@ var wg sync.WaitGroup
 // benchmark for sparse merkle tree
 func main() {
 	db.TruncateAllTablesWithoutTestObject()
-	BenchmarkCacheHeightLimit233()
-	fmt.Println("benchmark for 5M updating and fetching finished")
-}
 
-func benchmark10MAccounts10Ktps(smt *trie.Trie) ([][]byte, [][]byte) {
-	allKeys := [][]byte{}
-	allValues := [][]byte{}
-	for i := 0; i < 50; i++ {
-		fmt.Println("Iteration ", i, " ------------------------------")
-		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
-		defer cancelF()
-
-		newKeys := getFreshData(100000, 32)
-		newValues := getFreshData(100000, 32)
-		allKeys = append(allKeys, newKeys...)
-		allValues = append(allValues, newValues...)
-
-		start := time.Now()
-		smt.Update(ctx, newKeys, newValues)
-		end := time.Now()
-
-		err := smt.Commit(ctx)
-		if err != nil {
-			panic(err)
-		}
-		end2 := time.Now()
-		for j, key := range newKeys {
-			val, _ := smt.Get(ctx, key)
-			if !bytes.Equal(val, newValues[j]) {
-				panic("new key not included")
-			}
-		}
-		end3 := time.Now()
-		elapsed := end.Sub(start)
-		elapsed2 := end2.Sub(end)
-		elapsed3 := end3.Sub(end2)
-		var m runtime.MemStats
-		runtime.ReadMemStats(&m)
-		fmt.Println("update time for 100,000 leaves in memory: ", elapsed,
-			"\ntime to commit changes to db : ", elapsed2,
-			"\nTime to get new keys : ", elapsed3,
-			"\ncache size : ", smt.GetLiveCacheSize(),
-			"\nRAM : ", m.Sys/1024/1024, " MiB")
-		fmt.Println()
-		fmt.Println()
-	}
-	return allKeys, allValues
-}
-
-//go test -run=xxx -bench=BenchmarkCacheHeightLimit233
-func BenchmarkCacheHeightLimit233() {
 	conn, err := db.Connect(nil)
 	if err != nil {
 		panic(err)
@@ -81,20 +32,79 @@ func BenchmarkCacheHeightLimit233() {
 		panic(err)
 	}
 
-	smt.CacheHeightLimit = 233
-	allKeys, _ := benchmark10MAccounts10Ktps(smt)
-	//benchmark10MAccounts10Ktps(smt, b)
+	smt.CacheHeightLimit = 200
 
+	csvFile, err := os.Create("smt_update.csv")
+
+	if err != nil {
+		panic(err)
+	}
+
+	csvwriter := csv.NewWriter(csvFile)
+
+	proof_csvFile, err := os.Create("smt_proof.csv")
+
+	if err != nil {
+		panic(err)
+	}
+
+	proof_csvwriter := csv.NewWriter(proof_csvFile)
+
+	benchmark10MAccounts10Ktps(smt, csvwriter, proof_csvwriter)
+
+}
+
+func benchmark10MAccounts10Ktps(smt *trie.Trie, update_writer *csv.Writer, proof_writer *csv.Writer) {
+	for i := 0; i < 50; i++ {
+		fmt.Println("Iteration ", i, " ------------------------------")
+		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+		defer cancelF()
+
+		newKeys := getFreshData(100000, 32)
+		newValues := getFreshData(100000, 32)
+
+		start := time.Now()
+		smt.Update(ctx, newKeys, newValues)
+		end := time.Now()
+
+		err := smt.Commit(ctx)
+		if err != nil {
+			panic(err)
+		}
+		end2 := time.Now()
+
+		elapsed := end.Sub(start)
+		elapsed2 := end2.Sub(end)
+
+		var m runtime.MemStats
+		runtime.ReadMemStats(&m)
+		fmt.Println("update time for 100,000 leaves in memory: ", elapsed,
+			"\ntime to commit changes to db : ", elapsed2,
+			"\ncache size : ", smt.GetLiveCacheSize(),
+			"\nRAM : ", m.Sys/1024/1024, " MiB")
+		fmt.Println()
+		fmt.Println()
+
+		update_writer.Write([]string{elapsed.String(), elapsed2.String()})
+		update_writer.Flush()
+
+		benchmark200KProofs(newKeys, smt, proof_writer)
+	}
+}
+
+func benchmark200KProofs(allKeys [][]byte, smt *trie.Trie, proof_writer *csv.Writer) {
 	fmt.Println("length of keys: ", len(allKeys))
 
-	wg.Add(20)
+	wg.Add(1000)
 	start := time.Now()
-	for i := 0; i < 20; i++ {
-		go worker(allKeys[i*10000:i*10000+9999], smt)
+	for i := 0; i < 1000; i++ {
+		go worker(allKeys[i*100:i*100+99], smt)
 	}
 	wg.Wait()
 	end := time.Now()
-	fmt.Println("time to retrieve 200,000 proofs: ", end.Sub(start))
+	fmt.Println("time to retrieve 100,000 proofs: ", end.Sub(start))
+	proof_writer.Write([]string{end.Sub(start).String()})
+	proof_writer.Flush()
 }
 
 func worker(input [][]byte, smt *trie.Trie) {

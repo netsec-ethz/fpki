@@ -47,7 +47,7 @@ func Connect(config *Configuration) (Conn, error) {
 	}
 
 	// value set higher could trigger issues in the system
-	maxConnections := 512
+	maxConnections := 2048
 	db.SetMaxOpenConns(maxConnections)
 	db.SetMaxIdleConns(maxConnections)
 	db.SetConnMaxLifetime(-1)              // don't close them
