@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/netsec-ethz/fpki/pkg/common"
@@ -77,23 +76,17 @@ func (cacheDB *CacheDB) commitChangesToDB(ctx context.Context) error {
 	cacheDB.wholeCacheDBLock.Lock()
 	defer cacheDB.wholeCacheDBLock.Unlock()
 
-	start := time.Now()
 	_, err := cacheDB.Store.UpdateTreeNodes(ctx, updatesToDB)
 	if err != nil {
 		return fmt.Errorf("commitChangesToDB | UpdateKeyValuePairBatches | %w", err)
 	}
-	end := time.Now()
-	fmt.Println(" time to update:", end.Sub(start))
 
-	start = time.Now()
 	if len(keysToDelete) > 0 {
 		_, err := cacheDB.Store.DeleteTreeNodes(ctx, keysToDelete)
 		if err != nil {
 			return fmt.Errorf("commitChangesToDB | DeleteKeyValuePairBatches | %w", err)
 		}
 	}
-	end = time.Now()
-	fmt.Println(" time to delete:", end.Sub(start))
 
 	return nil
 }

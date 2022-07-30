@@ -147,6 +147,9 @@ func verifyInclusion(ap [][]byte, keyIndex int, key, leafHash []byte) []byte {
 // VerifyNonInclusion verifies a proof of non inclusion,
 // Returns true if the non-inclusion is verified
 func VerifyNonInclusion(root []byte, ap [][]byte, key, value, proofKey []byte) bool {
+	if root == nil {
+		return true
+	}
 	// Check if an empty subtree is on the key path
 	if len(proofKey) == 0 {
 		// return true if a DefaultLeaf in the key path is included in the trie
