@@ -14,11 +14,13 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
+// PLEASE take a look at getFreshData(){}. You need to sort the key-value pairs before adding them to SMT.
+
 func main() {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 	//***************************************************************
-	//                     connect to a new db
+	//                    create a new db conn
 	//***************************************************************
 	dbConn, err := db.Connect(nil)
 	if err != nil {
@@ -26,7 +28,7 @@ func main() {
 	}
 
 	//***************************************************************
-	//                    get a new SMT
+	//                       get a new SMT
 	//***************************************************************
 	smt, err := trie.NewTrie(nil, common.SHA256Hash, dbConn)
 	if err != nil {
@@ -40,15 +42,13 @@ func main() {
 	// num of layer is roughly log_2(num of inserted leaves)
 	smt.CacheHeightLimit = 233
 
+	//***************************************************************
+	//            update SMT with random key-value pairs
+	//***************************************************************
 	// Add data to empty SMT
 	keys := getFreshData(100, 32)
 	values := getFreshData(100, 32)
 	smt.Update(ctx, keys, values)
-
-	//***************************************************************
-	//                   commit changes to db
-	//***************************************************************
-	smt.Commit(ctx)
 
 	//***************************************************************
 	//          generate Proof of Presence, and verify them
@@ -79,7 +79,15 @@ func main() {
 	}
 
 	//***************************************************************
-	//                          start a new db
+	//                   commit changes to db
+	//***************************************************************
+	err = smt.Commit(ctx)
+	if err != nil {
+		panic(err)
+	}
+
+	//***************************************************************
+	//                  create a new db conn
 	//***************************************************************
 	dbConn1, err := db.Connect(nil)
 	if err != nil {
@@ -88,18 +96,20 @@ func main() {
 	//***************************************************************
 	//                   start a new SMT
 	//***************************************************************
+	// NOTE!!!: to load a existing SMT, previous Tree Root is needed
 	smt1, err := trie.NewTrie(smt.Root, common.SHA256Hash, dbConn1)
 
 	//***************************************************************
 	//                   reload cache
 	//***************************************************************
+	// Optional. During proof-fetching, library will also gradually load the leaves.
 	err = smt1.LoadCache(ctx, smt.Root)
 	if err != nil {
 		panic(err)
 	}
 
 	//***************************************************************
-	//                   verify PoP
+	//                     verify PoP
 	//***************************************************************
 	for i, key_ := range keys {
 		ap_, included_, k_, v_, _ := smt1.MerkleProof(ctx, key_)
@@ -115,7 +125,19 @@ func main() {
 	}
 
 	//***************************************************************
-	//                  delete keys
+	//                        verify PoA
+	//***************************************************************
+	emptyKey = common.SHA256Hash([]byte("non-member"))
+	ap_, included_, proofKey_, proofValue_, _ = smt1.MerkleProof(ctx, emptyKey)
+	if included_ {
+		panic("failed to verify new non inclusion proof")
+	}
+	if !trie.VerifyNonInclusion(smt1.Root, ap_, emptyKey, proofValue_, proofKey_) {
+		panic("failed to verify new non inclusion proof")
+	}
+
+	//***************************************************************
+	//                   delete some key-value pairs
 	//***************************************************************
 	defaultValues := make([][]byte, 50)
 	modifiedKeys := make([][]byte, 50)
@@ -127,7 +149,7 @@ func main() {
 	smt1.Update(ctx, modifiedKeys, defaultValues)
 
 	//***************************************************************
-	//                   verify PoA
+	//                  verify PoA of deleted keys
 	//***************************************************************
 	for _, key := range modifiedKeys {
 		ap, included, proofKey, proofValue, _ := smt1.MerkleProof(ctx, key)
@@ -137,18 +159,6 @@ func main() {
 		if !trie.VerifyNonInclusion(smt1.Root, ap, key, proofValue, proofKey) {
 			panic("failed to verify new inclusion proof")
 		}
-	}
-
-	//***************************************************************
-	//                   verify PoA
-	//***************************************************************
-	emptyKey = common.SHA256Hash([]byte("non-member"))
-	ap_, included_, proofKey_, proofValue_, _ = smt1.MerkleProof(ctx, emptyKey)
-	if included_ {
-		panic("failed to verify new non inclusion proof")
-	}
-	if !trie.VerifyNonInclusion(smt1.Root, ap_, emptyKey, proofValue_, proofKey_) {
-		panic("failed to verify new non inclusion proof")
 	}
 
 	fmt.Println("succeed!")
