@@ -15,6 +15,7 @@ import (
 )
 
 // PLEASE take a look at getFreshData(){}. You need to sort the key-value pairs before adding them to SMT.
+// If you want to review the source code, the package is in pkg/mapserver/tire
 
 func main() {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
