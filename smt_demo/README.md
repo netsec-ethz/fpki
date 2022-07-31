@@ -1,7 +1,15 @@
 # SMT Demo
 This is a demo for the efficient and database-supported SMT implementation.
 
-Key and value stored in the SMT should be 32 bytes(using SHA256). Before using the SMT library, you should hash the key and values, and sort the key-value pair by hashed keys from low to high, before adding the pairs. One pair should be (32bytes, 32bytes), and the order should be (000,XXX), (001, XXX), (100, XXX), (111,XXX)
+The key and value stored in the SMT should be 32 bytes(you can use SHA256). Before using the SMT library, you should hash the key and values, and sort the key-value pairs by hashed keys from low to high, before adding the pairs into SMT(more details on the demo). One pair should be (32bytes, 32bytes), and the order should be (000, XXX), (001, XXX), (100, XXX), (111, XXX)
+
+You can use Update() to update one batch of key-value pairs. Commit() is optional if you don't want to store the SMT permanently. 
+
+If you want to persist the SMT, you need:
+1. Commit() after every changes (after Update(){}). All changes after Commit() will not be stored in the database but memory. If the program crashes, the uncommitted changes will be lost.
+2. Store the Tree Head before terminating the program. You need the Tree Head to reload the SMT
+
+If you only want to run SMT in memory, Commit() is not useful.
 
 ## Functions
 ```
@@ -17,6 +25,8 @@ func (s *Trie) Update(ctx context.Context, keys, values [][]byte) ([]byte, error
 ```
 ```
 // commit changes to database
+// SMT lib has some internal lists to record the changes to the database. So no parameter is needed. You just need to call commit() once you want to persist the changes.
+// Call Commit() before terminating, or periodically commit the changes, to avoid data loss and memory exhaustion.
 (s *Trie) Commit(ctx context.Context) error 
 ```
 ```
@@ -34,27 +44,20 @@ func (s *Trie) Update(ctx context.Context, keys, values [][]byte) ([]byte, error
 (s *Trie) MerkleProof(ctx context.Context, key, root []byte) ([][]byte, bool, []byte, []byte, error)
 ```
 ```
-// VerifyInclusion verifies that key/value is included in the trie with latest root
+// VerifyInclusion verifies that key/value is included in the SMT with latest root
 VerifyInclusion(root []byte, auditPath [][]byte, key, value []byte) bool 
 ```
 ```
-// VerifyInclusion verifies that key/value is included in the trie with latest root
+// VerifyInclusion verifies that key/value is included in the SMT with latest root
 // "key" is the non-included key
 // "proofValue", "proofKey" is returned from MerkleProof()
 VerifyNonInclusion(root []byte, ap [][]byte, key, proofValue, proofKey []byte) bool
 ```
 ## How to run?
-The demo file is in the smsmt_demo folder.
-You need to install MySQL, and MySQL should not require a password for the root user. If you encounter any isseus, this might help: https://stackoverflow.com/questions/3032054/how-to-remove-mysql-root-password
+You need to install MySQL, and MySQL should not require a password for the root user. If you encounter password isseus, this might help: https://stackoverflow.com/questions/3032054/how-to-remove-mysql-root-password
 
 ```
-./tools/create_schema.sh(WARNING!!! make sure you don't have a db schema called "fpki", otherwise the existing "fpki" schema will be overwritten)
+cd ..
+./tools/create_schema.sh (WARNING!!! make sure you don't have a db schema called "fpki", otherwise the existing "fpki" schema will be overwritten)
 go run smt_demo/main.go
 ```
-
-
-
-
-
-
-
