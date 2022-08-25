@@ -204,75 +204,79 @@ func RPCVerifyCASignature(caCert *x509.Certificate, rpc *RPC) error {
 }
 
 // ----------------------------------------------------------------------------------
-//                               functions on PC
+//                               functions on SP
 // ----------------------------------------------------------------------------------
-// DomainOwnerSignPC: Used by domain owner to sign the PC
-func DomainOwnerSignPC(domainOwnerPrivKey *rsa.PrivateKey, pc *PC) error {
-	pc.SPTs = []SPT{}
-	pc.RootCertSignature = []byte{}
-	pc.CASignature = []byte{}
-	pc.SerialNumber = 0
-	pc.CAName = ""
-	pc.TimeStamp = time.Time{}
-
-	signature, err := SignStrucRSASHA256(pc, domainOwnerPrivKey)
+// DomainOwnerSignSP: Used by domain owner to sign the PC
+func DomainOwnerSignPSR(domainOwnerPrivKey *rsa.PrivateKey, psr *PSR) error {
+	signature, err := SignStrucRSASHA256(psr, domainOwnerPrivKey)
 	if err != nil {
 		return fmt.Errorf("DomainOwnerSignPC | SignStrucRSASHA256 | %w", err)
 	}
 
-	pc.RootCertSignature = signature
+	psr.RootCertSignature = signature
 	return nil
 }
 
-//CAVerifyPCAndSign: verify the signature and sign the signature
-func CAVerifyPCAndSign(domainOwnerCert *x509.Certificate, pc PC, caPrivKey *rsa.PrivateKey, caName string, serialNum int) (PC, error) {
-	if len(pc.RootCertSignature) == 0 {
-		return PC{}, fmt.Errorf("CAVerifyPCAndSign | no valid signature")
+func VerifyPSRUsingRPC(psr *PSR, rpc *RPC) error {
+	psrCopy := &PSR{
+		Policies:   psr.Policies,
+		TimeStamp:  psr.TimeStamp,
+		DomainName: psr.DomainName,
 	}
 
-	pcCopy := PC{
-		Policies: pc.Policies,
-		Subject:  pc.Subject,
-	}
-
-	serialisedStruc, err := JsonStrucToBytes(&pcCopy)
+	serialisedStruc, err := JsonStrucToBytes(psrCopy)
 	if err != nil {
-		return PC{}, fmt.Errorf("CAVerifyPCAndSign | JsonStrucToBytes | %w", err)
+		return fmt.Errorf("RCSRVerifyRPCSignature | JsonStrucToBytes | %w", err)
+	}
+
+	pubKey, err := PemBytesToRsaPublicKey(rpc.PublicKey)
+	if err != nil {
+		return fmt.Errorf("RCSRVerifyRPCSignature | PemBytesToRsaPublicKey | %w", err)
 	}
 
 	hashOutput := sha256.Sum256(serialisedStruc)
-	err = rsa.VerifyPKCS1v15(domainOwnerCert.PublicKey.(*rsa.PublicKey), crypto.SHA256, hashOutput[:], pc.RootCertSignature)
+	err = rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, hashOutput[:], psr.RootCertSignature)
 	if err != nil {
-		return PC{}, fmt.Errorf("CAVerifyPCAndSign | VerifyPKCS1v15 | %w", err)
+		return fmt.Errorf("RCSRVerifyRPCSignature | VerifyPKCS1v15 | %w", err)
 	}
 
-	pcCopy.RootCertSignature = pc.RootCertSignature
-	pcCopy.TimeStamp = time.Now()
-	pcCopy.CAName = caName
-	pcCopy.SerialNumber = serialNum
-
-	caSignature, err := SignStrucRSASHA256(&pcCopy, caPrivKey)
-	if err != nil {
-		return PC{}, fmt.Errorf("CAVerifyPCAndSign | SignStrucRSASHA256 | %w", err)
-	}
-
-	pcCopy.CASignature = caSignature
-	return pcCopy, nil
+	return nil
 }
 
-// VerifyCASigInPC: verify CA's signature
-func VerifyCASigInPC(caCert *x509.Certificate, pc PC) error {
-	if len(pc.CASignature) == 0 {
+//CAVerifySPAndSign: verify the signature and sign the signature
+func CASignSP(psr *PSR, caPrivKey *rsa.PrivateKey, caName string, serialNum int) (*SP, error) {
+	sp := &SP{
+		Policies:          psr.Policies,
+		Subject:           psr.DomainName,
+		RootCertSignature: psr.RootCertSignature,
+		TimeStamp:         time.Now(),
+		CAName:            caName,
+		SerialNumber:      serialNum,
+	}
+
+	caSignature, err := SignStrucRSASHA256(sp, caPrivKey)
+	if err != nil {
+		return &SP{}, fmt.Errorf("CASignSP | SignStrucRSASHA256 | %w", err)
+	}
+
+	sp.CASignature = caSignature
+	return sp, nil
+}
+
+// VerifyCASigInSP: verify CA's signature
+func VerifyCASigInSP(caCert *x509.Certificate, sp *SP) error {
+	if len(sp.CASignature) == 0 {
 		return fmt.Errorf("VerifyCASigInPC | no valid CA signature")
 	}
 
-	pcCopy := PC{
-		Policies:          pc.Policies,
-		Subject:           pc.Subject,
-		RootCertSignature: pc.RootCertSignature,
-		TimeStamp:         pc.TimeStamp,
-		CAName:            pc.CAName,
-		SerialNumber:      pc.SerialNumber,
+	pcCopy := SP{
+		Policies:          sp.Policies,
+		Subject:           sp.Subject,
+		RootCertSignature: sp.RootCertSignature,
+		TimeStamp:         sp.TimeStamp,
+		CAName:            sp.CAName,
+		SerialNumber:      sp.SerialNumber,
+		SPTs:              []SPT{},
 	}
 
 	serialisedStruc, err := JsonStrucToBytes(&pcCopy)
@@ -281,7 +285,7 @@ func VerifyCASigInPC(caCert *x509.Certificate, pc PC) error {
 	}
 
 	hashOutput := sha256.Sum256(serialisedStruc)
-	err = rsa.VerifyPKCS1v15(caCert.PublicKey.(*rsa.PublicKey), crypto.SHA256, hashOutput[:], pc.CASignature)
+	err = rsa.VerifyPKCS1v15(caCert.PublicKey.(*rsa.PublicKey), crypto.SHA256, hashOutput[:], sp.CASignature)
 	if err != nil {
 		return fmt.Errorf("VerifyCASigInPC | VerifyPKCS1v15 | %w", err)
 	}

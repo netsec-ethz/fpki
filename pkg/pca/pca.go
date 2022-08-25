@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strconv"
-	"time"
 
 	"github.com/google/trillian"
 	"github.com/netsec-ethz/fpki/pkg/common"
@@ -33,11 +31,17 @@ type PCA struct {
 	// store valid RPC (with SPT) in memory; Later replaced by data base
 	validRPCsByDomains map[string]*common.RPC
 
-	// RPC without SPT; pre-certificate
-	preRPCByDomains map[string]*common.RPC
+	validSPsByDomains map[string]*common.SP
 
-	// PCA's output path; sends RPC
+	// RPC without SPT; pre-certificate
+	preRPCByDomains map[int]*common.RPC
+
+	// RPC without SPT; pre-certificate
+	preSPByDomains map[int]*common.SP
+
 	outputPath string
+
+	policyLogExgPath string
 
 	// policy log's output path; receives SPT
 	policyLogOutputPath string
@@ -64,52 +68,16 @@ func NewPCA(configPath string) (*PCA, error) {
 	}
 	return &PCA{
 		validRPCsByDomains:  make(map[string]*common.RPC),
-		preRPCByDomains:     make(map[string]*common.RPC),
+		validSPsByDomains:   make(map[string]*common.SP),
+		preRPCByDomains:     make(map[int]*common.RPC),
+		preSPByDomains:      make(map[int]*common.SP),
 		logVerifier:         logverifier.NewLogVerifier(nil),
 		caName:              config.CAName,
 		outputPath:          config.OutputPath,
+		policyLogExgPath:    config.PolicyLogExgPath,
 		policyLogOutputPath: config.PolicyLogOutputPath,
 		rsaKeyPair:          keyPair,
 	}, nil
-}
-
-// SignAndLogRCSR: sign the rcsr and generate a rpc -> store the rpc to the "fileExchange" folder; policy log will fetch rpc from the folder
-func (pca *PCA) SignAndLogRCSR(rcsr *common.RCSR) error {
-	// verify the signature in the rcsr; check if the domain's pub key is correct
-	err := common.RCSRVerifySignature(rcsr)
-	if err != nil {
-		return fmt.Errorf("SignAndLogRCSR | RCSRVerifySignature | %w", err)
-	}
-
-	// decide not before time
-	var notBefore time.Time
-
-	// check if the rpc signature comes from valid rpc
-	if pca.checkRPCSignature(rcsr) {
-		notBefore = time.Now()
-	} else {
-		// cool off period
-		notBefore = time.Now().AddDate(0, 0, 7)
-	}
-
-	pca.increaseSerialNumber()
-
-	// generate pre-RPC (without SPT)
-	rpc, err := common.RCSRGenerateRPC(rcsr, notBefore, pca.serialNumber, pca.rsaKeyPair, pca.caName)
-	if err != nil {
-		return fmt.Errorf("SignAndLogRCSR | RCSRGenerateRPC | %w", err)
-	}
-
-	// add the rpc to preRPC(without SPT)
-	pca.preRPCByDomains[rpc.Subject] = rpc
-
-	// send RPC to policy log
-	err = pca.sendRPCToPolicyLog(rpc, strconv.Itoa(pca.serialNumber))
-
-	if err != nil {
-		return fmt.Errorf("SignAndLogRCSR | sendRPCToPolicyLog | %w", err)
-	}
-	return nil
 }
 
 // ReceiveSPTFromPolicyLog: When policy log returns SPT, this func will be called
@@ -218,9 +186,4 @@ func (pca *PCA) checkRPCSignature(rcsr *common.RCSR) bool {
 	} else {
 		return false
 	}
-}
-
-// save file to output dir
-func (pca *PCA) sendRPCToPolicyLog(rpc *common.RPC, fileName string) error {
-	return common.JsonStrucToFile(rpc, pca.outputPath+"/rpc/"+fileName)
 }

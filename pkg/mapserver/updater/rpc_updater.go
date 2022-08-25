@@ -13,12 +13,12 @@ import (
 // newUpdates: structure for updates
 type newUpdates struct {
 	rpc []*projectCommon.RPC
-	pc  []*projectCommon.PC
+	pc  []*projectCommon.SP
 }
 
 // UpdateDomainEntriesTableUsingRPCAndPC: update the domain entries table, given RPC and PC
 func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingRPCAndPC(ctx context.Context,
-	rpc []*projectCommon.RPC, pc []*projectCommon.PC, readerNum int) (
+	rpc []*projectCommon.RPC, pc []*projectCommon.SP, readerNum int) (
 	[]*db.KeyValuePair, int, error) {
 
 	if len(rpc) == 0 && len(pc) == 0 {
@@ -64,7 +64,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingRPCAndPC(ctx context.
 }
 
 // getAffectedDomainAndCertMapPCAndRPC: return a map of affected domains, and cert map
-func getAffectedDomainAndCertMapPCAndRPC(rpc []*projectCommon.RPC, pc []*projectCommon.PC) (
+func getAffectedDomainAndCertMapPCAndRPC(rpc []*projectCommon.RPC, pc []*projectCommon.SP) (
 	uniqueSet, map[string]*newUpdates) {
 
 	// unique list of the updated domains
@@ -106,7 +106,7 @@ func getAffectedDomainAndCertMapPCAndRPC(rpc []*projectCommon.RPC, pc []*project
 		if ok {
 			certMapElement.pc = append(certMapElement.pc, newPC)
 		} else {
-			domainCertMap[domainName] = &newUpdates{pc: []*projectCommon.PC{newPC}}
+			domainCertMap[domainName] = &newUpdates{pc: []*projectCommon.SP{newPC}}
 		}
 	}
 	return affectedDomainsMap, domainCertMap
@@ -171,6 +171,6 @@ func updateDomainEntryWithRPC(domainEntry *common.DomainEntry, rpc *projectCommo
 }
 
 // updateDomainEntryWithPC: insert PC into correct CAEntry
-func updateDomainEntryWithPC(domainEntry *common.DomainEntry, pc *projectCommon.PC) bool {
+func updateDomainEntryWithPC(domainEntry *common.DomainEntry, pc *projectCommon.SP) bool {
 	return domainEntry.AddPC(pc)
 }

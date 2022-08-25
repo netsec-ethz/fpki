@@ -38,7 +38,9 @@ func JsonStrucToBytes(struc interface{}) ([]byte, error) {
 		break
 	case *types.LogRootV1:
 		break
-	case *PC:
+	case *SP:
+		break
+	case *PSR:
 		break
 	default:
 		return nil, fmt.Errorf("JsonStrucToBytes | Structure not supported yet!")
@@ -140,15 +142,15 @@ func JsonFileToSTH(struc *types.LogRootV1, filePath string) error {
 }
 
 // JsonFileToSTH: read json files and unmarshal it to Signed Tree Head
-func JsonFileToPC(struc *PC, filePath string) error {
+func JsonFileToSP(struc *SP, filePath string) error {
 	file, err := ioutil.ReadFile(filePath)
 	if err != nil {
-		return fmt.Errorf("JsonFileToPC | ReadFile | %w", err)
+		return fmt.Errorf("JsonFileToSP | ReadFile | %w", err)
 	}
 
 	err = json.Unmarshal([]byte(file), struc)
 	if err != nil {
-		return fmt.Errorf("JsonFileToPC | Unmarshal | %w", err)
+		return fmt.Errorf("JsonFileToSP | Unmarshal | %w", err)
 	}
 	return nil
 }
