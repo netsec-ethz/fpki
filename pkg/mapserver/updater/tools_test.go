@@ -18,6 +18,7 @@ func TestExtractCertDomains(t *testing.T) {
 
 	result := extractCertDomains(cert)
 	assert.Equal(t, 2, len(result))
+	assert.Contains(t, result, "*.adiq.com.br")
 	assert.Contains(t, result, "adiq.com.br")
 }
 
