@@ -123,7 +123,7 @@ func TestEncodeAndDecodeOfPC(t *testing.T) {
 		TrustedCA: []string{"my CA"},
 	}
 
-	pc := PC{
+	pc := SP{
 		Policies:          []Policy{policy},
 		TimeStamp:         time.Now(),
 		Subject:           "hihihi",
@@ -137,9 +137,9 @@ func TestEncodeAndDecodeOfPC(t *testing.T) {
 	err := JsonStrucToFile(&pc, tempFile)
 	require.NoError(t, err, "Json Struc To File error")
 
-	deserialisedPC := &PC{}
+	deserialisedPC := &SP{}
 
-	err = JsonFileToPC(deserialisedPC, tempFile)
+	err = JsonFileToSP(deserialisedPC, tempFile)
 	require.NoError(t, err, "Json File To SPT error")
 
 	assert.True(t, deserialisedPC.Equal(pc), "PC serialised and deserialised error")

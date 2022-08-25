@@ -63,8 +63,8 @@ type SPRT struct {
 	Signature       []byte    `json:",omitempty"`
 }
 
-// Policy Certificate
-type PC struct {
+// Signed Policy
+type SP struct {
 	Policies          []Policy  `json:",omitempty"`
 	TimeStamp         time.Time `json:",omitempty"`
 	Subject           string    `json:",omitempty"`
@@ -73,6 +73,14 @@ type PC struct {
 	CASignature       []byte    `json:",omitempty"`
 	RootCertSignature []byte    `json:",omitempty"`
 	SPTs              []SPT     `json:",omitempty"`
+}
+
+// Policy Signing Request
+type PSR struct {
+	Policies          []Policy  `json:",omitempty"`
+	TimeStamp         time.Time `json:",omitempty"`
+	DomainName        string    `json:",omitempty"`
+	RootCertSignature []byte    `json:",omitempty"`
 }
 
 // Domain policy
@@ -112,7 +120,7 @@ func (s Policy) Equal(o Policy) bool {
 	return true
 }
 
-func (s PC) Equal(o PC) bool {
+func (s SP) Equal(o SP) bool {
 	if s.TimeStamp.Equal(o.TimeStamp) &&
 		s.Subject == o.Subject &&
 		s.CAName == o.CAName &&

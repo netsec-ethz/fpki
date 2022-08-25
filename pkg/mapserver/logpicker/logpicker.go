@@ -226,8 +226,8 @@ func parseCertificatesFromCTLogServerResponse(resp *http.Response) ([]*ctx509.Ce
 
 // GetPCAndRPC: get PC and RPC from url
 // TODO(yongzhe): currently just generate random PC and RPC using top 1k domain names
-func GetPCAndRPC(ctURL string, startIndex int64, endIndex int64, numOfWorker int) ([]*common.PC, []*common.RPC, error) {
-	resultPC := []*common.PC{}
+func GetPCAndRPC(ctURL string, startIndex int64, endIndex int64, numOfWorker int) ([]*common.SP, []*common.RPC, error) {
+	resultPC := []*common.SP{}
 	resultRPC := []*common.RPC{}
 
 	f, err := os.Open(ctURL)
@@ -245,7 +245,7 @@ func GetPCAndRPC(ctURL string, startIndex int64, endIndex int64, numOfWorker int
 			//fmt.Println("invalid domain name: ", domainName)
 			continue
 		}
-		resultPC = append(resultPC, &common.PC{
+		resultPC = append(resultPC, &common.SP{
 			Subject:     domainName,
 			TimeStamp:   time.Now(),
 			CASignature: generateRandomBytes(),

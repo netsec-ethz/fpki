@@ -60,17 +60,17 @@ func TestAddCert(t *testing.T) {
 // update with old PC -> AddPC() should return false
 // then check if all the PC are correctly added
 func TestAddPC(t *testing.T) {
-	pc1 := common.PC{
+	pc1 := common.SP{
 		CAName:  "ca1",
 		Subject: "before",
 	}
 
-	pc2 := common.PC{
+	pc2 := common.SP{
 		CAName:  "ca1",
 		Subject: "after",
 	}
 
-	pc3 := common.PC{
+	pc3 := common.SP{
 		CAName:  "ca2",
 		Subject: "after",
 	}

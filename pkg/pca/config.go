@@ -14,10 +14,12 @@ type PCAConfig struct {
 	KeyPath string `json:",omitempty"`
 
 	// PCA's output path; sends RPC
-	OutputPath string `json:",omitempty"`
+	PolicyLogExgPath string `json:",omitempty"`
 
 	// policy log's output path; receives SPT
 	PolicyLogOutputPath string `json:",omitempty"`
+
+	OutputPath string `json:",omitempty"`
 }
 
 // SaveConfigToFile: save PCA config to file
