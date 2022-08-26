@@ -1,6 +1,7 @@
 package pca
 
 import (
+	"encoding/base64"
 	"fmt"
 	"strconv"
 	"time"
@@ -16,67 +17,94 @@ func (pca *PCA) SignAndLogRCSR(rcsr *common.RCSR) error {
 		return fmt.Errorf("SignAndLogRCSR | RCSRVerifySignature | %w", err)
 	}
 
-	// decide not before time
-	notBefore := time.Now()
-
 	pca.increaseSerialNumber()
 
 	// generate pre-RPC (without SPT)
-	rpc, err := common.RCSRGenerateRPC(rcsr, notBefore, pca.serialNumber, pca.rsaKeyPair, pca.caName)
+	rpc, err := common.RCSRGenerateRPC(rcsr, time.Now(), pca.serialNumber, pca.rsaKeyPair, pca.caName)
 	if err != nil {
 		return fmt.Errorf("SignAndLogRCSR | RCSRGenerateRPC | %w", err)
 	}
 
+	rpcHash, err := pca.getHashName(rpc)
+	if err != nil {
+		return fmt.Errorf("SignAndLogRCSR | getHashName | %w", err)
+	}
+
 	// add the rpc to preRPC(without SPT)
-	pca.preRPCByDomains[rpc.SerialNumber] = rpc
+	pca.preRPCByDomains[rpcHash] = rpc
 
 	// send RPC to policy log
 	err = pca.sendRPCToPolicyLog(rpc, strconv.Itoa(pca.serialNumber))
-
 	if err != nil {
 		return fmt.Errorf("SignAndLogRCSR | sendRPCToPolicyLog | %w", err)
 	}
+
 	return nil
 }
 
 // SignAndLogPSR: sign and log policy signing request
 func (pca *PCA) SignAndLogSP(psr *common.PSR) error {
 	err := pca.findRPCAndVerifyPSR(psr)
-	if err != nil{
+	if err != nil {
 		return fmt.Errorf("SignAndLogPSR | findRPCAndVerifyPSR | %w", err)
 	}
 
 	pca.increaseSerialNumber()
 
-	newSP := &common.SP{
-		Policies: psr.Policies,
-		TimeStamp: psr.TimeStamp,
-		Subject: psr.DomainName,
-		RootCertSignature: psr.RootCertSignature,
-		CAName: pca.caName,
-		SerialNumber: ,
+	sp, err := common.CASignSP(psr, pca.rsaKeyPair, pca.caName, pca.serialNumber)
+	if err != nil {
+		return fmt.Errorf("SignAndLogPSR | CASignSP | %w", err)
 	}
-}
 
-func (pca *PCA)findRPCAndVerifyPSR(psr *common.PSR) error{
-	rpc, ok := pca.validRPCsByDomains[psr.DomainName]
-	if !ok{
-		return fmt.Errorf("findRPCAndVerifyPSR | validRPCsByDomains | no valid rpc at this moment")
+	spHash, err := pca.getHashName(sp)
+	if err != nil {
+		return fmt.Errorf("SignAndLogRCSR | getHashName | %w", err)
 	}
-	
-	err := common.VerifySPUsingRPC(psr, rpc)
-	if err != nil{
-		return fmt.Errorf("findRPCAndVerifyPSR | VerifySPUsingRPC | %w", err)
+
+	pca.preSPByDomains[spHash] = sp
+
+	err = pca.sendSPToPolicyLog(sp, strconv.Itoa(sp.SerialNumber))
+	if err != nil {
+		return fmt.Errorf("SignAndLogPSR | sendSPToPolicyLog | %w", err)
 	}
 
 	return nil
 }
+
+func (pca *PCA) findRPCAndVerifyPSR(psr *common.PSR) error {
+	rpc, ok := pca.validRPCsByDomains[psr.DomainName]
+	if !ok {
+		return fmt.Errorf("findRPCAndVerifyPSR | validRPCsByDomains | no valid rpc at this moment")
+	}
+
+	err := common.VerifyPSRUsingRPC(psr, rpc)
+	if err != nil {
+		return fmt.Errorf("findRPCAndVerifyPSR | VerifyPSRUsingRPC | %w", err)
+	}
+
+	return nil
+}
+
 // save file to output dir
 func (pca *PCA) sendRPCToPolicyLog(rpc *common.RPC, fileName string) error {
 	return common.JsonStrucToFile(rpc, pca.policyLogExgPath+"/rpc/"+fileName)
 }
 
 // save file to output dir
-func (pca *PCA) sendSPToPolicyLog(rpc *common.SP, fileName string) error {
-	return common.JsonStrucToFile(rpc, pca.policyLogExgPath+"/sp/"+fileName)
+func (pca *PCA) sendSPToPolicyLog(sp *common.SP, fileName string) error {
+	return common.JsonStrucToFile(sp, pca.policyLogExgPath+"/sp/"+fileName)
+}
+
+func (pca *PCA) getHashName(struc interface{}) (string, error) {
+	strucBytes, err := common.JsonStrucToBytes(struc)
+	if err != nil {
+		return "", fmt.Errorf("getHashName | JsonStrucToBytes | %w", err)
+	}
+
+	bytesHash := pca.logVerifier.HashLeaf([]byte(strucBytes))
+
+	// base64 url encode the hashed value, and this will be the file name of SPT
+	fileName := base64.URLEncoding.EncodeToString(bytesHash)
+
+	return fileName, nil
 }

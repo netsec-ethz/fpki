@@ -57,12 +57,16 @@ func JsonStrucToBytes(struc interface{}) ([]byte, error) {
 //                               Bytes to struct
 //--------------------------------------------------------------------------------
 // JsonBytesToPoI: bytes -> PoI in json
-func JsonBytesToPoI(poiBytes []byte) (*trillian.Proof, error) {
-	result := &trillian.Proof{}
+func JsonBytesToPoI(poiBytesArray [][]byte) ([]*trillian.Proof, error) {
+	result := []*trillian.Proof{}
 
-	err := json.Unmarshal(poiBytes, result)
-	if err != nil {
-		return nil, fmt.Errorf("JsonBytesToPoI | Unmarshal | %w", err)
+	for _, poiBytes := range poiBytesArray {
+		newPOI := &trillian.Proof{}
+		err := json.Unmarshal(poiBytes, newPOI)
+		if err != nil {
+			return nil, fmt.Errorf("JsonBytesToPoI | Unmarshal | %w", err)
+		}
+		result = append(result, newPOI)
 	}
 
 	return result, nil

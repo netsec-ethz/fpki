@@ -16,11 +16,7 @@ type LogClientConfig struct {
 	RPCAddress            string `json:",omitempty"`
 	MaxReceiveMessageSize int    `json:",omitempty"`
 
-	// path to store the output from log client (now support SPT)
-	OutPutPath string `json:",omitempty"`
-
-	// path to read pre-RPC from PCA
-	RPCPath string `json:",omitempty"`
+	PolicyLogExchangePath string `json:",omitempty"`
 
 	// number of workers
 	NumOfWorker int `json:",omitempty"`
