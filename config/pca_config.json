@@ -2,5 +2,5 @@
  "CAName": "pca",
  "KeyPath": "./config/certs/server_key.pem",
  "OutputPath": "./file_exchange/pcaoutput",
- "PolicyLogExgPath": "./file_exchange/"
+ "PolicyLogExgPath": "./file_exchange"
 }

@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/domainowner"
 	"github.com/netsec-ethz/fpki/pkg/logverifier"
 	PCA "github.com/netsec-ethz/fpki/pkg/pca"
@@ -21,18 +22,18 @@ func main() {
 	prepareTestFolder()
 
 	// init domain owner
-	do := domainowner.DomainOwner{}
+	do := domainowner.NewDomainOwner()
 
 	// new PCA
 	pca, err := PCA.NewPCA("./config/pca_config.json")
 	if err != nil {
-		panic(err)
+		logErrAndQuit(err)
 	}
 
 	// first rcsr
 	rcsr, err := do.GenerateRCSR("abc.com", 1)
 	if err != nil {
-		panic(err)
+		logErrAndQuit(err)
 	}
 
 	if len(rcsr.PRCSignature) != 0 {
@@ -42,36 +43,36 @@ func main() {
 	// sign and log the first rcsr
 	err = pca.SignAndLogRCSR(rcsr)
 	if err != nil {
-		panic(err)
+		logErrAndQuit(err)
 	}
 
 	// second rcsr
 	rcsr, err = do.GenerateRCSR("fpki.com", 1)
 	if err != nil {
-		panic(err)
+		logErrAndQuit(err)
 	}
 
 	// sign and log the second rcsr
 	err = pca.SignAndLogRCSR(rcsr)
 	if err != nil {
-		panic(err)
+		logErrAndQuit(err)
 	}
 
 	adminClient, err := client.GetAdminClient("./config/adminclient_config.json")
 	if err != nil {
-		panic(err)
+		logErrAndQuit(err)
 	}
 
 	// create new tree
 	tree, err := adminClient.CreateNewTree()
 	if err != nil {
-		panic(err)
+		logErrAndQuit(err)
 	}
 
 	// init log client
 	logClient, err := client.NewLogClient("./config/logclient_config.json", tree.TreeId)
 	if err != nil {
-		panic(err)
+		logErrAndQuit(err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*time.Duration(100))
@@ -80,38 +81,36 @@ func main() {
 	// queue RPC
 	result, err := logClient.QueueRPCs(ctx)
 	if err != nil {
-		panic(err)
+		logErrAndQuit(err)
 	}
 
 	if len(result.AddLeavesErrs) != 0 || len(result.RetrieveLeavesErrs) != 0 {
-		panic("queue error")
+		logErrAndQuit(fmt.Errorf("queue error"))
 	}
 
 	// read SPT and verify
 	err = pca.ReceiveSPTFromPolicyLog()
 	if err != nil {
-		panic(err)
+		logErrAndQuit(err)
 	}
 
 	fileNames, err := ioutil.ReadDir("./file_exchange/rpc")
 	if err != nil {
-		panic(err)
+		logErrAndQuit(err)
 	}
 
 	if len(fileNames) != 0 {
-		panic("rpc num error")
+		logErrAndQuit(fmt.Errorf("rpc num error"))
 	}
 
 	fileNames, err = ioutil.ReadDir("./file_exchange/spt")
 	if err != nil {
-		panic(err)
+		logErrAndQuit(err)
 	}
 
 	if len(fileNames) != 0 {
-		panic("spt num error")
+		logErrAndQuit(err)
 	}
-
-	os.RemoveAll("./file_exchange")
 
 	verifier := logverifier.NewLogVerifier(nil)
 
@@ -120,30 +119,85 @@ func main() {
 	for _, rpcWithSPT := range rpcs {
 		err = verifier.VerifyRPC(rpcWithSPT)
 		if err != nil {
-			panic(err)
+			logErrAndQuit(err)
 		}
 	}
+
+	if len(rpcs) != 2 {
+		logErrAndQuit(fmt.Errorf("rpcs num error"))
+	}
+
+	policy1 := common.Policy{
+		TrustedCA: []string{"swiss CA"},
+	}
+
+	policy2 := common.Policy{
+		TrustedCA: []string{"US CA"},
+	}
+
+	psr1, err := do.GeneratePSR("abc.com", policy1)
+	if err != nil {
+		logErrAndQuit(err)
+	}
+
+	psr2, err := do.GeneratePSR("fpki.com", policy2)
+	if err != nil {
+		logErrAndQuit(err)
+	}
+
+	err = pca.SignAndLogSP(psr1)
+	if err != nil {
+		logErrAndQuit(err)
+	}
+
+	err = pca.SignAndLogSP(psr2)
+	if err != nil {
+		logErrAndQuit(err)
+	}
+
+	logClient.QueueSPs(ctx)
+
+	err = pca.ReceiveSPTFromPolicyLog()
+	if err != nil {
+		logErrAndQuit(err)
+	}
+
+	if len(result.AddLeavesErrs) != 0 || len(result.RetrieveLeavesErrs) != 0 {
+		logErrAndQuit(fmt.Errorf("queue error SP"))
+	}
+
 	fmt.Println("test succeed!")
+	os.RemoveAll("./file_exchange")
+}
+
+func logErrAndQuit(err error) {
+	os.RemoveAll("./file_exchange")
+	panic(err)
 }
 
 func prepareTestFolder() {
 	err := os.MkdirAll("./file_exchange", os.ModePerm)
 	if err != nil {
-		panic(err)
+		logErrAndQuit(err)
 	}
 
 	err = os.MkdirAll("./file_exchange/rpc", os.ModePerm)
 	if err != nil {
-		panic(err)
+		logErrAndQuit(err)
+	}
+
+	err = os.MkdirAll("./file_exchange/sp", os.ModePerm)
+	if err != nil {
+		logErrAndQuit(err)
 	}
 
 	err = os.MkdirAll("./file_exchange/spt", os.ModePerm)
 	if err != nil {
-		panic(err)
+		logErrAndQuit(err)
 	}
 
 	err = os.MkdirAll("./file_exchange/policylog/trees_config", os.ModePerm)
 	if err != nil {
-		panic(err)
+		logErrAndQuit(err)
 	}
 }

@@ -88,40 +88,41 @@ func (pca *PCA) ReceiveSPTFromPolicyLog() error {
 		// verify the PoI, STH
 		err = pca.verifySPTWithRPC(spt, v)
 		if err == nil {
-			log.Printf("Get a new SPT for domain: %s\n", k)
+			log.Printf("Get a new SPT for domain RPC: %s\n", k)
 			v.SPTs = []common.SPT{*spt}
 
 			// move the rpc from pre-rpc to valid-rpc
 			delete(pca.preRPCByDomains, k)
-			pca.validRPCsByDomains[k] = v
+			pca.validRPCsByDomains[v.Subject] = v
 		} else {
-			return fmt.Errorf("Fail to verify one SPT")
+			return fmt.Errorf("Fail to verify one SPT RPC")
 		}
 		os.Remove(pca.policyLogExgPath + "/spt/" + k)
 	}
-	/*
-		for k, v := range pca.preSPByDomains {
-			// read the corresponding spt
-			spt := &common.SPT{}
-			err := common.JsonFileToSPT(spt, pca.policyLogExgPath+"/spt/"+k)
-			if err != nil {
-				return fmt.Errorf("ReceiveSPTFromPolicyLog | JsonFileToSPT | %w", err)
-			}
 
-			// verify the PoI, STH
-			err = pca.verifySPT(spt, v)
-			if err == nil {
-				log.Printf("Get a new SPT for domain: %s\n", k)
-				v.SPTs = []common.SPT{*spt}
-
-				// move the rpc from pre-rpc to valid-rpc
-				delete(pca.preRPCByDomains, k)
-				pca.validRPCsByDomains[k] = v
-			} else {
-				return fmt.Errorf("Fail to verify one SPT")
-			}
+	for k, v := range pca.preSPByDomains {
+		// read the corresponding spt
+		spt := &common.SPT{}
+		err := common.JsonFileToSPT(spt, pca.policyLogExgPath+"/spt/"+k)
+		if err != nil {
+			return fmt.Errorf("ReceiveSPTFromPolicyLog | JsonFileToSPT | %w", err)
 		}
-	*/
+
+		// verify the PoI, STH
+		err = pca.verifySPTWithSP(spt, v)
+		if err == nil {
+			log.Printf("Get a new SPT for domain SP: %s\n", k)
+			v.SPTs = []common.SPT{*spt}
+
+			// move the rpc from pre-rpc to valid-rpc
+			delete(pca.preRPCByDomains, k)
+			pca.validSPsByDomains[v.Subject] = v
+		} else {
+			return fmt.Errorf("Fail to verify one SPT SP")
+		}
+		os.Remove(pca.policyLogExgPath + "/spt/" + k)
+	}
+
 	return nil
 }
 
@@ -140,6 +141,36 @@ func (pca *PCA) verifySPTWithRPC(spt *common.SPT, rpc *common.RPC) error {
 		return fmt.Errorf("verifySPT | Json_StrucToBytes | %w", err)
 	}
 	leafHash := pca.logVerifier.HashLeaf(rpcBytes)
+
+	// get LogRootV1
+	logRoot, err := common.JsonBytesToLogRoot(spt.STH)
+	if err != nil {
+		return fmt.Errorf("verifySPT | JsonBytesToLogRoot | %w", err)
+	}
+
+	// verify the PoI
+	err = pca.logVerifier.VerifyInclusionByHash(logRoot, leafHash, proofs)
+	if err != nil {
+		return fmt.Errorf("verifySPT | VerifyInclusionByHash | %w", err)
+	}
+
+	return nil
+}
+
+// verify the SPT of the RPC.
+func (pca *PCA) verifySPTWithSP(spt *common.SPT, sp *common.SP) error {
+	// construct proofs
+	proofs, err := common.JsonBytesToPoI(spt.PoI)
+	if err != nil {
+		return fmt.Errorf("verifySPT | JsonBytesToPoI | %w", err)
+	}
+
+	// get leaf hash
+	spBytes, err := common.JsonStrucToBytes(sp)
+	if err != nil {
+		return fmt.Errorf("verifySPT | Json_StrucToBytes | %w", err)
+	}
+	leafHash := pca.logVerifier.HashLeaf(spBytes)
 
 	// get LogRootV1
 	logRoot, err := common.JsonBytesToLogRoot(spt.STH)

@@ -65,7 +65,7 @@ type SPRT struct {
 
 // Signed Policy
 type SP struct {
-	Policies          []Policy  `json:",omitempty"`
+	Policies          Policy    `json:",omitempty"`
 	TimeStamp         time.Time `json:",omitempty"`
 	Subject           string    `json:",omitempty"`
 	CAName            string    `json:",omitempty"`
@@ -77,7 +77,7 @@ type SP struct {
 
 // Policy Signing Request
 type PSR struct {
-	Policies          []Policy  `json:",omitempty"`
+	Policies          Policy    `json:",omitempty"`
 	TimeStamp         time.Time `json:",omitempty"`
 	DomainName        string    `json:",omitempty"`
 	RootCertSignature []byte    `json:",omitempty"`
@@ -126,14 +126,10 @@ func (s SP) Equal(o SP) bool {
 		s.CAName == o.CAName &&
 		s.SerialNumber == o.SerialNumber &&
 		bytes.Equal(s.CASignature, o.CASignature) &&
-		bytes.Equal(s.RootCertSignature, o.RootCertSignature) {
+		bytes.Equal(s.RootCertSignature, o.RootCertSignature) &&
+		s.Policies.Equal(o.Policies) {
 		for i, v := range s.SPTs {
 			if !v.Equal(o.SPTs[i]) {
-				return false
-			}
-		}
-		for i, v := range s.Policies {
-			if !v.Equal(o.Policies[i]) {
 				return false
 			}
 		}
