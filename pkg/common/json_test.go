@@ -124,7 +124,7 @@ func TestEncodeAndDecodeOfPC(t *testing.T) {
 	}
 
 	pc := SP{
-		Policies:          []Policy{policy},
+		Policies:          policy,
 		TimeStamp:         time.Now(),
 		Subject:           "hihihi",
 		CAName:            "hihihi",

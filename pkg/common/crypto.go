@@ -206,6 +206,7 @@ func RPCVerifyCASignature(caCert *x509.Certificate, rpc *RPC) error {
 // ----------------------------------------------------------------------------------
 //                               functions on SP
 // ----------------------------------------------------------------------------------
+
 // DomainOwnerSignSP: Used by domain owner to sign the PC
 func DomainOwnerSignPSR(domainOwnerPrivKey *rsa.PrivateKey, psr *PSR) error {
 	signature, err := SignStrucRSASHA256(psr, domainOwnerPrivKey)
