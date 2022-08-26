@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/trillian"
 	"github.com/google/trillian/types"
+	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/transparency-dev/merkle"
 	logProof "github.com/transparency-dev/merkle/proof"
 	"github.com/transparency-dev/merkle/rfc6962"
@@ -101,6 +102,56 @@ func (c *LogVerifier) VerifyInclusionByHash(trusted *types.LogRootV1, leafHash [
 	}
 	if !isVerified {
 		return errors.New("Verificate fails!")
+	}
+	return nil
+}
+
+func (c *LogVerifier) VerifySP(sp *common.SP) error {
+	spCopy := *sp
+	spCopy.SPTs = []common.SPT{}
+	serialisedStruc, err := common.JsonStrucToBytes(&spCopy)
+	if err != nil {
+		return fmt.Errorf("VerifySP | JsonStrucToBytes | %w", err)
+	}
+
+	bytesHash := c.HashLeaf([]byte(serialisedStruc))
+
+	for _, p := range spCopy.SPTs {
+		sth, err := common.JsonBytesToLogRoot(p.STH)
+		if err != nil {
+			return fmt.Errorf("VerifySP | JsonBytesToLogRoot | %w", err)
+		}
+
+		poi, err := common.JsonBytesToPoI(p.PoI)
+		err = c.VerifyInclusionByHash(sth, bytesHash, poi)
+		if err != nil {
+			return fmt.Errorf("VerifySP | VerifyInclusionByHash | %w", err)
+		}
+	}
+	return nil
+}
+
+func (c *LogVerifier) VerifyRPC(rpc *common.RPC) error {
+	rpcCopy := *rpc
+	rpcCopy.SPTs = []common.SPT{}
+	serialisedStruc, err := common.JsonStrucToBytes(&rpcCopy)
+	if err != nil {
+		return fmt.Errorf("VerifySP | JsonStrucToBytes | %w", err)
+	}
+
+	bytesHash := c.HashLeaf([]byte(serialisedStruc))
+
+	for _, p := range rpcCopy.SPTs {
+		sth, err := common.JsonBytesToLogRoot(p.STH)
+		if err != nil {
+			return fmt.Errorf("VerifySP | JsonBytesToLogRoot | %w", err)
+		}
+
+		poi, err := common.JsonBytesToPoI(p.PoI)
+		err = c.VerifyInclusionByHash(sth, bytesHash, poi)
+		if err != nil {
+			return fmt.Errorf("VerifySP | VerifyInclusionByHash | %w", err)
+		}
 	}
 	return nil
 }

@@ -4,10 +4,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/domainowner"
+	"github.com/netsec-ethz/fpki/pkg/logverifier"
 	PCA "github.com/netsec-ethz/fpki/pkg/pca"
 	"github.com/netsec-ethz/fpki/pkg/policylog/client"
 )
@@ -16,30 +18,7 @@ import (
 // Policy log adds the RPC, and return SPT -> PCA receives SPT and verifies the SPT
 func main() {
 	flag.Parse()
-	err := os.MkdirAll("./file_exchange", os.ModePerm)
-	if err != nil {
-		panic(err)
-	}
-
-	err = os.MkdirAll("./file_exchange/pcaoutput/rpc", os.ModePerm)
-	if err != nil {
-		panic(err)
-	}
-
-	err = os.MkdirAll("./file_exchange/policylog/trees_config", os.ModePerm)
-	if err != nil {
-		panic(err)
-	}
-
-	err = os.MkdirAll("./file_exchange/policylog/spt", os.ModePerm)
-	if err != nil {
-		panic(err)
-	}
-
-	err = os.MkdirAll("./file_exchange/policylog/logRoot", os.ModePerm)
-	if err != nil {
-		panic(err)
-	}
+	prepareTestFolder()
 
 	// init domain owner
 	do := domainowner.DomainOwner{}
@@ -99,7 +78,7 @@ func main() {
 	defer cancel()
 
 	// queue RPC
-	result, err := logClient.QueueRPCs(ctx, []string{"1", "2"})
+	result, err := logClient.QueueRPCs(ctx)
 	if err != nil {
 		panic(err)
 	}
@@ -114,6 +93,57 @@ func main() {
 		panic(err)
 	}
 
+	fileNames, err := ioutil.ReadDir("./file_exchange/rpc")
+	if err != nil {
+		panic(err)
+	}
+
+	if len(fileNames) != 0 {
+		panic("rpc num error")
+	}
+
+	fileNames, err = ioutil.ReadDir("./file_exchange/spt")
+	if err != nil {
+		panic(err)
+	}
+
+	if len(fileNames) != 0 {
+		panic("spt num error")
+	}
+
 	os.RemoveAll("./file_exchange")
+
+	verifier := logverifier.NewLogVerifier(nil)
+
+	rpcs := pca.ReturnValidRPC()
+
+	for _, rpcWithSPT := range rpcs {
+		err = verifier.VerifyRPC(rpcWithSPT)
+		if err != nil {
+			panic(err)
+		}
+	}
 	fmt.Println("test succeed!")
+}
+
+func prepareTestFolder() {
+	err := os.MkdirAll("./file_exchange", os.ModePerm)
+	if err != nil {
+		panic(err)
+	}
+
+	err = os.MkdirAll("./file_exchange/rpc", os.ModePerm)
+	if err != nil {
+		panic(err)
+	}
+
+	err = os.MkdirAll("./file_exchange/spt", os.ModePerm)
+	if err != nil {
+		panic(err)
+	}
+
+	err = os.MkdirAll("./file_exchange/policylog/trees_config", os.ModePerm)
+	if err != nil {
+		panic(err)
+	}
 }

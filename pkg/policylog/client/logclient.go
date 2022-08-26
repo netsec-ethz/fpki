@@ -3,6 +3,8 @@ package client
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
+	"os"
 	"sync"
 	"time"
 
@@ -145,17 +147,16 @@ func (c *LogClient) GetConsistencyProof(ctx context.Context, trusted *types.LogR
 // 3. update the tree size
 // 4. fetch proof for successfully added leaves
 // 5. generate spts using proofs, and write them to the "fileExchange" folder
-func (c *LogClient) QueueRPCs(ctx context.Context, fileNames []string) (*QueueRPCResult, error) {
+func (c *LogClient) QueueRPCs(ctx context.Context) (*QueueRPCResult, error) {
 	queueRPCResult := &QueueRPCResult{}
 
-	// one file will only contain one RPC
-	leafNum := len(fileNames)
-
 	// read RPC from files
-	data, err := c.readRPCFromFileToBytes(fileNames)
+	data, err := c.readRPCFromFileToBytes()
 	if err != nil {
 		return nil, fmt.Errorf("QueueRPCs | readRPCFromFileToBytes: %w", err)
 	}
+
+	leafNum := len(data)
 
 	start := time.Now()
 
@@ -210,21 +211,28 @@ func (c *LogClient) QueueRPCs(ctx context.Context, fileNames []string) (*QueueRP
 		return queueRPCResult, fmt.Errorf("QueueRPCs | storeProofMapToSPT: %w", err)
 	}
 
-	// store the STH as well; not necessary
-	err = common.JsonStrucToFile(c.logRoot, c.config.OutPutPath+"/logRoot/logRoot")
-	if err != nil {
-		return queueRPCResult, fmt.Errorf("QueueRPCs | JsonStrucToFile: %w", err)
-	}
+	/*
+		// store the STH as well; not necessary
+		err = common.JsonStrucToFile(c.logRoot, c.config.OutPutPath+"/logRoot/logRoot")
+		if err != nil {
+			return queueRPCResult, fmt.Errorf("QueueRPCs | JsonStrucToFile: %w", err)
+		}*/
 
 	return queueRPCResult, nil
 }
 
 // file -> RPC -> bytes
-func (c *LogClient) readRPCFromFileToBytes(fileNames []string) ([][]byte, error) {
+func (c *LogClient) readRPCFromFileToBytes() ([][]byte, error) {
 	data := [][]byte{}
+
+	fileNames, err := ioutil.ReadDir(c.config.PolicyLogExchangePath + "/rpc")
+	if err != nil {
+		return nil, fmt.Errorf("readRPCFromFileToBytes | ReadDir | %w", err)
+	}
+
 	// read SPT from "fileTransfer" folder
 	for _, filaName := range fileNames {
-		filaPath := c.config.RPCPath + "/" + filaName
+		filaPath := c.config.PolicyLogExchangePath + "/rpc/" + filaName.Name()
 
 		rpc := &common.RPC{}
 		// read RPC from file
@@ -240,6 +248,9 @@ func (c *LogClient) readRPCFromFileToBytes(fileNames []string) ([][]byte, error)
 		}
 
 		data = append(data, bytes)
+
+		// delete rpc
+		os.Remove(filaPath)
 	}
 	return data, nil
 }
@@ -273,7 +284,7 @@ func (c *LogClient) storeProofMapToSPT(proofMap map[string]*PoIAndSTH) error {
 		}
 
 		// store SPT to file
-		err = common.JsonStrucToFile(spt, c.config.OutPutPath+"/spt/"+k)
+		err = common.JsonStrucToFile(spt, c.config.PolicyLogExchangePath+"/spt/"+k)
 		if err != nil {
 			return fmt.Errorf("storeProofMapToSPT | JsonStrucToFile: %w", err)
 		}

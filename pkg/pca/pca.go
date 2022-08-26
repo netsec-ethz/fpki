@@ -2,12 +2,10 @@ package pca
 
 import (
 	"crypto/rsa"
-	"encoding/base64"
-	"errors"
 	"fmt"
 	"log"
+	"os"
 
-	"github.com/google/trillian"
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/logverifier"
 )
@@ -34,17 +32,14 @@ type PCA struct {
 	validSPsByDomains map[string]*common.SP
 
 	// RPC without SPT; pre-certificate
-	preRPCByDomains map[int]*common.RPC
+	preRPCByDomains map[string]*common.RPC
 
 	// RPC without SPT; pre-certificate
-	preSPByDomains map[int]*common.SP
-
-	outputPath string
+	preSPByDomains map[string]*common.SP
 
 	policyLogExgPath string
 
-	// policy log's output path; receives SPT
-	policyLogOutputPath string
+	outputPath string
 
 	// verifier to verify the STH and PoI
 	logVerifier *logverifier.LogVerifier
@@ -67,16 +62,15 @@ func NewPCA(configPath string) (*PCA, error) {
 		return nil, fmt.Errorf("NewPCA | LoadRSAKeyPairFromFile | %w", err)
 	}
 	return &PCA{
-		validRPCsByDomains:  make(map[string]*common.RPC),
-		validSPsByDomains:   make(map[string]*common.SP),
-		preRPCByDomains:     make(map[int]*common.RPC),
-		preSPByDomains:      make(map[int]*common.SP),
-		logVerifier:         logverifier.NewLogVerifier(nil),
-		caName:              config.CAName,
-		outputPath:          config.OutputPath,
-		policyLogExgPath:    config.PolicyLogExgPath,
-		policyLogOutputPath: config.PolicyLogOutputPath,
-		rsaKeyPair:          keyPair,
+		validRPCsByDomains: make(map[string]*common.RPC),
+		validSPsByDomains:  make(map[string]*common.SP),
+		preRPCByDomains:    make(map[string]*common.RPC),
+		preSPByDomains:     make(map[string]*common.SP),
+		logVerifier:        logverifier.NewLogVerifier(nil),
+		caName:             config.CAName,
+		outputPath:         config.OutputPath,
+		policyLogExgPath:   config.PolicyLogExgPath,
+		rsaKeyPair:         keyPair,
 	}, nil
 }
 
@@ -84,26 +78,15 @@ func NewPCA(configPath string) (*PCA, error) {
 // this func will read the SPTs from the file, and process them
 func (pca *PCA) ReceiveSPTFromPolicyLog() error {
 	for k, v := range pca.preRPCByDomains {
-		rpcBytes, err := common.JsonStrucToBytes(v)
-		if err != nil {
-			return fmt.Errorf("ReceiveSPTFromPolicyLog | JsonStrucToBytes | %w", err)
-		}
-
-		// hash the rpc
-		rpcHash := pca.logVerifier.HashLeaf([]byte(rpcBytes))
-
-		// base64 url encode the hashed value, and this will be the file name of SPT
-		fileName := base64.URLEncoding.EncodeToString(rpcHash)
-
 		// read the corresponding spt
 		spt := &common.SPT{}
-		err = common.JsonFileToSPT(spt, pca.policyLogOutputPath+"/spt/"+fileName)
+		err := common.JsonFileToSPT(spt, pca.policyLogExgPath+"/spt/"+k)
 		if err != nil {
 			return fmt.Errorf("ReceiveSPTFromPolicyLog | JsonFileToSPT | %w", err)
 		}
 
 		// verify the PoI, STH
-		err = pca.verifySPT(spt, v)
+		err = pca.verifySPTWithRPC(spt, v)
 		if err == nil {
 			log.Printf("Get a new SPT for domain: %s\n", k)
 			v.SPTs = []common.SPT{*spt}
@@ -112,33 +95,43 @@ func (pca *PCA) ReceiveSPTFromPolicyLog() error {
 			delete(pca.preRPCByDomains, k)
 			pca.validRPCsByDomains[k] = v
 		} else {
-			log.Printf("fail to verify")
-			// TODO(yongzhe): change this to soft-fail, or add it the suspicious SPT; for testing, we use hard-fail here
 			return fmt.Errorf("Fail to verify one SPT")
 		}
+		os.Remove(pca.policyLogExgPath + "/spt/" + k)
 	}
+	/*
+		for k, v := range pca.preSPByDomains {
+			// read the corresponding spt
+			spt := &common.SPT{}
+			err := common.JsonFileToSPT(spt, pca.policyLogExgPath+"/spt/"+k)
+			if err != nil {
+				return fmt.Errorf("ReceiveSPTFromPolicyLog | JsonFileToSPT | %w", err)
+			}
+
+			// verify the PoI, STH
+			err = pca.verifySPT(spt, v)
+			if err == nil {
+				log.Printf("Get a new SPT for domain: %s\n", k)
+				v.SPTs = []common.SPT{*spt}
+
+				// move the rpc from pre-rpc to valid-rpc
+				delete(pca.preRPCByDomains, k)
+				pca.validRPCsByDomains[k] = v
+			} else {
+				return fmt.Errorf("Fail to verify one SPT")
+			}
+		}
+	*/
 	return nil
 }
 
-// GetValidRPCByDomain: return the new RPC with SPT
-func (pca *PCA) GetValidRPCByDomain(domainName string) (*common.RPC, error) {
-	if rpc, found := pca.validRPCsByDomains[domainName]; found {
-		return rpc, nil
-	} else {
-		return nil, errors.New("no valid RPC")
-	}
-}
-
 // verify the SPT of the RPC.
-func (pca *PCA) verifySPT(spt *common.SPT, rpc *common.RPC) error {
+func (pca *PCA) verifySPTWithRPC(spt *common.SPT, rpc *common.RPC) error {
 	// construct proofs
-	proofs := []*trillian.Proof{}
-	for _, poi := range spt.PoI {
-		poiStruc, err := common.JsonBytesToPoI(poi)
-		if err != nil {
-			return fmt.Errorf("verifySPT | Json_BytesToPoI | %w", err)
-		}
-		proofs = append(proofs, poiStruc)
+
+	proofs, err := common.JsonBytesToPoI(spt.PoI)
+	if err != nil {
+		return fmt.Errorf("verifySPT | JsonBytesToPoI | %w", err)
 	}
 
 	// get leaf hash
@@ -168,6 +161,11 @@ func (pca *PCA) increaseSerialNumber() {
 	pca.serialNumber = pca.serialNumber + 1
 }
 
+func (pca *PCA) ReturnValidRPC() map[string]*common.RPC {
+	return pca.validRPCsByDomains
+}
+
+/*
 // check whether the RPC signature is correct
 func (pca *PCA) checkRPCSignature(rcsr *common.RCSR) bool {
 	// if no rpc signature
@@ -187,3 +185,13 @@ func (pca *PCA) checkRPCSignature(rcsr *common.RCSR) bool {
 		return false
 	}
 }
+
+// GetValidRPCByDomain: return the new RPC with SPT
+func (pca *PCA) GetValidRPCByDomain(domainName string) (*common.RPC, error) {
+	if rpc, found := pca.validRPCsByDomains[domainName]; found {
+		return rpc, nil
+	} else {
+		return nil, errors.New("no valid RPC")
+	}
+}
+*/

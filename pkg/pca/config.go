@@ -16,9 +16,6 @@ type PCAConfig struct {
 	// PCA's output path; sends RPC
 	PolicyLogExgPath string `json:",omitempty"`
 
-	// policy log's output path; receives SPT
-	PolicyLogOutputPath string `json:",omitempty"`
-
 	OutputPath string `json:",omitempty"`
 }
 
