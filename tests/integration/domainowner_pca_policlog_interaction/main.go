@@ -166,12 +166,19 @@ func main() {
 		logErrAndQuit(fmt.Errorf("queue error SP"))
 	}
 
+	err = pca.OutputRPCAndSP()
+	if err != nil {
+		logErrAndQuit(err)
+	}
+
 	fmt.Println("test succeed!")
 	os.RemoveAll("./file_exchange")
+	os.RemoveAll("./rpc_and_sp")
 }
 
 func logErrAndQuit(err error) {
 	os.RemoveAll("./file_exchange")
+	os.RemoveAll("./rpc_and_sp")
 	panic(err)
 }
 
@@ -197,6 +204,11 @@ func prepareTestFolder() {
 	}
 
 	err = os.MkdirAll("./file_exchange/policylog/trees_config", os.ModePerm)
+	if err != nil {
+		logErrAndQuit(err)
+	}
+
+	err = os.MkdirAll("./rpc_and_sp", os.ModePerm)
 	if err != nil {
 		logErrAndQuit(err)
 	}
