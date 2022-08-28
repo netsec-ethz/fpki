@@ -126,6 +126,23 @@ func (pca *PCA) ReceiveSPTFromPolicyLog() error {
 	return nil
 }
 
+func (pca *PCA) OutputRPCAndSP() error {
+	for domain, rpc := range pca.validRPCsByDomains {
+		err := common.JsonStrucToFile(rpc, pca.outputPath+"/"+domain+"_"+rpc.CAName+"_"+"rpc")
+		if err != nil {
+			return fmt.Errorf("OutputRPCAndSP | JsonStrucToFile | %w", err)
+		}
+	}
+
+	for domain, rpc := range pca.validSPsByDomains {
+		err := common.JsonStrucToFile(rpc, pca.outputPath+"/"+domain+"_"+rpc.CAName+"_"+"sp")
+		if err != nil {
+			return fmt.Errorf("OutputRPCAndSP | JsonStrucToFile | %w", err)
+		}
+	}
+	return nil
+}
+
 // verify the SPT of the RPC.
 func (pca *PCA) verifySPTWithRPC(spt *common.SPT, rpc *common.RPC) error {
 	// construct proofs
