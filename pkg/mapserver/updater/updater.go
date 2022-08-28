@@ -108,6 +108,11 @@ func (mapUpdater *MapUpdater) UpdateRPCAndPC(ctx context.Context, ctUrl string, 
 	return mapUpdater.updateRPCAndPC(ctx, pcList, rpcList)
 }
 
+// UpdateRPCAndPCLocally: update RPC and PC, given a rpc and sp. Currently just mock PC and RPC
+func (mapUpdater *MapUpdater) UpdateRPCAndPCLocally(ctx context.Context, spList []*common.SP, rpcList []*common.RPC) error {
+	return mapUpdater.updateRPCAndPC(ctx, spList, rpcList)
+}
+
 // updateRPCAndPC: update the tables and SMT (in memory) using PC and RPC
 func (mapUpdater *MapUpdater) updateRPCAndPC(ctx context.Context, pcList []*common.SP, rpcList []*common.RPC) error {
 	// update the domain and
