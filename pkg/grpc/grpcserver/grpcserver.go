@@ -48,8 +48,8 @@ func (server ResponderServer) QueryMapEntries(ctx context.Context, in *pb.MapCli
 	}, nil
 }
 
-func NewGRPCServer(ctx context.Context, root []byte, cacheHeight int) (*ResponderServer, error) {
-	responder, err := responder.NewMapResponder(ctx, root, cacheHeight)
+func NewGRPCServer(ctx context.Context, root []byte, cacheHeight int, mapserverConfigPath string) (*ResponderServer, error) {
+	responder, err := responder.NewMapResponder(ctx, root, cacheHeight, mapserverConfigPath)
 	if err != nil {
 		return nil, err
 	}

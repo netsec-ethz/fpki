@@ -2,6 +2,7 @@ package responder
 
 import (
 	"context"
+	"crypto/rsa"
 	"fmt"
 	"strings"
 
@@ -17,10 +18,12 @@ type MapResponder struct {
 	conn            db.Conn
 	getProofLimiter chan struct{}
 	smt             *trie.Trie
+	signedTreeHead  []byte
+	rsaKeyPair      *rsa.PrivateKey
 }
 
 // NewMapResponder: return a new responder
-func NewMapResponder(ctx context.Context, root []byte, cacheHeight int) (*MapResponder, error) {
+func NewMapResponder(ctx context.Context, root []byte, cacheHeight int, mapServerConfigPath string) (*MapResponder, error) {
 	// new db connection for SMT
 	conn, err := db.Connect(nil)
 	if err != nil {
@@ -39,7 +42,30 @@ func NewMapResponder(ctx context.Context, root []byte, cacheHeight int) (*MapRes
 		return nil, fmt.Errorf("NewMapResponder | LoadCache | %w", err)
 	}
 
-	return newMapResponder(conn, smt), nil
+	mapServer := newMapResponder(conn, smt)
+	err = mapServer.loadPrivKey(mapServerConfigPath)
+	if err != nil {
+		return nil, fmt.Errorf("NewMapResponder | loadPrivKey | %w", err)
+	}
+
+	return mapServer, nil
+}
+
+func (r *MapResponder) loadPrivKey(mapServerConfigPath string) error {
+	config := &MapserverConfig{}
+	err := ReadConfigFromFile(config, mapServerConfigPath)
+	if err != nil {
+		return fmt.Errorf("loadPrivKey | ReadConfigFromFile | %w", err)
+	}
+
+	keyPair, err := common.LoadRSAKeyPairFromFile(config.KeyPath)
+	if err != nil {
+		return fmt.Errorf("loadPrivKey | LoadRSAKeyPairFromFile | %w", err)
+	}
+
+	r.rsaKeyPair = keyPair
+
+	return nil
 }
 
 func newMapResponder(conn db.Conn, smt *trie.Trie) *MapResponder {

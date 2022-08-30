@@ -57,7 +57,7 @@ func main() {
 	}
 
 	// get a new responder, and load an existing tree
-	mapResponder, err := grpcserver.NewGRPCServer(ctx, root, 233)
+	mapResponder, err := grpcserver.NewGRPCServer(ctx, root, 233, "./config/mapserver_config.json")
 	if err != nil {
 		panic(err)
 	}
