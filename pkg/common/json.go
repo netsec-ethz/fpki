@@ -42,6 +42,8 @@ func JsonStrucToBytes(struc interface{}) ([]byte, error) {
 		break
 	case *PSR:
 		break
+	case []byte:
+		break
 	default:
 		return nil, fmt.Errorf("JsonStrucToBytes | Structure not supported yet!")
 	}

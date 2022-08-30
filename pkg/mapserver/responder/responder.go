@@ -43,6 +43,7 @@ func NewMapResponder(ctx context.Context, root []byte, cacheHeight int, mapServe
 	}
 
 	mapServer := newMapResponder(conn, smt)
+	
 	err = mapServer.loadPrivKey(mapServerConfigPath)
 	if err != nil {
 		return nil, fmt.Errorf("NewMapResponder | loadPrivKey | %w", err)
