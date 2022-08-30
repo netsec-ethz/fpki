@@ -62,6 +62,7 @@ type MapServerResponse struct {
 	// serialized bytes of DomainEntry
 	DomainEntryBytes []byte
 	PoI              PoI
+	TreeHeadSig      []byte
 }
 
 // PoI: Proof of Inclusion(or non-inclusion)
