@@ -43,8 +43,8 @@ func NewMapResponder(ctx context.Context, root []byte, cacheHeight int, mapServe
 	}
 
 	mapServer := newMapResponder(conn, smt)
-	
-	err = mapServer.loadPrivKey(mapServerConfigPath)
+
+	err = mapServer.loadPrivKeyAndSignTreeHead(mapServerConfigPath)
 	if err != nil {
 		return nil, fmt.Errorf("NewMapResponder | loadPrivKey | %w", err)
 	}
@@ -52,28 +52,32 @@ func NewMapResponder(ctx context.Context, root []byte, cacheHeight int, mapServe
 	return mapServer, nil
 }
 
-func (r *MapResponder) loadPrivKey(mapServerConfigPath string) error {
+func (r *MapResponder) loadPrivKeyAndSignTreeHead(mapServerConfigPath string) error {
 	config := &MapserverConfig{}
 	err := ReadConfigFromFile(config, mapServerConfigPath)
 	if err != nil {
-		return fmt.Errorf("loadPrivKey | ReadConfigFromFile | %w", err)
+		return fmt.Errorf("ReadConfigFromFile | %w", err)
 	}
 
 	keyPair, err := common.LoadRSAKeyPairFromFile(config.KeyPath)
 	if err != nil {
-		return fmt.Errorf("loadPrivKey | LoadRSAKeyPairFromFile | %w", err)
+		return fmt.Errorf("LoadRSAKeyPairFromFile | %w", err)
 	}
 
 	r.rsaKeyPair = keyPair
 
 	signature, err := common.SignStrucRSASHA256(r.smt.Root, keyPair)
 	if err != nil {
-		return fmt.Errorf("loadPrivKey | SignStrucRSASHA256 | %w", err)
+		return fmt.Errorf("SignStrucRSASHA256 | %w", err)
 	}
 
 	r.signedTreeHead = signature
 
 	return nil
+}
+
+func (r *MapResponder) GetSignTreeHead() []byte {
+	return r.signedTreeHead
 }
 
 func newMapResponder(conn db.Conn, smt *trie.Trie) *MapResponder {
