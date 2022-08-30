@@ -99,7 +99,7 @@ func main() {
 		ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancelF()
 
-		responder, err := responder.NewMapResponder(ctx, mapUpdater.GetRoot(), 233)
+		responder, err := responder.NewMapResponder(ctx, mapUpdater.GetRoot(), 233, "./config/mapserver_config.json")
 		if err != nil {
 			panic(err)
 		}
@@ -136,7 +136,7 @@ func main() {
 	depth := getTreeDepth()
 	fmt.Println("tree depth:", depth)
 
-	responder, err := responder.NewMapResponder(ctx, root, depth)
+	responder, err := responder.NewMapResponder(ctx, root, depth, "./config/mapserver_config.json")
 	if err != nil {
 		panic(err)
 	}

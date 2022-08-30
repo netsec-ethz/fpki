@@ -64,7 +64,7 @@ func benchmarkResponderGetProof(b *testing.B, count int) {
 	root, err := ioutil.ReadFile("testdata/root100K.bin")
 	require.NoError(b, err)
 	require.NotEmpty(b, root)
-	responder, err := responder.NewMapResponder(ctx, root, 233)
+	responder, err := responder.NewMapResponder(ctx, root, 233, "./config/mapserver_config.json")
 	require.NoError(b, err)
 
 	fmt.Println("Requesting ...")
@@ -141,7 +141,7 @@ func benchmarkResponderGetProofNoPrepareDB(b *testing.B, count int) {
 	root, err := ioutil.ReadFile("testdata/root100K.bin")
 	require.NoError(b, err)
 	require.NotEmpty(b, root)
-	responder, err := responder.NewMapResponder(ctx, root, 233)
+	responder, err := responder.NewMapResponder(ctx, root, 233, "./config/mapserver_config.json")
 	require.NoError(b, err)
 
 	profileF, err := os.Create("cpuprofile.pprof")

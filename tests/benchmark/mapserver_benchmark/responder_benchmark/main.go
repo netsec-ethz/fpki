@@ -35,7 +35,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	responder, err := responder.NewMapResponder(ctx, root, 233)
+	responder, err := responder.NewMapResponder(ctx, root, 233, "./config/mapserver_config.json")
 	if err != nil {
 		panic(err)
 	}

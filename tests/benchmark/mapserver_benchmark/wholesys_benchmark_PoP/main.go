@@ -162,7 +162,7 @@ func fetchProof(root []byte, names []string, csv *csv.Writer) {
 	depth := getTreeDepth()
 	fmt.Println("tree depth:", depth)
 
-	responder, err := responder.NewMapResponder(ctx, root, depth)
+	responder, err := responder.NewMapResponder(ctx, root, depth, "./config/mapserver_config.json")
 	if err != nil {
 		panic(err)
 	}
@@ -220,7 +220,7 @@ func fetchProofs(root []byte, names []string, csv *csv.Writer) {
 	depth := getTreeDepth()
 	fmt.Println("tree depth:", depth)
 
-	responder, err := responder.NewMapResponder(ctx, root, depth)
+	responder, err := responder.NewMapResponder(ctx, root, depth, "./config/mapserver_config.json")
 	if err != nil {
 		panic(err)
 	}
