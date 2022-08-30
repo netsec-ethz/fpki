@@ -11,7 +11,7 @@ import (
 
 func (mapResponder *MapResponder) GetDomainProofsTest(ctx context.Context, domainNames []string) (map[string][]*mapCommon.MapServerResponse, int, error) {
 	start := time.Now()
-	domainResultMap, domainProofMap, err := getMapping(domainNames)
+	domainResultMap, domainProofMap, err := getMapping(domainNames, mapResponder.GetSignTreeHead())
 	if err != nil {
 		return nil, 0, fmt.Errorf("GetDomainProofs | getMapping | %w", err)
 	}

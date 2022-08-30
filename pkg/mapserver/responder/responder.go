@@ -159,7 +159,7 @@ func (r *MapResponder) getProof(ctx context.Context, domainName string) (
 }
 
 func (mapResponder *MapResponder) GetDomainProofs(ctx context.Context, domainNames []string) (map[string][]*mapCommon.MapServerResponse, error) {
-	domainResultMap, domainProofMap, err := getMapping(domainNames)
+	domainResultMap, domainProofMap, err := getMapping(domainNames, mapResponder.GetSignTreeHead())
 	if err != nil {
 		return nil, fmt.Errorf("GetDomainProofs | getMapping | %w", err)
 	}
@@ -180,7 +180,7 @@ func (mapResponder *MapResponder) GetDomainProofs(ctx context.Context, domainNam
 	return domainResultMap, nil
 }
 
-func getMapping(domainNames []string) (map[string][]*mapCommon.MapServerResponse, map[common.SHA256Output]*mapCommon.MapServerResponse, error) {
+func getMapping(domainNames []string, signedTreeHead []byte) (map[string][]*mapCommon.MapServerResponse, map[common.SHA256Output]*mapCommon.MapServerResponse, error) {
 	domainResultMap := make(map[string][]*mapCommon.MapServerResponse)
 	domainProofMap := make(map[common.SHA256Output]*mapCommon.MapServerResponse)
 
@@ -201,7 +201,7 @@ func getMapping(domainNames []string) (map[string][]*mapCommon.MapServerResponse
 				if ok {
 					resultsList = append(resultsList, subDomainResult)
 				} else {
-					domainProofMap[domainHash32Bytes] = &mapCommon.MapServerResponse{Domain: subDomainName}
+					domainProofMap[domainHash32Bytes] = &mapCommon.MapServerResponse{Domain: subDomainName, TreeHeadSig: signedTreeHead}
 					resultsList = append(resultsList, domainProofMap[domainHash32Bytes])
 				}
 			}
