@@ -65,6 +65,13 @@ func (r *MapResponder) loadPrivKey(mapServerConfigPath string) error {
 
 	r.rsaKeyPair = keyPair
 
+	signature, err := common.SignStrucRSASHA256(r.smt.Root, keyPair)
+	if err != nil {
+		return fmt.Errorf("loadPrivKey | SignStrucRSASHA256 | %w", err)
+	}
+
+	r.signedTreeHead = signature
+
 	return nil
 }
 
@@ -140,6 +147,7 @@ func (r *MapResponder) getProof(ctx context.Context, domainName string) (
 				ProofKey:   proofKey,
 				ProofValue: ProofValue},
 			DomainEntryBytes: domainBytes,
+			TreeHeadSig:      r.signedTreeHead,
 		})
 	}
 	return proofsResult, nil
