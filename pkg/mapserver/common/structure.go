@@ -60,7 +60,7 @@ const (
 type MapServerResponse struct {
 	Domain string
 	// serialized bytes of DomainEntry
-	DomainEntryBytes []byte
+	DomainEntryBytes []byte `json:"DomainEntryBytes"`
 	PoI              PoI
 	TreeHeadSig      []byte
 }
