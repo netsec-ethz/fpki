@@ -14,9 +14,9 @@ type MapserverConfig struct {
 
 // SaveConfigToFile: save PCA config to file
 func SaveConfigToFile(config *MapserverConfig, configPath string) error {
-	bytes, err := json.MarshalIndent(config, "", " ")
+	bytes, err := json.Marshal(config)
 	if err != nil {
-		return fmt.Errorf("SaveConfigToFile | MarshalIndent | %w", err)
+		return fmt.Errorf("SaveConfigToFile | Marshal | %w", err)
 	}
 
 	err = ioutil.WriteFile(configPath, bytes, 0644)

@@ -89,9 +89,9 @@ func (client AdminClient) generateCreateTreeReq() *trillian.CreateTreeRequest {
 
 // write tree config to file
 func (client AdminClient) writeTreeToFile(tree *trillian.Tree) error {
-	file, err := json.MarshalIndent(tree, "", " ")
+	file, err := json.Marshal(tree)
 	if err != nil {
-		return fmt.Errorf("writeTreeToFile | MarshalIndent | %w", err)
+		return fmt.Errorf("writeTreeToFile | Marshal | %w", err)
 	}
 
 	err = ioutil.WriteFile(client.config.OutPutPath+"/trees_config/"+strconv.FormatInt(tree.TreeId, 10), file, 0644)
