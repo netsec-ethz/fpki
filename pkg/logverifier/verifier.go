@@ -107,22 +107,32 @@ func (c *LogVerifier) VerifyInclusionByHash(trusted *types.LogRootV1, leafHash [
 }
 
 func (c *LogVerifier) VerifySP(sp *common.SP) error {
-	spCopy := *sp
-	spCopy.SPTs = []common.SPT{}
-	serialisedStruc, err := common.JsonStrucToBytes(&spCopy)
+	spCopy := &common.SP{Policies: sp.Policies,
+		TimeStamp:         sp.TimeStamp,
+		Subject:           sp.Subject,
+		CAName:            sp.CAName,
+		SerialNumber:      sp.SerialNumber,
+		CASignature:       sp.CASignature,
+		RootCertSignature: sp.RootCertSignature}
+
+	serialisedStruc, err := common.JsonStrucToBytes(spCopy)
 	if err != nil {
 		return fmt.Errorf("VerifySP | JsonStrucToBytes | %w", err)
 	}
 
 	bytesHash := c.HashLeaf([]byte(serialisedStruc))
 
-	for _, p := range spCopy.SPTs {
+	for _, p := range sp.SPTs {
 		sth, err := common.JsonBytesToLogRoot(p.STH)
 		if err != nil {
 			return fmt.Errorf("VerifySP | JsonBytesToLogRoot | %w", err)
 		}
 
 		poi, err := common.JsonBytesToPoI(p.PoI)
+		if err != nil {
+			return fmt.Errorf("VerifySP | JsonBytesToPoI | %w", err)
+		}
+
 		err = c.VerifyInclusionByHash(sth, bytesHash, poi)
 		if err != nil {
 			return fmt.Errorf("VerifySP | VerifyInclusionByHash | %w", err)
@@ -132,25 +142,40 @@ func (c *LogVerifier) VerifySP(sp *common.SP) error {
 }
 
 func (c *LogVerifier) VerifyRPC(rpc *common.RPC) error {
-	rpcCopy := *rpc
-	rpcCopy.SPTs = []common.SPT{}
-	serialisedStruc, err := common.JsonStrucToBytes(&rpcCopy)
+	rpcCopy := &common.RPC{SerialNumber: rpc.SerialNumber,
+		Subject:            rpc.Subject,
+		Version:            rpc.Version,
+		PublicKeyAlgorithm: rpc.PublicKeyAlgorithm,
+		PublicKey:          rpc.PublicKey,
+		NotBefore:          rpc.NotBefore,
+		NotAfter:           rpc.NotAfter,
+		CAName:             rpc.CAName,
+		SignatureAlgorithm: rpc.SignatureAlgorithm,
+		TimeStamp:          rpc.TimeStamp,
+		PRCSignature:       rpc.PRCSignature,
+		CASignature:        rpc.CASignature}
+
+	serialisedStruc, err := common.JsonStrucToBytes(rpcCopy)
 	if err != nil {
-		return fmt.Errorf("VerifySP | JsonStrucToBytes | %w", err)
+		return fmt.Errorf("VerifyRPC | JsonStrucToBytes | %w", err)
 	}
 
 	bytesHash := c.HashLeaf([]byte(serialisedStruc))
 
-	for _, p := range rpcCopy.SPTs {
+	for _, p := range rpc.SPTs {
 		sth, err := common.JsonBytesToLogRoot(p.STH)
 		if err != nil {
-			return fmt.Errorf("VerifySP | JsonBytesToLogRoot | %w", err)
+			return fmt.Errorf("VerifyRPC | JsonBytesToLogRoot | %w", err)
 		}
 
 		poi, err := common.JsonBytesToPoI(p.PoI)
+		if err != nil {
+			return fmt.Errorf("VerifyRPC | JsonBytesToPoI | %w", err)
+		}
+
 		err = c.VerifyInclusionByHash(sth, bytesHash, poi)
 		if err != nil {
-			return fmt.Errorf("VerifySP | VerifyInclusionByHash | %w", err)
+			return fmt.Errorf("VerifyRPC | VerifyInclusionByHash | %w", err)
 		}
 	}
 	return nil

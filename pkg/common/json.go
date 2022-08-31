@@ -44,6 +44,8 @@ func JsonStrucToBytes(struc interface{}) ([]byte, error) {
 		break
 	case []byte:
 		break
+	case []*trillian.Proof:
+		break
 	default:
 		return nil, fmt.Errorf("JsonStrucToBytes | Structure not supported yet!")
 	}
