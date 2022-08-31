@@ -48,9 +48,9 @@ func JsonStrucToBytes(struc interface{}) ([]byte, error) {
 		return nil, fmt.Errorf("JsonStrucToBytes | Structure not supported yet!")
 	}
 
-	bytes, err := json.MarshalIndent(struc, "", " ")
+	bytes, err := json.Marshal(struc)
 	if err != nil {
-		return nil, fmt.Errorf("JsonStrucToBytes | MarshalIndent | %w", err)
+		return nil, fmt.Errorf("JsonStrucToBytes | Marshal | %w", err)
 	}
 	return bytes, nil
 }

@@ -31,7 +31,7 @@ type AdminClientConfig struct {
 
 // SaveAdminClientConfigToFile: save admin client's config to file
 func SaveAdminClientConfigToFile(config *AdminClientConfig, configPath string) error {
-	bytes, err := json.MarshalIndent(config, "", " ")
+	bytes, err := json.Marshal(config)
 	err = ioutil.WriteFile(configPath, bytes, 0644)
 	if err != nil {
 		return fmt.Errorf("SaveAdminClientConfigToFile | WriteFile | %w", err)
