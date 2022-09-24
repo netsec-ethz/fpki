@@ -85,7 +85,8 @@ type PSR struct {
 
 // Domain policy
 type Policy struct {
-	TrustedCA []string
+	TrustedCA         []string
+	AllowedSubdomains []string
 }
 
 //----------------------------------------------------------------
