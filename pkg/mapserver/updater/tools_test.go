@@ -13,7 +13,7 @@ import (
 // TestExtractCertDomains: test extractCertDomains()
 func TestExtractCertDomains(t *testing.T) {
 
-	cert, err := common.CTX509CertFromFile("./testdata/certs/*.adiq.com.br144.cer")
+	cert, err := common.CTX509CertFromFile("./testdata/certs/adiq.com.br144.cer")
 	require.NoError(t, err, "projectCommon.CTX509CertFromFile")
 
 	result := extractCertDomains(cert)
