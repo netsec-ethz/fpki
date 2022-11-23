@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/url"
+	"os"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -17,8 +18,25 @@ type Configuration struct {
 }
 
 func DefaultConfig() *Configuration {
+	env := map[string]string{"MYSQL_USER": "root", "MYSQL_PASSWORD": "", "MYSQL_HOST": "localhost", "MYSQL_PORT": ""}
+	for k := range env {
+		v, exists := os.LookupEnv(k)
+		if exists {
+			env[k] = v
+		}
+	}
+	dsnString := env["MYSQL_USER"]
+	if env["MYSQL_PASSWORD"] != "" {
+		dsnString += ":" + env["MYSQL_PASSWORD"]
+	}
+	dsnString += "@tcp(" + env["MYSQL_HOST"]
+	if env["MYSQL_PORT"] != "" {
+		dsnString += ":" + env["MYSQL_PORT"]
+	}
+	dsnString += ")/fpki"
+	fmt.Printf("FPKI | DB INIT | using dsn: %s\n", dsnString)
 	return &Configuration{
-		Dsn: "root@tcp(localhost)/fpki",
+		Dsn: dsnString,
 		Values: map[string]string{
 			"interpolateParams": "true", // 1 round trip per query
 			"collation":         "binary",
