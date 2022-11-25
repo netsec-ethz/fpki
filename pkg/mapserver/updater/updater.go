@@ -3,6 +3,7 @@ package updater
 import (
 	"bytes"
 	"context"
+	"crypto/x509"
 	"fmt"
 	"sort"
 	"time"
@@ -63,6 +64,11 @@ func (u *MapUpdater) UpdateNextBatch(ctx context.Context) (int, error) {
 		return 0, fmt.Errorf("CollectCerts | GetCertMultiThread | %w", err)
 	}
 	return len(certs), u.updateCerts(ctx, certs)
+}
+
+// UpdateRPCAndPCLocally: update RPC and PC, given a rpc and sp. Currently just mock PC and RPC
+func (mapUpdater *MapUpdater) UpdateCertsLocally(ctx context.Context, certList []*x509.Certificate) error {
+	return mapUpdater.updateCerts(ctx, certList)
 }
 
 // updateCerts: update the tables and SMT (in memory) using certificates
