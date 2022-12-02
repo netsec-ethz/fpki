@@ -3,7 +3,6 @@ package updater
 import (
 	"bytes"
 	"context"
-	"crypto/x509"
 	"fmt"
 	"sort"
 	"time"
@@ -66,9 +65,17 @@ func (u *MapUpdater) UpdateNextBatch(ctx context.Context) (int, error) {
 	return len(certs), u.updateCerts(ctx, certs)
 }
 
-// UpdateRPCAndPCLocally: update RPC and PC, given a rpc and sp. Currently just mock PC and RPC
-func (mapUpdater *MapUpdater) UpdateCertsLocally(ctx context.Context, certList []*x509.Certificate) error {
-	return mapUpdater.updateCerts(ctx, certList)
+// UpdateCertsLocally: add certs (in the form of asn.1 encoded byte arrays) directly without querying log
+func (mapUpdater *MapUpdater) UpdateCertsLocally(ctx context.Context, certList [][]byte) error {
+	certs := []*ctx509.Certificate{}
+	for _, certRaw := range certList {
+		cert, err := ctx509.ParseCertificate(certRaw)
+		if err != nil {
+			return err
+		}
+		certs = append(certs, cert)
+	}
+	return mapUpdater.updateCerts(ctx, certs)
 }
 
 // updateCerts: update the tables and SMT (in memory) using certificates
