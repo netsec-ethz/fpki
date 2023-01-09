@@ -20,14 +20,14 @@ func (a *UpdaterTestAdapter) Conn() db.Conn {
 	return (*MapUpdater)(a).dbConn
 }
 
-func (u *UpdaterTestAdapter) UpdateCerts(ctx context.Context, certs []*ctx509.Certificate) error {
-	return (*MapUpdater)(u).updateCerts(ctx, certs)
+func (u *UpdaterTestAdapter) UpdateCerts(ctx context.Context, certs []*ctx509.Certificate, certChains [][]*ctx509.Certificate) error {
+	return (*MapUpdater)(u).updateCerts(ctx, certs, certChains)
 }
 
 func (u *UpdaterTestAdapter) UpdateDomainEntriesUsingCerts(ctx context.Context,
-	certs []*ctx509.Certificate, readerNum int) ([]*db.KeyValuePair, int, error) {
+	certs []*ctx509.Certificate, certChains [][]*ctx509.Certificate, readerNum int) ([]*db.KeyValuePair, int, error) {
 
-	return (*MapUpdater)(u).UpdateDomainEntriesTableUsingCerts(ctx, certs)
+	return (*MapUpdater)(u).UpdateDomainEntriesTableUsingCerts(ctx, certs, certChains)
 }
 
 func (a *UpdaterTestAdapter) FetchUpdatedDomainHash(ctx context.Context) (

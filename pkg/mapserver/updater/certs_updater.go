@@ -20,7 +20,7 @@ type uniqueStringSet map[string]struct{}
 
 // UpdateDomainEntriesTableUsingCerts: Update the domain entries using the domain certificates
 func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCerts(ctx context.Context,
-	certs []*x509.Certificate) ([]*db.KeyValuePair, int, error) {
+	certs []*x509.Certificate, certChains [][]*x509.Certificate) ([]*db.KeyValuePair, int, error) {
 
 	if len(certs) == 0 {
 		return nil, 0, nil
@@ -28,7 +28,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCerts(ctx context.Con
 
 	start := time.Now()
 	// get the unique list of affected domains
-	affectedDomainsMap, domainCertMap := getAffectedDomainAndCertMap(certs)
+	affectedDomainsMap, domainCertMap, domainCertChainMap := getAffectedDomainAndCertMap(certs, certChains)
 	end := time.Now()
 	fmt.Println("(memory) time to process certs: ", end.Sub(start))
 
@@ -49,7 +49,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCerts(ctx context.Con
 
 	start = time.Now()
 	// update the domain entries
-	updatedDomains, err := updateDomainEntries(domainEntriesMap, domainCertMap)
+	updatedDomains, err := updateDomainEntries(domainEntriesMap, domainCertMap, domainCertChainMap)
 	if err != nil {
 		return nil, 0, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | updateDomainEntries | %w", err)
 	}
@@ -92,16 +92,22 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCerts(ctx context.Con
 // First return value: map of hashes of updated domain name. TODO(yongzhe): change this to a list maybe
 // Second return value: "domain name" -> certs. So later, one can look through the map to decide which certs to
 //     added to which domain.
-func getAffectedDomainAndCertMap(certs []*x509.Certificate) (uniqueSet,
-	map[string][]*x509.Certificate) {
+func getAffectedDomainAndCertMap(certs []*x509.Certificate, certChains [][]*x509.Certificate) (uniqueSet,
+	map[string][]*x509.Certificate, map[string][][]*x509.Certificate) {
 	// unique list of the updated domains
 	affectedDomainsMap := make(uniqueSet)
 
 	// map to map "domain name" -> certs list(certs to be added to this domain).
 	domainCertMap := make(map[string][]*x509.Certificate)
 
+	// analogous to the map above except that we map "domain name" -> cert chains
+	domainCertChainMap := make(map[string][][]*x509.Certificate)
+
 	// extract the affected domain of every certificates
-	for _, cert := range certs {
+	for i, cert := range certs {
+		// get cert chain for cert
+		certChain := certChains[i]
+
 		// get unique list of domain names
 		domains := extractCertDomains(cert)
 		if len(domains) == 0 {
@@ -122,25 +128,29 @@ func getAffectedDomainAndCertMap(certs []*x509.Certificate) (uniqueSet,
 			_, ok := domainCertMap[domainName]
 			if ok {
 				domainCertMap[domainName] = append(domainCertMap[domainName], cert)
+				domainCertChainMap[domainName] = append(domainCertChainMap[domainName], certChain)
 			} else {
 				domainCertMap[domainName] = []*x509.Certificate{cert}
+				domainCertChainMap[domainName] = [][]*x509.Certificate{certChain}
 			}
 		}
 	}
-	return affectedDomainsMap, domainCertMap
+	return affectedDomainsMap, domainCertMap, domainCertChainMap
 }
 
 // update domain entries
 func updateDomainEntries(domainEntries map[common.SHA256Output]*mcommon.DomainEntry,
-	certDomainMap map[string][]*x509.Certificate) (uniqueSet, error) {
+	certDomainMap map[string][]*x509.Certificate, certChainDomainMap map[string][][]*x509.Certificate) (uniqueSet, error) {
 
 	updatedDomainHash := make(uniqueSet)
 	// read from previous map
 	// the map records: domain - certs pair
 	// Which domain will be affected by which certificates
 	for domainName, certs := range certDomainMap {
+		certChains := certChainDomainMap[domainName]
 		//iterStart := time.Now()
-		for _, cert := range certs {
+		for i, cert := range certs {
+			certChain := certChains[i]
 			var domainNameHash common.SHA256Output
 			copy(domainNameHash[:], common.SHA256Hash([]byte(domainName)))
 			// get domain entries
@@ -153,7 +163,7 @@ func updateDomainEntries(domainEntries map[common.SHA256Output]*mcommon.DomainEn
 				domainEntry = newDomainEntry
 			}
 
-			isUpdated := updateDomainEntry(domainEntry, cert)
+			isUpdated := updateDomainEntry(domainEntry, cert, certChain)
 			if isUpdated {
 				// flag the updated domains
 				updatedDomainHash[domainNameHash] = struct{}{}
@@ -167,8 +177,8 @@ func updateDomainEntries(domainEntries map[common.SHA256Output]*mcommon.DomainEn
 
 // updateDomainEntry: insert certificate into correct CAEntry
 // return: if this domain entry is updated
-func updateDomainEntry(domainEntry *mcommon.DomainEntry, cert *x509.Certificate) bool {
-	return domainEntry.AddCert(cert)
+func updateDomainEntry(domainEntry *mcommon.DomainEntry, cert *x509.Certificate, certChain []*x509.Certificate) bool {
+	return domainEntry.AddCert(cert, certChain)
 }
 
 // getDomainEntriesToWrite: get updated domains, and extract the domain bytes
