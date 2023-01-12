@@ -63,7 +63,7 @@ func (u *MapUpdater) UpdateNextBatch(ctx context.Context) (int, error) {
 		return 0, fmt.Errorf("CollectCerts | GetCertMultiThread | %w", err)
 	}
 	// TODO(cyrill): parse and add certificate chains from CT log server
-	emptyCertChains := make([][]*x509.Certificate, len(certs))
+	emptyCertChains := make([][]*ctx509.Certificate, len(certs))
 	return len(certs), u.updateCerts(ctx, certs, emptyCertChains)
 }
 
