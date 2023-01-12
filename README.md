@@ -6,6 +6,7 @@
 - Issuance of SPT (Signed Policy Certificate) using RPC
 - Verification of RPC using SPT
 - Consistency verification of the log
+- Merkle tree core library based on the [SMT library by Aergo](https://github.com/aergoio/SMT)
 
 ## Dir structure
 
