@@ -13,6 +13,7 @@ import (
 )
 
 func main() {
+	db.TruncateAllTablesWithoutTestObject()
 	// *****************************************************************
 	//                     open a db connection
 	// *****************************************************************
@@ -25,8 +26,8 @@ func main() {
 	// *****************************************************************
 	//                     insert 1M node first
 	// *****************************************************************
-	for i := 0; i < 1000; i++ {
-		newKVPair := getKeyValuePair(i*1000, i*1000+999, generateRandomBytes())
+	for i := 0; i < 100; i++ {
+		newKVPair := getKeyValuePair(i*45000, i*45000+49999, generateRandomBytes())
 		ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 		defer cancelF()
 		start := time.Now()
@@ -36,7 +37,7 @@ func main() {
 		}
 
 		end := time.Now()
-		fmt.Println("iteration ", i, " current nodes: ", i, "k time ", end.Sub(start))
+		fmt.Println("iteration ", i, " current iteration: ", i, ", time ", end.Sub(start))
 	}
 
 	// *****************************************************************
@@ -81,7 +82,7 @@ func main() {
 }
 
 func generateRandomBytes() []byte {
-	token := make([]byte, 1000)
+	token := make([]byte, 1024*10)
 	rand.Read(token)
 	return token
 }
@@ -116,4 +117,18 @@ func getKeyValuePair(startIdx, endIdx int, content []byte) []*db.KeyValuePair {
 		result = append(result, &db.KeyValuePair{Key: keyHash32Bytes, Value: content})
 	}
 	return result
+}
+
+func getRandomIndex(min, max int) []int {
+	result := make(map[int]struct{})
+	for len(result) < 5000 {
+		newRand := rand.Intn(max-min) + min
+		result[newRand] = struct{}{}
+	}
+
+	resultList := []int{}
+	for k := range result {
+		resultList = append(resultList, k)
+	}
+	return resultList
 }
