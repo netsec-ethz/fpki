@@ -13,6 +13,7 @@ import (
 	mapCommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
 )
 
+// deleteme! only used to print extra info in benchmarks:
 // functions for measuring the bottlemeck
 
 func (u *MapUpdater) UpdateNextBatchReturnTimeList(ctx context.Context) (int, []string, []string, error, []*db.KeyValuePair, []*db.KeyValuePair, int) {
