@@ -28,7 +28,8 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCerts(ctx context.Con
 
 	start := time.Now()
 	// get the unique list of affected domains
-	affectedDomainsMap, domainCertMap, domainCertChainMap := getAffectedDomainAndCertMap(certs, certChains)
+	affectedDomainsMap, domainCertMap, domainCertChainMap := getAffectedDomainAndCertMap(
+		certs, certChains)
 	end := time.Now()
 	fmt.Println("(memory) time to process certs: ", end.Sub(start))
 
@@ -91,7 +92,8 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCerts(ctx context.Con
 // return affected domains.
 // First return value: map of hashes of updated domain name. TODO(yongzhe): change this to a list maybe
 // Second return value: "domain name" -> certs. So later, one can look through the map to decide which certs to
-//     added to which domain.
+//
+//	added to which domain.
 func getAffectedDomainAndCertMap(certs []*x509.Certificate, certChains [][]*x509.Certificate) (uniqueSet,
 	map[string][]*x509.Certificate, map[string][][]*x509.Certificate) {
 	// unique list of the updated domains

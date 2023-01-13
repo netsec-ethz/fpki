@@ -62,7 +62,7 @@ func TestUpdateCerts(t *testing.T) {
 			require.NoError(t, err)
 
 			for _, caList := range domainEntry.CAEntry {
-				if caList.CAName != cert.Issuer.CommonName {
+				if caList.CAName != cert.Issuer.String() {
 					assert.NotContains(t, caList.DomainCerts, cert.Raw)
 				} else {
 					assert.Contains(t, caList.DomainCerts, cert.Raw)

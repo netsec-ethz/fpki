@@ -163,8 +163,9 @@ func getUpdatedUpdater(t require.TestingT, certs []*x509.Certificate) (db.Conn, 
 	updater.SetDBConn(conn)
 	updater.SetSMT(smt)
 
-	// update the db using the certs
-	err = updater.UpdateCerts(ctx, certs)
+	// Update the db using the certs and empty chains:
+	emptyChains := make([][]*x509.Certificate, len(certs))
+	err = updater.UpdateCerts(ctx, certs, emptyChains)
 	require.NoError(t, err)
 
 	err = updater.CommitSMTChanges(ctx)
@@ -176,7 +177,7 @@ func getUpdatedUpdater(t require.TestingT, certs []*x509.Certificate) (db.Conn, 
 // checkProof checks the proof to be correct.
 func checkProof(t *testing.T, cert x509.Certificate, proofs []mapcommon.MapServerResponse) {
 	t.Helper()
-	caName := cert.Issuer.CommonName
+	caName := cert.Issuer.String()
 	require.Equal(t, mapcommon.PoP, proofs[len(proofs)-1].PoI.ProofType,
 		"PoP not found for %s", cert.Subject.CommonName)
 	for _, proof := range proofs {

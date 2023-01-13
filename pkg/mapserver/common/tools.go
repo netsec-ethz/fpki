@@ -31,7 +31,7 @@ func findCertificateChain(cert *x509.Certificate, certChain []*x509.Certificate)
 func getRootCertificateSubject(cert *x509.Certificate, certChain []*x509.Certificate) string {
 	constructedCertChain := findCertificateChain(cert, certChain)
 	rootCert := constructedCertChain[len(constructedCertChain)-1]
-	return rootCert.Issuer.ToRDNSequence().String()
+	return rootCert.Issuer.String()
 }
 
 // AddCert: add a x509 cert to one domain entry. Return whether the domain entry is updated.

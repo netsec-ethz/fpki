@@ -139,7 +139,7 @@ func worker(ctx context.Context, certs []ctX509.Certificate, mapResponder *respo
 }
 
 func checkProof(cert ctX509.Certificate, proofs []mapCommon.MapServerResponse) bool {
-	caName := cert.Issuer.CommonName
+	caName := cert.Issuer.String()
 	for _, proof := range proofs {
 		if !strings.Contains(cert.Subject.CommonName, proof.Domain) {
 			panic("wrong domain proofs")
