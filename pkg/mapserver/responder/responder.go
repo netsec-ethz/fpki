@@ -66,9 +66,9 @@ func (r *MapResponder) loadPrivKeyAndSignTreeHead(mapServerConfigPath string) er
 
 	r.rsaKeyPair = keyPair
 
-	signature, err := common.SignStrucRSASHA256(r.smt.Root, keyPair)
+	signature, err := common.SignStructRSASHA256(r.smt.Root, keyPair)
 	if err != nil {
-		return fmt.Errorf("SignStrucRSASHA256 | %w", err)
+		return fmt.Errorf("SignStructRSASHA256 | %w", err)
 	}
 
 	r.signedTreeHead = signature

@@ -110,9 +110,9 @@ func (c *LogVerifier) VerifySP(sp *common.SP) error {
 	// Get the hash of the SP without SPTs:
 	SPTs := sp.SPTs
 	sp.SPTs = []common.SPT{}
-	serializedStruct, err := common.JsonStrucToBytes(sp)
+	serializedStruct, err := common.JsonStructToBytes(sp)
 	if err != nil {
-		return fmt.Errorf("VerifyRPC | JsonStrucToBytes | %w", err)
+		return fmt.Errorf("VerifyRPC | JsonStructToBytes | %w", err)
 	}
 	bytesHash := c.HashLeaf([]byte(serializedStruct))
 	// Restore the SPTs to the SP:
@@ -139,9 +139,9 @@ func (c *LogVerifier) VerifyRPC(rpc *common.RPC) error {
 	// Get the hash of the RPC without SPTs:
 	SPTs := rpc.SPTs
 	rpc.SPTs = []common.SPT{}
-	serializedStruct, err := common.JsonStrucToBytes(rpc)
+	serializedStruct, err := common.JsonStructToBytes(rpc)
 	if err != nil {
-		return fmt.Errorf("VerifyRPC | JsonStrucToBytes | %w", err)
+		return fmt.Errorf("VerifyRPC | JsonStructToBytes | %w", err)
 	}
 	bytesHash := c.HashLeaf([]byte(serializedStruct))
 	// Restore the SPTs to the RPC:

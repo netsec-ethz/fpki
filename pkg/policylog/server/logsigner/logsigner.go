@@ -33,7 +33,7 @@ import (
 
 // TODO(juagargi) this file is too complex really for what we need. Rethink it.
 
-// LogSigner: Struc represents a log signer
+// LogSigner: Struct represents a log signer
 type LogSigner struct {
 	config *LogSignerConfig
 }

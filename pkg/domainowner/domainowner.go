@@ -12,7 +12,7 @@ import (
 // Assume one domain owner only have one domain; Logic can be changed later
 // TODO(yongzhe): Cool-off period is not fully implemented.
 
-//DomainOwner: struc which represents one domain owner.
+// DomainOwner: struct which represents one domain owner.
 type DomainOwner struct {
 	privKeyByDomainName map[string]*rsa.PrivateKey
 }

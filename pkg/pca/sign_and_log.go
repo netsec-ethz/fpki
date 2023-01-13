@@ -87,21 +87,21 @@ func (pca *PCA) findRPCAndVerifyPSR(psr *common.PSR) error {
 
 // save file to output dir
 func (pca *PCA) sendRPCToPolicyLog(rpc *common.RPC, fileName string) error {
-	return common.JsonStrucToFile(rpc, pca.policyLogExgPath+"/rpc/"+fileName)
+	return common.JsonStructToFile(rpc, pca.policyLogExgPath+"/rpc/"+fileName)
 }
 
 // save file to output dir
 func (pca *PCA) sendSPToPolicyLog(sp *common.SP, fileName string) error {
-	return common.JsonStrucToFile(sp, pca.policyLogExgPath+"/sp/"+fileName)
+	return common.JsonStructToFile(sp, pca.policyLogExgPath+"/sp/"+fileName)
 }
 
-func (pca *PCA) getHashName(struc interface{}) (string, error) {
-	strucBytes, err := common.JsonStrucToBytes(struc)
+func (pca *PCA) getHashName(s interface{}) (string, error) {
+	structBytes, err := common.JsonStructToBytes(s)
 	if err != nil {
-		return "", fmt.Errorf("getHashName | JsonStrucToBytes | %w", err)
+		return "", fmt.Errorf("getHashName | JsonStructToBytes | %w", err)
 	}
 
-	bytesHash := pca.logVerifier.HashLeaf([]byte(strucBytes))
+	bytesHash := pca.logVerifier.HashLeaf([]byte(structBytes))
 
 	// base64 url encode the hashed value, and this will be the file name of SPT
 	fileName := base64.URLEncoding.EncodeToString(bytesHash)

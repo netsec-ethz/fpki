@@ -128,16 +128,16 @@ func (pca *PCA) ReceiveSPTFromPolicyLog() error {
 
 func (pca *PCA) OutputRPCAndSP() error {
 	for domain, rpc := range pca.validRPCsByDomains {
-		err := common.JsonStrucToFile(rpc, pca.outputPath+"/"+domain+"_"+rpc.CAName+"_"+"rpc")
+		err := common.JsonStructToFile(rpc, pca.outputPath+"/"+domain+"_"+rpc.CAName+"_"+"rpc")
 		if err != nil {
-			return fmt.Errorf("OutputRPCAndSP | JsonStrucToFile | %w", err)
+			return fmt.Errorf("OutputRPCAndSP | JsonStructToFile | %w", err)
 		}
 	}
 
 	for domain, rpc := range pca.validSPsByDomains {
-		err := common.JsonStrucToFile(rpc, pca.outputPath+"/"+domain+"_"+rpc.CAName+"_"+"sp")
+		err := common.JsonStructToFile(rpc, pca.outputPath+"/"+domain+"_"+rpc.CAName+"_"+"sp")
 		if err != nil {
-			return fmt.Errorf("OutputRPCAndSP | JsonStrucToFile | %w", err)
+			return fmt.Errorf("OutputRPCAndSP | JsonStructToFile | %w", err)
 		}
 	}
 	return nil
@@ -153,9 +153,9 @@ func (pca *PCA) verifySPTWithRPC(spt *common.SPT, rpc *common.RPC) error {
 	}
 
 	// get leaf hash
-	rpcBytes, err := common.JsonStrucToBytes(rpc)
+	rpcBytes, err := common.JsonStructToBytes(rpc)
 	if err != nil {
-		return fmt.Errorf("verifySPT | Json_StrucToBytes | %w", err)
+		return fmt.Errorf("verifySPT | Json_StructToBytes | %w", err)
 	}
 	leafHash := pca.logVerifier.HashLeaf(rpcBytes)
 
@@ -183,9 +183,9 @@ func (pca *PCA) verifySPTWithSP(spt *common.SPT, sp *common.SP) error {
 	}
 
 	// get leaf hash
-	spBytes, err := common.JsonStrucToBytes(sp)
+	spBytes, err := common.JsonStructToBytes(sp)
 	if err != nil {
-		return fmt.Errorf("verifySPT | Json_StrucToBytes | %w", err)
+		return fmt.Errorf("verifySPT | Json_StructToBytes | %w", err)
 	}
 	leafHash := pca.logVerifier.HashLeaf(spBytes)
 

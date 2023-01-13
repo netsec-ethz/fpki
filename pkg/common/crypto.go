@@ -25,18 +25,18 @@ const (
 	RSA PublicKeyAlgorithm = iota
 )
 
-// SignStrucRSASHA256: generate a signature using SHA256 and RSA
-func SignStrucRSASHA256(struc interface{}, privKey *rsa.PrivateKey) ([]byte, error) {
-	bytes, err := JsonStrucToBytes(struc)
+// SignStructRSASHA256: generate a signature using SHA256 and RSA
+func SignStructRSASHA256(s interface{}, privKey *rsa.PrivateKey) ([]byte, error) {
+	bytes, err := JsonStructToBytes(s)
 	if err != nil {
-		return nil, fmt.Errorf("SignStrucRSASHA256 | JsonStrucToBytes | %w", err)
+		return nil, fmt.Errorf("SignStructRSASHA256 | JsonStructToBytes | %w", err)
 	}
 
 	hashOutput := sha256.Sum256(bytes)
 
 	signature, err := rsa.SignPKCS1v15(rand.Reader, privKey, crypto.SHA256, hashOutput[:])
 	if err != nil {
-		return nil, fmt.Errorf("SignStrucRSASHA256 | SignPKCS1v15 | %w", err)
+		return nil, fmt.Errorf("SignStructRSASHA256 | SignPKCS1v15 | %w", err)
 	}
 	return signature, nil
 }
@@ -50,9 +50,9 @@ func RCSRCreateSignature(domainOwnerPrivKey *rsa.PrivateKey, rcsr *RCSR) error {
 	// clear signature; normally should be empty
 	rcsr.Signature = []byte{}
 
-	signature, err := SignStrucRSASHA256(rcsr, domainOwnerPrivKey)
+	signature, err := SignStructRSASHA256(rcsr, domainOwnerPrivKey)
 	if err != nil {
-		return fmt.Errorf("RCSRCreateSignature | SignStrucRSASHA256 | %w", err)
+		return fmt.Errorf("RCSRCreateSignature | SignStructRSASHA256 | %w", err)
 	}
 
 	rcsr.Signature = signature
@@ -60,15 +60,16 @@ func RCSRCreateSignature(domainOwnerPrivKey *rsa.PrivateKey, rcsr *RCSR) error {
 }
 
 // RCSRGenerateRPCSignature: Generate RPC signature and fill it in the RCSR;
-//    (in paper, if new rcsr has the signature from previous rpc, the cool-off can be bypassed)
+//
+//	(in paper, if new rcsr has the signature from previous rpc, the cool-off can be bypassed)
 func RCSRGenerateRPCSignature(rcsr *RCSR, prevPrivKeyOfPRC *rsa.PrivateKey) error {
 	// clear the co-responding fields
 	rcsr.Signature = []byte{}
 	rcsr.PRCSignature = []byte{}
 
-	rpcSignature, err := SignStrucRSASHA256(rcsr, prevPrivKeyOfPRC)
+	rpcSignature, err := SignStructRSASHA256(rcsr, prevPrivKeyOfPRC)
 	if err != nil {
-		return fmt.Errorf("RCSRGenerateRPCSignature | SignStrucRSASHA256 | %w", err)
+		return fmt.Errorf("RCSRGenerateRPCSignature | SignStructRSASHA256 | %w", err)
 	}
 
 	rcsr.PRCSignature = rpcSignature
@@ -89,9 +90,9 @@ func RCSRVerifySignature(rcsr *RCSR) error {
 		Signature:          []byte{},
 	}
 
-	serialisedStruc, err := JsonStrucToBytes(rcsrCopy)
+	serializedStruct, err := JsonStructToBytes(rcsrCopy)
 	if err != nil {
-		return fmt.Errorf("RCSRVerifySignature | JsonStrucToBytes | %w", err)
+		return fmt.Errorf("RCSRVerifySignature | JsonStructToBytes | %w", err)
 	}
 
 	// get the pub key
@@ -100,7 +101,7 @@ func RCSRVerifySignature(rcsr *RCSR) error {
 		return fmt.Errorf("RCSRVerifySignature | PemBytesToRsaPublicKey | %w", err)
 	}
 
-	hashOutput := sha256.Sum256(serialisedStruc)
+	hashOutput := sha256.Sum256(serializedStruct)
 	err = rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, hashOutput[:], rcsr.Signature)
 	if err != nil {
 		return fmt.Errorf("RCSRVerifySignature | VerifyPKCS1v15 | %w", err)
@@ -121,9 +122,9 @@ func RCSRVerifyRPCSignature(rcsr *RCSR, rpc *RPC) error {
 		Signature:          []byte{},
 	}
 
-	serialisedStruc, err := JsonStrucToBytes(rcsrCopy)
+	serializedStruct, err := JsonStructToBytes(rcsrCopy)
 	if err != nil {
-		return fmt.Errorf("RCSRVerifyRPCSignature | JsonStrucToBytes | %w", err)
+		return fmt.Errorf("RCSRVerifyRPCSignature | JsonStructToBytes | %w", err)
 	}
 
 	pubKey, err := PemBytesToRsaPublicKey(rpc.PublicKey)
@@ -131,7 +132,7 @@ func RCSRVerifyRPCSignature(rcsr *RCSR, rpc *RPC) error {
 		return fmt.Errorf("RCSRVerifyRPCSignature | PemBytesToRsaPublicKey | %w", err)
 	}
 
-	hashOutput := sha256.Sum256(serialisedStruc)
+	hashOutput := sha256.Sum256(serializedStruct)
 	err = rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, hashOutput[:], rcsr.PRCSignature)
 	if err != nil {
 		return fmt.Errorf("RCSRVerifyRPCSignature | VerifyPKCS1v15 | %w", err)
@@ -157,9 +158,9 @@ func RCSRGenerateRPC(rcsr *RCSR, notBefore time.Time, serialNumber int, caPrivKe
 		SPTs:               []SPT{},
 	}
 
-	signature, err := SignStrucRSASHA256(rpc, caPrivKey)
+	signature, err := SignStructRSASHA256(rpc, caPrivKey)
 	if err != nil {
-		return nil, fmt.Errorf("RCSRGenerateRPC | SignStrucRSASHA256 | %w", err)
+		return nil, fmt.Errorf("RCSRGenerateRPC | SignStructRSASHA256 | %w", err)
 	}
 
 	rpc.CASignature = signature
@@ -190,9 +191,9 @@ func RPCVerifyCASignature(caCert *x509.Certificate, rpc *RPC) error {
 		SPTs:               []SPT{},
 	}
 
-	bytes, err := JsonStrucToBytes(rpcCopy)
+	bytes, err := JsonStructToBytes(rpcCopy)
 	if err != nil {
-		return fmt.Errorf("RPCVerifyCASignature | JsonStrucToBytes | %w", err)
+		return fmt.Errorf("RPCVerifyCASignature | JsonStructToBytes | %w", err)
 	}
 
 	hashOutput := sha256.Sum256(bytes)
@@ -209,9 +210,9 @@ func RPCVerifyCASignature(caCert *x509.Certificate, rpc *RPC) error {
 
 // DomainOwnerSignSP: Used by domain owner to sign the PC
 func DomainOwnerSignPSR(domainOwnerPrivKey *rsa.PrivateKey, psr *PSR) error {
-	signature, err := SignStrucRSASHA256(psr, domainOwnerPrivKey)
+	signature, err := SignStructRSASHA256(psr, domainOwnerPrivKey)
 	if err != nil {
-		return fmt.Errorf("DomainOwnerSignPC | SignStrucRSASHA256 | %w", err)
+		return fmt.Errorf("DomainOwnerSignPC | SignStructRSASHA256 | %w", err)
 	}
 
 	psr.RootCertSignature = signature
@@ -225,9 +226,9 @@ func VerifyPSRUsingRPC(psr *PSR, rpc *RPC) error {
 		DomainName: psr.DomainName,
 	}
 
-	serialisedStruc, err := JsonStrucToBytes(psrCopy)
+	serializedStruct, err := JsonStructToBytes(psrCopy)
 	if err != nil {
-		return fmt.Errorf("RCSRVerifyRPCSignature | JsonStrucToBytes | %w", err)
+		return fmt.Errorf("RCSRVerifyRPCSignature | JsonStructToBytes | %w", err)
 	}
 
 	pubKey, err := PemBytesToRsaPublicKey(rpc.PublicKey)
@@ -235,7 +236,7 @@ func VerifyPSRUsingRPC(psr *PSR, rpc *RPC) error {
 		return fmt.Errorf("RCSRVerifyRPCSignature | PemBytesToRsaPublicKey | %w", err)
 	}
 
-	hashOutput := sha256.Sum256(serialisedStruc)
+	hashOutput := sha256.Sum256(serializedStruct)
 	err = rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, hashOutput[:], psr.RootCertSignature)
 	if err != nil {
 		return fmt.Errorf("RCSRVerifyRPCSignature | VerifyPKCS1v15 | %w", err)
@@ -244,7 +245,7 @@ func VerifyPSRUsingRPC(psr *PSR, rpc *RPC) error {
 	return nil
 }
 
-//CAVerifySPAndSign: verify the signature and sign the signature
+// CAVerifySPAndSign: verify the signature and sign the signature
 func CASignSP(psr *PSR, caPrivKey *rsa.PrivateKey, caName string, serialNum int) (*SP, error) {
 	sp := &SP{
 		Policies:          psr.Policies,
@@ -255,9 +256,9 @@ func CASignSP(psr *PSR, caPrivKey *rsa.PrivateKey, caName string, serialNum int)
 		SerialNumber:      serialNum,
 	}
 
-	caSignature, err := SignStrucRSASHA256(sp, caPrivKey)
+	caSignature, err := SignStructRSASHA256(sp, caPrivKey)
 	if err != nil {
-		return &SP{}, fmt.Errorf("CASignSP | SignStrucRSASHA256 | %w", err)
+		return &SP{}, fmt.Errorf("CASignSP | SignStructRSASHA256 | %w", err)
 	}
 
 	sp.CASignature = caSignature
@@ -280,12 +281,12 @@ func VerifyCASigInSP(caCert *x509.Certificate, sp *SP) error {
 		SPTs:              []SPT{},
 	}
 
-	serialisedStruc, err := JsonStrucToBytes(&pcCopy)
+	serializedStruct, err := JsonStructToBytes(&pcCopy)
 	if err != nil {
-		return fmt.Errorf("VerifyCASigInPC | JsonStrucToBytes | %w", err)
+		return fmt.Errorf("VerifyCASigInPC | JsonStructToBytes | %w", err)
 	}
 
-	hashOutput := sha256.Sum256(serialisedStruc)
+	hashOutput := sha256.Sum256(serializedStruct)
 	err = rsa.VerifyPKCS1v15(caCert.PublicKey.(*rsa.PublicKey), crypto.SHA256, hashOutput[:], sp.CASignature)
 	if err != nil {
 		return fmt.Errorf("VerifyCASigInPC | VerifyPKCS1v15 | %w", err)
