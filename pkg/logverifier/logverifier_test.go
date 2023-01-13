@@ -29,7 +29,7 @@ func TestVerification(t *testing.T) {
 	rpc.SPTs = []common.SPT{}
 
 	rpcBytes, err := common.JsonStrucToBytes(rpc)
-	require.NoError(t, err, "Json Struc To Bytes Error")
+	require.NoError(t, err, "Json Struct To Bytes Error")
 
 	rpcHash := logverifier.HashLeaf(rpcBytes)
 
