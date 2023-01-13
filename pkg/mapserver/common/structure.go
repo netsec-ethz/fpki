@@ -24,6 +24,7 @@ type CAEntry struct {
 	Revocation       [][]byte
 	FutureRevocation [][]byte
 	DomainCerts      [][]byte
+	DomainCertChains [][][]byte
 }
 
 // SerializedDomainEntry: DomainEntry -> bytes. Use json

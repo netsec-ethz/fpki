@@ -12,6 +12,7 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 	"github.com/stretchr/testify/require"
@@ -92,6 +93,9 @@ func benchmarkFullUpdate(b *testing.B, count int) {
 	require.GreaterOrEqual(b, len(certs), count)
 	certs = certs[:count]
 
+	// Create empty chains:
+	certChains := make([][]*ctx509.Certificate, len(certs))
+
 	ctx, cancelF := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancelF()
 	up, err := updater.NewMapTestUpdater(nil, 233)
@@ -102,7 +106,7 @@ func benchmarkFullUpdate(b *testing.B, count int) {
 	// exec only once, assume perfect measuring. Because b.N is the number of iterations,
 	// just mimic b.N executions.
 	t0 := time.Now()
-	err = up.UpdateCerts(ctx, certs)
+	err = up.UpdateCerts(ctx, certs, certChains)
 	elapsed := time.Since(t0)
 	require.NoError(b, err)
 	err = up.Close()
@@ -126,6 +130,7 @@ func TestDoUpdatesFromTestDataCerts(t *testing.T) {
 	raw, err := gunzip(t, "testdata/certs.pem.gz")
 	require.NoError(t, err)
 	certs := loadCertsFromPEM(t, raw)
+	emptyChains := make([][]*ctx509.Certificate, len(certs))
 
 	db.TruncateAllTablesForTest(t)
 
@@ -135,7 +140,7 @@ func TestDoUpdatesFromTestDataCerts(t *testing.T) {
 	batchSize := 10 * 1000
 	for i := 0; i < len(certs); i += batchSize {
 		certs := certs[i : i+batchSize]
-		err = up.UpdateCerts(ctx, certs)
+		err = up.UpdateCerts(ctx, certs, emptyChains[:len(certs)])
 		require.NoError(t, err)
 		err = up.CommitSMTChanges(ctx)
 		require.NoError(t, err)
@@ -166,6 +171,7 @@ func benchmarkUpdateDomainEntriesUsingCerts(b *testing.B, count int) {
 	certs := loadCertsFromPEM(b, raw)
 	require.GreaterOrEqual(b, len(certs), count)
 	certs = certs[:count]
+	emptyChains := make([][]*ctx509.Certificate, len(certs))
 
 	ctx, cancelF := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancelF()
@@ -177,7 +183,7 @@ func benchmarkUpdateDomainEntriesUsingCerts(b *testing.B, count int) {
 	// exec only once, assume perfect measuring. Because b.N is the number of iterations,
 	// just mimic b.N executions.
 	t0 := time.Now()
-	_, _, err = up.UpdateDomainEntriesUsingCerts(ctx, certs, 10)
+	_, _, err = up.UpdateDomainEntriesUsingCerts(ctx, certs, emptyChains, 10)
 	elapsed := time.Since(t0)
 	require.NoError(b, err)
 	for i := 1; i < b.N; i++ {
@@ -198,12 +204,13 @@ func benchmarkFetchUpdatedDomainHash(b *testing.B, count int) {
 	certs := loadCertsFromPEM(b, raw)
 	require.GreaterOrEqual(b, len(certs), count)
 	certs = certs[:count]
+	emptyChains := make([][]*ctx509.Certificate, len(certs))
 
 	ctx, cancelF := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancelF()
 	up, err := updater.NewMapTestUpdater(nil, 233)
 	require.NoError(b, err)
-	_, _, err = up.UpdateDomainEntriesUsingCerts(ctx, certs, 10)
+	_, _, err = up.UpdateDomainEntriesUsingCerts(ctx, certs, emptyChains, 10)
 	require.NoError(b, err)
 
 	b.ResetTimer()
@@ -232,12 +239,13 @@ func benchmarkRetrieveDomainEntries(b *testing.B, count int) {
 	certs := loadCertsFromPEM(b, raw)
 	require.GreaterOrEqual(b, len(certs), count)
 	certs = certs[:count]
+	emptyChains := make([][]*ctx509.Certificate, len(certs))
 
 	ctx, cancelF := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancelF()
 	up, err := updater.NewMapTestUpdater(nil, 233)
 	require.NoError(b, err)
-	_, _, err = up.UpdateDomainEntriesUsingCerts(ctx, certs, 10)
+	_, _, err = up.UpdateDomainEntriesUsingCerts(ctx, certs, emptyChains, 10)
 	require.NoError(b, err)
 	updatedDomainHash, err := up.FetchUpdatedDomainHash(ctx)
 	require.NoError(b, err)
@@ -268,12 +276,13 @@ func benchmarkKeyValuePairToSMTInput(b *testing.B, count int) {
 	certs := loadCertsFromPEM(b, raw)
 	require.GreaterOrEqual(b, len(certs), count)
 	certs = certs[:count]
+	emptyChains := make([][]*ctx509.Certificate, len(certs))
 
 	ctx, cancelF := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancelF()
 	up, err := updater.NewMapTestUpdater(nil, 233)
 	require.NoError(b, err)
-	_, _, err = up.UpdateDomainEntriesUsingCerts(ctx, certs, 10)
+	_, _, err = up.UpdateDomainEntriesUsingCerts(ctx, certs, emptyChains, 10)
 	require.NoError(b, err)
 	updatedDomainHash, err := up.FetchUpdatedDomainHash(ctx)
 	require.NoError(b, err)
@@ -307,13 +316,14 @@ func benchmarkSmtUpdate(b *testing.B, count int) {
 	certs := loadCertsFromPEM(b, raw)
 	require.GreaterOrEqual(b, len(certs), count)
 	certs = certs[:count]
+	emptyChains := make([][]*ctx509.Certificate, len(certs))
 
 	ctx, cancelF := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancelF()
 	up, err := updater.NewMapTestUpdater(nil, 233)
 	require.NoError(b, err)
 
-	_, _, err = up.UpdateDomainEntriesUsingCerts(ctx, certs, 10)
+	_, _, err = up.UpdateDomainEntriesUsingCerts(ctx, certs, emptyChains, 10)
 	require.NoError(b, err)
 	updatedDomainHash, err := up.FetchUpdatedDomainHash(ctx)
 	require.NoError(b, err)
@@ -349,13 +359,14 @@ func benchmarkCommitChanges(b *testing.B, count int) {
 	certs := loadCertsFromPEM(b, raw)
 	require.GreaterOrEqual(b, len(certs), count)
 	certs = certs[:count]
+	emptyChains := make([][]*ctx509.Certificate, len(certs))
 
 	ctx, cancelF := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancelF()
 	up, err := updater.NewMapTestUpdater(nil, 233)
 	require.NoError(b, err)
 
-	_, _, err = up.UpdateDomainEntriesUsingCerts(ctx, certs, 10)
+	_, _, err = up.UpdateDomainEntriesUsingCerts(ctx, certs, emptyChains, 10)
 	require.NoError(b, err)
 	updatedDomainHash, err := up.FetchUpdatedDomainHash(ctx)
 	require.NoError(b, err)

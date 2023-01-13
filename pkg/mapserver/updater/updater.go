@@ -62,13 +62,38 @@ func (u *MapUpdater) UpdateNextBatch(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("CollectCerts | GetCertMultiThread | %w", err)
 	}
-	return len(certs), u.updateCerts(ctx, certs)
+	// TODO(cyrill): parse and add certificate chains from CT log server
+	emptyCertChains := make([][]*ctx509.Certificate, len(certs))
+	return len(certs), u.updateCerts(ctx, certs, emptyCertChains)
+}
+
+// UpdateCertsLocally: add certs (in the form of asn.1 encoded byte arrays) directly without querying log
+func (mapUpdater *MapUpdater) UpdateCertsLocally(ctx context.Context, certList [][]byte, certChainList [][][]byte) error {
+	certs := []*ctx509.Certificate{}
+	certChains := [][]*ctx509.Certificate{}
+	for i, certRaw := range certList {
+		cert, err := ctx509.ParseCertificate(certRaw)
+		if err != nil {
+			return err
+		}
+		certs = append(certs, cert)
+
+		certChains = append(certChains, []*ctx509.Certificate{})
+		for _, certChainItemRaw := range certChainList[i] {
+			certChainItem, err := ctx509.ParseCertificate(certChainItemRaw)
+			if err != nil {
+				return err
+			}
+			certChains[i] = append(certChains[i], certChainItem)
+		}
+	}
+	return mapUpdater.updateCerts(ctx, certs, certChains)
 }
 
 // updateCerts: update the tables and SMT (in memory) using certificates
-func (mapUpdater *MapUpdater) updateCerts(ctx context.Context, certs []*ctx509.Certificate) error {
+func (mapUpdater *MapUpdater) updateCerts(ctx context.Context, certs []*ctx509.Certificate, certChains [][]*ctx509.Certificate) error {
 	start := time.Now()
-	keyValuePairs, numOfUpdates, err := mapUpdater.UpdateDomainEntriesTableUsingCerts(ctx, certs)
+	keyValuePairs, numOfUpdates, err := mapUpdater.UpdateDomainEntriesTableUsingCerts(ctx, certs, certChains)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingCerts | %w", err)
 	} else if numOfUpdates == 0 {

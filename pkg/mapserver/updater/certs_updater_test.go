@@ -22,6 +22,7 @@ func TestUpdateDomainEntriesUsingCerts(t *testing.T) {
 	// load test certs
 	files, err := ioutil.ReadDir("./testdata/certs/")
 	require.NoError(t, err, "ioutil.ReadDir")
+	certChains := make([][]*x509.Certificate, len(files))
 	for _, file := range files {
 		cert, err := projectCommon.CTX509CertFromFile("./testdata/certs/" + file.Name())
 		require.NoError(t, err, "projectCommon.CTX509CertFromFile")
@@ -29,7 +30,8 @@ func TestUpdateDomainEntriesUsingCerts(t *testing.T) {
 	}
 
 	// get affected domain map and domain cert map
-	affectedDomainsMap, domainCertMap := getAffectedDomainAndCertMap(certs)
+	affectedDomainsMap, domainCertMap, domainCertChainMap := getAffectedDomainAndCertMap(
+		certs, certChains)
 
 	// test if all the certs are correctly added to the affectedDomainsMap and domainCertMap
 	for _, cert := range certs {
@@ -72,7 +74,7 @@ func TestUpdateDomainEntriesUsingCerts(t *testing.T) {
 
 	// empty domainEntriesMap
 	domainEntriesMap := make(map[projectCommon.SHA256Output]*common.DomainEntry)
-	updatedDomains, err := updateDomainEntries(domainEntriesMap, domainCertMap)
+	updatedDomains, err := updateDomainEntries(domainEntriesMap, domainCertMap, domainCertChainMap)
 	require.NoError(t, err, "updateDomainEntries")
 
 	assert.Equal(t, len(updatedDomains), len(affectedDomainsMap), "len(updatedDomains) should equals to len(affectedDomainsMap)")
@@ -80,7 +82,7 @@ func TestUpdateDomainEntriesUsingCerts(t *testing.T) {
 	// check if domainEntriesMap is correctly updated
 	for _, cert := range certs {
 		domainNames := extractCertDomains(cert)
-		caName := cert.Issuer.CommonName
+		caName := cert.Issuer.String()
 
 		// check if this cert has valid name
 		affectedDomains := domain.ExtractAffectedDomains(domainNames)
@@ -131,24 +133,28 @@ func TestUpdateSameCertTwice(t *testing.T) {
 	// check if
 	files, err := ioutil.ReadDir("./testdata/certs/")
 	require.NoError(t, err, "ioutil.ReadDir")
+	certChains := make([][]*x509.Certificate, len(files))
 	for _, file := range files {
 		cert, err := projectCommon.CTX509CertFromFile("./testdata/certs/" + file.Name())
 		require.NoError(t, err, "projectCommon.CTX509CertFromFile")
 		certs = append(certs, cert)
 	}
 
-	_, domainCertMap := getAffectedDomainAndCertMap(certs)
+	_, domainCertMap, domainCertChainMap := getAffectedDomainAndCertMap(certs, certChains)
 
 	domainEntriesMap := make(map[projectCommon.SHA256Output]*common.DomainEntry)
 
 	// update domain entry with certs
-	updatedDomains, err := updateDomainEntries(domainEntriesMap, domainCertMap)
+	updatedDomains, err := updateDomainEntries(domainEntriesMap, domainCertMap, domainCertChainMap)
 	require.NoError(t, err, "updateDomainEntries")
+
+	// Length of updatedDomains should be that of the affected domains:
+	assert.Equal(t, len(domainCertMap), len(updatedDomains), "updated domain should be 0")
 
 	// update domain entry with same certs
-	updatedDomains, err = updateDomainEntries(domainEntriesMap, domainCertMap)
+	updatedDomains, err = updateDomainEntries(domainEntriesMap, domainCertMap, domainCertChainMap)
 	require.NoError(t, err, "updateDomainEntries")
 
-	// length of updatedDomains should be zero.
+	// Now the length of updatedDomains should be zero.
 	assert.Equal(t, 0, len(updatedDomains), "updated domain should be 0")
 }

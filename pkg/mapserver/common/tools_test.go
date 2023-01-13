@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"testing"
 
+	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,25 +21,28 @@ func TestAddCert(t *testing.T) {
 	cert2, err := common.CTX509CertFromFile("./testdata/cert2.cer")
 	require.NoError(t, err)
 
+	emptyChain := []*ctx509.Certificate{}
+
 	domainEntry := &DomainEntry{}
 
-	isUpdated := domainEntry.AddCert(cert1)
+	isUpdated := domainEntry.AddCert(cert1, emptyChain)
 	assert.True(t, isUpdated)
 
-	isUpdated = domainEntry.AddCert(cert1)
+	isUpdated = domainEntry.AddCert(cert1, emptyChain)
 	assert.False(t, isUpdated)
 
-	isUpdated = domainEntry.AddCert(cert2)
+	isUpdated = domainEntry.AddCert(cert2, emptyChain)
 	assert.True(t, isUpdated)
 
-	isUpdated = domainEntry.AddCert(cert2)
+	isUpdated = domainEntry.AddCert(cert2, emptyChain)
 	assert.False(t, isUpdated)
 
 	assert.Equal(t, 2, len(domainEntry.CAEntry))
 
 	isFound := false
+	issuerRepresentation := cert1.Issuer.String()
 	for _, caEntry := range domainEntry.CAEntry {
-		if caEntry.CAName == cert1.Issuer.CommonName {
+		if caEntry.CAName == issuerRepresentation {
 			assert.True(t, bytes.Equal(caEntry.DomainCerts[0], cert1.Raw))
 			isFound = true
 		}
@@ -46,8 +50,9 @@ func TestAddCert(t *testing.T) {
 	assert.True(t, isFound)
 
 	isFound = false
+	issuerRepresentation = cert2.Issuer.String()
 	for _, caEntry := range domainEntry.CAEntry {
-		if caEntry.CAName == cert2.Issuer.CommonName {
+		if caEntry.CAName == issuerRepresentation {
 			assert.True(t, bytes.Equal(caEntry.DomainCerts[0], cert2.Raw))
 			isFound = true
 		}
