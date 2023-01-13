@@ -78,24 +78,16 @@ func RCSRGenerateRPCSignature(rcsr *RCSR, prevPrivKeyOfPRC *rsa.PrivateKey) erro
 
 // RCSRVerifySignature: verify the signature using the public key in hash
 func RCSRVerifySignature(rcsr *RCSR) error {
-	// Signature will be empty
-	rcsrCopy := &RCSR{
-		Subject:            rcsr.Subject,
-		Version:            rcsr.Version,
-		TimeStamp:          rcsr.TimeStamp,
-		PublicKeyAlgorithm: rcsr.PublicKeyAlgorithm,
-		PublicKey:          rcsr.PublicKey,
-		SignatureAlgorithm: rcsr.SignatureAlgorithm,
-		PRCSignature:       rcsr.PRCSignature,
-		Signature:          []byte{},
-	}
-
-	serializedStruct, err := JsonStructToBytes(rcsrCopy)
+	// Serialize without signature:
+	sig := rcsr.Signature
+	rcsr.Signature = nil
+	serializedStruct, err := JsonStructToBytes(rcsr)
 	if err != nil {
 		return fmt.Errorf("RCSRVerifySignature | JsonStructToBytes | %w", err)
 	}
+	rcsr.Signature = sig
 
-	// get the pub key
+	// Get the pub key:
 	pubKey, err := PemBytesToRsaPublicKey(rcsr.PublicKey)
 	if err != nil {
 		return fmt.Errorf("RCSRVerifySignature | PemBytesToRsaPublicKey | %w", err)
@@ -111,21 +103,14 @@ func RCSRVerifySignature(rcsr *RCSR) error {
 
 // RCSRVerifyRPCSignature: verify the RCSR using RPC; verify the RPC signature
 func RCSRVerifyRPCSignature(rcsr *RCSR, rpc *RPC) error {
-	rcsrCopy := &RCSR{
-		Subject:            rcsr.Subject,
-		Version:            rcsr.Version,
-		TimeStamp:          rcsr.TimeStamp,
-		PublicKeyAlgorithm: rcsr.PublicKeyAlgorithm,
-		PublicKey:          rcsr.PublicKey,
-		SignatureAlgorithm: rcsr.SignatureAlgorithm,
-		PRCSignature:       []byte{},
-		Signature:          []byte{},
-	}
-
-	serializedStruct, err := JsonStructToBytes(rcsrCopy)
+	// Serialize without signature:
+	sig := rcsr.Signature
+	rcsr.Signature = nil
+	serializedStruct, err := JsonStructToBytes(rcsr)
 	if err != nil {
-		return fmt.Errorf("RCSRVerifyRPCSignature | JsonStructToBytes | %w", err)
+		return fmt.Errorf("RCSRVerifySignature | JsonStructToBytes | %w", err)
 	}
+	rcsr.Signature = sig
 
 	pubKey, err := PemBytesToRsaPublicKey(rpc.PublicKey)
 	if err != nil {
@@ -175,26 +160,14 @@ func RCSRGenerateRPC(rcsr *RCSR, notBefore time.Time, serialNumber int, caPrivKe
 func RPCVerifyCASignature(caCert *x509.Certificate, rpc *RPC) error {
 	pubKey := caCert.PublicKey.(*rsa.PublicKey)
 
-	rpcCopy := &RPC{
-		SerialNumber:       rpc.SerialNumber,
-		Subject:            rpc.Subject,
-		Version:            rpc.Version,
-		PublicKeyAlgorithm: rpc.PublicKeyAlgorithm,
-		PublicKey:          rpc.PublicKey,
-		NotBefore:          rpc.NotBefore,
-		NotAfter:           rpc.NotAfter,
-		CAName:             rpc.CAName,
-		SignatureAlgorithm: rpc.SignatureAlgorithm,
-		TimeStamp:          rpc.TimeStamp,
-		PRCSignature:       rpc.PRCSignature,
-		CASignature:        []byte{},
-		SPTs:               []SPT{},
-	}
-
-	bytes, err := JsonStructToBytes(rpcCopy)
+	// Serialize without CA signature or SPTs:
+	caSig, SPTs := rpc.CASignature, rpc.SPTs
+	rpc.CASignature, rpc.SPTs = nil, nil
+	bytes, err := JsonStructToBytes(rpc)
 	if err != nil {
-		return fmt.Errorf("RPCVerifyCASignature | JsonStructToBytes | %w", err)
+		return fmt.Errorf("RCSRVerifySignature | JsonStructToBytes | %w", err)
 	}
+	rpc.CASignature, rpc.SPTs = caSig, SPTs
 
 	hashOutput := sha256.Sum256(bytes)
 	err = rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, hashOutput[:], rpc.CASignature)
@@ -220,16 +193,14 @@ func DomainOwnerSignPSR(domainOwnerPrivKey *rsa.PrivateKey, psr *PSR) error {
 }
 
 func VerifyPSRUsingRPC(psr *PSR, rpc *RPC) error {
-	psrCopy := &PSR{
-		Policies:   psr.Policies,
-		TimeStamp:  psr.TimeStamp,
-		DomainName: psr.DomainName,
-	}
-
-	serializedStruct, err := JsonStructToBytes(psrCopy)
+	// Serialize without signature:
+	sig := psr.RootCertSignature
+	psr.RootCertSignature = nil
+	serializedStruct, err := JsonStructToBytes(psr)
 	if err != nil {
-		return fmt.Errorf("RCSRVerifyRPCSignature | JsonStructToBytes | %w", err)
+		return fmt.Errorf("RCSRVerifySignature | JsonStructToBytes | %w", err)
 	}
+	psr.RootCertSignature = sig
 
 	pubKey, err := PemBytesToRsaPublicKey(rpc.PublicKey)
 	if err != nil {
@@ -271,20 +242,14 @@ func VerifyCASigInSP(caCert *x509.Certificate, sp *SP) error {
 		return fmt.Errorf("VerifyCASigInPC | no valid CA signature")
 	}
 
-	pcCopy := SP{
-		Policies:          sp.Policies,
-		Subject:           sp.Subject,
-		RootCertSignature: sp.RootCertSignature,
-		TimeStamp:         sp.TimeStamp,
-		CAName:            sp.CAName,
-		SerialNumber:      sp.SerialNumber,
-		SPTs:              []SPT{},
-	}
-
-	serializedStruct, err := JsonStructToBytes(&pcCopy)
+	// Serialize without CA signature or SPTs:
+	caSig, SPTs := sp.CASignature, sp.SPTs
+	sp.CASignature, sp.SPTs = nil, nil
+	serializedStruct, err := JsonStructToBytes(sp)
 	if err != nil {
-		return fmt.Errorf("VerifyCASigInPC | JsonStructToBytes | %w", err)
+		return fmt.Errorf("RCSRVerifySignature | JsonStructToBytes | %w", err)
 	}
+	sp.CASignature, sp.SPTs = caSig, SPTs
 
 	hashOutput := sha256.Sum256(serializedStruct)
 	err = rsa.VerifyPKCS1v15(caCert.PublicKey.(*rsa.PublicKey), crypto.SHA256, hashOutput[:], sp.CASignature)
