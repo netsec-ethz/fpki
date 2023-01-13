@@ -90,7 +90,7 @@ func TestResponderWithPoP(t *testing.T) {
 	require.Len(t, certs, count)
 
 	// create responder and request proof for those names
-	responder, err := NewMapResponder(ctx, root, 233)
+	responder, err := NewMapResponder(ctx, root, 233, "./testdata/mapserver_config.json")
 	require.NoError(t, err)
 	for _, cert := range certs {
 		responses, err := responder.GetProof(ctx, cert.Subject.CommonName)

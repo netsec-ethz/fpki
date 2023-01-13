@@ -14,17 +14,16 @@ type PCAConfig struct {
 	KeyPath string `json:",omitempty"`
 
 	// PCA's output path; sends RPC
-	OutputPath string `json:",omitempty"`
+	PolicyLogExgPath string `json:",omitempty"`
 
-	// policy log's output path; receives SPT
-	PolicyLogOutputPath string `json:",omitempty"`
+	OutputPath string `json:",omitempty"`
 }
 
 // SaveConfigToFile: save PCA config to file
 func SaveConfigToFile(config *PCAConfig, configPath string) error {
-	bytes, err := json.MarshalIndent(config, "", " ")
+	bytes, err := json.Marshal(config)
 	if err != nil {
-		return fmt.Errorf("SaveConfigToFile | MarshalIndent | %w", err)
+		return fmt.Errorf("SaveConfigToFile | Marshal | %w", err)
 	}
 
 	err = ioutil.WriteFile(configPath, bytes, 0644)

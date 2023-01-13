@@ -34,7 +34,7 @@ import (
 
 // TODO(juagargi) this file is too complex really for what we need. Rethink it.
 
-// LogServer: struc for a log server
+// LogServer: struct for a log server
 type LogServer struct {
 	config *LogServerConfig
 }

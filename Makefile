@@ -26,6 +26,7 @@ build_integration_test:
 	@go build -o ./bin/test_mapserver  ./tests/integration/mapserver
 	@go build -o ./bin/test_smt  ./tests/integration/smt
 	@go build -o ./bin/test_db  ./tests/integration/db
+	@go build -o ./bin/test_grpc  ./tests/integration/grpc_test
 
 drop_cacheTable:
 	@mysql -u root -e "DROP TABLE map.deleteTest;"

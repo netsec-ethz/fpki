@@ -20,7 +20,7 @@ type CAEntry struct {
 	CAHash           []byte
 	CurrentRPC       common.RPC
 	FutureRPC        common.RPC
-	CurrentPC        common.PC
+	CurrentPC        common.SP
 	Revocation       [][]byte
 	FutureRevocation [][]byte
 	DomainCerts      [][]byte
@@ -60,8 +60,9 @@ const (
 type MapServerResponse struct {
 	Domain string
 	// serialized bytes of DomainEntry
-	DomainEntryBytes []byte
+	DomainEntryBytes []byte `json:"DomainEntryBytes"`
 	PoI              PoI
+	TreeHeadSig      []byte
 }
 
 // PoI: Proof of Inclusion(or non-inclusion)

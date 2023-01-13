@@ -1,61 +1,81 @@
-package main
+package grpcserver
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"net"
 
-	"google.golang.org/grpc"
-
 	pb "github.com/netsec-ethz/fpki/pkg/grpc/query"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/responder"
+	"google.golang.org/grpc"
 )
 
 var (
-	port = flag.Int("port", 50051, "The server port")
+	port = flag.Int("port", 50050, "The server port")
 )
 
 // ResponderServer: server to distribute map response
 type ResponderServer struct {
 	pb.UnimplementedMapResponderServer
-	result map[string][]byte
+	responder *responder.MapResponder
+}
+
+type GRPCProofs struct {
+	Proofs []common.MapServerResponse
 }
 
 // QueryMapEntries: return value according to key
 func (server ResponderServer) QueryMapEntries(ctx context.Context, in *pb.MapClientRequest) (*pb.MapClientReply, error) {
-	//log.Printf("Received: %v", in.GetDomainName())
-
-	var material []byte
-	for _, v := range server.result {
-		material = append(material, v...)
+	proofs, err := server.responder.GetProof(ctx, in.DomainName)
+	if err != nil {
+		return nil, err
 	}
 
-	//fmt.Println(material)
+	result := GRPCProofs{Proofs: proofs}
+
+	resultBytes, err := json.Marshal(result)
+	if err != nil {
+		return nil, fmt.Errorf("QueryMapEntries | Marshal | %w", err)
+	}
 
 	return &pb.MapClientReply{
 		DomainName: in.GetDomainName(),
-		Materials:  material,
-		Proof:      material,
-		ProofType:  pb.ProofType_PoA,
+		Proof:      resultBytes,
 	}, nil
 }
 
-func main() {
-	flag.Parse()
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
+func NewGRPCServer(ctx context.Context, root []byte, cacheHeight int, mapserverConfigPath string) (*ResponderServer, error) {
+	responder, err := responder.NewMapResponder(ctx, root, cacheHeight, mapserverConfigPath)
 	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
+		return nil, err
+	}
+
+	return &ResponderServer{responder: responder}, nil
+}
+
+func (s *ResponderServer) Close() error {
+	return s.responder.Close()
+}
+
+func (server *ResponderServer) StartWork(terminateChan chan byte, port int) error {
+	flag.Parse()
+
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	if err != nil {
+		return err
 	}
 	s := grpc.NewServer()
-	responderServer := &ResponderServer{
-		result: make(map[string][]byte),
-	}
-	responderServer.result["hi"] = []byte{1, 3, 5, 6}
 
-	pb.RegisterMapResponderServer(s, responderServer)
+	pb.RegisterMapResponderServer(s, server)
 	log.Printf("server listening at %v", lis.Addr())
-	if err := s.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err)
-	}
+
+	go s.Serve(lis)
+
+	_ = <-terminateChan
+
+	return nil
 }

@@ -62,9 +62,9 @@ type LogSignerConfig struct {
 
 // SaveLogSignerConfigToFile: Save log signer config from file
 func SaveLogSignerConfigToFile(config *LogSignerConfig, configPath string) error {
-	bytes, err := json.MarshalIndent(config, "", " ")
+	bytes, err := json.Marshal(config)
 	if err != nil {
-		return fmt.Errorf("SaveLogSignerConfigToFile | MarshalIndent | %w", err)
+		return fmt.Errorf("SaveLogSignerConfigToFile | Marshal | %w", err)
 	}
 
 	err = ioutil.WriteFile(configPath, bytes, 0644)

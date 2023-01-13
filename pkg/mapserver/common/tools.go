@@ -43,7 +43,7 @@ func (domainEntry *DomainEntry) AddCert(cert *x509.Certificate) bool {
 }
 
 // AddPC: add a Policy Certificate to a domain entry. Return whether the domain entry is updated.
-func (domainEntry *DomainEntry) AddPC(pc *common.PC) bool {
+func (domainEntry *DomainEntry) AddPC(pc *common.SP) bool {
 	caName := pc.CAName
 	isFound := false
 

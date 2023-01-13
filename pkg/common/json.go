@@ -9,23 +9,23 @@ import (
 	"github.com/google/trillian/types"
 )
 
-// JsonStrucToFile: marshall structure to bytes, and store them in a file
-func JsonStrucToFile(struc interface{}, filePath string) error {
-	bytes, err := JsonStrucToBytes(struc)
+// JsonStructToFile: marshall structure to bytes, and store them in a file
+func JsonStructToFile(s interface{}, filePath string) error {
+	bytes, err := JsonStructToBytes(s)
 	if err != nil {
-		return fmt.Errorf("JsonStrucToFile | JsonStrucToBytes | %w", err)
+		return fmt.Errorf("JsonStructToFile | JsonStructToBytes | %w", err)
 	}
 
 	err = ioutil.WriteFile(filePath, bytes, 0644)
 	if err != nil {
-		return fmt.Errorf("JsonStrucToFile | WriteFile | %w", err)
+		return fmt.Errorf("JsonStructToFile | WriteFile | %w", err)
 	}
 	return nil
 }
 
-// JsonStrucToBytes: marshall json to bytes
-func JsonStrucToBytes(struc interface{}) ([]byte, error) {
-	switch struc.(type) {
+// JsonStructToBytes: marshall json to bytes
+func JsonStructToBytes(s interface{}) ([]byte, error) {
+	switch s.(type) {
 	case *RCSR:
 		break
 	case *RPC:
@@ -38,29 +38,41 @@ func JsonStrucToBytes(struc interface{}) ([]byte, error) {
 		break
 	case *types.LogRootV1:
 		break
-	case *PC:
+	case *SP:
+		break
+	case *PSR:
+		break
+	case []byte:
+		break
+	case []*trillian.Proof:
 		break
 	default:
-		return nil, fmt.Errorf("JsonStrucToBytes | Structure not supported yet!")
+		return nil, fmt.Errorf("JsonStructToBytes | Structure not supported yet")
 	}
 
-	bytes, err := json.MarshalIndent(struc, "", " ")
+	bytes, err := json.Marshal(s)
 	if err != nil {
-		return nil, fmt.Errorf("JsonStrucToBytes | MarshalIndent | %w", err)
+		return nil, fmt.Errorf("JsonStructToBytes | Marshal | %w", err)
 	}
 	return bytes, nil
 }
 
-//--------------------------------------------------------------------------------
-//                               Bytes to struct
-//--------------------------------------------------------------------------------
+// --------------------------------------------------------------------------------
+//
+//	Bytes to struct
+//
+// --------------------------------------------------------------------------------
 // JsonBytesToPoI: bytes -> PoI in json
-func JsonBytesToPoI(poiBytes []byte) (*trillian.Proof, error) {
-	result := &trillian.Proof{}
+func JsonBytesToPoI(poiBytesArray [][]byte) ([]*trillian.Proof, error) {
+	result := []*trillian.Proof{}
 
-	err := json.Unmarshal(poiBytes, result)
-	if err != nil {
-		return nil, fmt.Errorf("JsonBytesToPoI | Unmarshal | %w", err)
+	for _, poiBytes := range poiBytesArray {
+		newPOI := &trillian.Proof{}
+		err := json.Unmarshal(poiBytes, newPOI)
+		if err != nil {
+			return nil, fmt.Errorf("JsonBytesToPoI | Unmarshal | %w", err)
+		}
+		result = append(result, newPOI)
 	}
 
 	return result, nil
@@ -82,13 +94,13 @@ func JsonBytesToLogRoot(logRootBytes []byte) (*types.LogRootV1, error) {
 //--------------------------------------------------------------------------------
 
 // JsonFileToRPC: read json files and unmarshal it to Root Policy Certificate
-func JsonFileToRPC(struc *RPC, filePath string) error {
+func JsonFileToRPC(s *RPC, filePath string) error {
 	file, err := ioutil.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("JsonFileToRPC | ReadFile | %w", err)
 	}
 
-	err = json.Unmarshal([]byte(file), struc)
+	err = json.Unmarshal([]byte(file), s)
 	if err != nil {
 		return fmt.Errorf("JsonFileToRPC | Unmarshal | %w", err)
 	}
@@ -97,13 +109,13 @@ func JsonFileToRPC(struc *RPC, filePath string) error {
 }
 
 // JsonFileToSPT: read json files and unmarshal it to Signed Policy Timestamp
-func JsonFileToSPT(struc *SPT, filePath string) error {
+func JsonFileToSPT(s *SPT, filePath string) error {
 	file, err := ioutil.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("JsonFileToSPT | ReadFile | %w", err)
 	}
 
-	err = json.Unmarshal([]byte(file), struc)
+	err = json.Unmarshal([]byte(file), s)
 	if err != nil {
 		return fmt.Errorf("JsonFileToSPT | Unmarshal | %w", err)
 	}
@@ -126,13 +138,13 @@ func JsonFileToProof(proof *trillian.Proof, filePath string) error {
 }
 
 // JsonFileToSTH: read json files and unmarshal it to Signed Tree Head
-func JsonFileToSTH(struc *types.LogRootV1, filePath string) error {
+func JsonFileToSTH(s *types.LogRootV1, filePath string) error {
 	file, err := ioutil.ReadFile(filePath)
 	if err != nil {
 		return fmt.Errorf("JsonFileToSTH | ReadFile | %w", err)
 	}
 
-	err = json.Unmarshal([]byte(file), struc)
+	err = json.Unmarshal([]byte(file), s)
 	if err != nil {
 		return fmt.Errorf("JsonFileToSTH | Unmarshal | %w", err)
 	}
@@ -140,15 +152,15 @@ func JsonFileToSTH(struc *types.LogRootV1, filePath string) error {
 }
 
 // JsonFileToSTH: read json files and unmarshal it to Signed Tree Head
-func JsonFileToPC(struc *PC, filePath string) error {
+func JsonFileToSP(s *SP, filePath string) error {
 	file, err := ioutil.ReadFile(filePath)
 	if err != nil {
-		return fmt.Errorf("JsonFileToPC | ReadFile | %w", err)
+		return fmt.Errorf("JsonFileToSP | ReadFile | %w", err)
 	}
 
-	err = json.Unmarshal([]byte(file), struc)
+	err = json.Unmarshal([]byte(file), s)
 	if err != nil {
-		return fmt.Errorf("JsonFileToPC | Unmarshal | %w", err)
+		return fmt.Errorf("JsonFileToSP | Unmarshal | %w", err)
 	}
 	return nil
 }

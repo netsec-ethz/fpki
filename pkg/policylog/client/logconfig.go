@@ -16,11 +16,7 @@ type LogClientConfig struct {
 	RPCAddress            string `json:",omitempty"`
 	MaxReceiveMessageSize int    `json:",omitempty"`
 
-	// path to store the output from log client (now support SPT)
-	OutPutPath string `json:",omitempty"`
-
-	// path to read pre-RPC from PCA
-	RPCPath string `json:",omitempty"`
+	PolicyLogExchangePath string `json:",omitempty"`
 
 	// number of workers
 	NumOfWorker int `json:",omitempty"`
@@ -28,7 +24,7 @@ type LogClientConfig struct {
 
 // SaveLogClientConfigToFile: save log client config to file
 func SaveLogClientConfigToFile(config *LogClientConfig, configPath string) error {
-	bytes, err := json.MarshalIndent(config, "", " ")
+	bytes, err := json.Marshal(config)
 	err = ioutil.WriteFile(configPath, bytes, 0644)
 	if err != nil {
 		return fmt.Errorf("SaveLogClientConfigToFile | WriteFile | %w", err)

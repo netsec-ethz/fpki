@@ -42,7 +42,7 @@ type LogServerConfig struct {
 
 // SaveLogConfigToFile: Save log server config to file
 func SaveLogConfigToFile(config *LogServerConfig, configPath string) error {
-	bytes, err := json.MarshalIndent(config, "", " ")
+	bytes, err := json.Marshal(config)
 	err = ioutil.WriteFile(configPath, bytes, 0644)
 	if err != nil {
 		return fmt.Errorf("SaveLogConfigToFile | WriteFile | %w", err)

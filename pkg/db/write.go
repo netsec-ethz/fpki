@@ -100,6 +100,8 @@ func (c *mysqlDB) doUpdatePairs(ctx context.Context, keyValuePairs []*KeyValuePa
 		}
 		affectedRowsCount += n
 	}
+	//defer updateWholeBatchStmt.Close()
+	//defer updatePartialBatchStmt.Close()
 	return affectedRowsCount, nil
 }
 
@@ -109,6 +111,10 @@ func (c *mysqlDB) doUpdateKeys(ctx context.Context, keys []common.SHA256Output,
 
 	dataLen := len(keys)
 	affectedRowsCount := 0
+
+	if dataLen == 0 {
+		return 0, nil
+	}
 
 	data := make([]interface{}, batchSize)
 	// updateFcn updates the DB using keys starting at index/batch, until the end of the
@@ -144,6 +150,8 @@ func (c *mysqlDB) doUpdateKeys(ctx context.Context, keys []common.SHA256Output,
 		}
 		affectedRowsCount += n
 	}
+	//defer updateWholeBatchStmt.Close()
+	//defer updatePartialBatchStmt.Close()
 	return affectedRowsCount, nil
 }
 

@@ -63,9 +63,9 @@ type SPRT struct {
 	Signature       []byte    `json:",omitempty"`
 }
 
-// Policy Certificate
-type PC struct {
-	Policies          []Policy  `json:",omitempty"`
+// Signed Policy
+type SP struct {
+	Policies          Policy    `json:",omitempty"`
 	TimeStamp         time.Time `json:",omitempty"`
 	Subject           string    `json:",omitempty"`
 	CAName            string    `json:",omitempty"`
@@ -75,9 +75,18 @@ type PC struct {
 	SPTs              []SPT     `json:",omitempty"`
 }
 
+// Policy Signing Request
+type PSR struct {
+	Policies          Policy    `json:",omitempty"`
+	TimeStamp         time.Time `json:",omitempty"`
+	DomainName        string    `json:",omitempty"`
+	RootCertSignature []byte    `json:",omitempty"`
+}
+
 // Domain policy
 type Policy struct {
-	TrustedCA []string
+	TrustedCA         []string `json:",omitempty"`
+	AllowedSubdomains []string `json:",omitempty"`
 }
 
 //----------------------------------------------------------------
@@ -112,20 +121,16 @@ func (s Policy) Equal(o Policy) bool {
 	return true
 }
 
-func (s PC) Equal(o PC) bool {
+func (s SP) Equal(o SP) bool {
 	if s.TimeStamp.Equal(o.TimeStamp) &&
 		s.Subject == o.Subject &&
 		s.CAName == o.CAName &&
 		s.SerialNumber == o.SerialNumber &&
 		bytes.Equal(s.CASignature, o.CASignature) &&
-		bytes.Equal(s.RootCertSignature, o.RootCertSignature) {
+		bytes.Equal(s.RootCertSignature, o.RootCertSignature) &&
+		s.Policies.Equal(o.Policies) {
 		for i, v := range s.SPTs {
 			if !v.Equal(o.SPTs[i]) {
-				return false
-			}
-		}
-		for i, v := range s.Policies {
-			if !v.Equal(o.Policies[i]) {
 				return false
 			}
 		}

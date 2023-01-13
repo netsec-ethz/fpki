@@ -17,6 +17,9 @@ type readKeyResult struct {
 // RetrieveTreeNode retrieves one single key-value pair from tree table
 // Return sql.ErrNoRows if no row is round
 func (c *mysqlDB) RetrieveTreeNode(ctx context.Context, key common.SHA256Output) ([]byte, error) {
+	c.getProofLimiter <- struct{}{}
+	defer func() { <-c.getProofLimiter }()
+
 	value, err := retrieveValue(ctx, c.prepGetValueTree, key)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, fmt.Errorf("RetrieveTreeNode | %w", err)
@@ -77,6 +80,10 @@ func (c *mysqlDB) retrieveDomainEntries(ctx context.Context, keys []common.SHA25
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	//if len(domainEntries) != len(keys) {
+	//	fmt.Println("incomplete fetching")
+	//	fmt.Println(len(domainEntries), "  ", len(keys))
+	//}
 	return domainEntries, nil
 }
 

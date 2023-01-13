@@ -39,7 +39,7 @@ func NewMapUpdater(root []byte, cacheHeight int) (*MapUpdater, error) {
 
 	return &MapUpdater{
 		Fetcher: logpicker.LogFetcher{
-			WorkerCount: 32,
+			WorkerCount: 16,
 		},
 		smt:    smt,
 		dbConn: dbConn,
@@ -108,8 +108,13 @@ func (mapUpdater *MapUpdater) UpdateRPCAndPC(ctx context.Context, ctUrl string, 
 	return mapUpdater.updateRPCAndPC(ctx, pcList, rpcList)
 }
 
+// UpdateRPCAndPCLocally: update RPC and PC, given a rpc and sp. Currently just mock PC and RPC
+func (mapUpdater *MapUpdater) UpdateRPCAndPCLocally(ctx context.Context, spList []*common.SP, rpcList []*common.RPC) error {
+	return mapUpdater.updateRPCAndPC(ctx, spList, rpcList)
+}
+
 // updateRPCAndPC: update the tables and SMT (in memory) using PC and RPC
-func (mapUpdater *MapUpdater) updateRPCAndPC(ctx context.Context, pcList []*common.PC, rpcList []*common.RPC) error {
+func (mapUpdater *MapUpdater) updateRPCAndPC(ctx context.Context, pcList []*common.SP, rpcList []*common.RPC) error {
 	// update the domain and
 	keyValuePairs, _, err := mapUpdater.UpdateDomainEntriesTableUsingRPCAndPC(ctx, rpcList, pcList, 10)
 	if err != nil {

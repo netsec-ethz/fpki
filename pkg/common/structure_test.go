@@ -138,8 +138,8 @@ func TestJsonReadWrite(t *testing.T) {
 
 	tempFile := path.Join(os.TempDir(), "rpctest.json")
 	defer os.Remove(tempFile)
-	err := JsonStrucToFile(rpc, tempFile)
-	require.NoError(t, err, "Json Struc To File error")
+	err := JsonStructToFile(rpc, tempFile)
+	require.NoError(t, err, "Json Struct To File error")
 
 	rpc1 := &RPC{}
 	err = JsonFileToRPC(rpc1, tempFile)

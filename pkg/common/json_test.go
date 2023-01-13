@@ -32,15 +32,15 @@ func TestEncodeAndDecodeOfSPT(t *testing.T) {
 		Signature:       generateRandomBytes(),
 	}
 
-	err := JsonStrucToFile(spt, tempFile)
-	require.NoError(t, err, "Json Struc To File error")
+	err := JsonStructToFile(spt, tempFile)
+	require.NoError(t, err, "Json Struct To File error")
 
-	deserialisedSPT := &SPT{}
+	deserializedSPT := &SPT{}
 
-	err = JsonFileToSPT(deserialisedSPT, tempFile)
+	err = JsonFileToSPT(deserializedSPT, tempFile)
 	require.NoError(t, err, "Json File To SPT error")
 
-	assert.True(t, deserialisedSPT.Equal(*spt), "SPT serialised and deserialised error")
+	assert.True(t, deserializedSPT.Equal(*spt), "SPT serialized and deserialized error")
 }
 
 // TestEncodeAndDecodeOfRPC: RPC -> files -> RPC
@@ -90,15 +90,15 @@ func TestEncodeAndDecodeOfRPC(t *testing.T) {
 		SPTs:               []SPT{*spt1, *spt2},
 	}
 
-	err := JsonStrucToFile(rpc, tempFile)
-	require.NoError(t, err, "Json Struc To File error")
+	err := JsonStructToFile(rpc, tempFile)
+	require.NoError(t, err, "Json Struct To File error")
 
-	deserialisedSPT := &RPC{}
+	deserializedSPT := &RPC{}
 
-	err = JsonFileToRPC(deserialisedSPT, tempFile)
+	err = JsonFileToRPC(deserializedSPT, tempFile)
 	require.NoError(t, err, "Json File To RPC error")
 
-	assert.True(t, deserialisedSPT.Equal(rpc), "RPC serialised and deserialised error")
+	assert.True(t, deserializedSPT.Equal(rpc), "RPC serialized and deserialized error")
 }
 
 // TestEncodeAndDecodeOfPC: PC -> file -> PC
@@ -123,8 +123,8 @@ func TestEncodeAndDecodeOfPC(t *testing.T) {
 		TrustedCA: []string{"my CA"},
 	}
 
-	pc := PC{
-		Policies:          []Policy{policy},
+	pc := SP{
+		Policies:          policy,
 		TimeStamp:         time.Now(),
 		Subject:           "hihihi",
 		CAName:            "hihihi",
@@ -134,13 +134,13 @@ func TestEncodeAndDecodeOfPC(t *testing.T) {
 		SPTs:              []SPT{spt},
 	}
 
-	err := JsonStrucToFile(&pc, tempFile)
-	require.NoError(t, err, "Json Struc To File error")
+	err := JsonStructToFile(&pc, tempFile)
+	require.NoError(t, err, "Json Struct To File error")
 
-	deserialisedPC := &PC{}
+	deserializedPC := &SP{}
 
-	err = JsonFileToPC(deserialisedPC, tempFile)
+	err = JsonFileToSP(deserializedPC, tempFile)
 	require.NoError(t, err, "Json File To SPT error")
 
-	assert.True(t, deserialisedPC.Equal(pc), "PC serialised and deserialised error")
+	assert.True(t, deserializedPC.Equal(pc), "PC serialized and deserialized error")
 }
