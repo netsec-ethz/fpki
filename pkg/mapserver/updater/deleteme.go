@@ -242,15 +242,3 @@ func (mapUpdater *MapUpdater) retrieveAffectedDomainFromDBReturnReadDomains(ctx 
 	//fmt.Println(len(domainEntriesMap))
 	return domainEntriesMap, domainEntries, nil
 }
-
-func countDomainEntriesSize(entry *common.DomainEntry) int {
-	totalSize := len(entry.DomainName)
-
-	for _, ca := range entry.CAEntry {
-		totalSize = totalSize + len(ca.CAName) + len(ca.CAHash)
-		for _, cert := range ca.DomainCerts {
-			totalSize = totalSize + len(cert)
-		}
-	}
-	return totalSize
-}
