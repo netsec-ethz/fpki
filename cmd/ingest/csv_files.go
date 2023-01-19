@@ -7,14 +7,34 @@ import (
 )
 
 type File interface {
+	WithFile(string) File
+	Filename() string
 	Open() (io.Reader, error)
 	Close() error
 }
 
-type GzFile struct {
+type baseFile struct {
 	FileName string
 	reader   *os.File
+}
+
+func (f *baseFile) Filename() string {
+	return f.FileName
+}
+
+func (f *baseFile) Close() error {
+	return f.reader.Close()
+}
+
+type GzFile struct {
+	baseFile
+
 	gzReader *gzip.Reader
+}
+
+func (f *GzFile) WithFile(fn string) File {
+	f.FileName = fn
+	return f
 }
 
 func (f *GzFile) Open() (io.Reader, error) {
@@ -38,8 +58,12 @@ func (f *GzFile) Close() error {
 }
 
 type CsvFile struct {
-	FileName string
-	reader   *os.File
+	baseFile
+}
+
+func (f *CsvFile) WithFile(fn string) File {
+	f.FileName = fn
+	return f
 }
 
 func (f *CsvFile) Open() (io.Reader, error) {
@@ -49,8 +73,4 @@ func (f *CsvFile) Open() (io.Reader, error) {
 		return nil, err
 	}
 	return f.reader, nil
-}
-
-func (f *CsvFile) Close() error {
-	return f.reader.Close()
 }
