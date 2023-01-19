@@ -78,13 +78,13 @@ func listOurFiles(dir string) (gzFiles, csvFiles []string) {
 	return
 }
 
-func updateCertificatesFromFiles(mapReduce *MapReduce, N int, gzFiles, csvFiles []string) error {
+func updateCertificatesFromFiles(proc *Processor, N int, gzFiles, csvFiles []string) error {
 	exitIfError(processCollection(gzFiles, N, func(fileNameCh chan string) error {
-		return updateFromGzFileName(mapReduce, fileNameCh)
+		return updateFromGzFileName(proc, fileNameCh)
 	}))
 
 	exitIfError(processCollection(csvFiles, N, func(fileNameCh chan string) error {
-		return updateFromFileName(mapReduce, fileNameCh)
+		return updateFromFileName(proc, fileNameCh)
 	}))
 
 	return nil
@@ -151,7 +151,7 @@ func processConcurrently(N int, fcn func() error) chan error {
 	return errorCh
 }
 
-func updateFromGzFileName(mr *MapReduce, fileNameCh chan string) error {
+func updateFromGzFileName(proc *Processor, fileNameCh chan string) error {
 	for filename := range fileNameCh {
 		fmt.Printf("deleteme BEGIN WORK with %s\n", filename)
 		f, err := os.Open(filename)
@@ -163,7 +163,7 @@ func updateFromGzFileName(mr *MapReduce, fileNameCh chan string) error {
 			return err
 		}
 
-		if err := mr.IngestWithCSV(gz); err != nil {
+		if err := proc.IngestWithCSV(gz); err != nil {
 			return err
 		}
 
@@ -178,13 +178,13 @@ func updateFromGzFileName(mr *MapReduce, fileNameCh chan string) error {
 	return nil
 }
 
-func updateFromFileName(mr *MapReduce, fileNameCh chan string) error {
+func updateFromFileName(proc *Processor, fileNameCh chan string) error {
 	for filename := range fileNameCh {
 		f, err := os.Open(filename)
 		if err != nil {
 			return err
 		}
-		if err := mr.IngestWithCSV(f); err != nil {
+		if err := proc.IngestWithCSV(f); err != nil {
 			return err
 		}
 		if err := f.Close(); err != nil {
