@@ -2,11 +2,8 @@ package main
 
 import (
 	"compress/gzip"
-	"encoding/base64"
-	"encoding/csv"
 	"flag"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -17,7 +14,7 @@ import (
 
 const (
 	CertificateColumn = 3
-	ChainColumn       = 4
+	CertChainColumn   = 4
 )
 
 func main() {
@@ -38,15 +35,20 @@ func main() {
 	// Truncate DB.
 	exitIfError(conn.TruncateAllTables())
 
+	const N = 2
+	mapReduce := NewMapReduce(conn)
+
 	// Disable indices in DB.
-	// TODO(juagargi)
+	exitIfError(conn.DisableIndexing("domainEntries"))
 
 	// Update certificates and chains.
-	err = updateCertificatesFromFiles(conn, gzFiles, csvFiles)
+	err = updateCertificatesFromFiles(mapReduce, N, gzFiles, csvFiles)
 	exitIfError(err)
 
+	// <-mapReduce.Done
+
 	// Re-enable indices in DB.
-	// TODO(juagargi)
+	exitIfError(conn.EnableIndexing("domainEntries"))
 
 	// Close DB and check errors.
 	err = conn.Close()
@@ -76,26 +78,25 @@ func listOurFiles(dir string) (gzFiles, csvFiles []string) {
 	return
 }
 
-func updateCertificatesFromFiles(conn db.Conn, gzFiles, csvFiles []string) error {
-	const N = 2
-	exitIfError(processCollection(conn, gzFiles, N, func(fileNameCh chan string) error {
-		return updateFromGzFileName(conn, fileNameCh)
+func updateCertificatesFromFiles(mapReduce *MapReduce, N int, gzFiles, csvFiles []string) error {
+	exitIfError(processCollection(gzFiles, N, func(fileNameCh chan string) error {
+		return updateFromGzFileName(mapReduce, fileNameCh)
 	}))
 
-	exitIfError(processCollection(conn, csvFiles, N, func(fileNameCh chan string) error {
-		return updateFromFileName(conn, fileNameCh)
+	exitIfError(processCollection(csvFiles, N, func(fileNameCh chan string) error {
+		return updateFromFileName(mapReduce, fileNameCh)
 	}))
 
 	return nil
 }
 
-func processCollection(conn db.Conn, fileNames []string, N int,
+func processCollection(fileNames []string, N int,
 	fcn func(fileNameCh chan string) error) error {
 
 	// Use a channel to dispatch batches to go routines.
 	fileNameCh := make(chan string)
 
-	errorCh := processConcurrently(conn, N, func() error {
+	errorCh := processConcurrently(N, func() error {
 		return fcn(fileNameCh)
 	})
 	// Send the GZ file names to the channel:
@@ -104,28 +105,28 @@ func processCollection(conn db.Conn, fileNames []string, N int,
 	}
 	close(fileNameCh)
 
-	fmt.Println("deleteme 10")
+	// fmt.Println("deleteme 10")
 	// If there had been any errors, report them and return an error as well.
 	var errorsFound bool
-	fmt.Println("deleteme 31")
+	// fmt.Println("deleteme 31")
 	for err := range errorCh {
-		fmt.Println("deleteme 32")
+		// fmt.Println("deleteme 32")
 		if err == nil {
 			continue
 		}
 		errorsFound = true
 		fmt.Fprintf(os.Stderr, "%s\n", err)
-		fmt.Println("deleteme ---------------")
+		// fmt.Println("deleteme ---------------")
 	}
 
-	fmt.Println("deleteme 41")
+	// fmt.Println("deleteme 41")
 	if errorsFound {
 		return fmt.Errorf("found errors")
 	}
 	return nil
 }
 
-func processConcurrently(conn db.Conn, N int, fcn func() error) chan error {
+func processConcurrently(N int, fcn func() error) chan error {
 	errorCh := make(chan error)
 	go func() {
 		// Use a WaitGroup to wait for all go routines to finish.
@@ -134,23 +135,23 @@ func processConcurrently(conn db.Conn, N int, fcn func() error) chan error {
 		wg.Add(N) // TODO(juagargi) remove N and span as many routines as files.
 		for i := 0; i < N; i++ {
 			go func() {
-				fmt.Println("deleteme 20")
+				// fmt.Println("deleteme 20")
 				defer wg.Done()
 				errorCh <- fcn()
-				fmt.Println("deleteme 22")
+				// fmt.Println("deleteme 22")
 			}()
 		}
-		fmt.Println("deleteme 19")
+		// fmt.Println("deleteme 19")
 		wg.Wait()
-		fmt.Println("deleteme 29")
+		// fmt.Println("deleteme 29")
 		close(errorCh)
-		fmt.Println("deleteme 30")
+		// fmt.Println("deleteme 30")
 	}()
 
 	return errorCh
 }
 
-func updateFromGzFileName(conn db.Conn, fileNameCh chan string) error {
+func updateFromGzFileName(mr *MapReduce, fileNameCh chan string) error {
 	for filename := range fileNameCh {
 		fmt.Printf("deleteme BEGIN WORK with %s\n", filename)
 		f, err := os.Open(filename)
@@ -162,7 +163,7 @@ func updateFromGzFileName(conn db.Conn, fileNameCh chan string) error {
 			return err
 		}
 
-		if err := updateFromCSV(conn, gz); err != nil {
+		if err := mr.IngestWithCSV(gz); err != nil {
 			return err
 		}
 
@@ -177,13 +178,13 @@ func updateFromGzFileName(conn db.Conn, fileNameCh chan string) error {
 	return nil
 }
 
-func updateFromFileName(conn db.Conn, fileNameCh chan string) error {
+func updateFromFileName(mr *MapReduce, fileNameCh chan string) error {
 	for filename := range fileNameCh {
 		f, err := os.Open(filename)
 		if err != nil {
 			return err
 		}
-		if err := updateFromCSV(conn, f); err != nil {
+		if err := mr.IngestWithCSV(f); err != nil {
 			return err
 		}
 		if err := f.Close(); err != nil {
@@ -193,30 +194,9 @@ func updateFromFileName(conn db.Conn, fileNameCh chan string) error {
 	return nil
 }
 
-func updateFromCSV(conn db.Conn, fileReader io.Reader) error {
-	reader := csv.NewReader(fileReader)
-	reader.FieldsPerRecord = -1 // don't check number of fields
-	reader.ReuseRecord = true
-
-	var err error
-	var fields []string
-	for lineNo := 1; err == nil; lineNo++ {
-		fields, err = reader.Read()
-		if len(fields) == 0 { // there exist empty lines (e.g. at the end of the gz files)
-			continue
-		}
-		raw, err := base64.StdEncoding.DecodeString(fields[CertificateColumn])
-		if err != nil {
-			return err
-		}
-		_ = raw
-	}
-	return nil
-}
-
 func exitIfError(err error) {
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s", err)
+		fmt.Fprintf(os.Stderr, "%s\n", err)
 		os.Exit(1)
 	}
 }
