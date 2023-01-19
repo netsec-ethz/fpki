@@ -74,18 +74,17 @@ func (p *Processor) start() {
 
 	// Process the parsed content into the DB:
 	go func() {
-		i := 0
+		count := 0
 		for data := range p.fromParserCh {
 			cn := data.Cert.Subject.CommonName
-			// fmt.Printf("CN: %s\n", cn)
 			_ = cn
-			i++
-			if i%10000 == 0 {
-				fmt.Println("deleteme tick!")
+			count++
+			if count%10000 == 0 {
+				// fmt.Println("deleteme tick!")
+				fmt.Print(".")
 			}
 		}
-		// fmt.Println("deleteme signaling done")
-		// p.doneCh <- struct{}{}
+		fmt.Println()
 
 		// There is no more processing to do, close the errors channel and allow the
 		// error processor to finish.
@@ -110,17 +109,13 @@ func (p *Processor) Wait() error {
 
 func (p *Processor) AddGzFiles(fileNames []string) {
 	for _, filename := range fileNames {
-		p.incomingFileCh <- &GzFile{
-			FileName: filename,
-		}
+		p.incomingFileCh <- (&GzFile{}).WithFile(filename)
 	}
 }
 
 func (p *Processor) AddCsvFiles(fileNames []string) {
 	for _, filename := range fileNames {
-		p.incomingFileCh <- &CsvFile{
-			FileName: filename,
-		}
+		p.incomingFileCh <- (&CsvFile{}).WithFile(filename)
 	}
 }
 
