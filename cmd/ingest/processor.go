@@ -11,7 +11,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/db"
 )
 
-type MapReduce struct {
+type Processor struct {
 	BatchSize int
 	Conn      db.Conn
 	Done      chan struct{}
@@ -24,21 +24,21 @@ type CertData struct {
 	CertChain []*ctx509.Certificate
 }
 
-func NewMapReduce(conn db.Conn) *MapReduce {
-	mr := &MapReduce{
+func NewMapReduce(conn db.Conn) *Processor {
+	p := &Processor{
 		BatchSize: 1000,
 		Conn:      conn,
 		Done:      make(chan struct{}),
 
 		fromParserCh: make(chan *CertData),
 	}
-	mr.Process()
-	return mr
+	p.Process()
+	return p
 }
 
-func (mr *MapReduce) Process() {
+func (p *Processor) Process() {
 	go func() {
-		for data := range mr.fromParserCh {
+		for data := range p.fromParserCh {
 			cn := data.Cert.Subject.CommonName
 			// fmt.Printf("CN: %s\n", cn)
 			_ = cn
@@ -46,7 +46,7 @@ func (mr *MapReduce) Process() {
 	}()
 }
 
-func (mr *MapReduce) IngestWithCSV(fileReader io.Reader) error {
+func (p *Processor) IngestWithCSV(fileReader io.Reader) error {
 	reader := csv.NewReader(fileReader)
 	reader.FieldsPerRecord = -1 // don't check number of fields
 	reader.ReuseRecord = true
@@ -80,7 +80,7 @@ func (mr *MapReduce) IngestWithCSV(fileReader io.Reader) error {
 				return fmt.Errorf("at line %d: %s\n%s", lineNo, err, fields[CertChainColumn])
 			}
 		}
-		mr.fromParserCh <- &CertData{
+		p.fromParserCh <- &CertData{
 			Cert:      cert,
 			CertChain: chain,
 		}
