@@ -24,12 +24,6 @@ type Conn interface {
 	// TruncateAllTables resets the DB to an initial state.
 	TruncateAllTables() error
 
-	// DisableIndexing stops the indexing in the table.
-	DisableIndexing(table string) error
-
-	// DisableIndexing starts the indexing in the table.
-	EnableIndexing(table string) error
-
 	// ************************************************************
 	//              Function for Tree table
 	// ************************************************************

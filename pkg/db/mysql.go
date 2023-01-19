@@ -140,16 +140,6 @@ func (c *mysqlDB) TruncateAllTables() error {
 	return nil
 }
 
-func (c *mysqlDB) DisableIndexing(table string) error {
-	_, err := c.db.Exec(fmt.Sprintf("ALTER TABLE `%s` DISABLE KEYS", table))
-	return err
-}
-
-func (c *mysqlDB) EnableIndexing(table string) error {
-	_, err := c.db.Exec(fmt.Sprintf("ALTER TABLE `%s` ENABLE KEYS", table))
-	return err
-}
-
 // repeatStmt returns  ( (?,..inner..,?), ...outer...  )
 func repeatStmt(outer int, inner int) string {
 	components := make([]string, inner)
