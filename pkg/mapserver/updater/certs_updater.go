@@ -96,13 +96,13 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCerts(ctx context.Con
 //	added to which domain.
 func getAffectedDomainAndCertMap(certs []*x509.Certificate, certChains [][]*x509.Certificate) (uniqueSet,
 	map[string][]*x509.Certificate, map[string][][]*x509.Certificate) {
-	// unique list of the updated domains
+	// Set with the SHAs of the updated domains.
 	affectedDomainsMap := make(uniqueSet)
 
-	// map to map "domain name" -> certs list(certs to be added to this domain).
+	// Map "domain name" -> cert list (certs to be added to this domain).
 	domainCertMap := make(map[string][]*x509.Certificate)
 
-	// analogous to the map above except that we map "domain name" -> cert chains
+	// Analogous to the map above except that we map "domain name" -> cert chains.
 	domainCertChainMap := make(map[string][][]*x509.Certificate)
 
 	// extract the affected domain of every certificates

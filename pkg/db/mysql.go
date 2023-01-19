@@ -116,6 +116,20 @@ func (c *mysqlDB) Close() error {
 	return c.db.Close()
 }
 
+func (c *mysqlDB) TruncateAllTables() error {
+	tables := []string{
+		"domainEntries",
+		"tree",
+		"updates",
+	}
+	for _, t := range tables {
+		if _, err := c.db.Exec(fmt.Sprintf("DELETE FROM %s", t)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // repeatStmt returns  ( (?,..inner..,?), ...outer...  )
 func repeatStmt(outer int, inner int) string {
 	components := make([]string, inner)

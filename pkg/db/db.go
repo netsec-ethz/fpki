@@ -19,6 +19,9 @@ type Conn interface {
 	// Close closes the connection.
 	Close() error
 
+	// TruncateAllTables resets the DB to an initial state.
+	TruncateAllTables() error
+
 	// ************************************************************
 	//              Function for Tree table
 	// ************************************************************
