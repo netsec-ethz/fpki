@@ -56,7 +56,7 @@ func (mapUpdater *MapUpdater) updateCertsReturnTime(ctx context.Context, certs [
 		return nil, nil, []*db.KeyValuePair{}, []*db.KeyValuePair{}, 0
 	}
 
-	_, _, err = keyValuePairToSMTInput(keyValuePairs)
+	_, _, err = KeyValuePairToSMTInput(keyValuePairs)
 	if err != nil {
 		return nil, fmt.Errorf("CollectCerts | keyValuePairToSMTInput | %w", err), nil, nil, 0
 	}
@@ -81,7 +81,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCertsReturnTime(ctx c
 	start := time.Now()
 	// get the unique list of affected domains
 	emptyCertChains := make([][]*x509.Certificate, len(certs))
-	affectedDomainsMap, domainCertMap, domainCertChainMap := getAffectedDomainAndCertMap(certs, emptyCertChains)
+	affectedDomainsMap, domainCertMap, domainCertChainMap := GetAffectedDomainAndCertMap(certs, emptyCertChains)
 	end := time.Now()
 	fmt.Println("(memory) time to process certs: ", end.Sub(start))
 	timeList = append(timeList, end.Sub(start).String())

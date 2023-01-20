@@ -107,7 +107,7 @@ func (mapUpdater *MapUpdater) updateCerts(ctx context.Context, certs []*ctx509.C
 		return nil
 	}
 
-	keyInput, valueInput, err := keyValuePairToSMTInput(keyValuePairs)
+	keyInput, valueInput, err := KeyValuePairToSMTInput(keyValuePairs)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | keyValuePairToSMTInput | %w", err)
 	}
@@ -150,7 +150,7 @@ func (mapUpdater *MapUpdater) updateRPCAndPC(ctx context.Context, pcList []*comm
 		return nil
 	}
 
-	keyInput, valueInput, err := keyValuePairToSMTInput(keyValuePairs)
+	keyInput, valueInput, err := KeyValuePairToSMTInput(keyValuePairs)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | keyValuePairToSMTInput | %w", err)
 	}
@@ -187,8 +187,8 @@ func (mapUpdater *MapUpdater) fetchUpdatedDomainHash(ctx context.Context) ([]com
 	return keys, nil
 }
 
-// keyValuePairToSMTInput: key value pair -> SMT update input
-func keyValuePairToSMTInput(keyValuePair []*db.KeyValuePair) ([][]byte, [][]byte, error) {
+// KeyValuePairToSMTInput: key value pair -> SMT update input
+func KeyValuePairToSMTInput(keyValuePair []*db.KeyValuePair) ([][]byte, [][]byte, error) {
 	updateInput := make([]UpdateInput, 0, len(keyValuePair))
 
 	for _, pair := range keyValuePair {

@@ -30,7 +30,7 @@ func TestUpdateDomainEntriesUsingCerts(t *testing.T) {
 	}
 
 	// get affected domain map and domain cert map
-	affectedDomainsMap, domainCertMap, domainCertChainMap := getAffectedDomainAndCertMap(
+	affectedDomainsMap, domainCertMap, domainCertChainMap := GetAffectedDomainAndCertMap(
 		certs, certChains)
 
 	// test if all the certs are correctly added to the affectedDomainsMap and domainCertMap
@@ -140,7 +140,7 @@ func TestUpdateSameCertTwice(t *testing.T) {
 		certs = append(certs, cert)
 	}
 
-	_, domainCertMap, domainCertChainMap := getAffectedDomainAndCertMap(certs, certChains)
+	_, domainCertMap, domainCertChainMap := GetAffectedDomainAndCertMap(certs, certChains)
 
 	domainEntriesMap := make(map[projectCommon.SHA256Output]*common.DomainEntry)
 

@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 
@@ -65,8 +66,9 @@ func ExtractAffectedDomains(domainNames []string) []string {
 		// split the domain name into: E2LD + child domains
 		dividedName, err := SplitE2LD(domainName)
 		if err != nil {
-			// TODO(yongzhe): print the error (for debugging), and skip this domain.
-			fmt.Println(err)
+			// Emit a warning and continue:
+			fmt.Fprintf(os.Stderr, "cannot split the domain in two parts {a}.{e2ld.com}: %s\n",
+				domainName)
 			continue
 		}
 		prefix := dividedName[:len(dividedName)-1]
@@ -76,9 +78,9 @@ func ExtractAffectedDomains(domainNames []string) []string {
 	}
 
 	affectedDomains := make([]string, 0, len(result))
-	for k, v := range result {
+	for e2ld, prefixes := range result {
 		// find the longest match of a list of domain names.
-		newDomain := findLongestSuffix(v) + k
+		newDomain := findLongestSuffix(prefixes) + e2ld
 		affectedDomains = append(affectedDomains, newDomain)
 	}
 	return affectedDomains
