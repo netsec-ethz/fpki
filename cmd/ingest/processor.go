@@ -78,7 +78,6 @@ func (p *Processor) start() {
 
 	// Process the parsed content into the DB:
 	go func() {
-		// count := 0
 		batch := NewBatch()
 		for data := range p.fromParserCh {
 			batch.AddData(data)
@@ -91,6 +90,7 @@ func (p *Processor) start() {
 		// Process last batch, which may have zero size.
 		p.batchProcessor.Process(batch)
 		fmt.Println()
+		p.batchProcessor.Wait()
 
 		// There is no more processing to do, close the errors channel and allow the
 		// error processor to finish.
