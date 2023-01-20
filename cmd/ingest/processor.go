@@ -17,10 +17,9 @@ type Processor struct {
 	BatchSize int
 	Conn      db.Conn
 
-	incomingFileCh  chan File         // indicates new file(s) with certificates to be ingested
-	fromParserCh    chan *CertData    // parser data to be sent to SMT and DB\
-	batchCh         chan *Batch       // batches are sent here to be inserted in DB
-	batchDispatches map[string]*Batch // CN to active batches, to avoid same CN in different ones
+	incomingFileCh chan File      // indicates new file(s) with certificates to be ingested
+	fromParserCh   chan *CertData // parser data to be sent to SMT and DB\
+	batchProcessor *BatchProcessor
 
 	errorCh chan error // errors accumulate here
 	doneCh  chan error // the aggregation of all errors. Signals Processor is done
@@ -31,15 +30,14 @@ type CertData struct {
 	CertChain []*ctx509.Certificate
 }
 
-func NewMapReduce(conn db.Conn) *Processor {
+func NewProcessor(conn db.Conn) *Processor {
 	p := &Processor{
 		BatchSize: 1000,
 		Conn:      conn,
 
-		incomingFileCh:  make(chan File),
-		fromParserCh:    make(chan *CertData),
-		batchCh:         make(chan *Batch),
-		batchDispatches: make(map[string]*Batch),
+		incomingFileCh: make(chan File),
+		fromParserCh:   make(chan *CertData),
+		batchProcessor: NewBatchProcessor(conn),
 
 		errorCh: make(chan error),
 		doneCh:  make(chan error),
@@ -83,29 +81,17 @@ func (p *Processor) start() {
 		// count := 0
 		batch := NewBatch()
 		for data := range p.fromParserCh {
-			cn := data.Cert.Subject.CommonName
-			if b, ok := p.batchDispatches[cn]; ok && b != batch {
-				// Same CN being processed in a different batch
-				panic("same CN in different batches")
-			}
 			batch.AddData(data)
 			if batch.Full() {
-				p.batchCh <- batch
+				p.batchProcessor.Process(batch)
 				fmt.Print(".")
 				batch = NewBatch()
 			}
 		}
-		// Sent last batch, which may have zero size.
-		p.batchCh <- batch
+		// Process last batch, which may have zero size.
+		p.batchProcessor.Process(batch)
 		fmt.Println()
-		// We have just packaged the data into batches. We can close the batch channel now.
-		close(p.batchCh)
-	}()
 
-	go func() {
-		for batch := range p.batchCh {
-			_ = batch
-		}
 		// There is no more processing to do, close the errors channel and allow the
 		// error processor to finish.
 		close(p.errorCh)

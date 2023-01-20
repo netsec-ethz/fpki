@@ -36,7 +36,7 @@ func main() {
 	exitIfError(conn.DisableIndexing("domainEntries"))
 
 	// Update certificates and chains.
-	proc := NewMapReduce(conn)
+	proc := NewProcessor(conn)
 	proc.AddGzFiles(gzFiles)
 	proc.AddCsvFiles(csvFiles)
 	exitIfError(proc.Wait())
