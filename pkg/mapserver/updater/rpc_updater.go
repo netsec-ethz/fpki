@@ -44,13 +44,13 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingRPCAndPC(ctx context.
 	}
 
 	// get the domain entries only if they are updated
-	domainEntriesToWrite, err := getDomainEntriesToWrite(updatedDomains, domainEntriesMap)
+	domainEntriesToWrite, err := GetDomainEntriesToWrite(updatedDomains, domainEntriesMap)
 	if err != nil {
 		return nil, 0, fmt.Errorf("UpdateDomainEntriesTableUsingRPCAndPC | getDomainEntriesToWrite | %w", err)
 	}
 
 	// serialize the domainEntry -> key-value pair
-	keyValuePairs, err := serializeUpdatedDomainEntries(domainEntriesToWrite)
+	keyValuePairs, err := SerializeUpdatedDomainEntries(domainEntriesToWrite)
 	if err != nil {
 		return nil, 0, fmt.Errorf("UpdateDomainEntriesTableUsingRPCAndPC | serializeUpdatedDomainEntries | %w", err)
 	}

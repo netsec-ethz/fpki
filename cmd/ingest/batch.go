@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"sync/atomic"
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
+	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
+	mcommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 )
 
@@ -109,15 +112,50 @@ func (p *BatchProcessor) wrapBatch(batch *Batch) {
 }
 
 func (p *BatchProcessor) processBatch(batch *Batch) {
-	affectedDomainsMap, domainCertMap, domainCertChainMap :=
-		updater.GetAffectedDomainAndCertMap(batch.Certs, batch.Chains)
+	// Compute which domains could be affected:
+	affectedDomainsMap, domainCertMap, domainCertChainMap := updater.GetAffectedDomainAndCertMap(
+		batch.Certs, batch.Chains)
 	if len(affectedDomainsMap) == 0 {
 		return
 	}
-	_ = affectedDomainsMap
-	_ = domainCertMap
-	_ = domainCertChainMap
-	// TODO(juagargi) do the actual update
+
+	// Get all affected entries already present in the DB:
+	affectedDomainHashes := make([]common.SHA256Output, 0, len(affectedDomainsMap))
+	for k := range affectedDomainsMap {
+		affectedDomainHashes = append(affectedDomainHashes, k)
+	}
+	domainEntries, err := p.conn.RetrieveDomainEntries(context.Background(), affectedDomainHashes)
+	if err != nil {
+		panic(err)
+	}
+
+	// Obtain a map from SHAs to certificates:
+	shaToCerts := make(map[common.SHA256Output]*mcommon.DomainEntry)
+	for _, kv := range domainEntries {
+		entry, err := mcommon.DeserializeDomainEntry(kv.Value)
+		if err != nil {
+			panic(err)
+		}
+		shaToCerts[kv.Key] = entry
+	}
+
+	// Update Domain Entries in DB:
+	updatedDomains, err := updater.UpdateDomainEntries(shaToCerts, domainCertMap, domainCertChainMap)
+	if err != nil {
+		panic(err)
+	}
+	shaToCerts, err = updater.GetDomainEntriesToWrite(updatedDomains, shaToCerts)
+	if err != nil {
+		panic(err)
+	}
+	domainEntries, err = updater.SerializeUpdatedDomainEntries(shaToCerts)
+	if err != nil {
+		panic(err)
+	}
+	_, err = p.conn.UpdateDomainEntries(context.Background(), domainEntries)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (p *BatchProcessor) checkIfBatchClashes(b *Batch) error {

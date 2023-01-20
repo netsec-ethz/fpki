@@ -50,7 +50,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCerts(ctx context.Con
 
 	start = time.Now()
 	// update the domain entries
-	updatedDomains, err := updateDomainEntries(domainEntriesMap, domainCertMap, domainCertChainMap)
+	updatedDomains, err := UpdateDomainEntries(domainEntriesMap, domainCertMap, domainCertChainMap)
 	if err != nil {
 		return nil, 0, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | updateDomainEntries | %w", err)
 	}
@@ -64,13 +64,13 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCerts(ctx context.Con
 
 	start = time.Now()
 	// get the domain entries only if they are updated, from DB
-	domainEntriesToWrite, err := getDomainEntriesToWrite(updatedDomains, domainEntriesMap)
+	domainEntriesToWrite, err := GetDomainEntriesToWrite(updatedDomains, domainEntriesMap)
 	if err != nil {
 		return nil, 0, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | getDomainEntriesToWrite | %w", err)
 	}
 
 	// serialized the domainEntry -> key-value pair
-	keyValuePairs, err := serializeUpdatedDomainEntries(domainEntriesToWrite)
+	keyValuePairs, err := SerializeUpdatedDomainEntries(domainEntriesToWrite)
 	if err != nil {
 		return nil, 0, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | serializeUpdatedDomainEntries | %w", err)
 	}
@@ -141,7 +141,7 @@ func GetAffectedDomainAndCertMap(certs []*x509.Certificate, certChains [][]*x509
 }
 
 // update domain entries
-func updateDomainEntries(domainEntries map[common.SHA256Output]*mcommon.DomainEntry,
+func UpdateDomainEntries(domainEntries map[common.SHA256Output]*mcommon.DomainEntry,
 	certDomainMap map[string][]*x509.Certificate, certChainDomainMap map[string][][]*x509.Certificate) (uniqueSet, error) {
 
 	updatedDomainHash := make(uniqueSet)
@@ -183,8 +183,8 @@ func updateDomainEntry(domainEntry *mcommon.DomainEntry, cert *x509.Certificate,
 	return domainEntry.AddCert(cert, certChain)
 }
 
-// getDomainEntriesToWrite: get updated domains, and extract the domain bytes
-func getDomainEntriesToWrite(updatedDomain uniqueSet,
+// GetDomainEntriesToWrite: get updated domains, and extract the domain bytes
+func GetDomainEntriesToWrite(updatedDomain uniqueSet,
 	domainEntries map[common.SHA256Output]*mcommon.DomainEntry) (map[common.SHA256Output]*mcommon.DomainEntry, error) {
 
 	result := make(map[common.SHA256Output]*mcommon.DomainEntry)
@@ -199,8 +199,8 @@ func getDomainEntriesToWrite(updatedDomain uniqueSet,
 	return result, nil
 }
 
-// serializeUpdatedDomainEntries: serialize the updated domains
-func serializeUpdatedDomainEntries(domains map[common.SHA256Output]*mcommon.DomainEntry) (
+// SerializeUpdatedDomainEntries: serialize the updated domains
+func SerializeUpdatedDomainEntries(domains map[common.SHA256Output]*mcommon.DomainEntry) (
 	[]*db.KeyValuePair, error) {
 
 	result := make([]*db.KeyValuePair, 0, len(domains))

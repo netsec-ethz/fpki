@@ -111,7 +111,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCertsReturnTime(ctx c
 
 	start = time.Now()
 	// update the domain entries
-	updatedDomains, err := updateDomainEntries(domainEntriesMap, domainCertMap, domainCertChainMap)
+	updatedDomains, err := UpdateDomainEntries(domainEntriesMap, domainCertMap, domainCertChainMap)
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | updateDomainEntries | %w", err), nil, nil
 	}
@@ -126,7 +126,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCertsReturnTime(ctx c
 
 	start = time.Now()
 	// get the domain entries only if they are updated, from DB
-	domainEntriesToWrite, err := getDomainEntriesToWrite(updatedDomains, domainEntriesMap)
+	domainEntriesToWrite, err := GetDomainEntriesToWrite(updatedDomains, domainEntriesMap)
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | getDomainEntriesToWrite | %w", err), nil, nil
 	}
@@ -137,7 +137,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCertsReturnTime(ctx c
 	//fmt.Println(" domain entries size:                                                          ", readSize/1024/1024, " MB")
 
 	// serialized the domainEntry -> key-value pair
-	keyValuePairs, err := serializeUpdatedDomainEntries(domainEntriesToWrite)
+	keyValuePairs, err := SerializeUpdatedDomainEntries(domainEntriesToWrite)
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | serializeUpdatedDomainEntries | %w", err), nil, nil
 	}
