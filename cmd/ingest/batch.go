@@ -109,6 +109,7 @@ func (p *BatchProcessor) wrapBatch(batch *Batch) {
 	defer p.incomingWg.Done() // one less batch to process
 
 	p.processBatch(batch)
+	fmt.Println("batch processed")
 }
 
 func (p *BatchProcessor) processBatch(batch *Batch) {
@@ -156,6 +157,14 @@ func (p *BatchProcessor) processBatch(batch *Batch) {
 	if err != nil {
 		panic(err)
 	}
+
+	inputKeys, inputValues, err := updater.KeyValuePairToSMTInput(domainEntries)
+	if err != nil {
+		panic(err)
+	}
+	// TODO(juagargi) update SMT with the above
+	_ = inputKeys
+	_ = inputValues
 }
 
 func (p *BatchProcessor) checkIfBatchClashes(b *Batch) error {
