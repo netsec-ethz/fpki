@@ -34,6 +34,7 @@ func main() {
 	exitIfError(conn.TruncateAllTables())
 	// Disable indices in DB.
 	exitIfError(conn.DisableIndexing("domainEntries"))
+	exitIfError(conn.DisableIndexing("updates"))
 
 	// Update certificates and chains.
 	proc := NewProcessor(conn)
@@ -42,6 +43,7 @@ func main() {
 	exitIfError(proc.Wait())
 
 	// Re-enable indices in DB.
+	exitIfError(conn.EnableIndexing("updates"))
 	exitIfError(conn.EnableIndexing("domainEntries"))
 	// Close DB and check errors.
 	err = conn.Close()
