@@ -62,10 +62,14 @@ func (c *mysqlDB) RemoveAllUpdatedDomains(ctx context.Context) error {
 	return nil
 }
 
-type HugeLeafError struct {
-	ID    *common.SHA256Output
-	Index int
-}
+// ********************************************************************
+//
+//	Common
+//
+// ********************************************************************
+// worker to update key-value pairs
+func (c *mysqlDB) doUpdatePairs(ctx context.Context, keyValuePairs []*KeyValuePair,
+	stmtGetter prepStmtGetter) (int, error) {
 
 func (HugeLeafError) Error() string {
 	return "Huge Leaf"

@@ -145,10 +145,6 @@ func (p *BatchProcessor) processBatch(batch *Batch) {
 	if err != nil {
 		panic(err)
 	}
-	// Add entries to the `updates` table containing all the modified domains:
-	if _, err = p.conn.AddUpdatedDomains(context.Background(), affectedDomainHashes); err != nil {
-		panic(err)
-	}
 	shaToCerts, err = updater.GetDomainEntriesToWrite(updatedDomains, shaToCerts)
 	if err != nil {
 		panic(err)
@@ -159,6 +155,11 @@ func (p *BatchProcessor) processBatch(batch *Batch) {
 	}
 	_, err = p.conn.UpdateDomainEntries(context.Background(), domainEntries)
 	if err != nil {
+		panic(err)
+	}
+
+	// Add entries to the `updates` table containing all the modified domains:
+	if _, err = p.conn.AddUpdatedDomains(context.Background(), affectedDomainHashes); err != nil {
 		panic(err)
 	}
 }
