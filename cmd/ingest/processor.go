@@ -92,6 +92,16 @@ func (p *Processor) start() {
 		fmt.Println()
 		p.batchProcessor.Wait()
 
+		fmt.Printf("\ndeleteme done ingesting the certificates. SMT still to go\n\n\n\n")
+
+		// Now start processing the changed domains into the SMT:
+		smtProcessor := NewSMTUpdater(p.Conn, nil, 32)
+		smtProcessor.Start()
+		if err := smtProcessor.Wait(); err != nil {
+			fmt.Printf("deleteme error found in SMT processing: %s\n", err)
+			p.errorCh <- err
+		}
+
 		// There is no more processing to do, close the errors channel and allow the
 		// error processor to finish.
 		close(p.errorCh)

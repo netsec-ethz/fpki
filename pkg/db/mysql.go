@@ -24,6 +24,7 @@ type mysqlDB struct {
 
 	prepGetValueDomainEntries *sql.Stmt // returns the domain entries
 	prepGetValueTree          *sql.Stmt // get key-value pair from tree table
+	prepGetUpdatedDomains     *sql.Stmt // get updated domains
 
 	getDomainEntriesUpdateStmts prepStmtGetter // used to update key-values in domain entries
 	getTreeStructureUpdateStmts prepStmtGetter // used to update key-values in the tree table
@@ -43,6 +44,10 @@ func NewMysqlDB(db *sql.DB) (*mysqlDB, error) {
 	prepGetValueTree, err := db.Prepare("SELECT `value` from `tree` WHERE `key`=?")
 	if err != nil {
 		return nil, fmt.Errorf("NewMysqlDB | preparing statement prepGetValueTree: %w", err)
+	}
+	prepGetUpdatedDomains, err := db.Prepare("SELECT `key` FROM `updates`")
+	if err != nil {
+		return nil, fmt.Errorf("NewMysqlDB | preparing statement prepGetUpdatedDomains: %w", err)
 	}
 
 	str := "REPLACE into domainEntries (`key`, `value`) values " + repeatStmt(batchSize, 2)
@@ -70,6 +75,7 @@ func NewMysqlDB(db *sql.DB) (*mysqlDB, error) {
 		db:                        db,
 		prepGetValueDomainEntries: prepGetValueDomainEntries,
 		prepGetValueTree:          prepGetValueTree,
+		prepGetUpdatedDomains:     prepGetUpdatedDomains,
 		getDomainEntriesUpdateStmts: func(count int) (*sql.Stmt, *sql.Stmt) {
 			str = "REPLACE into domainEntries (`key`, `value`) values " + repeatStmt(count, 2)
 			prepPartial, err := db.Prepare(str)

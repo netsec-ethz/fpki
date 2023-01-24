@@ -56,7 +56,9 @@ func (c *mysqlDB) RemoveAllUpdatedDomains(ctx context.Context) error {
 }
 
 // ********************************************************************
-//                              Common
+//
+//	Common
+//
 // ********************************************************************
 // worker to update key-value pairs
 func (c *mysqlDB) doUpdatePairs(ctx context.Context, keyValuePairs []*KeyValuePair,
@@ -150,8 +152,6 @@ func (c *mysqlDB) doUpdateKeys(ctx context.Context, keys []common.SHA256Output,
 		}
 		affectedRowsCount += n
 	}
-	//defer updateWholeBatchStmt.Close()
-	//defer updatePartialBatchStmt.Close()
 	return affectedRowsCount, nil
 }
 

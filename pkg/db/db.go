@@ -70,4 +70,10 @@ type Conn interface {
 
 	// RemoveAllUpdatedDomains: Truncate updates table; Called after updating is finished
 	RemoveAllUpdatedDomains(ctx context.Context) error
+
+	// UpdatedDomains returns a channel of batches of updated domains.
+	// A batch will have a implementation dependent size.
+	// Each updated domain represents the SHA256 of the textual domain that was updated and
+	// present in the `updates` table.
+	UpdatedDomains() (chan []common.SHA256Output, chan error)
 }

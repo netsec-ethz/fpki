@@ -80,15 +80,13 @@ func (c *mysqlDB) retrieveDomainEntries(ctx context.Context, keys []common.SHA25
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	//if len(domainEntries) != len(keys) {
-	//	fmt.Println("incomplete fetching")
-	//	fmt.Println(len(domainEntries), "  ", len(keys))
-	//}
 	return domainEntries, nil
 }
 
 // ********************************************************************
-//                Read functions for updates table
+//
+//	Read functions for updates table
+//
 // ********************************************************************
 // CountUpdatedDomains: Get number of entries in updates table
 func (c *mysqlDB) CountUpdatedDomains(ctx context.Context) (int, error) {
@@ -147,6 +145,46 @@ func (c *mysqlDB) RetrieveUpdatedDomains(ctx context.Context, perQueryLimit int)
 		return nil, fmt.Errorf("RetrieveUpdatedDomains | incomplete fetching")
 	}
 	return keys, nil
+}
+
+// UpdatedDomains reads the updates table, which was written by e.g. AddUpdatedDomains.
+func (c *mysqlDB) UpdatedDomains() (chan []common.SHA256Output, chan error) {
+	domainsCh := make(chan []common.SHA256Output)
+	errorCh := make(chan error)
+	go func() {
+		defer close(errorCh)
+		rows, err := c.prepGetUpdatedDomains.Query()
+		if err != nil {
+			close(domainsCh)
+			errorCh <- err
+			return
+		}
+		defer rows.Close()
+		for {
+			batch := make([]common.SHA256Output, 0, batchSize)
+			for i := 0; i < batchSize && rows.Next(); i++ {
+				var key []byte
+				if err := rows.Scan(&key); err != nil {
+					close(domainsCh)
+					errorCh <- err
+					return
+				}
+				batch = append(batch, *(*common.SHA256Output)(key[:common.SHA256Size]))
+			}
+			if err := rows.Err(); err != nil {
+				close(domainsCh)
+				errorCh <- err
+				return
+			}
+
+			if len(batch) == 0 {
+				break
+			}
+			domainsCh <- batch
+		}
+		close(domainsCh)
+	}()
+	return domainsCh, errorCh
 }
 
 func retrieveValue(ctx context.Context, stmt *sql.Stmt, key common.SHA256Output) ([]byte, error) {
