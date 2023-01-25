@@ -18,14 +18,14 @@ const BatchSize = 10000
 type Batch struct {
 	Certs  []*ctx509.Certificate
 	Chains [][]*ctx509.Certificate
-	cns    []*string
+	names  []*string // CN and SANs of each certificate
 }
 
 func NewBatch() *Batch {
 	return &Batch{
 		Certs:  make([]*ctx509.Certificate, 0, BatchSize),
 		Chains: make([][]*ctx509.Certificate, 0, BatchSize),
-		cns:    make([]*string, 0, BatchSize),
+		names:  make([]*string, 0, BatchSize),
 	}
 }
 
@@ -33,7 +33,17 @@ func NewBatch() *Batch {
 func (b *Batch) AddData(d *CertData) {
 	b.Certs = append(b.Certs, d.Cert)
 	b.Chains = append(b.Chains, d.CertChain)
-	b.cns = append(b.cns, &d.Cert.Subject.CommonName)
+	// Add common name and SANs:
+	seenNames := make(map[string]struct{})
+	b.names = append(b.names, &d.Cert.Subject.CommonName)
+	seenNames[d.Cert.Subject.CommonName] = struct{}{}
+	for i, name := range d.Cert.DNSNames {
+		if _, ok := seenNames[name]; ok {
+			continue
+		}
+		b.names = append(b.names, &d.Cert.DNSNames[i])
+		seenNames[name] = struct{}{}
+	}
 }
 
 func (b *Batch) Full() bool {
@@ -168,10 +178,10 @@ func (p *BatchProcessor) checkIfBatchClashes(b *Batch) error {
 	p.runningBatchesMu.Lock()
 	defer p.runningBatchesMu.Unlock()
 
-	for _, cn := range b.cns {
-		if other, ok := p.runningBatches[*cn]; ok && other != b {
+	for _, n := range b.names {
+		if other, ok := p.runningBatches[*n]; ok && other != b {
 			return fmt.Errorf("same CN in different batches, pointers: %p, %p. CN: %s",
-				other, b.cns, *cn)
+				other, b.names, *n)
 		}
 	}
 	return nil
@@ -181,8 +191,8 @@ func (p *BatchProcessor) addBatchAsActive(b *Batch) {
 	p.runningBatchesMu.Lock()
 	defer p.runningBatchesMu.Unlock()
 
-	for _, cn := range b.cns {
-		p.runningBatches[*cn] = b
+	for _, n := range b.names {
+		p.runningBatches[*n] = b
 	}
 }
 
@@ -190,7 +200,7 @@ func (p *BatchProcessor) removeBatchFromActive(b *Batch) {
 	p.runningBatchesMu.Lock()
 	defer p.runningBatchesMu.Unlock()
 
-	for _, cn := range b.cns {
-		delete(p.runningBatches, *cn)
+	for _, n := range b.names {
+		delete(p.runningBatches, *n)
 	}
 }
