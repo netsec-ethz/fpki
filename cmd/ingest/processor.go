@@ -11,6 +11,7 @@ import (
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/db"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 )
 
 type Processor struct {
@@ -18,7 +19,7 @@ type Processor struct {
 	Conn      db.Conn
 
 	incomingFileCh chan File      // indicates new file(s) with certificates to be ingested
-	fromParserCh   chan *CertData // parser data to be sent to SMT and DB\
+	fromParserCh   chan *CertData // parser data to be sent to SMT and DB
 	batchProcessor *BatchProcessor
 
 	errorCh chan error // errors accumulate here
@@ -26,8 +27,9 @@ type Processor struct {
 }
 
 type CertData struct {
-	Cert      *ctx509.Certificate
-	CertChain []*ctx509.Certificate
+	DomainNames []string
+	Cert        *ctx509.Certificate
+	CertChain   []*ctx509.Certificate
 }
 
 func NewProcessor(conn db.Conn) *Processor {
@@ -80,7 +82,7 @@ func (p *Processor) start() {
 	go func() {
 		batch := NewBatch()
 		for data := range p.fromParserCh {
-			batch.AddData(data)
+			batch.AddCert(data)
 			if batch.Full() {
 				p.batchProcessor.Process(batch)
 				fmt.Print(".")
@@ -94,6 +96,10 @@ func (p *Processor) start() {
 
 		fmt.Printf("\ndeleteme done ingesting the certificates. SMT still to go\n\n\n\n")
 
+		if 4%5 != 0 { // deleteme
+			close(p.errorCh)
+			return
+		}
 		// Now start processing the changed domains into the SMT:
 		smtProcessor := NewSMTUpdater(p.Conn, nil, 32)
 		smtProcessor.Start()
@@ -156,6 +162,8 @@ func (p *Processor) ingestWithCSV(fileReader io.Reader) error {
 			return err
 		}
 
+		domainNames := updater.ExtractCertDomains(cert)
+
 		// The certificate chain is a list of base64 strings separated by semicolon (;).
 		strs := strings.Split(fields[CertChainColumn], ";")
 		chain := make([]*ctx509.Certificate, len(strs))
@@ -170,8 +178,9 @@ func (p *Processor) ingestWithCSV(fileReader io.Reader) error {
 			}
 		}
 		p.fromParserCh <- &CertData{
-			Cert:      cert,
-			CertChain: chain,
+			DomainNames: domainNames,
+			Cert:        cert,
+			CertChain:   chain,
 		}
 	}
 	return nil

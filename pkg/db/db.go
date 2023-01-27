@@ -17,6 +17,7 @@ type KeyValuePair struct {
 
 // Conn: interface for db connection
 type Conn interface {
+	// TODO(juagargi) remove the temporary access to the sql.DB object
 	DB() *sql.DB
 	// Close closes the connection.
 	Close() error
@@ -29,6 +30,9 @@ type Conn interface {
 
 	// DisableIndexing starts the indexing in the table.
 	EnableIndexing(table string) error
+
+	InsertCerts(ctx context.Context, ids []common.SHA256Output, payloads [][]byte,
+		parents []common.SHA256Output) error
 
 	// ************************************************************
 	//              Function for Tree table

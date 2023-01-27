@@ -16,7 +16,7 @@ func TestExtractCertDomains(t *testing.T) {
 	cert, err := common.CTX509CertFromFile("./testdata/certs/adiq.com.br144.cer")
 	require.NoError(t, err, "projectCommon.CTX509CertFromFile")
 
-	result := extractCertDomains(cert)
+	result := ExtractCertDomains(cert)
 	assert.Equal(t, 2, len(result))
 	assert.Contains(t, result, "*.adiq.com.br")
 	assert.Contains(t, result, "adiq.com.br")

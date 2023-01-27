@@ -51,7 +51,7 @@ func TestUpdateCerts(t *testing.T) {
 
 	// check whether certs are correctly added to the db
 	for _, cert := range certs {
-		domains := domain.ExtractAffectedDomains(extractCertDomains(cert))
+		domains := domain.ExtractAffectedDomains(ExtractCertDomains(cert))
 
 		for _, domain := range domains {
 			domainHash := projectCommon.SHA256Hash32Bytes([]byte(domain))

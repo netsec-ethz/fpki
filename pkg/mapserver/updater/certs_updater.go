@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/certificate-transparency-go/x509"
+	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/domain"
@@ -19,8 +19,15 @@ type uniqueSet map[common.SHA256Output]struct{}
 type uniqueStringSet map[string]struct{}
 
 // UpdateDomainEntriesTableUsingCerts: Update the domain entries using the domain certificates
-func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCerts(ctx context.Context,
-	certs []*x509.Certificate, certChains [][]*x509.Certificate) ([]*db.KeyValuePair, int, error) {
+func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCerts(
+	ctx context.Context,
+	certs []*ctx509.Certificate,
+	certChains [][]*ctx509.Certificate,
+) (
+	[]*db.KeyValuePair,
+	int,
+	error,
+) {
 
 	if len(certs) == 0 {
 		return nil, 0, nil
@@ -28,20 +35,20 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCerts(ctx context.Con
 
 	start := time.Now()
 	// get the unique list of affected domains
-	affectedDomainsMap, domainCertMap, domainCertChainMap := GetAffectedDomainAndCertMap(
+	affectedDomainsSet, domainCertMap, domainCertChainMap := GetAffectedDomainAndCertMap(
 		certs, certChains)
 	end := time.Now()
 	fmt.Println("(memory) time to process certs: ", end.Sub(start))
 
 	// if no domain to update
-	if len(affectedDomainsMap) == 0 {
+	if len(affectedDomainsSet) == 0 {
 		return nil, 0, nil
 	}
 
 	start = time.Now()
 	// retrieve (possibly)affected domain entries from db
 	// It's possible that no records will be changed, because the certs are already recorded.
-	domainEntriesMap, err := mapUpdater.retrieveAffectedDomainFromDB(ctx, affectedDomainsMap)
+	domainEntriesMap, err := mapUpdater.retrieveAffectedDomainFromDB(ctx, affectedDomainsSet)
 	if err != nil {
 		return nil, 0, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | %w", err)
 	}
@@ -94,16 +101,16 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCerts(ctx context.Con
 // Second return value: "domain name" -> certs. So later, one can look through the map to decide which certs to
 //
 //	added to which domain.
-func GetAffectedDomainAndCertMap(certs []*x509.Certificate, certChains [][]*x509.Certificate) (uniqueSet,
-	map[string][]*x509.Certificate, map[string][][]*x509.Certificate) {
+func GetAffectedDomainAndCertMap(certs []*ctx509.Certificate, certChains [][]*ctx509.Certificate) (uniqueSet,
+	map[string][]*ctx509.Certificate, map[string][][]*ctx509.Certificate) {
 	// Set with the SHAs of the updated domains.
 	affectedDomainsMap := make(uniqueSet)
 
 	// Map "domain name" -> cert list (certs to be added to this domain).
-	domainCertMap := make(map[string][]*x509.Certificate)
+	domainCertMap := make(map[string][]*ctx509.Certificate)
 
 	// Analogous to the map above except that we map "domain name" -> cert chains.
-	domainCertChainMap := make(map[string][][]*x509.Certificate)
+	domainCertChainMap := make(map[string][][]*ctx509.Certificate)
 
 	// extract the affected domain of every certificates
 	for i, cert := range certs {
@@ -111,7 +118,7 @@ func GetAffectedDomainAndCertMap(certs []*x509.Certificate, certChains [][]*x509
 		certChain := certChains[i]
 
 		// get unique list of domain names
-		domains := extractCertDomains(cert)
+		domains := ExtractCertDomains(cert)
 		if len(domains) == 0 {
 			continue
 		}
@@ -132,17 +139,46 @@ func GetAffectedDomainAndCertMap(certs []*x509.Certificate, certChains [][]*x509
 				domainCertMap[domainName] = append(domainCertMap[domainName], cert)
 				domainCertChainMap[domainName] = append(domainCertChainMap[domainName], certChain)
 			} else {
-				domainCertMap[domainName] = []*x509.Certificate{cert}
-				domainCertChainMap[domainName] = [][]*x509.Certificate{certChain}
+				domainCertMap[domainName] = []*ctx509.Certificate{cert}
+				domainCertChainMap[domainName] = [][]*ctx509.Certificate{certChain}
 			}
 		}
 	}
 	return affectedDomainsMap, domainCertMap, domainCertChainMap
 }
 
+// UnfoldCerts takes a slice of certificates and chains with the same length,
+// and returns all certificates once, without duplicates, and a pointer to the parent in the
+// trust chain, or nil if the certificate is root.
+func UnfoldCerts(certs []*ctx509.Certificate, chains [][]*ctx509.Certificate) (
+	certificates, parents []*ctx509.Certificate) {
+
+	for len(certs) > 0 {
+		var pendingCerts []*ctx509.Certificate
+		var pendingChains [][]*ctx509.Certificate
+		for i, c := range certs {
+			certificates = append(certificates, c)
+			var parent *ctx509.Certificate
+			if len(chains[i]) > 0 {
+				// The certificate has a trust chain (it is not root): add the first certificate
+				// from the chain as the parent.
+				parent = chains[i][0]
+				// Add this parent to the back of the certs, plus the corresponding chain entry,
+				// so that it's processed as a certificate.
+				pendingCerts = append(pendingCerts, parent)
+				pendingChains = append(pendingChains, chains[i][1:])
+			}
+			parents = append(parents, parent)
+		}
+		certs = pendingCerts
+		chains = pendingChains
+	}
+	return
+}
+
 // update domain entries
 func UpdateDomainEntries(domainEntries map[common.SHA256Output]*mcommon.DomainEntry,
-	certDomainMap map[string][]*x509.Certificate, certChainDomainMap map[string][][]*x509.Certificate) (uniqueSet, error) {
+	certDomainMap map[string][]*ctx509.Certificate, certChainDomainMap map[string][][]*ctx509.Certificate) (uniqueSet, error) {
 
 	updatedDomainHash := make(uniqueSet)
 	// read from previous map
@@ -179,7 +215,7 @@ func UpdateDomainEntries(domainEntries map[common.SHA256Output]*mcommon.DomainEn
 
 // updateDomainEntry: insert certificate into correct CAEntry
 // return: if this domain entry is updated
-func updateDomainEntry(domainEntry *mcommon.DomainEntry, cert *x509.Certificate, certChain []*x509.Certificate) bool {
+func updateDomainEntry(domainEntry *mcommon.DomainEntry, cert *ctx509.Certificate, certChain []*ctx509.Certificate) bool {
 	return domainEntry.AddCert(cert, certChain)
 }
 
