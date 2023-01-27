@@ -30,6 +30,18 @@ func NewMockDB() *MockDB {
 // Close closes the connection.
 func (d *MockDB) Close() error { return nil }
 
+func (d *MockDB) TruncateAllTables() error { return nil }
+
+func (d *MockDB) DisableIndexing(table string) error { return nil }
+
+func (d *MockDB) EnableIndexing(table string) error { return nil }
+
+func (d *MockDB) InsertCerts(ctx context.Context, ids []common.SHA256Output, payloads [][]byte,
+	parents []common.SHA256Output) error {
+
+	return nil
+}
+
 func (d *MockDB) RetrieveTreeNode(ctx context.Context, id common.SHA256Output) ([]byte, error) {
 	return d.TreeTable[id], nil
 }
@@ -111,3 +123,5 @@ func (d *MockDB) RemoveAllUpdatedDomains(ctx context.Context) error {
 	d.UpdatesTable = make(map[common.SHA256Output]struct{})
 	return nil
 }
+
+func (d *MockDB) UpdatedDomains() (chan []common.SHA256Output, chan error) { return nil, nil }

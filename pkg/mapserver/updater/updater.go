@@ -87,7 +87,13 @@ func (mapUpdater *MapUpdater) UpdateCertsLocally(ctx context.Context, certList [
 			certChains[i] = append(certChains[i], certChainItem)
 		}
 	}
-	return mapUpdater.updateCerts(ctx, certs, certChains)
+	return mapUpdater.updateCerts2(ctx, certs, certChains)
+}
+
+func (m *MapUpdater) updateCerts2(ctx context.Context, certs []*ctx509.Certificate,
+	chains [][]*ctx509.Certificate) error {
+
+	return UpdateCerts(ctx, m.dbConn, certs, chains)
 }
 
 // updateCerts: update the tables and SMT (in memory) using certificates
@@ -226,4 +232,31 @@ func (mapUpdater *MapUpdater) GetRoot() []byte {
 // Close: close connection
 func (mapUpdater *MapUpdater) Close() error {
 	return mapUpdater.smt.Close()
+}
+
+func UpdateCerts(ctx context.Context, conn db.Conn, certs []*ctx509.Certificate,
+	chains [][]*ctx509.Certificate) error {
+
+	certs, parents := UnfoldCerts(certs, chains)
+
+	ids := make([]common.SHA256Output, len(certs))
+	payloads := make([][]byte, len(certs))
+	parentIds := make([]common.SHA256Output, len(certs))
+	for i, c := range certs {
+		ids[i] = common.SHA256Hash32Bytes(c.Raw)
+		payloads[i] = c.Raw
+		if parents[i] != nil {
+			parentIds[i] = common.SHA256Hash32Bytes(parents[i].Raw)
+		}
+	}
+
+	// TODO(juagargi) check first in DB which cert ids are already present and skip sending them
+
+	if err := conn.InsertCerts(context.Background(), ids, payloads, parentIds); err != nil {
+		panic(err)
+	}
+
+	// Each cert that has been updated needs an entry in `domains` and `dirty`
+	// TODO
+	return nil
 }

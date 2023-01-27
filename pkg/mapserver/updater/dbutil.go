@@ -19,12 +19,12 @@ type dbResult struct {
 
 // retrieveAffectedDomainFromDB: get affected domain entries from db
 func (mapUpdater *MapUpdater) retrieveAffectedDomainFromDB(ctx context.Context,
-	affectedDomainsMap uniqueSet) (map[common.SHA256Output]*mapCommon.DomainEntry, error) {
+	affectedDomainsSet uniqueSet) (map[common.SHA256Output]*mapCommon.DomainEntry, error) {
 
 	// XXX(juagargi) review why passing a set (we need to convert it to a slice)
 	// list of domain hashes to fetch the domain entries from db
-	affectedDomainHashes := make([]common.SHA256Output, 0, len(affectedDomainsMap))
-	for k := range affectedDomainsMap {
+	affectedDomainHashes := make([]common.SHA256Output, 0, len(affectedDomainsSet))
+	for k := range affectedDomainsSet {
 		affectedDomainHashes = append(affectedDomainHashes, k)
 	}
 

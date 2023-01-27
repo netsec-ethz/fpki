@@ -8,8 +8,8 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
 )
 
-// extractCertDomains: get domain from cert: {Common Name, SANs}
-func extractCertDomains(cert *x509.Certificate) []string {
+// ExtractCertDomains: get domain from cert: {Common Name, SANs}
+func ExtractCertDomains(cert *x509.Certificate) []string {
 	domains := make(uniqueStringSet)
 	if len(cert.Subject.CommonName) != 0 {
 		domains[cert.Subject.CommonName] = struct{}{}
