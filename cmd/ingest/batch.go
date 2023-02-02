@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"sync"
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
@@ -102,12 +101,12 @@ func (p *BatchProcessor) start() {
 }
 
 func (p *BatchProcessor) Wait() {
-	fmt.Println("deleteme waiting 1")
+	// fmt.Println("deleteme waiting 1")
 	p.incomingWg.Wait()
 	close(p.incomingCh)
-	fmt.Println("deleteme waiting 2")
+	// fmt.Println("deleteme waiting 2")
 	<-p.doneCh
-	fmt.Println("deleteme waiting 3")
+	// fmt.Println("deleteme waiting 3")
 }
 
 // Process processes a Batch into the DB.
@@ -122,11 +121,14 @@ func (p *BatchProcessor) Process(b *Batch) {
 func (p *BatchProcessor) wrapBatch(batch *Batch) {
 	defer p.incomingWg.Done() // one less batch to process
 	p.processBatch(batch)
-	fmt.Println("batch processed")
+	// fmt.Println("batch processed")
 }
 
 func (p *BatchProcessor) processBatch(batch *Batch) {
 	// Store certificates in DB:
+	if len(batch.Certs) == 0 {
+		return
+	}
 	err := updater.UpdateCerts(context.Background(), p.conn, batch.Certs, batch.Chains)
 	if err != nil {
 		panic(err)
