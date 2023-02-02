@@ -14,6 +14,11 @@ import (
 )
 
 const (
+	NumFileReaders = 8
+	NumParsers     = 64
+)
+
+const (
 	CertificateColumn = 3
 	CertChainColumn   = 4
 )
@@ -60,6 +65,7 @@ func mainFunction() int {
 	go func() {
 		<-signals
 		stopProfiles()
+		os.Exit(1)
 	}()
 
 	conn, err := db.Connect(nil)
