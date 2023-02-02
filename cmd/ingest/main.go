@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"runtime/pprof"
 
 	"github.com/netsec-ethz/fpki/pkg/db"
 )
@@ -16,12 +17,36 @@ const (
 )
 
 func main() {
+	os.Exit(mainFunction())
+}
+func mainFunction() int {
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage:\n%s directory\n", os.Args[0])
+		flag.PrintDefaults()
 	}
+	cpuProfile := flag.String("cpuprofile", "", "write a CPU profile to file")
+	memProfile := flag.String("memprofile", "", "write a memory profile to file")
 	flag.Parse()
 	if flag.NArg() != 1 {
 		flag.Usage()
+		return 1
+	}
+
+	// Profiling:
+	if *cpuProfile != "" {
+		f, err := os.Create(*cpuProfile)
+		exitIfError(err)
+		err = pprof.StartCPUProfile(f)
+		exitIfError(err)
+		defer pprof.StopCPUProfile()
+	}
+	if *memProfile != "" {
+		defer func() {
+			f, err := os.Create(*memProfile)
+			exitIfError(err)
+			err = pprof.WriteHeapProfile(f)
+			exitIfError(err)
+		}()
 	}
 
 	conn, err := db.Connect(nil)
@@ -42,6 +67,7 @@ func main() {
 	// Close DB and check errors.
 	err = conn.Close()
 	exitIfError(err)
+	return 0
 }
 
 func listOurFiles(dir string) (gzFiles, csvFiles []string) {
