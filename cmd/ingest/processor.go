@@ -52,28 +52,33 @@ func (p *Processor) start() {
 	// Process files and parse the CSV contents:
 	go func() {
 		wg := sync.WaitGroup{}
-		for f := range p.incomingFileCh {
-			f := f
-			wg.Add(1)
+		wg.Add(NumFileReaders)
+		for r := 0; r < NumFileReaders; r++ {
 			go func() {
 				defer wg.Done()
-				r, err := f.Open()
-				if err != nil {
-					p.errorCh <- err
-					return
-				}
-				if err := p.ingestWithCSV(r); err != nil {
-					p.errorCh <- err
-					return
-				}
-				if err := f.Close(); err != nil {
-					p.errorCh <- err
-					return
+				for f := range p.incomingFileCh {
+					func() {
+						r, err := f.Open()
+						if err != nil {
+							p.errorCh <- err
+							return
+						}
+						if err := p.ingestWithCSV(r); err != nil {
+							p.errorCh <- err
+							return
+						}
+						if err := f.Close(); err != nil {
+							p.errorCh <- err
+							return
+						}
+						fmt.Printf(".")
+					}()
 				}
 			}()
 		}
 		wg.Wait()
-		fmt.Println("deleteme done with incoming files, closing parsed data channel")
+		fmt.Println()
+		fmt.Println("Done with incoming files, closing parsed data channel.")
 		// Because we are done writing parsed content, close that channel.
 		close(p.fromParserCh)
 	}()
@@ -85,7 +90,7 @@ func (p *Processor) start() {
 			batch.AddCert(data)
 			if batch.Full() {
 				p.batchProcessor.Process(batch)
-				fmt.Print(".")
+				// fmt.Print(".")
 				batch = NewBatch()
 			}
 		}
@@ -144,15 +149,8 @@ func (p *Processor) AddCsvFiles(fileNames []string) {
 func (p *Processor) ingestWithCSV(fileReader io.Reader) error {
 	reader := csv.NewReader(fileReader)
 	reader.FieldsPerRecord = -1 // don't check number of fields
-	reader.ReuseRecord = true
 
-	var err error
-	var fields []string
-	for lineNo := 1; err == nil; lineNo++ {
-		fields, err = reader.Read()
-		if len(fields) == 0 { // there exist empty lines (e.g. at the end of the gz files)
-			continue
-		}
+	parseFunction := func(fields []string, lineNo int) error {
 		rawBytes, err := base64.StdEncoding.DecodeString(fields[CertificateColumn])
 		if err != nil {
 			return err
@@ -182,7 +180,42 @@ func (p *Processor) ingestWithCSV(fileReader io.Reader) error {
 			Cert:        cert,
 			CertChain:   chain,
 		}
+		return nil
 	}
+
+	type lineAndFields struct {
+		lineNo int
+		fields []string
+	}
+	recordsChan := make(chan *lineAndFields)
+
+	wg := sync.WaitGroup{}
+	wg.Add(NumParsers)
+	for r := 0; r < NumParsers; r++ {
+		go func() {
+			defer wg.Done()
+			for x := range recordsChan {
+				if err := parseFunction(x.fields, x.lineNo); err != nil {
+					panic(err)
+				}
+			}
+		}()
+	}
+	records, err := reader.ReadAll()
+	if err != nil {
+		return err
+	}
+	for lineNo, fields := range records {
+		if len(fields) == 0 { // there exist empty lines (e.g. at the end of the gz files)
+			continue
+		}
+		recordsChan <- &lineAndFields{
+			lineNo: lineNo,
+			fields: fields,
+		}
+	}
+	close(recordsChan)
+	wg.Wait()
 	return nil
 }
 
