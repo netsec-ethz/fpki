@@ -22,32 +22,16 @@ EOF
 echo "$CMD" | mysql -u root
 
 
-# CMD=$(cat <<EOF
-# USE fpki;
-# CREATE TABLE certs (
-#   id VARBINARY(32) NOT NULL,
-#   payload LONGBLOB,
-#   parent VARBINARY(32) DEFAULT NULL,
-#   PRIMARY KEY (id)
-# ) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
-# EOF
-# )
-# echo "$CMD" | mysql -u root
-
 CMD=$(cat <<EOF
 USE fpki;
 CREATE TABLE certs (
-  N BIGINT NOT NULL AUTO_INCREMENT,
-  id VARBINARY(32) NOT NULL,
+  id VARBINARY(32),
   payload LONGBLOB,
-  parent VARBINARY(32) DEFAULT NULL,
-  PRIMARY KEY (N),
-  UNIQUE KEY (id)
-) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
+  parent VARBINARY(32) DEFAULT NULL
+) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
 EOF
 )
 echo "$CMD" | mysql -u root
-
 
 
 CMD=$(cat <<EOF
@@ -58,7 +42,7 @@ CREATE TABLE domains (
   domain VARCHAR(300) COLLATE ascii_bin DEFAULT NULL,
   payload_id BIGINT,
   PRIMARY KEY (cert_id,domain_id)
-) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
+) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
 EOF
 )
 echo "$CMD" | mysql -u root
@@ -71,7 +55,7 @@ CREATE TABLE domain_payloads (
   payload LONGBLOB,
   payload_hash VARBINARY(32) DEFAULT NULL,
   PRIMARY KEY (id)
-) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
+) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
 EOF
 )
 echo "$CMD" | mysql -u root
@@ -82,7 +66,7 @@ USE fpki;
 CREATE TABLE dirty (
   id VARBINARY(32) NOT NULL,
   PRIMARY KEY (id)
-) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
+) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
 EOF
 )
 echo "$CMD" | mysql -u root
@@ -93,7 +77,7 @@ USE fpki;
 CREATE TABLE root (
   key32 VARBINARY(32) NOT NULL,
   PRIMARY KEY (key32)
-) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
+) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
 EOF
 )
 echo "$CMD" | mysql -u root
@@ -107,7 +91,7 @@ CREATE TABLE tree (
   id BIGINT NOT NULL AUTO_INCREMENT,
   PRIMARY KEY (id),
   UNIQUE KEY key_UNIQUE (key32)
-) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
+) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
 EOF
 )
 echo "$CMD" | mysql -u root
