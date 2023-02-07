@@ -69,31 +69,28 @@ func (u *MapUpdater) UpdateNextBatch(ctx context.Context) (int, error) {
 
 // UpdateCertsLocally: add certs (in the form of asn.1 encoded byte arrays) directly without querying log
 func (mapUpdater *MapUpdater) UpdateCertsLocally(ctx context.Context, certList [][]byte, certChainList [][][]byte) error {
-	certs := []*ctx509.Certificate{}
-	certChains := [][]*ctx509.Certificate{}
+	names := make([][]string, 0, len(certList)) // Set of names per certificate
+	certs := make([]*ctx509.Certificate, 0, len(certList))
+	certChains := make([][]*ctx509.Certificate, 0, len(certList))
 	for i, certRaw := range certList {
 		cert, err := ctx509.ParseCertificate(certRaw)
 		if err != nil {
 			return err
 		}
 		certs = append(certs, cert)
+		names = append(names, ExtractCertDomains(cert))
 
-		certChains = append(certChains, []*ctx509.Certificate{})
-		for _, certChainItemRaw := range certChainList[i] {
-			certChainItem, err := ctx509.ParseCertificate(certChainItemRaw)
+		chain := make([]*ctx509.Certificate, len(certChainList[i]))
+		for i, certChainItemRaw := range certChainList[i] {
+			chain[i], err = ctx509.ParseCertificate(certChainItemRaw)
 			if err != nil {
 				return err
 			}
-			certChains[i] = append(certChains[i], certChainItem)
 		}
+		certChains = append(certChains, chain)
 	}
-	return mapUpdater.updateCerts2(ctx, certs, certChains)
-}
-
-func (m *MapUpdater) updateCerts2(ctx context.Context, certs []*ctx509.Certificate,
-	chains [][]*ctx509.Certificate) error {
-
-	return UpdateCerts(ctx, m.dbConn, certs, chains)
+	certs, parents := UnfoldCerts(certs, certChains)
+	return UpdateCerts(ctx, mapUpdater.dbConn, names, certs, parents)
 }
 
 // updateCerts: update the tables and SMT (in memory) using certificates
@@ -234,10 +231,8 @@ func (mapUpdater *MapUpdater) Close() error {
 	return mapUpdater.smt.Close()
 }
 
-func UpdateCerts(ctx context.Context, conn db.Conn, certs []*ctx509.Certificate,
-	chains [][]*ctx509.Certificate) error {
-
-	certs, parents := UnfoldCerts(certs, chains)
+func UpdateCerts(ctx context.Context, conn db.Conn, names [][]string,
+	certs []*ctx509.Certificate, parents []*ctx509.Certificate) error {
 
 	ids := make([]common.SHA256Output, len(certs))
 	payloads := make([][]byte, len(certs))
@@ -253,10 +248,10 @@ func UpdateCerts(ctx context.Context, conn db.Conn, certs []*ctx509.Certificate,
 	// TODO(juagargi) check first in DB which cert ids are already present and skip sending them
 
 	if err := conn.InsertCerts(context.Background(), ids, payloads, parentIds); err != nil {
-		panic(err)
+		return err
 	}
 
 	// Each cert that has been updated needs an entry in `domains` and `dirty`
-	// TODO
+	// TODO(juagargi)
 	return nil
 }

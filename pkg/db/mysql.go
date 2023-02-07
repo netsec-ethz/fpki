@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/go-sql-driver/mysql"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/netsec-ethz/fpki/pkg/common"
 )
@@ -156,45 +155,21 @@ func (c *mysqlDB) EnableIndexing(table string) error {
 func (c *mysqlDB) InsertCerts(ctx context.Context, ids []common.SHA256Output, payloads [][]byte,
 	parents []common.SHA256Output) error {
 
-	for tryNumber := 0; tryNumber < 2; tryNumber++ {
-		// TODO(juagargi) set a prepared statement in constructor
-		str := "REPLACE into certs (id, payload, parent) values " + repeatStmt(len(ids), 3)
-		insertCerts, err := c.db.Prepare(str)
-		if err != nil {
-			return err
-		}
-
-		data := make([]interface{}, 3*len(ids))
-		for i := range ids {
-			data[i*3] = ids[i][:]
-			data[i*3+1] = payloads[1]
-			data[i*3+2] = parents[i][:]
-		}
-
-		res, err := insertCerts.ExecContext(ctx, data...)
-		if err != nil {
-			if myErr, ok := err.(*mysql.MySQLError); ok {
-				if myErr.Number == 1213 {
-					// TODO(juagargi) find out why so many deadlocks occur and fix the situation
-					fmt.Println("deleteme deadlock")
-
-					// XXX(juagargi) retrying seems to be around 50% more expensive than if
-					// we had no deadlock.
-					// break
-					continue
-				}
-			}
-			fmt.Printf("type %T\n", err)
-			panic(err)
-			return err
-		}
-		n, err := res.RowsAffected()
-		if err != nil {
-			return err
-		}
-		fmt.Printf("inserted %d certificates\n", n)
-		break
+	// TODO(juagargi) set a prepared statement in constructor
+	// str := "REPLACE into certs (id, payload, parent) values " + repeatStmt(len(ids), 3)
+	str := "INSERT into certs (id, payload, parent) values " + repeatStmt(len(ids), 3)
+	data := make([]interface{}, 3*len(ids))
+	for i := range ids {
+		data[i*3] = ids[i][:]
+		data[i*3+1] = payloads[i]
+		data[i*3+2] = parents[i][:]
 	}
+	_, err := c.db.Exec(str, data...)
+	if err != nil {
+
+		return err
+	}
+
 	return nil
 }
 

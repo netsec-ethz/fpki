@@ -150,6 +150,8 @@ func GetAffectedDomainAndCertMap(certs []*ctx509.Certificate, certChains [][]*ct
 // UnfoldCerts takes a slice of certificates and chains with the same length,
 // and returns all certificates once, without duplicates, and a pointer to the parent in the
 // trust chain, or nil if the certificate is root.
+// The parents returned slice has the same elements as the certificates returned slice.
+// When a certificate is root, it's corresponding parents entry is nil.
 func UnfoldCerts(certs []*ctx509.Certificate, chains [][]*ctx509.Certificate) (
 	certificates, parents []*ctx509.Certificate) {
 
@@ -174,6 +176,12 @@ func UnfoldCerts(certs []*ctx509.Certificate, chains [][]*ctx509.Certificate) (
 		chains = pendingChains
 	}
 	return
+}
+
+func UnfoldCert(cert *ctx509.Certificate, chain []*ctx509.Certificate) (
+	certificates, parents []*ctx509.Certificate) {
+
+	return UnfoldCerts([]*ctx509.Certificate{cert}, [][]*ctx509.Certificate{chain})
 }
 
 // update domain entries
