@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -22,7 +21,12 @@ type Configuration struct {
 // set to influence the connection. The defaults are set to yield "root@tcp(localhost)/fpki" as
 // the DSN.
 func ConfigFromEnvironment() *Configuration {
-	env := map[string]string{"MYSQL_USER": "root", "MYSQL_PASSWORD": "", "MYSQL_HOST": "localhost", "MYSQL_PORT": ""}
+	env := map[string]string{
+		"MYSQL_USER":     "root",
+		"MYSQL_PASSWORD": "",
+		"MYSQL_HOST":     "127.0.0.1",
+		"MYSQL_PORT":     "",
+	}
 	for k := range env {
 		v, exists := os.LookupEnv(k)
 		if exists {
@@ -54,6 +58,29 @@ func Connect(config *Configuration) (Conn, error) {
 	if config == nil {
 		config = ConfigFromEnvironment()
 	}
+
+	db, err := connect(config)
+	if err != nil {
+		return nil, fmt.Errorf("cannot open DB: %w", err)
+	}
+
+	// Set a very small number of concurrent connections per sql.DB .
+	// This avoids routines creating connections to the DB and holding vast amounts of
+	// data (which impact the heap), and forcing to slow down the pipelines until the existing
+	// DB connections complete their work.
+	maxConnections := 8
+	db.SetMaxOpenConns(maxConnections)
+
+	// check schema
+	if config.CheckSchema {
+		if err := checkSchema(db); err != nil {
+			return nil, fmt.Errorf("checking schema on connection: %w", err)
+		}
+	}
+	return NewMysqlDB(db)
+}
+
+func connect(config *Configuration) (*sql.DB, error) {
 	dsn, err := url.Parse(config.Dsn)
 	if err != nil {
 		return nil, fmt.Errorf("bad connection string: %w", err)
@@ -63,28 +90,7 @@ func Connect(config *Configuration) (Conn, error) {
 		uri.Add(k, v)
 	}
 	dsn.RawQuery = uri.Encode()
-	db, err := sql.Open("mysql", dsn.String())
-	if err != nil {
-		return nil, fmt.Errorf("cannot open DB: %w", err)
-	}
-
-	// value set higher could trigger issues in the system
-	maxConnections := 2048
-	db.SetMaxOpenConns(maxConnections)
-	db.SetMaxIdleConns(maxConnections)
-	db.SetConnMaxLifetime(-1)              // don't close them
-	db.SetConnMaxIdleTime(1 * time.Minute) // don't close them
-	if _, err = db.Exec("SET GLOBAL max_connections = ?", maxConnections); err != nil {
-		return nil, err
-	}
-
-	// check schema
-	if config.CheckSchema {
-		if err := checkSchema(db); err != nil {
-			return nil, fmt.Errorf("checking schema on connection: %w", err)
-		}
-	}
-	return NewMysqlDB(db)
+	return sql.Open("mysql", dsn.String())
 }
 
 func checkSchema(c *sql.DB) error {
