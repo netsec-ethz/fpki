@@ -34,7 +34,16 @@ func NewSMTUpdater(conn db.Conn, root []byte, cacheHeight int) *SMTUpdater {
 }
 
 func (u *SMTUpdater) Start() {
-	fmt.Println("deleteme starting SMT updater")
+	fmt.Println("Starting SMT updater")
+
+	// Start processing the error channel.
+	go u.processErrorChannel()
+
+	if 4%5 != 0 { // deleteme
+		close(u.errorCh)
+		return
+	}
+
 	// Read batches of updated nodes from `updates`:
 	go func() {
 		domainsCh, errorCh := u.Store.UpdatedDomains()
@@ -56,25 +65,22 @@ func (u *SMTUpdater) Start() {
 		// Nothing else to process, close error channel.
 		close(u.errorCh)
 	}()
-	go u.processErrorChannel()
+
 }
 
 func (u *SMTUpdater) Wait() error {
-	fmt.Println("deleteme waiting for SMT updater to finish")
 	return <-u.doneCh
 }
 
 func (u *SMTUpdater) processErrorChannel() {
 	var withErrors bool
 	for err := range u.errorCh {
-		if err == nil {
-			continue
+		if err != nil {
+			withErrors = true
+			fmt.Printf("SMT update, error: %s\n", err)
 		}
-		withErrors = true
-		fmt.Printf("SMT update, error: %s\n", err)
 	}
 	if withErrors {
-		fmt.Println("deleteme errors found")
 		u.doneCh <- fmt.Errorf("errors found")
 	} else {
 		u.doneCh <- nil
