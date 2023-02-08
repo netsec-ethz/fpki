@@ -16,12 +16,19 @@ import (
 const (
 	NumFileReaders = 8
 	NumParsers     = 64
+	NumDBWriters   = 32
+
+	BatchSize = 1000 // # of certificates inserted at once.
 )
 
 const (
 	CertificateColumn = 3
 	CertChainColumn   = 4
 )
+
+// Times gathered at jupiter, 64 gz files, no CSV
+// InnoDB: 8m 17s
+// MyISAM: 1m 33s
 
 func main() {
 	os.Exit(mainFunction())
@@ -68,9 +75,13 @@ func mainFunction() int {
 		os.Exit(1)
 	}()
 
-	conn, err := db.Connect(nil)
+	// Connect to DB via local socket, should be faster.
+	config := db.ConfigFromEnvironment()
+	config.Dsn = "root@unix(/var/run/mysqld/mysqld.sock)/fpki"
+	conn, err := db.Connect(config)
 	exitIfError(err)
 
+	// All GZ and CSV files found under the directory of the argument.
 	gzFiles, csvFiles := listOurFiles(flag.Arg(0))
 	fmt.Printf("# gzFiles: %d, # csvFiles: %d\n", len(gzFiles), len(csvFiles))
 

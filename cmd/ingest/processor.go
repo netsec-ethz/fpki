@@ -14,32 +14,34 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 )
 
+// Processor is the pipeline that takes file names and process them into certificates
+// inside the DB and SMT. It is composed of several different stages,
+// described in the `start` method.
 type Processor struct {
-	BatchSize int
-	Conn      db.Conn
+	Conn              db.Conn
+	incomingFileCh    chan File               // New files with certificates to be ingested
+	certWithChainChan chan *CertWithChainData // After parsing files
+	nodeChan          chan *CertificateNode   // After finding parents, to be sent to DB and SMT
+	batchProcessor    *CertificateProcessor   // Processes certificate nodes (with parent pointer)
 
-	incomingFileCh chan File      // indicates new file(s) with certificates to be ingested
-	fromParserCh   chan *CertData // parser data to be sent to SMT and DB
-	batchProcessor *BatchProcessor
-
-	errorCh chan error // errors accumulate here
-	doneCh  chan error // the aggregation of all errors. Signals Processor is done
+	errorCh chan error // Errors accumulate here
+	doneCh  chan error // Signals Processor is done
 }
 
-type CertData struct {
+type CertWithChainData struct {
 	DomainNames []string
 	Cert        *ctx509.Certificate
 	CertChain   []*ctx509.Certificate
 }
 
 func NewProcessor(conn db.Conn) *Processor {
+	nodeChan := make(chan *CertificateNode)
 	p := &Processor{
-		BatchSize: 1000,
-		Conn:      conn,
-
-		incomingFileCh: make(chan File),
-		fromParserCh:   make(chan *CertData),
-		batchProcessor: NewBatchProcessor(conn),
+		Conn:              conn,
+		incomingFileCh:    make(chan File),
+		certWithChainChan: make(chan *CertWithChainData),
+		nodeChan:          nodeChan,
+		batchProcessor:    NewBatchProcessor(conn, nodeChan),
 
 		errorCh: make(chan error),
 		doneCh:  make(chan error),
@@ -48,68 +50,54 @@ func NewProcessor(conn db.Conn) *Processor {
 	return p
 }
 
+// start starts the pipeline. The pipeline consists on the following transformations:
+// - File to rows.
+// - Row to certificate with chain.
+// - Certificate with chain to certificate with immediate parent.
+// This pipeline ends here, and it's picked up by other processor.
+// Each stage (transformation) is represented by a goroutine spawned in this start function.
+// Each stage reads from the previous channel and outputs to the next channel.
+// Each stage closes the channel it outputs to.
 func (p *Processor) start() {
 	// Process files and parse the CSV contents:
 	go func() {
+		// Spawn a fixed number of file readers.
 		wg := sync.WaitGroup{}
 		wg.Add(NumFileReaders)
 		for r := 0; r < NumFileReaders; r++ {
 			go func() {
 				defer wg.Done()
 				for f := range p.incomingFileCh {
-					func() {
-						r, err := f.Open()
-						if err != nil {
-							p.errorCh <- err
-							return
-						}
-						if err := p.ingestWithCSV(r); err != nil {
-							p.errorCh <- err
-							return
-						}
-						if err := f.Close(); err != nil {
-							p.errorCh <- err
-							return
-						}
-						fmt.Printf(".")
-					}()
+					p.processFile(f)
 				}
 			}()
 		}
 		wg.Wait()
 		fmt.Println()
 		fmt.Println("Done with incoming files, closing parsed data channel.")
-		// Because we are done writing parsed content, close that channel.
-		close(p.fromParserCh)
+		// Because we are done writing parsed content, close this stage's output channel:
+		close(p.certWithChainChan)
 	}()
 
-	// Process the parsed content into the DB:
+	// Process the parsed content into the DB, and from DB into SMT:
 	go func() {
-		batch := NewBatch()
-		for data := range p.fromParserCh {
-			batch.AddCert(data)
-			if batch.Full() {
-				p.batchProcessor.Process(batch)
-				// fmt.Print(".")
-				batch = NewBatch()
+		for data := range p.certWithChainChan {
+			certs, parents := updater.UnfoldCert(data.Cert, data.CertChain)
+			for i := range certs {
+				p.nodeChan <- &CertificateNode{
+					Names:  data.DomainNames,
+					Cert:   certs[i],
+					Parent: parents[i],
+				}
 			}
 		}
-		// Process last batch, which may have zero size.
-		p.batchProcessor.Process(batch)
-		fmt.Println()
-		p.batchProcessor.Wait()
+		// This stage has finished, close the output channel:
+		close(p.nodeChan)
 
-		fmt.Printf("\ndeleteme done ingesting the certificates. SMT still to go\n\n\n\n")
-
-		if 4%5 != 0 { // deleteme
-			close(p.errorCh)
-			return
-		}
 		// Now start processing the changed domains into the SMT:
 		smtProcessor := NewSMTUpdater(p.Conn, nil, 32)
 		smtProcessor.Start()
 		if err := smtProcessor.Wait(); err != nil {
-			fmt.Printf("deleteme error found in SMT processing: %s\n", err)
 			p.errorCh <- err
 		}
 
@@ -126,26 +114,51 @@ func (p *Processor) start() {
 
 func (p *Processor) Wait() error {
 	// Close the parsing and incoming channels:
-	fmt.Println("deleteme closing incomingFileCh")
 	close(p.incomingFileCh)
 
 	// Wait until all data has been processed.
-	fmt.Println("deleteme waiting for done signal")
 	return <-p.doneCh
 }
 
+// AddGzFiles adds a CSV .gz file to the initial stage.
+// It blocks until it is accepted.
 func (p *Processor) AddGzFiles(fileNames []string) {
 	for _, filename := range fileNames {
 		p.incomingFileCh <- (&GzFile{}).WithFile(filename)
 	}
 }
 
+// AddGzFiles adds a .csv file to the initial stage.
+// It blocks until it is accepted.
 func (p *Processor) AddCsvFiles(fileNames []string) {
 	for _, filename := range fileNames {
 		p.incomingFileCh <- (&CsvFile{}).WithFile(filename)
 	}
 }
 
+// processFile processes any File.
+// This stage is responsible of parsing the data into X509 certificates and chains.
+func (p *Processor) processFile(f File) {
+	r, err := f.Open()
+	if err != nil {
+		p.errorCh <- err
+		return
+	}
+	// ingestWithCSV will send data to the cert with chain channel
+	if err := p.ingestWithCSV(r); err != nil {
+		p.errorCh <- err
+		return
+	}
+	if err := f.Close(); err != nil {
+		p.errorCh <- err
+		return
+	}
+}
+
+// ingestWithCSV spawns as many goroutines as specified by the constant `NumParsers`,
+// that divide the CSV rows and parse them.
+// For efficiency reasons, the whole file is read at once in memory, and its rows divided
+// from there.
 func (p *Processor) ingestWithCSV(fileReader io.Reader) error {
 	reader := csv.NewReader(fileReader)
 	reader.FieldsPerRecord = -1 // don't check number of fields
@@ -175,7 +188,7 @@ func (p *Processor) ingestWithCSV(fileReader io.Reader) error {
 				return fmt.Errorf("at line %d: %s\n%s", lineNo, err, fields[CertChainColumn])
 			}
 		}
-		p.fromParserCh <- &CertData{
+		p.certWithChainChan <- &CertWithChainData{
 			DomainNames: domainNames,
 			Cert:        cert,
 			CertChain:   chain,
@@ -219,14 +232,14 @@ func (p *Processor) ingestWithCSV(fileReader io.Reader) error {
 	return nil
 }
 
+// processErrorChannel outputs the errors it encounters in the errors channel.
+// Returns with error if any is found, or nil if no error.
 func (p *Processor) processErrorChannel() error {
 	var errorsFound bool
-	fmt.Println("deleteme processing error channel")
 	for err := range p.errorCh {
 		if err == nil {
 			continue
 		}
-		fmt.Println("deleteme errors found")
 		errorsFound = true
 		fmt.Fprintf(os.Stderr, "%s\n", err)
 	}
