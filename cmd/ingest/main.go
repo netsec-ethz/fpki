@@ -28,7 +28,7 @@ const (
 
 // Times gathered at jupiter, 64 gz files, no CSV
 // InnoDB: 8m 17s
-// MyISAM: 1m 33s
+// MyISAM: 1m 33s 374 Mb/s
 
 func main() {
 	os.Exit(mainFunction())

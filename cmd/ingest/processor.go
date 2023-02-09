@@ -94,6 +94,9 @@ func (p *Processor) start() {
 		// This stage has finished, close the output channel:
 		close(p.nodeChan)
 
+		// Wait for the next stage to finish
+		p.batchProcessor.Wait()
+
 		// Now start processing the changed domains into the SMT:
 		smtProcessor := NewSMTUpdater(p.Conn, nil, 32)
 		smtProcessor.Start()
