@@ -25,9 +25,11 @@ echo "$CMD" | mysql -u root
 CMD=$(cat <<EOF
 USE fpki;
 CREATE TABLE certs (
-  id VARBINARY(32),
+  id VARBINARY(32) NOT NULL,
   payload LONGBLOB,
-  parent VARBINARY(32) DEFAULT NULL
+  parent VARBINARY(32) DEFAULT NULL,
+  PRIMARY KEY(id),
+  UNIQUE KEY(id)
 ) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
 EOF
 )

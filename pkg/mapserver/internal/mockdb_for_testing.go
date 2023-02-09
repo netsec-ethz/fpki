@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
@@ -27,6 +28,10 @@ func NewMockDB() *MockDB {
 	}
 }
 
+func (d *MockDB) DB() *sql.DB {
+	return nil
+}
+
 // Close closes the connection.
 func (d *MockDB) Close() error { return nil }
 
@@ -36,8 +41,12 @@ func (d *MockDB) DisableIndexing(table string) error { return nil }
 
 func (d *MockDB) EnableIndexing(table string) error { return nil }
 
-func (d *MockDB) InsertCerts(ctx context.Context, ids []common.SHA256Output, payloads [][]byte,
-	parents []common.SHA256Output) error {
+func (d *MockDB) CheckCertsExist(ctx context.Context, ids []*common.SHA256Output) ([]bool, error) {
+	return make([]bool, len(ids)), nil
+}
+
+func (d *MockDB) InsertCerts(ctx context.Context, ids []*common.SHA256Output, payloads [][]byte,
+	parents []*common.SHA256Output) error {
 
 	return nil
 }

@@ -171,6 +171,48 @@ func TestFetchUpdatedDomainHash(t *testing.T) {
 	assert.Equal(t, 0, len(updaterDB.UpdatesTable))
 }
 
+func TestRunWhenFalse(t *testing.T) {
+	cases := map[string]struct {
+		presence   []bool
+		fromParams []int
+		toParams   []int
+	}{
+		"empty": {
+			fromParams: []int{},
+			toParams:   []int{},
+		},
+		"one": {
+			presence:   []bool{false},
+			fromParams: []int{0},
+			toParams:   []int{0},
+		},
+		"one_true": {
+			presence:   []bool{true},
+			fromParams: []int{},
+			toParams:   []int{},
+		},
+		"010": {
+			presence:   []bool{false, true, false},
+			fromParams: []int{0, 2},
+			toParams:   []int{0, 1},
+		},
+	}
+	for name, tc := range cases {
+		name, tc := name, tc
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			gotTo := make([]int, 0)
+			gotFrom := make([]int, 0)
+			runWhenFalse(tc.presence, func(to, from int) {
+				gotTo = append(gotTo, to)
+				gotFrom = append(gotFrom, from)
+			})
+			assert.Equal(t, tc.fromParams, gotFrom)
+			assert.Equal(t, tc.toParams, gotTo)
+		})
+	}
+}
+
 func getRandomHash() projectCommon.SHA256Output {
 	return projectCommon.SHA256Hash32Bytes(generateRandomBytes(50))
 }
