@@ -98,7 +98,7 @@ func (p *CertificateProcessor) start() {
 			}()
 		}
 		wg.Wait()
-		// This stage is finished, indicate so.
+		// This pipeline is finished, signal it.
 		p.doneCh <- struct{}{}
 	}()
 
@@ -110,6 +110,7 @@ func (p *CertificateProcessor) start() {
 			select {
 			case <-ticker.C:
 			case <-p.doneCh:
+				p.doneCh <- struct{}{} // signal again
 				return
 			}
 			writtenCerts := p.writtenCerts.Load()
