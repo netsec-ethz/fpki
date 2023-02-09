@@ -31,8 +31,12 @@ type Conn interface {
 	// DisableIndexing starts the indexing in the table.
 	EnableIndexing(table string) error
 
-	InsertCerts(ctx context.Context, ids []common.SHA256Output, payloads [][]byte,
-		parents []common.SHA256Output) error
+	// CheckCertsExist returns a slice of true/false values. Each value indicates if
+	// the corresponding certificate identified by its ID is already present in the DB.
+	CheckCertsExist(ctx context.Context, ids []*common.SHA256Output) ([]bool, error)
+
+	InsertCerts(ctx context.Context, ids []*common.SHA256Output, payloads [][]byte,
+		parents []*common.SHA256Output) error
 
 	// ************************************************************
 	//              Function for Tree table

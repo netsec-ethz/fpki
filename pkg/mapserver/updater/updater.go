@@ -231,27 +231,87 @@ func (mapUpdater *MapUpdater) Close() error {
 	return mapUpdater.smt.Close()
 }
 
-func UpdateCerts(ctx context.Context, conn db.Conn, names [][]string,
+func updateCertsOldMethodDeleteme(ctx context.Context, conn db.Conn, names [][]string,
 	certs []*ctx509.Certificate, parents []*ctx509.Certificate) error {
 
-	ids := make([]common.SHA256Output, len(certs))
+	ids := make([]*common.SHA256Output, len(certs))
 	payloads := make([][]byte, len(certs))
-	parentIds := make([]common.SHA256Output, len(certs))
+	parentIds := make([]*common.SHA256Output, len(certs))
 	for i, c := range certs {
-		ids[i] = common.SHA256Hash32Bytes(c.Raw)
+		id := common.SHA256Hash32Bytes(c.Raw)
+		ids[i] = &id
 		payloads[i] = c.Raw
 		if parents[i] != nil {
-			parentIds[i] = common.SHA256Hash32Bytes(parents[i].Raw)
+			id = common.SHA256Hash32Bytes(parents[i].Raw)
+			parentIds[i] = &id
 		}
 	}
 
 	// TODO(juagargi) check first in DB which cert ids are already present and skip sending them
 
-	if err := conn.InsertCerts(context.Background(), ids, payloads, parentIds); err != nil {
+	if err := conn.InsertCerts(ctx, ids, payloads, parentIds); err != nil {
 		return err
 	}
 
 	// Each cert that has been updated needs an entry in `domains` and `dirty`
 	// TODO(juagargi)
 	return nil
+}
+
+func UpdateCerts(ctx context.Context, conn db.Conn, names [][]string,
+	certs []*ctx509.Certificate, parents []*ctx509.Certificate) error {
+
+	ids := make([]*common.SHA256Output, len(certs))
+	for i, c := range certs {
+		id := common.SHA256Hash32Bytes(c.Raw)
+		ids[i] = &id
+	}
+
+	// First check which certificates are already present in the DB.
+	mask, err := conn.CheckCertsExist(ctx, ids)
+	if err != nil {
+		return err
+	}
+	payloads := make([][]byte, 0, len(certs))
+	parentIds := make([]*common.SHA256Output, 0, len(certs))
+	// Prepare new parents, IDs and payloads skipping those certificates already in the DB.
+	runWhenFalse(mask, func(to, from int) {
+		if to != from { // probably unnecessary check, as swapping with itself would be okay
+			ids[to] = ids[from]
+		}
+		payloads = append(payloads, certs[from].Raw)
+		var parent *common.SHA256Output
+		if parents[from] != nil {
+			id := common.SHA256Hash32Bytes(parents[from].Raw)
+			parent = &id
+		}
+		parentIds = append(parentIds, parent)
+	})
+	// deleteme We expect only 1320 unique certificates from the ~  100 Million certificates in DB
+	// DELETEME but when inserting only with the primary key I see 6,392,902 rows.
+	// DELETEME but with primary key and unique key in id,   I see 6,392,913 rows (not the same!)
+	// if len(ids) != len(payloads) {
+	// 	panic(fmt.Sprintf("different sizes original %d != new %d", len(ids), len(payloads)))
+	// }
+	// Trim the end of the original ID slice, as it contains values from the unmasked certificates.
+	ids = ids[:len(payloads)]
+
+	// Only insert those certificates that are not in the mask.
+	if err := conn.InsertCerts(ctx, ids, payloads, parentIds); err != nil {
+		return err
+	}
+
+	// Each cert that has been updated needs an entry in `domains` and `dirty`
+	// TODO(juagargi)
+	return nil
+}
+
+func runWhenFalse(mask []bool, fcn func(to, from int)) {
+	to := 0
+	for from, condition := range mask {
+		if !condition {
+			fcn(to, from)
+			to++
+		}
+	}
 }

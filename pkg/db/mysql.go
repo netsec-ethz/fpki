@@ -152,17 +152,63 @@ func (c *mysqlDB) EnableIndexing(table string) error {
 	return err
 }
 
-func (c *mysqlDB) InsertCerts(ctx context.Context, ids []common.SHA256Output, payloads [][]byte,
-	parents []common.SHA256Output) error {
+// CheckCertsExist returns a slice of true/false values. Each value indicates if
+// the corresponding certificate identified by its ID is already present in the DB.
+func (c *mysqlDB) CheckCertsExist(ctx context.Context, ids []*common.SHA256Output) ([]bool, error) {
+	// Slice to be used in the SQL query:
+	data := make([]interface{}, len(ids))
+	for i, id := range ids {
+		data[i] = id[:]
+	}
 
+	// Prepare a query that returns a vector of bits, 1 means ID is present, 0 means is not.
+	elems := make([]string, len(data))
+	for i := range elems {
+		elems[i] = "SELECT ? AS id"
+	}
+
+	// The query means: join two tables, one with the values I am passing as arguments (those
+	// are the ids) and the certs table, and for those that exist write a 1, otherwise a 0.
+	// Finally, group_concat all rows into just one field of type string.
+	str := "SELECT GROUP_CONCAT(presence SEPARATOR '') FROM (" +
+		"SELECT (CASE WHEN certs.id IS NOT NULL THEN 1 ELSE 0 END) AS presence FROM (" +
+		strings.Join(elems, " UNION ALL ") +
+		") AS request left JOIN ( SELECT id FROM certs ) AS certs ON certs.id = request.id" +
+		") AS t"
+
+	// Return slice of booleans:
+	present := make([]bool, len(ids))
+
+	var value string
+	if err := c.db.QueryRowContext(ctx, str, data...).Scan(&value); err != nil {
+		return nil, err
+	}
+	for i, c := range value {
+		if c == '1' {
+			present[i] = true
+		}
+	}
+
+	return present, nil
+}
+
+func (c *mysqlDB) InsertCerts(ctx context.Context, ids []*common.SHA256Output, payloads [][]byte,
+	parents []*common.SHA256Output) error {
+
+	if len(ids) == 0 {
+		return nil
+	}
 	// TODO(juagargi) set a prepared statement in constructor
-	// str := "REPLACE into certs (id, payload, parent) values " + repeatStmt(len(ids), 3)
-	str := "INSERT into certs (id, payload, parent) values " + repeatStmt(len(ids), 3)
+	// Because the primary key is the SHA256 of the payload, if there is a clash, it must
+	// be that the certificates are identical. Thus always replace.
+	str := "REPLACE into certs (id, payload, parent) values " + repeatStmt(len(ids), 3)
 	data := make([]interface{}, 3*len(ids))
 	for i := range ids {
 		data[i*3] = ids[i][:]
 		data[i*3+1] = payloads[i]
-		data[i*3+2] = parents[i][:]
+		if parents[i] != nil {
+			data[i*3+2] = parents[i][:]
+		}
 	}
 	_, err := c.db.Exec(str, data...)
 	if err != nil {
