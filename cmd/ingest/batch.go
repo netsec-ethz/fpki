@@ -51,6 +51,9 @@ func (b *CertBatch) IsFull() bool {
 type CertificateProcessor struct {
 	conn db.Conn
 
+	updateCertBatch UpdateCertificateFunction // update strategy dependent method
+	strategy        CertificateUpdateStrategy
+
 	incomingCh    chan *CertificateNode // From the previous processor
 	incomingBatch chan *CertBatch       // Ready to be inserted
 	doneCh        chan struct{}
@@ -59,13 +62,39 @@ type CertificateProcessor struct {
 	writtenBytes atomic.Int64
 }
 
-func NewBatchProcessor(conn db.Conn, incoming chan *CertificateNode) *CertificateProcessor {
-	p := &CertificateProcessor{
-		conn:          conn,
-		incomingCh:    incoming,
-		incomingBatch: make(chan *CertBatch),
-		doneCh:        make(chan struct{}),
+type CertificateUpdateStrategy int
+
+const (
+	CertificateUpdateOverwrite    CertificateUpdateStrategy = 0
+	CertificateUpdateKeepExisting CertificateUpdateStrategy = 1
+)
+
+type UpdateCertificateFunction func(
+	context.Context, db.Conn, [][]string, []*ctx509.Certificate, []*ctx509.Certificate) error
+
+func NewBatchProcessor(conn db.Conn, incoming chan *CertificateNode,
+	strategy CertificateUpdateStrategy) *CertificateProcessor {
+
+	// Select the update certificate method depending on the strategy:
+	var updateFcn UpdateCertificateFunction
+	switch strategy {
+	case CertificateUpdateOverwrite:
+		updateFcn = updater.UpdateCertsWithOverwrite
+	case CertificateUpdateKeepExisting:
+		updateFcn = updater.UpdateCertsWithKeepExisting
+	default:
+		panic(fmt.Errorf("invalid strategy %v", strategy))
 	}
+
+	p := &CertificateProcessor{
+		conn:            conn,
+		updateCertBatch: updateFcn,
+		strategy:        strategy,
+		incomingCh:      incoming,
+		incomingBatch:   make(chan *CertBatch),
+		doneCh:          make(chan struct{}),
+	}
+
 	p.start()
 	return p
 }
@@ -73,6 +102,10 @@ func NewBatchProcessor(conn db.Conn, incoming chan *CertificateNode) *Certificat
 // start starts the pipeline.
 // Two stages in this processor: from certificate node to batch, and from batch to DB.
 func (p *CertificateProcessor) start() {
+	// Prepare DB for certificate update.
+	p.PrepareDB()
+
+	// Start pipeline.
 	go func() {
 		batch := NewCertificateBatch()
 		for c := range p.incomingCh {
@@ -98,6 +131,8 @@ func (p *CertificateProcessor) start() {
 			}()
 		}
 		wg.Wait()
+		// Leave the DB ready again.
+		p.ConsolidateDB()
 		// This pipeline is finished, signal it.
 		p.doneCh <- struct{}{}
 	}()
@@ -128,9 +163,55 @@ func (p *CertificateProcessor) Wait() {
 	<-p.doneCh
 }
 
+// PrepareDB prepares the DB for certificate insertion. This could imply dropping keys,
+// disabling indices, etc. depending on the update strategy.
+// Before the DB is functional again, it needs a call to ConsolidateDB.
+func (p *CertificateProcessor) PrepareDB() {
+	switch p.strategy {
+	case CertificateUpdateOverwrite:
+		// Try to remove unique index `id` and primary key. They may not exist.
+		if _, err := p.conn.DB().Exec("ALTER TABLE certs DROP PRIMARY KEY"); err != nil {
+			panic(fmt.Errorf("disabling keys: %s", err))
+		}
+	}
+}
+
+// ConsolidateDB finishes the certificate update process and leaves the DB ready again.
+func (p *CertificateProcessor) ConsolidateDB() {
+	switch p.strategy {
+	case CertificateUpdateOverwrite:
+		// Reenable keys:
+		fmt.Println("Reenabling keys in DB.certs ... ")
+		str := "DROP TABLE IF EXISTS certs_aux_tmp"
+		if _, err := p.conn.DB().Exec(str); err != nil {
+			panic(fmt.Errorf("reenabling keys: %s", err))
+		}
+		str = "CREATE TABLE certs_aux_tmp LIKE certs;"
+		if _, err := p.conn.DB().Exec(str); err != nil {
+			panic(fmt.Errorf("reenabling keys: %s", err))
+		}
+		str = "ALTER TABLE certs_aux_tmp ADD PRIMARY KEY (id)"
+		if _, err := p.conn.DB().Exec(str); err != nil {
+			panic(fmt.Errorf("reenabling keys: %s", err))
+		}
+		str = "INSERT IGNORE INTO certs_aux_tmp SELECT * FROM certs"
+		if _, err := p.conn.DB().Exec(str); err != nil {
+			panic(fmt.Errorf("reenabling keys: %s", err))
+		}
+		str = "DROP TABLE certs"
+		if _, err := p.conn.DB().Exec(str); err != nil {
+			panic(fmt.Errorf("reenabling keys: %s", err))
+		}
+		str = "ALTER TABLE certs_aux_tmp RENAME TO certs"
+		if _, err := p.conn.DB().Exec(str); err != nil {
+			panic(fmt.Errorf("reenabling keys: %s", err))
+		}
+	}
+}
+
 func (p *CertificateProcessor) processBatch(batch *CertBatch) {
 	// Store certificates in DB:
-	err := updater.UpdateCerts(context.Background(), p.conn, batch.Names, batch.Certs, batch.Parents)
+	err := p.updateCertBatch(context.Background(), p.conn, batch.Names, batch.Certs, batch.Parents)
 	if err != nil {
 		panic(err)
 	}
@@ -146,5 +227,6 @@ func (p *CertificateProcessor) processBatch(batch *CertBatch) {
 	}
 	p.writtenBytes.Add(int64(bytesInBatch))
 
+	// Each cert that has been updated needs an entry in `domains` and `dirty`
 	// TODO(juagargi) push entries to the dirty table
 }

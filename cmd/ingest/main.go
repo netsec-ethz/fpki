@@ -27,8 +27,10 @@ const (
 )
 
 // Times gathered at jupiter, 64 gz files, no CSV
-// InnoDB: 8m 17s
-// MyISAM: 1m 33s 374 Mb/s
+// InnoDB: 									8m 17s
+// MyISAM overwrite, no pk (invalid DB):	1m 33s 	374 Mb/s
+// MyISAM overwrite, afterwards pk: 		3m 22s	175.9 Mb/s
+// MyISAM keep, already with pk:			2m 26s	241.0 Mb/s
 
 func main() {
 	os.Exit(mainFunction())
@@ -40,10 +42,26 @@ func mainFunction() int {
 	}
 	cpuProfile := flag.String("cpuprofile", "", "write a CPU profile to file")
 	memProfile := flag.String("memprofile", "", "write a memory profile to file")
+	certUpdateStrategy := flag.String("strategy", "keep", "strategy to update certificates\n"+
+		"\"overwrite\": always send certificates to DB, even if they exist already\n"+
+		"\"keep\": first check if each certificate exists already in DB before sending it\n"+
+		`If data transfer to DB is expensive, "keep" is recommended.`)
 	flag.Parse()
+
 	if flag.NArg() != 1 {
 		flag.Usage()
 		return 1
+	}
+
+	// Update strategy.
+	var strategy CertificateUpdateStrategy
+	switch *certUpdateStrategy {
+	case "overwrite":
+		strategy = CertificateUpdateOverwrite
+	case "keep":
+		strategy = CertificateUpdateKeepExisting
+	default:
+		panic(fmt.Errorf("bad update strategy: %v", *certUpdateStrategy))
 	}
 
 	// Profiling:
@@ -89,7 +107,7 @@ func mainFunction() int {
 	exitIfError(conn.TruncateAllTables())
 
 	// Update certificates and chains.
-	proc := NewProcessor(conn)
+	proc := NewProcessor(conn, strategy)
 	proc.AddGzFiles(gzFiles)
 	proc.AddCsvFiles(csvFiles)
 	exitIfError(proc.Wait())

@@ -200,7 +200,7 @@ func (c *mysqlDB) InsertCerts(ctx context.Context, ids []*common.SHA256Output, p
 	}
 	// TODO(juagargi) set a prepared statement in constructor
 	// Because the primary key is the SHA256 of the payload, if there is a clash, it must
-	// be that the certificates are identical. Thus always replace.
+	// be that the certificates are identical. Thus always REPLACE or INSERT IGNORE.
 	str := "REPLACE into certs (id, payload, parent) values " + repeatStmt(len(ids), 3)
 	data := make([]interface{}, 3*len(ids))
 	for i := range ids {
