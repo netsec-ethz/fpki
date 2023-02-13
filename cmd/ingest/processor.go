@@ -34,14 +34,14 @@ type CertWithChainData struct {
 	CertChain   []*ctx509.Certificate
 }
 
-func NewProcessor(conn db.Conn) *Processor {
+func NewProcessor(conn db.Conn, certUpdateStrategy CertificateUpdateStrategy) *Processor {
 	nodeChan := make(chan *CertificateNode)
 	p := &Processor{
 		Conn:              conn,
 		incomingFileCh:    make(chan File),
 		certWithChainChan: make(chan *CertWithChainData),
 		nodeChan:          nodeChan,
-		batchProcessor:    NewBatchProcessor(conn, nodeChan),
+		batchProcessor:    NewBatchProcessor(conn, nodeChan, certUpdateStrategy),
 
 		errorCh: make(chan error),
 		doneCh:  make(chan error),
