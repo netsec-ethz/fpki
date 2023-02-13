@@ -242,7 +242,7 @@ func UpdateCertsWithOverwrite(ctx context.Context, conn db.Conn, names [][]strin
 		ids[i] = &id
 		payloads[i] = c.Raw
 		if parents[i] != nil {
-			id = common.SHA256Hash32Bytes(parents[i].Raw)
+			id := common.SHA256Hash32Bytes(parents[i].Raw)
 			parentIds[i] = &id
 		}
 	}
