@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 )
@@ -35,8 +36,8 @@ type Conn interface {
 	// the corresponding certificate identified by its ID is already present in the DB.
 	CheckCertsExist(ctx context.Context, ids []*common.SHA256Output) ([]bool, error)
 
-	InsertCerts(ctx context.Context, ids []*common.SHA256Output, payloads [][]byte,
-		parents []*common.SHA256Output) error
+	InsertCerts(ctx context.Context, ids, parents []*common.SHA256Output, expirations []*time.Time,
+		payloads [][]byte) error
 
 	// ************************************************************
 	//              Function for Tree table

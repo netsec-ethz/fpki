@@ -70,6 +70,7 @@ func (u *MapUpdater) UpdateNextBatch(ctx context.Context) (int, error) {
 // UpdateCertsLocally: add certs (in the form of asn.1 encoded byte arrays) directly without querying log
 func (mapUpdater *MapUpdater) UpdateCertsLocally(ctx context.Context, certList [][]byte, certChainList [][][]byte) error {
 	names := make([][]string, 0, len(certList)) // Set of names per certificate
+	expirations := make([]*time.Time, 0, len(certList))
 	certs := make([]*ctx509.Certificate, 0, len(certList))
 	certChains := make([][]*ctx509.Certificate, 0, len(certList))
 	for i, certRaw := range certList {
@@ -79,6 +80,7 @@ func (mapUpdater *MapUpdater) UpdateCertsLocally(ctx context.Context, certList [
 		}
 		certs = append(certs, cert)
 		names = append(names, ExtractCertDomains(cert))
+		expirations = append(expirations, &cert.NotAfter)
 
 		chain := make([]*ctx509.Certificate, len(certChainList[i]))
 		for i, certChainItemRaw := range certChainList[i] {
@@ -90,7 +92,7 @@ func (mapUpdater *MapUpdater) UpdateCertsLocally(ctx context.Context, certList [
 		certChains = append(certChains, chain)
 	}
 	certs, parents := UnfoldCerts(certs, certChains)
-	return UpdateCertsWithKeepExisting(ctx, mapUpdater.dbConn, names, certs, parents)
+	return UpdateCertsWithKeepExisting(ctx, mapUpdater.dbConn, names, expirations, certs, parents)
 }
 
 // updateCerts: update the tables and SMT (in memory) using certificates
@@ -232,7 +234,7 @@ func (mapUpdater *MapUpdater) Close() error {
 }
 
 func UpdateCertsWithOverwrite(ctx context.Context, conn db.Conn, names [][]string,
-	certs []*ctx509.Certificate, parents []*ctx509.Certificate) error {
+	expirations []*time.Time, certs, parents []*ctx509.Certificate) error {
 
 	ids := make([]*common.SHA256Output, len(certs))
 	payloads := make([][]byte, len(certs))
@@ -246,11 +248,11 @@ func UpdateCertsWithOverwrite(ctx context.Context, conn db.Conn, names [][]strin
 			parentIds[i] = &id
 		}
 	}
-	return conn.InsertCerts(ctx, ids, payloads, parentIds)
+	return conn.InsertCerts(ctx, ids, parentIds, expirations, payloads)
 }
 
 func UpdateCertsWithKeepExisting(ctx context.Context, conn db.Conn, names [][]string,
-	certs []*ctx509.Certificate, parents []*ctx509.Certificate) error {
+	expirations []*time.Time, certs, parents []*ctx509.Certificate) error {
 
 	ids := make([]*common.SHA256Output, len(certs))
 	for i, c := range certs {
@@ -283,7 +285,7 @@ func UpdateCertsWithKeepExisting(ctx context.Context, conn db.Conn, names [][]st
 	ids = ids[:len(payloads)]
 
 	// Only insert those certificates that are not in the mask.
-	return conn.InsertCerts(ctx, ids, payloads, parentIds)
+	return conn.InsertCerts(ctx, ids, parentIds, expirations, payloads)
 
 }
 

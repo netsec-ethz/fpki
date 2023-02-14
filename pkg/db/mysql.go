@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/netsec-ethz/fpki/pkg/common"
@@ -192,8 +193,8 @@ func (c *mysqlDB) CheckCertsExist(ctx context.Context, ids []*common.SHA256Outpu
 	return present, nil
 }
 
-func (c *mysqlDB) InsertCerts(ctx context.Context, ids []*common.SHA256Output, payloads [][]byte,
-	parents []*common.SHA256Output) error {
+func (c *mysqlDB) InsertCerts(ctx context.Context, ids, parents []*common.SHA256Output,
+	expirations []*time.Time, payloads [][]byte) error {
 
 	if len(ids) == 0 {
 		return nil
@@ -201,14 +202,16 @@ func (c *mysqlDB) InsertCerts(ctx context.Context, ids []*common.SHA256Output, p
 	// TODO(juagargi) set a prepared statement in constructor
 	// Because the primary key is the SHA256 of the payload, if there is a clash, it must
 	// be that the certificates are identical. Thus always REPLACE or INSERT IGNORE.
-	str := "REPLACE into certs (id, payload, parent) values " + repeatStmt(len(ids), 3)
-	data := make([]interface{}, 3*len(ids))
+	const numFields = 4
+	str := "REPLACE into certs (id, parent, expiration, payload) values " + repeatStmt(len(ids), numFields)
+	data := make([]interface{}, numFields*len(ids))
 	for i := range ids {
-		data[i*3] = ids[i][:]
-		data[i*3+1] = payloads[i]
+		data[i*numFields] = ids[i][:]
 		if parents[i] != nil {
-			data[i*3+2] = parents[i][:]
+			data[i*numFields+1] = parents[i][:]
 		}
+		data[i*numFields+2] = expirations[i]
+		data[i*numFields+3] = payloads[i]
 	}
 	_, err := c.db.Exec(str, data...)
 	if err != nil {

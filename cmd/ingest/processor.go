@@ -29,9 +29,8 @@ type Processor struct {
 }
 
 type CertWithChainData struct {
-	DomainNames []string
-	Cert        *ctx509.Certificate
-	CertChain   []*ctx509.Certificate
+	Cert      *ctx509.Certificate
+	CertChain []*ctx509.Certificate
 }
 
 func NewProcessor(conn db.Conn, certUpdateStrategy CertificateUpdateStrategy) *Processor {
@@ -85,7 +84,6 @@ func (p *Processor) start() {
 			certs, parents := updater.UnfoldCert(data.Cert, data.CertChain)
 			for i := range certs {
 				p.nodeChan <- &CertificateNode{
-					Names:  data.DomainNames,
 					Cert:   certs[i],
 					Parent: parents[i],
 				}
@@ -176,8 +174,6 @@ func (p *Processor) ingestWithCSV(fileReader io.Reader) error {
 			return err
 		}
 
-		domainNames := updater.ExtractCertDomains(cert)
-
 		// The certificate chain is a list of base64 strings separated by semicolon (;).
 		strs := strings.Split(fields[CertChainColumn], ";")
 		chain := make([]*ctx509.Certificate, len(strs))
@@ -192,9 +188,8 @@ func (p *Processor) ingestWithCSV(fileReader io.Reader) error {
 			}
 		}
 		p.certWithChainChan <- &CertWithChainData{
-			DomainNames: domainNames,
-			Cert:        cert,
-			CertChain:   chain,
+			Cert:      cert,
+			CertChain: chain,
 		}
 		return nil
 	}
