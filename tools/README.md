@@ -17,6 +17,13 @@ To allow root without password:
   `SELECT user,authentication_string,plugin,host FROM mysql.user;`
 
 
+## System
+
+Don't forget to change the kernel parameters to allow a higher number of AIO operations.
+In `/etc/sysctl.conf` add the line `fs.aio-max-nr = 1048576`.
+
+And look at the `fpki.cnf` file in this repository to copy those values inside `/etc/mysql/conf.d/`.
+
 ## Analyze performance
 
 DESCRIBE SELECT * FROM nodes WHERE id=1234;
