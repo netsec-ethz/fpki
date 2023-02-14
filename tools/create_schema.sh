@@ -41,21 +41,9 @@ echo "$CMD" | mysql -u root
 CMD=$(cat <<EOF
 USE fpki;
 CREATE TABLE domains (
-  domain_id VARBINARY(32) NOT NULL,
-  name VARCHAR(300) COLLATE ascii_bin DEFAULT NULL,
-  payload_id BIGINT,
-  PRIMARY KEY (domain_id)
-) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
-EOF
-)
-echo "$CMD" | mysql -u root
-
-
-CMD=$(cat <<EOF
-USE fpki;
-CREATE TABLE domain_certs (
   cert_id VARBINARY(32) NOT NULL,
   domain_id VARBINARY(32) NOT NULL,
+  domain_name VARCHAR(300) COLLATE ascii_bin DEFAULT NULL,
   PRIMARY KEY (cert_id,domain_id)
 ) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
 EOF
@@ -79,8 +67,8 @@ echo "$CMD" | $MYSQLCMD
 CMD=$(cat <<EOF
 USE fpki;
 CREATE TABLE dirty (
-  id VARBINARY(32) NOT NULL,
-  PRIMARY KEY (id)
+  domain_id VARBINARY(32) NOT NULL,
+  PRIMARY KEY (domain_id)
 ) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
 EOF
 )

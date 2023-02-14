@@ -52,6 +52,12 @@ func (d *MockDB) InsertCerts(ctx context.Context, ids, parents []*common.SHA256O
 	return nil
 }
 
+func (d *MockDB) UpdateDomainsWithCerts(ctx context.Context, certIDs, domainIDs []*common.SHA256Output,
+	domainNames []string) error {
+
+	return nil
+}
+
 func (d *MockDB) RetrieveTreeNode(ctx context.Context, id common.SHA256Output) ([]byte, error) {
 	return d.TreeTable[id], nil
 }
