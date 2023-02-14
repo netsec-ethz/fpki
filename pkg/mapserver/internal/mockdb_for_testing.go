@@ -3,6 +3,7 @@ package internal
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
@@ -45,8 +46,8 @@ func (d *MockDB) CheckCertsExist(ctx context.Context, ids []*common.SHA256Output
 	return make([]bool, len(ids)), nil
 }
 
-func (d *MockDB) InsertCerts(ctx context.Context, ids []*common.SHA256Output, payloads [][]byte,
-	parents []*common.SHA256Output) error {
+func (d *MockDB) InsertCerts(ctx context.Context, ids, parents []*common.SHA256Output,
+	expirations []*time.Time, payloads [][]byte) error {
 
 	return nil
 }

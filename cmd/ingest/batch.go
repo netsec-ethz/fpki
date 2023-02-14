@@ -14,7 +14,6 @@ import (
 )
 
 type CertificateNode struct {
-	Names  []string // collection of names per certificate
 	Cert   *ctx509.Certificate
 	Parent *ctx509.Certificate
 }
@@ -22,21 +21,24 @@ type CertificateNode struct {
 // CertBatch is an unwrapped collection of Certificate.
 // All slices must have the same size.
 type CertBatch struct {
-	Names   [][]string // collection of names per certificate
-	Certs   []*ctx509.Certificate
-	Parents []*ctx509.Certificate
+	Names       [][]string // collection of names per certificate
+	Expirations []*time.Time
+	Certs       []*ctx509.Certificate
+	Parents     []*ctx509.Certificate
 }
 
 func NewCertificateBatch() *CertBatch {
 	return &CertBatch{
-		Names:   make([][]string, 0, BatchSize),
-		Certs:   make([]*ctx509.Certificate, 0, BatchSize),
-		Parents: make([]*ctx509.Certificate, 0, BatchSize),
+		Names:       make([][]string, 0, BatchSize),
+		Expirations: make([]*time.Time, 0, BatchSize),
+		Certs:       make([]*ctx509.Certificate, 0, BatchSize),
+		Parents:     make([]*ctx509.Certificate, 0, BatchSize),
 	}
 }
 
 func (b *CertBatch) AddCertificate(c *CertificateNode) {
-	b.Names = append(b.Names, c.Names)
+	b.Names = append(b.Names, updater.ExtractCertDomains(c.Cert))
+	b.Expirations = append(b.Expirations, &c.Cert.NotAfter)
 	b.Certs = append(b.Certs, c.Cert)
 	b.Parents = append(b.Parents, c.Parent)
 }
@@ -69,8 +71,8 @@ const (
 	CertificateUpdateKeepExisting CertificateUpdateStrategy = 1
 )
 
-type UpdateCertificateFunction func(
-	context.Context, db.Conn, [][]string, []*ctx509.Certificate, []*ctx509.Certificate) error
+type UpdateCertificateFunction func(context.Context, db.Conn, [][]string, []*time.Time,
+	[]*ctx509.Certificate, []*ctx509.Certificate) error
 
 func NewBatchProcessor(conn db.Conn, incoming chan *CertificateNode,
 	strategy CertificateUpdateStrategy) *CertificateProcessor {
@@ -211,7 +213,8 @@ func (p *CertificateProcessor) ConsolidateDB() {
 
 func (p *CertificateProcessor) processBatch(batch *CertBatch) {
 	// Store certificates in DB:
-	err := p.updateCertBatch(context.Background(), p.conn, batch.Names, batch.Certs, batch.Parents)
+	err := p.updateCertBatch(context.Background(), p.conn, batch.Names, batch.Expirations,
+		batch.Certs, batch.Parents)
 	if err != nil {
 		panic(err)
 	}
