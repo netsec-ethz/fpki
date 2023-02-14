@@ -202,24 +202,56 @@ func (c *mysqlDB) InsertCerts(ctx context.Context, ids, parents []*common.SHA256
 	// TODO(juagargi) set a prepared statement in constructor
 	// Because the primary key is the SHA256 of the payload, if there is a clash, it must
 	// be that the certificates are identical. Thus always REPLACE or INSERT IGNORE.
-	const numFields = 4
-	str := "REPLACE into certs (id, parent, expiration, payload) values " + repeatStmt(len(ids), numFields)
-	data := make([]interface{}, numFields*len(ids))
+	const N = 4
+	str := "REPLACE INTO certs (id, parent, expiration, payload) VALUES " + repeatStmt(len(ids), N)
+	data := make([]interface{}, N*len(ids))
 	for i := range ids {
-		data[i*numFields] = ids[i][:]
+		data[i*N] = ids[i][:]
 		if parents[i] != nil {
-			data[i*numFields+1] = parents[i][:]
+			data[i*N+1] = parents[i][:]
 		}
-		data[i*numFields+2] = expirations[i]
-		data[i*numFields+3] = payloads[i]
+		data[i*N+2] = expirations[i]
+		data[i*N+3] = payloads[i]
 	}
 	_, err := c.db.Exec(str, data...)
 	if err != nil {
-
 		return err
 	}
 
 	return nil
+}
+
+// UpdateDomainsWithCerts updates both the domains and the dirty tables.
+func (c *mysqlDB) UpdateDomainsWithCerts(ctx context.Context, certIDs, domainIDs []*common.SHA256Output,
+	domainNames []string) error {
+
+	if len(certIDs) == 0 {
+		return nil
+	}
+	// First insert into domains:
+	const N = 3
+	str := "INSERT IGNORE INTO domains (cert_id,domain_id,domain_name) VALUES " +
+		repeatStmt(len(certIDs), N)
+	data := make([]interface{}, N*len(certIDs))
+	for i := range certIDs {
+		data[i*N] = certIDs[i][:]
+		data[i*N+1] = domainIDs[i][:]
+		data[i*N+2] = domainNames[i]
+	}
+	_, err := c.db.Exec(str, data...)
+	if err != nil {
+		return err
+	}
+
+	// Now insert into dirty.
+	str = "REPLACE INTO dirty (domain_id) VALUES " + repeatStmt(len(domainIDs), 1)
+	data = make([]interface{}, len(domainIDs))
+	for i, id := range domainIDs {
+		data[i] = id[:]
+	}
+	_, err = c.db.Exec(str, data...)
+
+	return err
 }
 
 // repeatStmt returns  ( (?,..inner..,?), ...outer...  )

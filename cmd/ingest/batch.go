@@ -229,7 +229,4 @@ func (p *CertificateProcessor) processBatch(batch *CertBatch) {
 		}
 	}
 	p.writtenBytes.Add(int64(bytesInBatch))
-
-	// Each cert that has been updated needs an entry in `domains` and `dirty`
-	// TODO(juagargi) push entries to the dirty table
 }

@@ -39,6 +39,11 @@ type Conn interface {
 	InsertCerts(ctx context.Context, ids, parents []*common.SHA256Output, expirations []*time.Time,
 		payloads [][]byte) error
 
+	// UpdateDomainsWithCerts updates the domains and dirty tables with entries that are
+	// _probably_ not present there.
+	UpdateDomainsWithCerts(ctx context.Context, certIDs, domainIDs []*common.SHA256Output,
+		domainNames []string) error
+
 	// ************************************************************
 	//              Function for Tree table
 	// ************************************************************

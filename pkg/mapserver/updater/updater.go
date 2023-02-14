@@ -248,7 +248,7 @@ func UpdateCertsWithOverwrite(ctx context.Context, conn db.Conn, names [][]strin
 			parentIds[i] = &id
 		}
 	}
-	return conn.InsertCerts(ctx, ids, parentIds, expirations, payloads)
+	return insertCerts(ctx, conn, names, ids, parentIds, expirations, payloads)
 }
 
 func UpdateCertsWithKeepExisting(ctx context.Context, conn db.Conn, names [][]string,
@@ -271,6 +271,7 @@ func UpdateCertsWithKeepExisting(ctx context.Context, conn db.Conn, names [][]st
 	runWhenFalse(mask, func(to, from int) {
 		if to != from { // probably unnecessary check, as swapping with itself would be okay
 			ids[to] = ids[from]
+			names[to] = names[from]
 		}
 		payloads = append(payloads, certs[from].Raw)
 		var parent *common.SHA256Output
@@ -283,10 +284,38 @@ func UpdateCertsWithKeepExisting(ctx context.Context, conn db.Conn, names [][]st
 
 	// Trim the end of the original ID slice, as it contains values from the unmasked certificates.
 	ids = ids[:len(payloads)]
+	names = names[:len(payloads)]
 
-	// Only insert those certificates that are not in the mask.
-	return conn.InsertCerts(ctx, ids, parentIds, expirations, payloads)
+	// Only update those certificates that are not in the mask.
+	return insertCerts(ctx, conn, names, ids, parentIds, expirations, payloads)
 
+}
+
+func insertCerts(ctx context.Context, conn db.Conn, names [][]string,
+	ids, parents []*common.SHA256Output, expirations []*time.Time, payloads [][]byte) error {
+
+	// Send hash, parent hash, expiration and payload to the certs table.
+	if err := conn.InsertCerts(ctx, ids, parents, expirations, payloads); err != nil {
+		return fmt.Errorf("inserting certificates: %w", err)
+	}
+
+	// Add all new entries from names into the domains table (with ignore)
+	newNames := make([]string, 0, len(ids))
+	newIDs := make([]*common.SHA256Output, 0, len(ids))
+	domainIDs := make([]*common.SHA256Output, 0, len(ids))
+	for i, names := range names {
+		for _, name := range names {
+			newNames = append(newNames, name)
+			newIDs = append(newIDs, ids[i])
+			domainID := common.SHA256Hash32Bytes([]byte(name))
+			domainIDs = append(domainIDs, &domainID)
+		}
+	}
+	if err := conn.UpdateDomainsWithCerts(ctx, newIDs, domainIDs, newNames); err != nil {
+		return fmt.Errorf("updating domains: %w", err)
+	}
+
+	return nil
 }
 
 func runWhenFalse(mask []bool, fcn func(to, from int)) {
