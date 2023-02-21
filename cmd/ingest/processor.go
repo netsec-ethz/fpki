@@ -40,7 +40,7 @@ func NewProcessor(conn db.Conn, certUpdateStrategy CertificateUpdateStrategy) *P
 		incomingFileCh:    make(chan File),
 		certWithChainChan: make(chan *CertWithChainData),
 		nodeChan:          nodeChan,
-		batchProcessor:    NewBatchProcessor(conn, nodeChan, certUpdateStrategy),
+		batchProcessor:    NewCertProcessor(conn, nodeChan, certUpdateStrategy),
 
 		errorCh: make(chan error),
 		doneCh:  make(chan error),
