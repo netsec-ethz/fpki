@@ -86,6 +86,7 @@ func (p *Processor) start() {
 				p.nodeChan <- &CertificateNode{
 					Cert:   certs[i],
 					Parent: parents[i],
+					IsLeaf: i == 0, // Only the first certificate is a leaf.
 				}
 			}
 		}
