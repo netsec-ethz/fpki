@@ -44,7 +44,8 @@ CREATE TABLE domains (
   cert_id VARBINARY(32) NOT NULL,
   domain_id VARBINARY(32) NOT NULL,
   domain_name VARCHAR(300) COLLATE ascii_bin DEFAULT NULL,
-  PRIMARY KEY (cert_id,domain_id)
+  PRIMARY KEY (cert_id,domain_id),
+  INDEX domain_id (domain_id)
 ) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
 EOF
 )
@@ -54,7 +55,7 @@ echo "$CMD" | $MYSQLCMD
 CMD=$(cat <<EOF
 USE fpki;
 CREATE TABLE domain_payloads (
-  id BIGINT NOT NULL AUTO_INCREMENT,
+  id VARBINARY(32) NOT NULL,
   payload LONGBLOB,
   payload_hash VARBINARY(32) DEFAULT NULL,
   PRIMARY KEY (id)
