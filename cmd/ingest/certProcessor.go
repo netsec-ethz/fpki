@@ -163,11 +163,11 @@ func (p *CertificateProcessor) start() {
 			}
 			writtenCerts := p.writtenCerts.Load()
 			writtenBytes := p.writtenBytes.Load()
-			newCerts := p.uncachedCerts.Load()
+			uncachedCerts := p.uncachedCerts.Load()
 			secondsSinceStart := float64(time.Since(startTime).Seconds())
-			fmt.Printf("%.0f Certs / second (%.0f uncached), %.1f Mb/s\n",
+			fmt.Printf("%.0f Certs/s (%.0f%% uncached), %.1f Mb/s\n",
 				float64(writtenCerts)/secondsSinceStart,
-				float64(newCerts)/secondsSinceStart,
+				float64(uncachedCerts)*100./float64(writtenCerts),
 				float64(writtenBytes)/1024./1024./secondsSinceStart,
 			)
 		}
@@ -241,6 +241,9 @@ func (p *CertificateProcessor) createBatches() {
 			}
 			p.uncachedCerts.Inc()
 		}
+		// Update statistics.
+		p.writtenCerts.Inc()
+		p.writtenBytes.Add(int64(len(c.Cert.Raw)))
 	}
 	// Last batch (might be empty).
 	p.incomingBatch <- batch
@@ -249,21 +252,8 @@ func (p *CertificateProcessor) createBatches() {
 func (p *CertificateProcessor) processBatch(batch *CertBatch) {
 	// Store certificates in DB:
 	err := p.updateCertBatch(context.Background(), p.conn, batch.Names, batch.Expirations,
-		batch.Certs, updater.ComputeCertIDs(batch.Certs), batch.Parents, batch.AreLeaves)
+		batch.Certs, batch.IDs, batch.Parents, batch.AreLeaves)
 	if err != nil {
 		panic(err)
 	}
-
-	// Update statistics.
-	p.writtenCerts.Add(int64(len(batch.Certs)))
-	bytesInBatch := 0
-	for i := range batch.Certs {
-		bytesInBatch += len(batch.Certs[i].Raw)
-		bytesInBatch += common.SHA256Size
-		if batch.Parents[i] != nil {
-			bytesInBatch += len(batch.Parents[i].Raw)
-			bytesInBatch += common.SHA256Size
-		}
-	}
-	p.writtenBytes.Add(int64(bytesInBatch))
 }
