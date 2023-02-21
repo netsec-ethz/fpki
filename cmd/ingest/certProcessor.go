@@ -7,6 +7,7 @@ import (
 	"time"
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
+	lru "github.com/hashicorp/golang-lru"
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
@@ -55,7 +56,8 @@ func (b *CertBatch) IsFull() bool {
 // This is the most expensive stage, and as such, the processor prints the statistics about
 // number of certificates and megabytes per second being inserted into the DB.
 type CertificateProcessor struct {
-	conn db.Conn
+	conn  db.Conn
+	cache *lru.TwoQueueCache // IDs of certificates pushed to DB.
 
 	updateCertBatch UpdateCertificateFunction // update strategy dependent method
 	strategy        CertificateUpdateStrategy
@@ -64,8 +66,9 @@ type CertificateProcessor struct {
 	incomingBatch chan *CertBatch       // Ready to be inserted
 	doneCh        chan struct{}
 	// Statistics:
-	writtenCerts atomic.Int64
-	writtenBytes atomic.Int64
+	writtenCerts  atomic.Int64
+	writtenBytes  atomic.Int64
+	uncachedCerts atomic.Int64
 }
 
 type CertificateUpdateStrategy int
@@ -76,11 +79,15 @@ const (
 )
 
 type UpdateCertificateFunction func(context.Context, db.Conn, [][]string, []*time.Time,
-	[]*ctx509.Certificate, []*ctx509.Certificate, []bool) error
+	[]*ctx509.Certificate, []*common.SHA256Output, []*ctx509.Certificate, []bool) error
 
 func NewCertProcessor(conn db.Conn, incoming chan *CertificateNode,
 	strategy CertificateUpdateStrategy) *CertificateProcessor {
 
+	cache, err := lru.New2Q(LruCacheSize)
+	if err != nil {
+		panic(err)
+	}
 	// Select the update certificate method depending on the strategy:
 	var updateFcn UpdateCertificateFunction
 	switch strategy {
@@ -94,6 +101,7 @@ func NewCertProcessor(conn db.Conn, incoming chan *CertificateNode,
 
 	p := &CertificateProcessor{
 		conn:            conn,
+		cache:           cache,
 		updateCertBatch: updateFcn,
 		strategy:        strategy,
 		incomingCh:      incoming,
@@ -156,9 +164,11 @@ func (p *CertificateProcessor) start() {
 			}
 			writtenCerts := p.writtenCerts.Load()
 			writtenBytes := p.writtenBytes.Load()
+			newCerts := p.uncachedCerts.Load()
 			secondsSinceStart := float64(time.Since(startTime).Seconds())
-			fmt.Printf("%.0f Certs / second, %.1f Mb/s\n",
+			fmt.Printf("%.0f Certs / second (%.0f new), %.1f Mb/s\n",
 				float64(writtenCerts)/secondsSinceStart,
+				float64(newCerts)/secondsSinceStart,
 				float64(writtenBytes)/1024./1024./secondsSinceStart,
 			)
 		}
@@ -216,13 +226,42 @@ func (p *CertificateProcessor) ConsolidateDB() {
 }
 
 func (p *CertificateProcessor) processBatch(batch *CertBatch) {
+	// Compute the ID of the certs, and prepare the slices holding all the data.
+	ids := updater.ComputeCertIDs(batch.Certs)
+	names := make([][]string, 0, len(ids))
+	expirations := make([]*time.Time, 0, len(ids))
+	newIds := make([]*common.SHA256Output, 0, len(ids))
+	certs := make([]*ctx509.Certificate, 0, len(ids))
+	parents := make([]*ctx509.Certificate, 0, len(ids))
+	areLeaves := make([]bool, 0, len(ids))
+
+	// Check if the certificate has been already pushed to DB:
+	for i, id := range ids {
+		if !p.cache.Contains(*id) {
+			// If the cache doesn't contain the certificate, we cannot skip it.
+			names = append(names, batch.Names[i])
+			expirations = append(expirations, batch.Expirations[i])
+			newIds = append(newIds, ids[i])
+			certs = append(certs, batch.Certs[i])
+			parents = append(parents, batch.Parents[i])
+			areLeaves = append(areLeaves, batch.AreLeaves[i])
+		}
+	}
 	// Store certificates in DB:
-	err := p.updateCertBatch(context.Background(), p.conn, batch.Names, batch.Expirations,
-		batch.Certs, batch.Parents, batch.AreLeaves)
+	err := p.updateCertBatch(context.Background(), p.conn, names, expirations,
+		certs, newIds, parents, areLeaves)
 	if err != nil {
 		panic(err)
 	}
+
+	// Update cache.
+	for _, id := range ids {
+		p.cache.Add(*id, nil)
+	}
+
+	// Update statistics.
 	p.writtenCerts.Add(int64(len(batch.Certs)))
+	p.uncachedCerts.Add(int64(len(newIds)))
 	bytesInBatch := 0
 	for i := range batch.Certs {
 		bytesInBatch += len(batch.Certs[i].Raw)
