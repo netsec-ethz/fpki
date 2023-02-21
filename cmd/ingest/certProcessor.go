@@ -121,14 +121,15 @@ func (p *CertificateProcessor) start() {
 
 	// Start pipeline.
 	go func() {
-		batch := NewCertificateBatch()
-		for c := range p.incomingCh {
-			batch.AddCertificate(c)
-			if batch.IsFull() {
-				p.incomingBatch <- batch
-				batch = NewCertificateBatch()
-			}
+		wg := sync.WaitGroup{}
+		wg.Add(NumDBWriters)
+		for w := 0; w < NumDBWriters; w++ {
+			go func() {
+				defer wg.Done()
+				p.createBatches()
+			}()
 		}
+		wg.Wait()
 		// Because the stage is finished, close the output channel:
 		close(p.incomingBatch)
 	}()
@@ -225,43 +226,38 @@ func (p *CertificateProcessor) ConsolidateDB() {
 	}
 }
 
-func (p *CertificateProcessor) processBatch(batch *CertBatch) {
-	// Compute the ID of the certs, and prepare the slices holding all the data.
-	ids := updater.ComputeCertIDs(batch.Certs)
-	names := make([][]string, 0, len(ids))
-	expirations := make([]*time.Time, 0, len(ids))
-	newIds := make([]*common.SHA256Output, 0, len(ids))
-	certs := make([]*ctx509.Certificate, 0, len(ids))
-	parents := make([]*ctx509.Certificate, 0, len(ids))
-	areLeaves := make([]bool, 0, len(ids))
-
-	// Check if the certificate has been already pushed to DB:
-	for i, id := range ids {
-		if !p.cache.Contains(*id) {
-			// If the cache doesn't contain the certificate, we cannot skip it.
-			names = append(names, batch.Names[i])
-			expirations = append(expirations, batch.Expirations[i])
-			newIds = append(newIds, ids[i])
-			certs = append(certs, batch.Certs[i])
-			parents = append(parents, batch.Parents[i])
-			areLeaves = append(areLeaves, batch.AreLeaves[i])
+// createBatches reads CertificateNodes from the incoming channel and sends them in batches
+// to processing.
+func (p *CertificateProcessor) createBatches() {
+	batch := NewCertificateBatch()
+	for c := range p.incomingCh {
+		// Check cache.
+		id := common.SHA256Hash32Bytes(c.Cert.Raw)
+		if !p.cache.Contains(id) {
+			batch.AddCertificate(c)
+			if batch.IsFull() {
+				p.incomingBatch <- batch
+				batch = NewCertificateBatch()
+			}
+			p.uncachedCerts.Inc()
 		}
+		// Add to cache.
+		p.cache.Add(id, nil)
 	}
+	// Last batch (might be empty).
+	p.incomingBatch <- batch
+}
+
+func (p *CertificateProcessor) processBatch(batch *CertBatch) {
 	// Store certificates in DB:
-	err := p.updateCertBatch(context.Background(), p.conn, names, expirations,
-		certs, newIds, parents, areLeaves)
+	err := p.updateCertBatch(context.Background(), p.conn, batch.Names, batch.Expirations,
+		batch.Certs, updater.ComputeCertIDs(batch.Certs), batch.Parents, batch.AreLeaves)
 	if err != nil {
 		panic(err)
 	}
 
-	// Update cache.
-	for _, id := range ids {
-		p.cache.Add(*id, nil)
-	}
-
 	// Update statistics.
 	p.writtenCerts.Add(int64(len(batch.Certs)))
-	p.uncachedCerts.Add(int64(len(newIds)))
 	bytesInBatch := 0
 	for i := range batch.Certs {
 		bytesInBatch += len(batch.Certs[i].Raw)
