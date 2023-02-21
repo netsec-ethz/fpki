@@ -78,7 +78,7 @@ const (
 type UpdateCertificateFunction func(context.Context, db.Conn, [][]string, []*time.Time,
 	[]*ctx509.Certificate, []*ctx509.Certificate, []bool) error
 
-func NewBatchProcessor(conn db.Conn, incoming chan *CertificateNode,
+func NewCertProcessor(conn db.Conn, incoming chan *CertificateNode,
 	strategy CertificateUpdateStrategy) *CertificateProcessor {
 
 	// Select the update certificate method depending on the strategy:
