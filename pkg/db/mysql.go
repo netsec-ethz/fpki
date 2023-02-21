@@ -156,6 +156,10 @@ func (c *mysqlDB) EnableIndexing(table string) error {
 // CheckCertsExist returns a slice of true/false values. Each value indicates if
 // the corresponding certificate identified by its ID is already present in the DB.
 func (c *mysqlDB) CheckCertsExist(ctx context.Context, ids []*common.SHA256Output) ([]bool, error) {
+	if len(ids) == 0 {
+		// If empty, return empty.
+		return nil, nil
+	}
 	// Slice to be used in the SQL query:
 	data := make([]interface{}, len(ids))
 	for i, id := range ids {
