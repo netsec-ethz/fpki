@@ -98,8 +98,8 @@ func (mapUpdater *MapUpdater) UpdateCertsLocally(ctx context.Context, certList [
 	for i := range certList {
 		areLeaves[i] = true
 	}
-	return UpdateCertsWithKeepExisting(ctx, mapUpdater.dbConn, names, expirations, certs, parents,
-		areLeaves)
+	return UpdateCertsWithKeepExisting(ctx, mapUpdater.dbConn, names, expirations, certs,
+		ComputeCertIDs(certs), parents, areLeaves)
 }
 
 // updateCerts: update the tables and SMT (in memory) using certificates
@@ -241,14 +241,12 @@ func (mapUpdater *MapUpdater) Close() error {
 }
 
 func UpdateCertsWithOverwrite(ctx context.Context, conn db.Conn, names [][]string,
-	expirations []*time.Time, certs, parents []*ctx509.Certificate, areLeaves []bool) error {
+	expirations []*time.Time, certs []*ctx509.Certificate, ids []*common.SHA256Output,
+	parents []*ctx509.Certificate, areLeaves []bool) error {
 
-	ids := make([]*common.SHA256Output, len(certs))
 	payloads := make([][]byte, len(certs))
 	parentIds := make([]*common.SHA256Output, len(certs))
 	for i, c := range certs {
-		id := common.SHA256Hash32Bytes(c.Raw)
-		ids[i] = &id
 		payloads[i] = c.Raw
 		if parents[i] != nil {
 			id := common.SHA256Hash32Bytes(parents[i].Raw)
@@ -259,13 +257,8 @@ func UpdateCertsWithOverwrite(ctx context.Context, conn db.Conn, names [][]strin
 }
 
 func UpdateCertsWithKeepExisting(ctx context.Context, conn db.Conn, names [][]string,
-	expirations []*time.Time, certs, parents []*ctx509.Certificate, areLeaves []bool) error {
-
-	ids := make([]*common.SHA256Output, len(certs))
-	for i, c := range certs {
-		id := common.SHA256Hash32Bytes(c.Raw)
-		ids[i] = &id
-	}
+	expirations []*time.Time, certs []*ctx509.Certificate, ids []*common.SHA256Output,
+	parents []*ctx509.Certificate, areLeaves []bool) error {
 
 	// First check which certificates are already present in the DB.
 	mask, err := conn.CheckCertsExist(ctx, ids)
@@ -296,6 +289,15 @@ func UpdateCertsWithKeepExisting(ctx context.Context, conn db.Conn, names [][]st
 	// Only update those certificates that are not in the mask.
 	return insertCerts(ctx, conn, names, ids, parentIds, expirations, payloads, areLeaves)
 
+}
+
+func ComputeCertIDs(certs []*ctx509.Certificate) []*common.SHA256Output {
+	ids := make([]*common.SHA256Output, len(certs))
+	for i, c := range certs {
+		id := common.SHA256Hash32Bytes(c.Raw)
+		ids[i] = &id
+	}
+	return ids
 }
 
 func insertCerts(ctx context.Context, conn db.Conn, names [][]string,
