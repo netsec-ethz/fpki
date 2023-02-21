@@ -7,7 +7,6 @@ import (
 	"time"
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
-	lru "github.com/hashicorp/golang-lru"
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
@@ -26,6 +25,7 @@ type CertBatch struct {
 	Names       [][]string // collection of names per certificate
 	Expirations []*time.Time
 	Certs       []*ctx509.Certificate
+	IDs         []*common.SHA256Output
 	Parents     []*ctx509.Certificate
 	AreLeaves   []bool
 }
@@ -35,15 +35,17 @@ func NewCertificateBatch() *CertBatch {
 		Names:       make([][]string, 0, BatchSize),
 		Expirations: make([]*time.Time, 0, BatchSize),
 		Certs:       make([]*ctx509.Certificate, 0, BatchSize),
+		IDs:         make([]*common.SHA256Output, 0, BatchSize),
 		Parents:     make([]*ctx509.Certificate, 0, BatchSize),
 		AreLeaves:   make([]bool, 0, BatchSize),
 	}
 }
 
-func (b *CertBatch) AddCertificate(c *CertificateNode) {
+func (b *CertBatch) AddCertificate(c *CertificateNode, id *common.SHA256Output) {
 	b.Names = append(b.Names, updater.ExtractCertDomains(c.Cert))
 	b.Expirations = append(b.Expirations, &c.Cert.NotAfter)
 	b.Certs = append(b.Certs, c.Cert)
+	b.IDs = append(b.IDs, id)
 	b.Parents = append(b.Parents, c.Parent)
 	b.AreLeaves = append(b.AreLeaves, c.IsLeaf)
 }
@@ -57,7 +59,7 @@ func (b *CertBatch) IsFull() bool {
 // number of certificates and megabytes per second being inserted into the DB.
 type CertificateProcessor struct {
 	conn  db.Conn
-	cache *lru.TwoQueueCache // IDs of certificates pushed to DB.
+	cache *PresenceCache // IDs of certificates pushed to DB.
 
 	updateCertBatch UpdateCertificateFunction // update strategy dependent method
 	strategy        CertificateUpdateStrategy
@@ -84,10 +86,6 @@ type UpdateCertificateFunction func(context.Context, db.Conn, [][]string, []*tim
 func NewCertProcessor(conn db.Conn, incoming chan *CertificateNode,
 	strategy CertificateUpdateStrategy) *CertificateProcessor {
 
-	cache, err := lru.New2Q(LruCacheSize)
-	if err != nil {
-		panic(err)
-	}
 	// Select the update certificate method depending on the strategy:
 	var updateFcn UpdateCertificateFunction
 	switch strategy {
@@ -101,7 +99,7 @@ func NewCertProcessor(conn db.Conn, incoming chan *CertificateNode,
 
 	p := &CertificateProcessor{
 		conn:            conn,
-		cache:           cache,
+		cache:           NewPresenceCache(),
 		updateCertBatch: updateFcn,
 		strategy:        strategy,
 		incomingCh:      incoming,
@@ -167,7 +165,7 @@ func (p *CertificateProcessor) start() {
 			writtenBytes := p.writtenBytes.Load()
 			newCerts := p.uncachedCerts.Load()
 			secondsSinceStart := float64(time.Since(startTime).Seconds())
-			fmt.Printf("%.0f Certs / second (%.0f new), %.1f Mb/s\n",
+			fmt.Printf("%.0f Certs / second (%.0f uncached), %.1f Mb/s\n",
 				float64(writtenCerts)/secondsSinceStart,
 				float64(newCerts)/secondsSinceStart,
 				float64(writtenBytes)/1024./1024./secondsSinceStart,
@@ -233,16 +231,16 @@ func (p *CertificateProcessor) createBatches() {
 	for c := range p.incomingCh {
 		// Check cache.
 		id := common.SHA256Hash32Bytes(c.Cert.Raw)
-		if !p.cache.Contains(id) {
-			batch.AddCertificate(c)
+		if !p.cache.Contains(&id) {
+			batch.AddCertificate(c, &id)
 			if batch.IsFull() {
+				// Add to cache.
+				p.cache.AddIDs(batch.IDs)
 				p.incomingBatch <- batch
 				batch = NewCertificateBatch()
 			}
 			p.uncachedCerts.Inc()
 		}
-		// Add to cache.
-		p.cache.Add(id, nil)
 	}
 	// Last batch (might be empty).
 	p.incomingBatch <- batch
