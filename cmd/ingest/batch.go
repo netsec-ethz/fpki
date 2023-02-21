@@ -16,6 +16,7 @@ import (
 type CertificateNode struct {
 	Cert   *ctx509.Certificate
 	Parent *ctx509.Certificate
+	IsLeaf bool
 }
 
 // CertBatch is an unwrapped collection of Certificate.
@@ -25,6 +26,7 @@ type CertBatch struct {
 	Expirations []*time.Time
 	Certs       []*ctx509.Certificate
 	Parents     []*ctx509.Certificate
+	AreLeaves   []bool
 }
 
 func NewCertificateBatch() *CertBatch {
@@ -33,6 +35,7 @@ func NewCertificateBatch() *CertBatch {
 		Expirations: make([]*time.Time, 0, BatchSize),
 		Certs:       make([]*ctx509.Certificate, 0, BatchSize),
 		Parents:     make([]*ctx509.Certificate, 0, BatchSize),
+		AreLeaves:   make([]bool, 0, BatchSize),
 	}
 }
 
@@ -41,6 +44,7 @@ func (b *CertBatch) AddCertificate(c *CertificateNode) {
 	b.Expirations = append(b.Expirations, &c.Cert.NotAfter)
 	b.Certs = append(b.Certs, c.Cert)
 	b.Parents = append(b.Parents, c.Parent)
+	b.AreLeaves = append(b.AreLeaves, c.IsLeaf)
 }
 
 func (b *CertBatch) IsFull() bool {
@@ -72,7 +76,7 @@ const (
 )
 
 type UpdateCertificateFunction func(context.Context, db.Conn, [][]string, []*time.Time,
-	[]*ctx509.Certificate, []*ctx509.Certificate) error
+	[]*ctx509.Certificate, []*ctx509.Certificate, []bool) error
 
 func NewBatchProcessor(conn db.Conn, incoming chan *CertificateNode,
 	strategy CertificateUpdateStrategy) *CertificateProcessor {
@@ -214,7 +218,7 @@ func (p *CertificateProcessor) ConsolidateDB() {
 func (p *CertificateProcessor) processBatch(batch *CertBatch) {
 	// Store certificates in DB:
 	err := p.updateCertBatch(context.Background(), p.conn, batch.Names, batch.Expirations,
-		batch.Certs, batch.Parents)
+		batch.Certs, batch.Parents, batch.AreLeaves)
 	if err != nil {
 		panic(err)
 	}

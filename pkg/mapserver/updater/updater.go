@@ -92,7 +92,14 @@ func (mapUpdater *MapUpdater) UpdateCertsLocally(ctx context.Context, certList [
 		certChains = append(certChains, chain)
 	}
 	certs, parents := UnfoldCerts(certs, certChains)
-	return UpdateCertsWithKeepExisting(ctx, mapUpdater.dbConn, names, expirations, certs, parents)
+	areLeaves := make([]bool, 0, len(certs))
+	// The leaves are always at the head of the returned slice: just flag all leaves for the
+	// length of the original certificate list.
+	for i := range certList {
+		areLeaves[i] = true
+	}
+	return UpdateCertsWithKeepExisting(ctx, mapUpdater.dbConn, names, expirations, certs, parents,
+		areLeaves)
 }
 
 // updateCerts: update the tables and SMT (in memory) using certificates
@@ -234,7 +241,7 @@ func (mapUpdater *MapUpdater) Close() error {
 }
 
 func UpdateCertsWithOverwrite(ctx context.Context, conn db.Conn, names [][]string,
-	expirations []*time.Time, certs, parents []*ctx509.Certificate) error {
+	expirations []*time.Time, certs, parents []*ctx509.Certificate, areLeaves []bool) error {
 
 	ids := make([]*common.SHA256Output, len(certs))
 	payloads := make([][]byte, len(certs))
@@ -248,11 +255,11 @@ func UpdateCertsWithOverwrite(ctx context.Context, conn db.Conn, names [][]strin
 			parentIds[i] = &id
 		}
 	}
-	return insertCerts(ctx, conn, names, ids, parentIds, expirations, payloads)
+	return insertCerts(ctx, conn, names, ids, parentIds, expirations, payloads, areLeaves)
 }
 
 func UpdateCertsWithKeepExisting(ctx context.Context, conn db.Conn, names [][]string,
-	expirations []*time.Time, certs, parents []*ctx509.Certificate) error {
+	expirations []*time.Time, certs, parents []*ctx509.Certificate, areLeaves []bool) error {
 
 	ids := make([]*common.SHA256Output, len(certs))
 	for i, c := range certs {
@@ -287,28 +294,33 @@ func UpdateCertsWithKeepExisting(ctx context.Context, conn db.Conn, names [][]st
 	names = names[:len(payloads)]
 
 	// Only update those certificates that are not in the mask.
-	return insertCerts(ctx, conn, names, ids, parentIds, expirations, payloads)
+	return insertCerts(ctx, conn, names, ids, parentIds, expirations, payloads, areLeaves)
 
 }
 
 func insertCerts(ctx context.Context, conn db.Conn, names [][]string,
-	ids, parents []*common.SHA256Output, expirations []*time.Time, payloads [][]byte) error {
+	ids, parents []*common.SHA256Output, expirations []*time.Time, payloads [][]byte,
+	areLeaves []bool) error {
 
 	// Send hash, parent hash, expiration and payload to the certs table.
 	if err := conn.InsertCerts(ctx, ids, parents, expirations, payloads); err != nil {
 		return fmt.Errorf("inserting certificates: %w", err)
 	}
 
-	// Add all new entries from names into the domains table (with ignore)
-	newNames := make([]string, 0, len(ids))
-	newIDs := make([]*common.SHA256Output, 0, len(ids))
-	domainIDs := make([]*common.SHA256Output, 0, len(ids))
+	// Add new entries from names into the domains table iff they are leaves.
+	estimatedSize := len(ids) * 2 // Number of IDs / 3 ~~ is the number of leaves. 6 names per leaf.
+	newNames := make([]string, 0, estimatedSize)
+	newIDs := make([]*common.SHA256Output, 0, estimatedSize)
+	domainIDs := make([]*common.SHA256Output, 0, estimatedSize)
 	for i, names := range names {
-		for _, name := range names {
-			newNames = append(newNames, name)
-			newIDs = append(newIDs, ids[i])
-			domainID := common.SHA256Hash32Bytes([]byte(name))
-			domainIDs = append(domainIDs, &domainID)
+		if areLeaves[i] {
+			// If the certificate is a leaf certificate, insert one entry per name.
+			for _, name := range names {
+				newNames = append(newNames, name)
+				newIDs = append(newIDs, ids[i])
+				domainID := common.SHA256Hash32Bytes([]byte(name))
+				domainIDs = append(domainIDs, &domainID)
+			}
 		}
 	}
 	if err := conn.UpdateDomainsWithCerts(ctx, newIDs, domainIDs, newNames); err != nil {
