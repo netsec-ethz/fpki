@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/netsec-ethz/fpki/pkg/common"
 )
 
@@ -71,20 +72,26 @@ func (c *mysqlDB) doUpdatePairs(ctx context.Context, keyValuePairs []*KeyValuePa
 	// updateFcn updates the DB using keyValuePairs starting at index/batch, until the end of the
 	// batch or the end of keyValuePairs
 	updateFcn := func(stmt *sql.Stmt, index int) (int, error) {
-		data := data[:2*min(batchSize, dataLen-batchSize*index)]
-		for j := 0; j < len(data)/2; j++ {
-			data[2*j] = keyValuePairs[index*batchSize+j].Key[:]
-			data[2*j+1] = keyValuePairs[index*batchSize+j].Value
+		for {
+			data := data[:2*min(batchSize, dataLen-batchSize*index)]
+			for j := 0; j < len(data)/2; j++ {
+				data[2*j] = keyValuePairs[index*batchSize+j].Key[:]
+				data[2*j+1] = keyValuePairs[index*batchSize+j].Value
+			}
+			result, err := stmt.Exec(data...)
+			if err != nil {
+				if myerr, ok := err.(*mysql.MySQLError); ok && myerr.Number == 1213 { // deadlock
+					// A deadlock was found, just cancel this operation and retry until success.
+					continue
+				}
+				return 0, fmt.Errorf("updateFcn | Exec | %w", err)
+			}
+			n, err := result.RowsAffected()
+			if err != nil {
+				return 0, fmt.Errorf("updateFcn | RowsAffected | %w", err)
+			}
+			return int(n), nil
 		}
-		result, err := stmt.Exec(data...)
-		if err != nil {
-			return 0, fmt.Errorf("updateFcn | Exec | %w", err)
-		}
-		n, err := result.RowsAffected()
-		if err != nil {
-			return 0, fmt.Errorf("updateFcn | RowsAffected | %w", err)
-		}
-		return int(n), nil
 	}
 
 	updateWholeBatchStmt, updatePartialBatchStmt := stmtGetter(dataLen % batchSize)
