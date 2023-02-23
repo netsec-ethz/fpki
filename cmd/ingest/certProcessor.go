@@ -14,9 +14,11 @@ import (
 )
 
 type CertificateNode struct {
-	Cert   *ctx509.Certificate
-	Parent *ctx509.Certificate
-	IsLeaf bool
+	CertID   *common.SHA256Output
+	Cert     *ctx509.Certificate
+	ParentID *common.SHA256Output
+	Parent   *ctx509.Certificate
+	IsLeaf   bool
 }
 
 // CertBatch is an unwrapped collection of Certificate.
@@ -25,8 +27,9 @@ type CertBatch struct {
 	Names       [][]string // collection of names per certificate
 	Expirations []*time.Time
 	Certs       []*ctx509.Certificate
-	IDs         []*common.SHA256Output
+	CertIDs     []*common.SHA256Output
 	Parents     []*ctx509.Certificate
+	ParentIDs   []*common.SHA256Output
 	AreLeaves   []bool
 }
 
@@ -35,18 +38,20 @@ func NewCertificateBatch() *CertBatch {
 		Names:       make([][]string, 0, BatchSize),
 		Expirations: make([]*time.Time, 0, BatchSize),
 		Certs:       make([]*ctx509.Certificate, 0, BatchSize),
-		IDs:         make([]*common.SHA256Output, 0, BatchSize),
+		CertIDs:     make([]*common.SHA256Output, 0, BatchSize),
 		Parents:     make([]*ctx509.Certificate, 0, BatchSize),
+		ParentIDs:   make([]*common.SHA256Output, 0, BatchSize),
 		AreLeaves:   make([]bool, 0, BatchSize),
 	}
 }
 
-func (b *CertBatch) AddCertificate(c *CertificateNode, id *common.SHA256Output) {
+func (b *CertBatch) AddCertificate(c *CertificateNode) {
 	b.Names = append(b.Names, updater.ExtractCertDomains(c.Cert))
 	b.Expirations = append(b.Expirations, &c.Cert.NotAfter)
 	b.Certs = append(b.Certs, c.Cert)
-	b.IDs = append(b.IDs, id)
+	b.CertIDs = append(b.CertIDs, c.CertID)
 	b.Parents = append(b.Parents, c.Parent)
+	b.ParentIDs = append(b.ParentIDs, c.ParentID)
 	b.AreLeaves = append(b.AreLeaves, c.IsLeaf)
 }
 
@@ -58,8 +63,7 @@ func (b *CertBatch) IsFull() bool {
 // This is the most expensive stage, and as such, the processor prints the statistics about
 // number of certificates and megabytes per second being inserted into the DB.
 type CertificateProcessor struct {
-	conn  db.Conn
-	cache *PresenceCache // IDs of certificates pushed to DB.
+	conn db.Conn
 
 	updateCertBatch UpdateCertificateFunction // update strategy dependent method
 	strategy        CertificateUpdateStrategy
@@ -68,9 +72,9 @@ type CertificateProcessor struct {
 	incomingBatch chan *CertBatch       // Ready to be inserted
 	doneCh        chan struct{}
 	// Statistics:
-	writtenCerts  atomic.Int64
-	writtenBytes  atomic.Int64
-	uncachedCerts atomic.Int64
+	WrittenCerts  atomic.Int64
+	WrittenBytes  atomic.Int64
+	UncachedCerts atomic.Int64
 }
 
 type CertificateUpdateStrategy int
@@ -99,7 +103,6 @@ func NewCertProcessor(conn db.Conn, incoming chan *CertificateNode,
 
 	p := &CertificateProcessor{
 		conn:            conn,
-		cache:           NewPresenceCache(),
 		updateCertBatch: updateFcn,
 		strategy:        strategy,
 		incomingCh:      incoming,
@@ -161,9 +164,9 @@ func (p *CertificateProcessor) start() {
 				p.doneCh <- struct{}{} // signal again
 				return
 			}
-			writtenCerts := p.writtenCerts.Load()
-			writtenBytes := p.writtenBytes.Load()
-			uncachedCerts := p.uncachedCerts.Load()
+			writtenCerts := p.WrittenCerts.Load()
+			writtenBytes := p.WrittenBytes.Load()
+			uncachedCerts := p.UncachedCerts.Load()
 			secondsSinceStart := float64(time.Since(startTime).Seconds())
 			fmt.Printf("%.0f Certs/s (%.0f%% uncached), %.1f Mb/s\n",
 				float64(writtenCerts)/secondsSinceStart,
@@ -229,21 +232,11 @@ func (p *CertificateProcessor) ConsolidateDB() {
 func (p *CertificateProcessor) createBatches() {
 	batch := NewCertificateBatch()
 	for c := range p.incomingCh {
-		// Check cache.
-		id := common.SHA256Hash32Bytes(c.Cert.Raw)
-		if !p.cache.Contains(&id) {
-			batch.AddCertificate(c, &id)
-			if batch.IsFull() {
-				// Add to cache.
-				p.cache.AddIDs(batch.IDs)
-				p.incomingBatch <- batch
-				batch = NewCertificateBatch()
-			}
-			p.uncachedCerts.Inc()
+		batch.AddCertificate(c)
+		if batch.IsFull() {
+			p.incomingBatch <- batch
+			batch = NewCertificateBatch()
 		}
-		// Update statistics.
-		p.writtenCerts.Inc()
-		p.writtenBytes.Add(int64(len(c.Cert.Raw)))
 	}
 	// Last batch (might be empty).
 	p.incomingBatch <- batch
@@ -252,7 +245,7 @@ func (p *CertificateProcessor) createBatches() {
 func (p *CertificateProcessor) processBatch(batch *CertBatch) {
 	// Store certificates in DB:
 	err := p.updateCertBatch(context.Background(), p.conn, batch.Names, batch.Expirations,
-		batch.Certs, batch.IDs, batch.Parents, batch.AreLeaves)
+		batch.Certs, batch.CertIDs, batch.Parents, batch.AreLeaves)
 	if err != nil {
 		panic(err)
 	}

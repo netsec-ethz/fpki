@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
+	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 )
@@ -18,7 +19,9 @@ import (
 // inside the DB and SMT. It is composed of several different stages,
 // described in the `start` method.
 type Processor struct {
-	Conn              db.Conn
+	Conn  db.Conn
+	cache *PresenceCache // IDs of certificates pushed to DB.
+
 	incomingFileCh    chan File               // New files with certificates to be ingested
 	certWithChainChan chan *CertWithChainData // After parsing files
 	nodeChan          chan *CertificateNode   // After finding parents, to be sent to DB and SMT
@@ -29,14 +32,17 @@ type Processor struct {
 }
 
 type CertWithChainData struct {
-	Cert      *ctx509.Certificate
-	CertChain []*ctx509.Certificate
+	CertID        *common.SHA256Output   // The ID (the SHA256) of the certificate.
+	Cert          *ctx509.Certificate    // The payload of the certificate.
+	ChainIDs      []*common.SHA256Output // The trust chain of the certificate.
+	ChainPayloads []*ctx509.Certificate  // The payloads of the chain. Is nil if already cached.
 }
 
 func NewProcessor(conn db.Conn, certUpdateStrategy CertificateUpdateStrategy) *Processor {
 	nodeChan := make(chan *CertificateNode)
 	p := &Processor{
 		Conn:              conn,
+		cache:             NewPresenceCache(),
 		incomingFileCh:    make(chan File),
 		certWithChainChan: make(chan *CertWithChainData),
 		nodeChan:          nodeChan,
@@ -81,12 +87,15 @@ func (p *Processor) start() {
 	// Process the parsed content into the DB, and from DB into SMT:
 	go func() {
 		for data := range p.certWithChainChan {
-			certs, parents := updater.UnfoldCert(data.Cert, data.CertChain)
+			certs, certIDs, parents, parentIDs := updater.UnfoldCert(data.Cert, data.CertID,
+				data.ChainPayloads, data.ChainIDs)
 			for i := range certs {
 				p.nodeChan <- &CertificateNode{
-					Cert:   certs[i],
-					Parent: parents[i],
-					IsLeaf: i == 0, // Only the first certificate is a leaf.
+					CertID:   certIDs[i],
+					Cert:     certs[i],
+					ParentID: parentIDs[i],
+					Parent:   parents[i],
+					IsLeaf:   i == 0, // Only the first certificate is a leaf.
 				}
 			}
 		}
@@ -170,27 +179,46 @@ func (p *Processor) ingestWithCSV(fileReader io.Reader) error {
 		if err != nil {
 			return err
 		}
+		certID := common.SHA256Hash32Bytes(rawBytes)
 		cert, err := ctx509.ParseCertificate(rawBytes)
 		if err != nil {
 			return err
 		}
+		// Update statistics.
+		p.batchProcessor.WrittenBytes.Add(int64(len(rawBytes)))
+		p.batchProcessor.WrittenCerts.Inc()
+		p.batchProcessor.UncachedCerts.Inc()
 
 		// The certificate chain is a list of base64 strings separated by semicolon (;).
 		strs := strings.Split(fields[CertChainColumn], ";")
 		chain := make([]*ctx509.Certificate, len(strs))
+		chainIDs := make([]*common.SHA256Output, len(strs))
 		for i, s := range strs {
 			rawBytes, err = base64.StdEncoding.DecodeString(s)
 			if err != nil {
 				return fmt.Errorf("at line %d: %s\n%s", lineNo, err, fields[CertChainColumn])
 			}
-			chain[i], err = ctx509.ParseCertificate(rawBytes)
-			if err != nil {
-				return fmt.Errorf("at line %d: %s\n%s", lineNo, err, fields[CertChainColumn])
+			// Update statistics.
+			p.batchProcessor.WrittenBytes.Add(int64(len(rawBytes)))
+			p.batchProcessor.WrittenCerts.Inc()
+			// Check if the parent certificate is in the cache.
+			id := common.SHA256Hash32Bytes(rawBytes)
+			if !p.cache.Contains(&id) {
+				// Not seen before, push it to the DB.
+				chain[i], err = ctx509.ParseCertificate(rawBytes)
+				if err != nil {
+					return fmt.Errorf("at line %d: %s\n%s", lineNo, err, fields[CertChainColumn])
+				}
+				p.cache.AddIDs([]*common.SHA256Output{&id})
+				p.batchProcessor.UncachedCerts.Inc()
 			}
+			chainIDs[i] = &id
 		}
 		p.certWithChainChan <- &CertWithChainData{
-			Cert:      cert,
-			CertChain: chain,
+			Cert:          cert,
+			CertID:        &certID,
+			ChainPayloads: chain,
+			ChainIDs:      chainIDs,
 		}
 		return nil
 	}

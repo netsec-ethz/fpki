@@ -179,10 +179,51 @@ func UnfoldCerts(certs []*ctx509.Certificate, chains [][]*ctx509.Certificate) (
 	return
 }
 
-func UnfoldCert(cert *ctx509.Certificate, chain []*ctx509.Certificate) (
-	certificates, parents []*ctx509.Certificate) {
+// UnfoldCert takes a certificate with its trust chain and returns a ready-to-insert-in-DB
+// collection of IDs and payloads for the certificate and its ancestry.
+// Additionally, if the payload of any of the ancestors of the certificate is nil, this function
+// interprets it as the ancestor is already present in the DB, and thus will omit returning it
+// and any posterior ancestors.
+func UnfoldCert(cert *ctx509.Certificate, certID *common.SHA256Output,
+	chain []*ctx509.Certificate, chainIDs []*common.SHA256Output,
+) (certPayloads []*ctx509.Certificate, certIDs []*common.SHA256Output,
+	parentPayloads []*ctx509.Certificate, parentIDs []*common.SHA256Output) {
 
-	return UnfoldCerts([]*ctx509.Certificate{cert}, [][]*ctx509.Certificate{chain})
+	// return UnfoldCerts([]*ctx509.Certificate{cert}, [][]*ctx509.Certificate{chain})
+
+	// todo: do not add parents that have their payload to nil, because they must be in DB already
+
+	certPayloads = make([]*ctx509.Certificate, 0, len(parentPayloads)+1)
+	certIDs = make([]*common.SHA256Output, 0, len(parentPayloads)+1)
+	parentPayloads = make([]*ctx509.Certificate, 0, len(parentPayloads)+1)
+	parentIDs = make([]*common.SHA256Output, 0, len(parentPayloads)+1)
+
+	// Always add the leaf certificate.
+	certPayloads = append(certPayloads, cert)
+	certIDs = append(certIDs, certID)
+	parentPayloads = append(parentPayloads, chain[0])
+	parentIDs = append(parentIDs, chainIDs[0])
+	// Add the intermediate certs iff their payload is not nil.
+	i := 0
+	for ; i < len(chain)-1; i++ {
+		if chain[i] == nil {
+			// This parent has been inserted already in DB.
+			// Its parent must have been inserted as well. There are no more parents to insert.
+			return
+		}
+		certPayloads = append(certPayloads, chain[i])
+		certIDs = append(certIDs, chainIDs[i])
+		parentPayloads = append(parentPayloads, chain[i+1])
+		parentIDs = append(parentIDs, chainIDs[i+1])
+	}
+	// Add the root certificate (no parent) iff we haven't inserted it yet.
+	if chain[i] != nil {
+		certPayloads = append(certPayloads, chain[i])
+		certIDs = append(certIDs, chainIDs[i])
+		parentPayloads = append(parentPayloads, nil)
+		parentIDs = append(parentIDs, nil)
+	}
+	return
 }
 
 // update domain entries
