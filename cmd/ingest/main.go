@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/netsec-ethz/fpki/pkg/db"
 )
@@ -55,15 +56,14 @@ func listOurFiles(dir string) (gzFiles, csvFiles []string) {
 	exitIfError(err)
 	for _, e := range entries {
 		if !e.IsDir() {
-			continue
-		}
-		if e.Name() == "bundled" {
-			// Use all *.gz in this directory.
-			d := filepath.Join(dir, e.Name())
-			gzFiles, err = filepath.Glob(fmt.Sprintf("%s/*.gz", d))
-			exitIfError(err)
-			csvFiles, err = filepath.Glob(fmt.Sprintf("%s/*.csv", dir))
-			exitIfError(err)
+			f := filepath.Join(dir, e.Name())
+			ext := strings.ToLower(filepath.Ext(e.Name()))
+			switch ext {
+			case ".gz":
+				gzFiles = append(gzFiles, f)
+			case ".csv":
+				csvFiles = append(csvFiles, f)
+			}
 		} else {
 			gzs, csvs := listOurFiles(filepath.Join(dir, e.Name()))
 			gzFiles = append(gzFiles, gzs...)
