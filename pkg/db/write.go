@@ -129,19 +129,25 @@ func (c *mysqlDB) doUpdateKeys(ctx context.Context, keys []common.SHA256Output,
 	// updateFcn updates the DB using keys starting at index/batch, until the end of the
 	// batch or the end of keyValuePairs
 	updateFcn := func(stmt *sql.Stmt, index int) (int, error) {
-		data := data[:min(batchSize, dataLen-batchSize*index)]
-		for j := 0; j < len(data); j++ {
-			data[j] = keys[index*batchSize+j][:]
+		for {
+			data := data[:min(batchSize, dataLen-batchSize*index)]
+			for j := 0; j < len(data); j++ {
+				data[j] = keys[index*batchSize+j][:]
+			}
+			result, err := stmt.Exec(data...)
+			if err != nil {
+				if myerr, ok := err.(*mysql.MySQLError); ok && myerr.Number == 1213 { // deadlock
+					// A deadlock was found, just cancel this operation and retry until success.
+					continue
+				}
+				return 0, fmt.Errorf("updateFcn | Exec | %w", err)
+			}
+			n, err := result.RowsAffected()
+			if err != nil {
+				return 0, fmt.Errorf("updateFcn | RowsAffected | %w", err)
+			}
+			return int(n), nil
 		}
-		result, err := stmt.Exec(data...)
-		if err != nil {
-			return 0, fmt.Errorf("updateFcn | Exec | %w", err)
-		}
-		n, err := result.RowsAffected()
-		if err != nil {
-			return 0, fmt.Errorf("updateFcn | RowsAffected | %w", err)
-		}
-		return int(n), nil
 	}
 
 	updateWholeBatchStmt, updatePartialBatchStmt := stmtGetter(dataLen % batchSize)
