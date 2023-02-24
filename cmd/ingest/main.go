@@ -12,6 +12,8 @@ import (
 )
 
 const (
+	NumDBInserters = 64
+
 	CertificateColumn = 3
 	CertChainColumn   = 4
 )

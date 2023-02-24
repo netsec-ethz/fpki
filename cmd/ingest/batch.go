@@ -76,9 +76,17 @@ func NewBatchProcessor(conn db.Conn) *BatchProcessor {
 
 func (p *BatchProcessor) start() {
 	go func() {
-		for batch := range p.incomingCh {
-			go p.wrapBatch(batch)
+		wg := sync.WaitGroup{}
+		wg.Add(NumDBInserters)
+		for i := 0; i < NumDBInserters; i++ {
+			go func() {
+				defer wg.Done()
+				for batch := range p.incomingCh {
+					p.wrapBatch(batch)
+				}
+			}()
 		}
+		wg.Wait()
 		p.doneCh <- struct{}{}
 	}()
 
