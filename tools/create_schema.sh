@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "This will destroy everything in the fpki database"
+echo "This will destroy everything in the juan database"
 
 
 read -p "Are you sure? (y/n) default=n " answer
@@ -15,15 +15,15 @@ esac
 set -e # after call to read
 
 CMD=$(cat <<EOF
-DROP DATABASE IF EXISTS fpki;
-CREATE DATABASE fpki /*!40100 DEFAULT CHARACTER SET ascii COLLATE ascii_bin */ /*!80016 DEFAULT ENCRYPTION='N' */;
+DROP DATABASE IF EXISTS juan;
+CREATE DATABASE juan /*!40100 DEFAULT CHARACTER SET ascii COLLATE ascii_bin */ /*!80016 DEFAULT ENCRYPTION='N' */;
 EOF
 )
 echo "$CMD" | mysql -u root
 
 
 CMD=$(cat <<EOF
-USE fpki;
+USE juan;
 CREATE TABLE nodes (
   idhash      VARBINARY(33) NOT NULL,
   parentnode  VARBINARY(33) DEFAULT NULL,
@@ -39,7 +39,7 @@ echo "$CMD" | mysql -u root
 
 
 CMD=$(cat <<EOF
-USE fpki;
+USE juan;
 DROP FUNCTION IF EXISTS node_path;
 
 DELIMITER $$
@@ -69,7 +69,7 @@ echo "$CMD" | mysql -u root
 
 
 CMD=$(cat <<EOF
-USE fpki;
+USE juan;
 DROP PROCEDURE IF EXISTS val_and_proof_path;
 
 DELIMITER $$
@@ -100,7 +100,7 @@ echo "$CMD" | mysql -u root
 
 
 CMD=$(cat <<EOF
-CREATE TABLE \`fpki\`.\`domainEntries\` (
+CREATE TABLE \`juan\`.\`domainEntries\` (
    \`key\` VARBINARY(32) NOT NULL,
    \`value\` LONGBLOB NOT NULL,
    UNIQUE INDEX \`key_UNIQUE\` (\`key\` ASC));
@@ -111,7 +111,7 @@ echo "$CMD" | mysql -u root
 
 
 CMD=$(cat <<EOF
-CREATE TABLE \`fpki\`.\`tree\` (
+CREATE TABLE \`juan\`.\`tree\` (
    \`key\` VARBINARY(32) NOT NULL,
    \`value\` LONGBLOB NOT NULL,
    \`id\` BIGINT(64) NOT NULL AUTO_INCREMENT,
@@ -124,7 +124,7 @@ echo "$CMD" | mysql -u root
 
 
 CMD=$(cat <<EOF
-CREATE TABLE \`fpki\`.\`deleteTest\` (
+CREATE TABLE \`juan\`.\`deleteTest\` (
    \`key\` VARCHAR(64) NOT NULL,
    \`value\` BLOB NOT NULL,
    \`id\` BIGINT(64) NOT NULL AUTO_INCREMENT,
@@ -136,7 +136,7 @@ echo "$CMD" | mysql -u root
 
 
 CMD=$(cat <<EOF
-  CREATE TABLE \`fpki\`.\`updates\` (
+  CREATE TABLE \`juan\`.\`updates\` (
    \`key\` VARBINARY(32) NOT NULL,
    PRIMARY KEY (\`key\`));
 EOF
