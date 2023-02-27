@@ -115,6 +115,10 @@ func NewMysqlDB(db *sql.DB) (*mysqlDB, error) {
 	}, nil
 }
 
+func (c *mysqlDB) DB() *sql.DB {
+	return c.db
+}
+
 // Close: close connection
 func (c *mysqlDB) Close() error {
 	c.prepGetValueTree.Close()

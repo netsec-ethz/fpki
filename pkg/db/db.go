@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 )
@@ -16,6 +17,7 @@ type KeyValuePair struct {
 
 // Conn: interface for db connection
 type Conn interface {
+	DB() *sql.DB
 	// Close closes the connection.
 	Close() error
 
