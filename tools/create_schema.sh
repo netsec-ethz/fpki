@@ -14,12 +14,14 @@ esac
 
 set -e # after call to read
 
+MYSQLCMD="mysql -u root"
+
 CMD=$(cat <<EOF
 DROP DATABASE IF EXISTS juan;
 CREATE DATABASE juan /*!40100 DEFAULT CHARACTER SET ascii COLLATE ascii_bin */ /*!80016 DEFAULT ENCRYPTION='N' */;
 EOF
 )
-echo "$CMD" | mysql -u root
+echo "$CMD" | $MYSQLCMD
 
 
 CMD=$(cat <<EOF
@@ -35,7 +37,7 @@ CREATE TABLE nodes (
 ) ENGINE=InnoDB CHARSET=\`binary\` COLLATE=\`binary\`;
 EOF
 )
-echo "$CMD" | mysql -u root
+echo "$CMD" | $MYSQLCMD
 
 
 CMD=$(cat <<EOF
@@ -65,7 +67,7 @@ END$$
 DELIMITER ;
 EOF
 )
-echo "$CMD" | mysql -u root
+echo "$CMD" | $MYSQLCMD
 
 
 CMD=$(cat <<EOF
@@ -95,7 +97,7 @@ END$$
 DELIMITER ;
 EOF
 )
-echo "$CMD" | mysql -u root
+echo "$CMD" | $MYSQLCMD
 
 
 
@@ -106,7 +108,7 @@ CREATE TABLE \`juan\`.\`domainEntries\` (
    UNIQUE INDEX \`key_UNIQUE\` (\`key\` ASC));
 EOF
 )
-echo "$CMD" | mysql -u root
+echo "$CMD" | $MYSQLCMD
 
 
 
@@ -119,7 +121,7 @@ CREATE TABLE \`juan\`.\`tree\` (
    UNIQUE INDEX \`key_UNIQUE\` (\`key\` ASC));
 EOF
 )
-echo "$CMD" | mysql -u root
+echo "$CMD" | $MYSQLCMD
 
 
 
@@ -132,7 +134,7 @@ CREATE TABLE \`juan\`.\`deleteTest\` (
    UNIQUE INDEX \`key_UNIQUE\` (\`key\` ASC));
 EOF
 )
-echo "$CMD" | mysql -u root
+echo "$CMD" | $MYSQLCMD
 
 
 CMD=$(cat <<EOF
@@ -141,7 +143,7 @@ CMD=$(cat <<EOF
    PRIMARY KEY (\`key\`));
 EOF
 )
-echo "$CMD" | mysql -u root
+echo "$CMD" | $MYSQLCMD
 
 
 
