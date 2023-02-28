@@ -3,8 +3,9 @@ package db
 import (
 	"context"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
+	"io/ioutil"
+	"os"
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/netsec-ethz/fpki/pkg/common"
@@ -12,7 +13,7 @@ import (
 
 // UpdateDomainEntries: Update a list of key-value store
 func (c *mysqlDB) UpdateDomainEntries(ctx context.Context, keyValuePairs []*KeyValuePair) (int, error) {
-	numOfUpdatedRecords, err := c.doUpdatePairs(ctx, keyValuePairs, c.getDomainEntriesUpdateStmts)
+	numOfUpdatedRecords, err := c.doUpdatePairs(ctx, keyValuePairs, c.getDomainEntriesUpdateStmts, "domainEntries")
 	if err != nil {
 		return 0, fmt.Errorf("UpdateDomainEntries | %w", err)
 	}
@@ -31,7 +32,7 @@ func (c *mysqlDB) DeleteTreeNodes(ctx context.Context, keys []common.SHA256Outpu
 
 // UpdateTreeNodes: Update a list of key-value store
 func (c *mysqlDB) UpdateTreeNodes(ctx context.Context, keyValuePairs []*KeyValuePair) (int, error) {
-	numOfUpdatedPairs, err := c.doUpdatePairs(ctx, keyValuePairs, c.getTreeStructureUpdateStmts)
+	numOfUpdatedPairs, err := c.doUpdatePairs(ctx, keyValuePairs, c.getTreeStructureUpdateStmts, "tree")
 	if err != nil {
 		return 0, fmt.Errorf("UpdateTreeNodes | %w", err)
 	}
@@ -62,8 +63,8 @@ func (c *mysqlDB) RemoveAllUpdatedDomains(ctx context.Context) error {
 // parameters is reserved once with batchSize and passed along.
 // keyValuePairs is the slice with all the key-values to insert, not only one batch.
 // The function returns the number of rows affected, or error.
-func updateKeyValuesFcn(stmtGen prepStmtGetter, parameters []interface{}, kvPairs []*KeyValuePair,
-	stmt *sql.Stmt, first, last int) (int, error) {
+func (c *mysqlDB) updateKeyValuesFcn(tableName string, stmtGen prepStmtGetter, parameters []interface{},
+	kvPairs []*KeyValuePair, stmt *sql.Stmt, first, last int) (int, error) {
 
 	// Check if the size is too big for MySQL (max_allowed_packet must always be < 1G).
 	size := 0
@@ -78,18 +79,22 @@ func updateKeyValuesFcn(stmtGen prepStmtGetter, parameters []interface{}, kvPair
 		fmt.Printf("Detected one case of gigantism: data is %d Mb. Splitting in two.\n",
 			size/1024/1024)
 		if first == last {
-			panic(fmt.Errorf("cannot split: this is just one entry. Size=%d bytes, key=%s",
-				size, hex.EncodeToString(kvPairs[first].Key[:])))
+			err := c.insertKeyValuesViaLocalFile(tableName, kvPairs[first:last+1])
+			if err != nil {
+				return 0, err
+			}
+			// panic(fmt.Errorf("cannot split: this is just one entry. Size=%d bytes, key=%s",
+			// 	size, hex.EncodeToString(kvPairs[first].Key[:])))
 		}
 		last1 := (last-first+1)/2 + first - 1
 		// The size has changed, generate a new prepared statement.
 		_, stmt := stmtGen(last1 - first + 1)
-		n, err := updateKeyValuesFcn(stmtGen, parameters, kvPairs, stmt, first, last1)
+		n, err := c.updateKeyValuesFcn(tableName, stmtGen, parameters, kvPairs, stmt, first, last1)
 		if err != nil {
 			return n, err
 		}
 		_, stmt = stmtGen(last - (last1 + 1) + 1)
-		n2, err := updateKeyValuesFcn(stmtGen, parameters, kvPairs, stmt, last1+1, last)
+		n2, err := c.updateKeyValuesFcn(tableName, stmtGen, parameters, kvPairs, stmt, last1+1, last)
 		return n2 + n, err
 	}
 
@@ -115,6 +120,79 @@ func updateKeyValuesFcn(stmtGen prepStmtGetter, parameters []interface{}, kvPair
 	}
 }
 
+func (c *mysqlDB) insertKeyValuesViaLocalFile(tableName string, kvs []*KeyValuePair) error {
+	panicIfErr := func(err error) {
+		if err != nil {
+			panic(err)
+		}
+	}
+	// Create temp file to hold the CSV file in /tmp/
+	f, err := ioutil.TempFile("", "hugeLeaf_*.dat")
+	panicIfErr(err)
+	// Always remove the file.
+	defer func() {
+		f.Close()
+		panicIfErr(os.Remove(f.Name()))
+	}()
+
+	// writes a field enclosed by ", escaping both " and \
+	writeField := func(data []byte) {
+		_, err := f.Write([]byte(`"`))
+		panicIfErr(err)
+		// Ensure no " is part of the data, or escape it.
+		last := -1
+		for i := 0; i < len(data); i++ {
+			switch data[i] {
+			case '"':
+				fallthrough
+			case '\\':
+				_, err = f.Write(data[last+1 : i])
+				panicIfErr(err)
+				_, err = f.Write([]byte{'\\', data[i]})
+				panicIfErr(err)
+				last = i
+			}
+		}
+		// Write the field
+		_, err = f.Write(data[last+1:])
+		panicIfErr(err)
+		_, err = f.Write([]byte(`"`))
+		panicIfErr(err)
+	}
+
+	for _, kv := range kvs {
+		writeField(kv.Key[:]) // <----------- key
+		_, err = f.Write([]byte(","))
+		panicIfErr(err)
+		writeField(kv.Value) // <------------- value
+		_, err = f.Write([]byte("\n"))
+		panicIfErr(err)
+	}
+	err = f.Chmod(0666)
+	panicIfErr(err)
+	err = f.Close()
+	panicIfErr(err)
+
+	// Columns are `key` and `value`.
+	str := fmt.Sprintf(
+		"LOAD DATA INFILE '%s' REPLACE INTO TABLE %s "+
+			`	FIELDS TERMINATED BY ',' ENCLOSED BY '"' `+"(`key`,`value`)",
+		f.Name(), tableName)
+
+	for {
+		_, err = c.db.Exec(str)
+		if err != nil {
+			if myerr, ok := err.(*mysql.MySQLError); ok && myerr.Number == 1213 { // deadlock
+				// A deadlock was found, just cancel this operation and retry until success.
+				continue
+			}
+			panicIfErr(err)
+		}
+		break
+	}
+	return nil
+}
+
 // ********************************************************************
 //
 //	Common
@@ -122,7 +200,7 @@ func updateKeyValuesFcn(stmtGen prepStmtGetter, parameters []interface{}, kvPair
 // ********************************************************************
 // worker to update key-value pairs
 func (c *mysqlDB) doUpdatePairs(ctx context.Context, keyValuePairs []*KeyValuePair,
-	stmtGetter prepStmtGetter) (int, error) {
+	stmtGetter prepStmtGetter, tableName string) (int, error) {
 
 	dataLen := len(keyValuePairs)
 	affectedRowsCount := 0
@@ -130,7 +208,7 @@ func (c *mysqlDB) doUpdatePairs(ctx context.Context, keyValuePairs []*KeyValuePa
 	data := make([]interface{}, 2*batchSize) // 2 elements per record
 	updateWholeBatchStmt, updatePartialBatchStmt := stmtGetter(dataLen % batchSize)
 	updateAdapter := func(stmt *sql.Stmt, first, last int) (int, error) {
-		return updateKeyValuesFcn(stmtGetter, data, keyValuePairs, stmt, first, last)
+		return c.updateKeyValuesFcn(tableName, stmtGetter, data, keyValuePairs, stmt, first, last)
 	}
 
 	for i := 0; i < dataLen/batchSize; i++ {
