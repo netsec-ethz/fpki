@@ -42,6 +42,9 @@ func (c *mysqlDB) UpdateTreeNodes(ctx context.Context, keyValuePairs []*KeyValue
 // AddUpdatedDomains inserts a list of keys into the updates table.
 // If a key exists, ignores it.
 func (c *mysqlDB) AddUpdatedDomains(ctx context.Context, keys []common.SHA256Output) (int, error) {
+	if len(keys) == 0 {
+		return 0, nil
+	}
 	n, err := c.doUpdateKeys(ctx, keys, c.getUpdatesInsertStmts)
 	if err != nil {
 		return 0, fmt.Errorf("AddUpdatedDomains | %w", err)
@@ -56,6 +59,15 @@ func (c *mysqlDB) RemoveAllUpdatedDomains(ctx context.Context) error {
 		return fmt.Errorf("RemoveAllUpdatedDomains | TRUNCATE | %w", err)
 	}
 	return nil
+}
+
+type HugeLeafError struct {
+	ID    *common.SHA256Output
+	Index int
+}
+
+func (HugeLeafError) Error() string {
+	return "Huge Leaf"
 }
 
 // updateKeyValuesFcn
@@ -79,9 +91,13 @@ func (c *mysqlDB) updateKeyValuesFcn(tableName string, stmtGen prepStmtGetter, p
 		fmt.Printf("Detected one case of gigantism: data is %d Mb. Splitting in two.\n",
 			size/1024/1024)
 		if first == last {
-			err := c.insertKeyValuesViaLocalFile(tableName, kvPairs[first:last+1])
-			if err != nil {
-				return 0, err
+			// err := c.insertKeyValuesViaLocalFile(tableName, kvPairs[first:last+1])
+			// if err != nil {
+			// 	return 0, err
+			// }
+			return 0, HugeLeafError{
+				ID:    &(kvPairs[first].Key),
+				Index: first,
 			}
 			// panic(fmt.Errorf("cannot split: this is just one entry. Size=%d bytes, key=%s",
 			// 	size, hex.EncodeToString(kvPairs[first].Key[:])))
@@ -89,13 +105,13 @@ func (c *mysqlDB) updateKeyValuesFcn(tableName string, stmtGen prepStmtGetter, p
 		last1 := (last-first+1)/2 + first - 1
 		// The size has changed, generate a new prepared statement.
 		_, stmt := stmtGen(last1 - first + 1)
-		n, err := c.updateKeyValuesFcn(tableName, stmtGen, parameters, kvPairs, stmt, first, last1)
-		if err != nil {
-			return n, err
-		}
+		n, err1 := c.updateKeyValuesFcn(tableName, stmtGen, parameters, kvPairs, stmt, first, last1)
 		_, stmt = stmtGen(last - (last1 + 1) + 1)
-		n2, err := c.updateKeyValuesFcn(tableName, stmtGen, parameters, kvPairs, stmt, last1+1, last)
-		return n2 + n, err
+		n2, err2 := c.updateKeyValuesFcn(tableName, stmtGen, parameters, kvPairs, stmt, last1+1, last)
+		if err1 != nil {
+			err2 = err1
+		}
+		return n2 + n, err2
 	}
 
 	data := parameters[:2*(last-first+1)]
