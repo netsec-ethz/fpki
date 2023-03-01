@@ -173,11 +173,7 @@ func (p *BatchProcessor) processBatch(batch *Batch) {
 	}
 	_, err = p.conn.UpdateDomainEntries(context.Background(), domainEntries)
 	if err != nil {
-		if err, ok := err.(db.HugeLeafError); ok {
-			c := shaToCerts[*err.ID]
-			fmt.Printf("HugeLeaf found for domain: %s\n", c.DomainName)
-		}
-		// panic(err)
+		panic(err)
 	}
 
 	// Add entries to the `updates` table containing all the modified domains:

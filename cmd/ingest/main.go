@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	NumDBInserters = 64
+	NumDBInserters = 16
 
 	CertificateColumn = 3
 	CertChainColumn   = 4

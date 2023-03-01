@@ -8,6 +8,8 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/db"
@@ -20,6 +22,9 @@ type Processor struct {
 	incomingFileCh chan File      // indicates new file(s) with certificates to be ingested
 	fromParserCh   chan *CertData // parser data to be sent to SMT and DB\
 	batchProcessor *BatchProcessor
+
+	// Statistics:
+	expiredCerts atomic.Uint64
 
 	errorCh chan error // errors accumulate here
 	doneCh  chan error // the aggregation of all errors. Signals Processor is done
@@ -120,7 +125,10 @@ func (p *Processor) Wait() error {
 
 	// Wait until all data has been processed.
 	fmt.Println("deleteme waiting for done signal")
-	return <-p.doneCh
+	err := <-p.doneCh
+	fmt.Printf("Total of skipped certificates because they were expired: %d\n",
+		p.expiredCerts.Load())
+	return err
 }
 
 func (p *Processor) AddGzFiles(fileNames []string) {
@@ -154,6 +162,12 @@ func (p *Processor) ingestWithCSV(fileReader io.Reader) error {
 		cert, err := ctx509.ParseCertificate(rawBytes)
 		if err != nil {
 			return err
+		}
+
+		// If the certificate is already expired, skip it altogether.
+		if time.Now().After(cert.NotAfter) {
+			p.expiredCerts.Add(1)
+			continue
 		}
 
 		// The certificate chain is a list of base64 strings separated by semicolon (;).

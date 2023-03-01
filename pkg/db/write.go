@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -91,16 +92,8 @@ func (c *mysqlDB) updateKeyValuesFcn(tableName string, stmtGen prepStmtGetter, p
 		fmt.Printf("Detected one case of gigantism: data is %d Mb. Splitting in two.\n",
 			size/1024/1024)
 		if first == last {
-			// err := c.insertKeyValuesViaLocalFile(tableName, kvPairs[first:last+1])
-			// if err != nil {
-			// 	return 0, err
-			// }
-			return 0, HugeLeafError{
-				ID:    &(kvPairs[first].Key),
-				Index: first,
-			}
-			// panic(fmt.Errorf("cannot split: this is just one entry. Size=%d bytes, key=%s",
-			// 	size, hex.EncodeToString(kvPairs[first].Key[:])))
+			panic(fmt.Errorf("cannot split: this is one gigantic entry. Size=%d bytes, key=%s",
+				size, hex.EncodeToString(kvPairs[first].Key[:])))
 		}
 		last1 := (last-first+1)/2 + first - 1
 		// The size has changed, generate a new prepared statement.
