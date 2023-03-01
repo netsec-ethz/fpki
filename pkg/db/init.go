@@ -37,7 +37,8 @@ func ConfigFromEnvironment() *Configuration {
 	if env["MYSQL_PORT"] != "" {
 		dsnString += ":" + env["MYSQL_PORT"]
 	}
-	dsnString += ")/juan"
+	dsnString += ")/fpki"
+	// fmt.Printf("FPKI | DB INIT | using dsn: %s\n", dsnString)
 	return &Configuration{
 		Dsn: dsnString,
 		Values: map[string]string{
