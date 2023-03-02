@@ -23,6 +23,8 @@ type Processor struct {
 	fromParserCh   chan *CertData // parser data to be sent to SMT and DB\
 	batchProcessor *BatchProcessor
 
+	root []byte // final root value after finishing ingestion
+
 	// Statistics:
 	expiredCerts atomic.Uint64
 
@@ -106,6 +108,7 @@ func (p *Processor) start() {
 			fmt.Printf("deleteme error found in SMT processing: %s\n", err)
 			p.errorCh <- err
 		}
+		p.root = smtProcessor.smtTrie.Root
 
 		// There is no more processing to do, close the errors channel and allow the
 		// error processor to finish.

@@ -51,6 +51,8 @@ func main() {
 	// Close DB and check errors.
 	err = conn.Close()
 	exitIfError(err)
+
+	fmt.Printf("Final root value: %x\n", proc.root)
 }
 
 func listOurFiles(dir string) (gzFiles, csvFiles []string) {
