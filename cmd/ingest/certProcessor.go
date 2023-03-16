@@ -72,8 +72,8 @@ type CertificateProcessor struct {
 	incomingBatch chan *CertBatch       // Ready to be inserted
 	doneCh        chan struct{}
 	// Statistics:
-	WrittenCerts  atomic.Int64
-	WrittenBytes  atomic.Int64
+	ReadCerts     atomic.Int64
+	ReadBytes     atomic.Int64
 	UncachedCerts atomic.Int64
 }
 
@@ -164,8 +164,8 @@ func (p *CertificateProcessor) start() {
 				p.doneCh <- struct{}{} // signal again
 				return
 			}
-			writtenCerts := p.WrittenCerts.Load()
-			writtenBytes := p.WrittenBytes.Load()
+			writtenCerts := p.ReadCerts.Load()
+			writtenBytes := p.ReadBytes.Load()
 			uncachedCerts := p.UncachedCerts.Load()
 			secondsSinceStart := float64(time.Since(startTime).Seconds())
 			fmt.Printf("%.0f Certs/s (%.0f%% uncached), %.1f Mb/s\n",

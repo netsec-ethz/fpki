@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/common"
@@ -21,6 +22,7 @@ import (
 type Processor struct {
 	Conn  db.Conn
 	cache *PresenceCache // IDs of certificates pushed to DB.
+	now   time.Time
 
 	incomingFileCh    chan File               // New files with certificates to be ingested
 	certWithChainChan chan *CertWithChainData // After parsing files
@@ -43,6 +45,7 @@ func NewProcessor(conn db.Conn, certUpdateStrategy CertificateUpdateStrategy) *P
 	p := &Processor{
 		Conn:              conn,
 		cache:             NewPresenceCache(),
+		now:               time.Now(),
 		incomingFileCh:    make(chan File),
 		certWithChainChan: make(chan *CertWithChainData),
 		nodeChan:          nodeChan,
@@ -184,10 +187,15 @@ func (p *Processor) ingestWithCSV(fileReader io.Reader) error {
 		if err != nil {
 			return err
 		}
+
 		// Update statistics.
-		p.batchProcessor.WrittenBytes.Add(int64(len(rawBytes)))
-		p.batchProcessor.WrittenCerts.Inc()
+		p.batchProcessor.ReadBytes.Add(int64(len(rawBytes)))
+		p.batchProcessor.ReadCerts.Inc()
 		p.batchProcessor.UncachedCerts.Inc()
+
+		if p.now.After(cert.NotAfter) {
+			return nil
+		}
 
 		// The certificate chain is a list of base64 strings separated by semicolon (;).
 		strs := strings.Split(fields[CertChainColumn], ";")
@@ -199,8 +207,8 @@ func (p *Processor) ingestWithCSV(fileReader io.Reader) error {
 				return fmt.Errorf("at line %d: %s\n%s", lineNo, err, fields[CertChainColumn])
 			}
 			// Update statistics.
-			p.batchProcessor.WrittenBytes.Add(int64(len(rawBytes)))
-			p.batchProcessor.WrittenCerts.Inc()
+			p.batchProcessor.ReadBytes.Add(int64(len(rawBytes)))
+			p.batchProcessor.ReadCerts.Inc()
 			// Check if the parent certificate is in the cache.
 			id := common.SHA256Hash32Bytes(rawBytes)
 			if !p.cache.Contains(&id) {
