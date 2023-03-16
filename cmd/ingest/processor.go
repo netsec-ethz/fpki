@@ -11,6 +11,8 @@ import (
 	"time"
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
+
+	"github.com/netsec-ethz/fpki/cmd/ingest/cache"
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
@@ -21,7 +23,7 @@ import (
 // described in the `start` method.
 type Processor struct {
 	Conn  db.Conn
-	cache *PresenceCache // IDs of certificates pushed to DB.
+	cache cache.Cache // IDs of certificates pushed to DB.
 	now   time.Time
 
 	incomingFileCh    chan File               // New files with certificates to be ingested
@@ -44,7 +46,7 @@ func NewProcessor(conn db.Conn, certUpdateStrategy CertificateUpdateStrategy) *P
 	nodeChan := make(chan *CertificateNode)
 	p := &Processor{
 		Conn:              conn,
-		cache:             NewPresenceCache(),
+		cache:             cache.NewNoCache(),
 		now:               time.Now(),
 		incomingFileCh:    make(chan File),
 		certWithChainChan: make(chan *CertWithChainData),
