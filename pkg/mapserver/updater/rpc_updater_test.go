@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-//TestRPCAndPC: test getAffectedDomainAndCertMapPCAndRPC()
+// TestRPCAndPC: test getAffectedDomainAndCertMapPCAndRPC()
 func TestRPCAndPC(t *testing.T) {
 	// get PC and RPC
 	pcList, rpcList, err := logpicker.GetPCAndRPC("./testdata/domain_list/domains.txt", 0, 0, 0)
@@ -134,11 +134,11 @@ func TestUpdateDomainEntriesWithRPCAndPC(t *testing.T) {
 	}
 
 	// get the domain entries only if they are updated
-	domainEntriesToWrite, err := getDomainEntriesToWrite(updatedDomains, domainEntriesMap)
+	domainEntriesToWrite, err := GetDomainEntriesToWrite(updatedDomains, domainEntriesMap)
 	require.NoError(t, err)
 
 	// serialize the domainEntry -> key-value pair
-	_, err = serializeUpdatedDomainEntries(domainEntriesToWrite)
+	_, err = SerializeUpdatedDomainEntries(domainEntriesToWrite)
 	require.NoError(t, err)
 }
 

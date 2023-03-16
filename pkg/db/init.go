@@ -17,7 +17,11 @@ type Configuration struct {
 	CheckSchema bool // indicates if opening the connection checks the health of the schema
 }
 
-func DefaultConfig() *Configuration {
+// ConfigFromEnvironment returns a valid DB connection configuration set up from environment
+// variables. MYSQL_USER, MYSQL_PASSWORD, MYSQL_HOST AND MYSQL_PORT are values that a user can
+// set to influence the connection. The defaults are set to yield "root@tcp(localhost)/fpki" as
+// the DSN.
+func ConfigFromEnvironment() *Configuration {
 	env := map[string]string{"MYSQL_USER": "root", "MYSQL_PASSWORD": "", "MYSQL_HOST": "localhost", "MYSQL_PORT": ""}
 	for k := range env {
 		v, exists := os.LookupEnv(k)
@@ -34,7 +38,7 @@ func DefaultConfig() *Configuration {
 		dsnString += ":" + env["MYSQL_PORT"]
 	}
 	dsnString += ")/fpki"
-	fmt.Printf("FPKI | DB INIT | using dsn: %s\n", dsnString)
+	// fmt.Printf("FPKI | DB INIT | using dsn: %s\n", dsnString)
 	return &Configuration{
 		Dsn: dsnString,
 		Values: map[string]string{
@@ -48,7 +52,7 @@ func DefaultConfig() *Configuration {
 // Connect: connect to db, using the config file
 func Connect(config *Configuration) (Conn, error) {
 	if config == nil {
-		config = DefaultConfig()
+		config = ConfigFromEnvironment()
 	}
 	dsn, err := url.Parse(config.Dsn)
 	if err != nil {

@@ -38,7 +38,7 @@ func (a *UpdaterTestAdapter) FetchUpdatedDomainHash(ctx context.Context) (
 func (a *UpdaterTestAdapter) KeyValuePairToSMTInput(keyValuePair []*db.KeyValuePair) (
 	[][]byte, [][]byte, error) {
 
-	return keyValuePairToSMTInput(keyValuePair)
+	return KeyValuePairToSMTInput(keyValuePair)
 }
 
 func (a *UpdaterTestAdapter) SMT() *trie.Trie {

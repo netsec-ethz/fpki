@@ -2,7 +2,9 @@ package common
 
 import sha256 "github.com/minio/sha256-simd"
 
-type SHA256Output [32]byte
+const SHA256Size = 32
+
+type SHA256Output [SHA256Size]byte
 
 // Hash exports default hash function for trie
 var SHA256Hash = func(data ...[]byte) []byte {

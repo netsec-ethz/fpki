@@ -30,7 +30,7 @@ func TestUpdateDomainEntriesUsingCerts(t *testing.T) {
 	}
 
 	// get affected domain map and domain cert map
-	affectedDomainsMap, domainCertMap, domainCertChainMap := getAffectedDomainAndCertMap(
+	affectedDomainsMap, domainCertMap, domainCertChainMap := GetAffectedDomainAndCertMap(
 		certs, certChains)
 
 	// test if all the certs are correctly added to the affectedDomainsMap and domainCertMap
@@ -74,7 +74,7 @@ func TestUpdateDomainEntriesUsingCerts(t *testing.T) {
 
 	// empty domainEntriesMap
 	domainEntriesMap := make(map[projectCommon.SHA256Output]*common.DomainEntry)
-	updatedDomains, err := updateDomainEntries(domainEntriesMap, domainCertMap, domainCertChainMap)
+	updatedDomains, err := UpdateDomainEntries(domainEntriesMap, domainCertMap, domainCertChainMap)
 	require.NoError(t, err, "updateDomainEntries")
 
 	assert.Equal(t, len(updatedDomains), len(affectedDomainsMap), "len(updatedDomains) should equals to len(affectedDomainsMap)")
@@ -119,11 +119,11 @@ func TestUpdateDomainEntriesUsingCerts(t *testing.T) {
 	}
 
 	// get the domain entries only if they are updated, from DB
-	domainEntriesToWrite, err := getDomainEntriesToWrite(updatedDomains, domainEntriesMap)
+	domainEntriesToWrite, err := GetDomainEntriesToWrite(updatedDomains, domainEntriesMap)
 	require.NoError(t, err)
 
 	// serialized the domainEntry -> key-value pair
-	_, err = serializeUpdatedDomainEntries(domainEntriesToWrite)
+	_, err = SerializeUpdatedDomainEntries(domainEntriesToWrite)
 	require.NoError(t, err)
 }
 
@@ -140,19 +140,19 @@ func TestUpdateSameCertTwice(t *testing.T) {
 		certs = append(certs, cert)
 	}
 
-	_, domainCertMap, domainCertChainMap := getAffectedDomainAndCertMap(certs, certChains)
+	_, domainCertMap, domainCertChainMap := GetAffectedDomainAndCertMap(certs, certChains)
 
 	domainEntriesMap := make(map[projectCommon.SHA256Output]*common.DomainEntry)
 
 	// update domain entry with certs
-	updatedDomains, err := updateDomainEntries(domainEntriesMap, domainCertMap, domainCertChainMap)
+	updatedDomains, err := UpdateDomainEntries(domainEntriesMap, domainCertMap, domainCertChainMap)
 	require.NoError(t, err, "updateDomainEntries")
 
 	// Length of updatedDomains should be that of the affected domains:
 	assert.Equal(t, len(domainCertMap), len(updatedDomains), "updated domain should be 0")
 
 	// update domain entry with same certs
-	updatedDomains, err = updateDomainEntries(domainEntriesMap, domainCertMap, domainCertChainMap)
+	updatedDomains, err = UpdateDomainEntries(domainEntriesMap, domainCertMap, domainCertChainMap)
 	require.NoError(t, err, "updateDomainEntries")
 
 	// Now the length of updatedDomains should be zero.

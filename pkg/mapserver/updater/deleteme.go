@@ -56,7 +56,7 @@ func (mapUpdater *MapUpdater) updateCertsReturnTime(ctx context.Context, certs [
 		return nil, nil, []*db.KeyValuePair{}, []*db.KeyValuePair{}, 0
 	}
 
-	_, _, err = keyValuePairToSMTInput(keyValuePairs)
+	_, _, err = KeyValuePairToSMTInput(keyValuePairs)
 	if err != nil {
 		return nil, fmt.Errorf("CollectCerts | keyValuePairToSMTInput | %w", err), nil, nil, 0
 	}
@@ -81,7 +81,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCertsReturnTime(ctx c
 	start := time.Now()
 	// get the unique list of affected domains
 	emptyCertChains := make([][]*x509.Certificate, len(certs))
-	affectedDomainsMap, domainCertMap, domainCertChainMap := getAffectedDomainAndCertMap(certs, emptyCertChains)
+	affectedDomainsMap, domainCertMap, domainCertChainMap := GetAffectedDomainAndCertMap(certs, emptyCertChains)
 	end := time.Now()
 	fmt.Println("(memory) time to process certs: ", end.Sub(start))
 	timeList = append(timeList, end.Sub(start).String())
@@ -111,7 +111,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCertsReturnTime(ctx c
 
 	start = time.Now()
 	// update the domain entries
-	updatedDomains, err := updateDomainEntries(domainEntriesMap, domainCertMap, domainCertChainMap)
+	updatedDomains, err := UpdateDomainEntries(domainEntriesMap, domainCertMap, domainCertChainMap)
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | updateDomainEntries | %w", err), nil, nil
 	}
@@ -126,7 +126,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCertsReturnTime(ctx c
 
 	start = time.Now()
 	// get the domain entries only if they are updated, from DB
-	domainEntriesToWrite, err := getDomainEntriesToWrite(updatedDomains, domainEntriesMap)
+	domainEntriesToWrite, err := GetDomainEntriesToWrite(updatedDomains, domainEntriesMap)
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | getDomainEntriesToWrite | %w", err), nil, nil
 	}
@@ -137,7 +137,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCertsReturnTime(ctx c
 	//fmt.Println(" domain entries size:                                                          ", readSize/1024/1024, " MB")
 
 	// serialized the domainEntry -> key-value pair
-	keyValuePairs, err := serializeUpdatedDomainEntries(domainEntriesToWrite)
+	keyValuePairs, err := SerializeUpdatedDomainEntries(domainEntriesToWrite)
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | serializeUpdatedDomainEntries | %w", err), nil, nil
 	}

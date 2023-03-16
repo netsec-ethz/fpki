@@ -16,6 +16,11 @@ To allow root without password:
 - you should see "mysql_native_password" as plugin for root when displaying the root user:
   `SELECT user,authentication_string,plugin,host FROM mysql.user;`
 
+To allow mysqld reading from /tmp/ (load data infile) in ubuntu:
+- Ubuntu runs apparmor. Edit `/etc/apparmor.d/usr.sbin.mysqld`
+- After the line with `/usr/sbin/mysqld {`, insert a new line with `  /tmp/* r,`
+- Reload apparmor `sudo systemctl reload apparmor.service`
+
 
 ## Analyze performance
 

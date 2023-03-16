@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 )
@@ -16,8 +17,18 @@ type KeyValuePair struct {
 
 // Conn: interface for db connection
 type Conn interface {
+	DB() *sql.DB
 	// Close closes the connection.
 	Close() error
+
+	// TruncateAllTables resets the DB to an initial state.
+	TruncateAllTables() error
+
+	// DisableIndexing stops the indexing in the table.
+	DisableIndexing(table string) error
+
+	// DisableIndexing starts the indexing in the table.
+	EnableIndexing(table string) error
 
 	// ************************************************************
 	//              Function for Tree table
@@ -61,4 +72,10 @@ type Conn interface {
 
 	// RemoveAllUpdatedDomains: Truncate updates table; Called after updating is finished
 	RemoveAllUpdatedDomains(ctx context.Context) error
+
+	// UpdatedDomains returns a channel of batches of updated domains.
+	// A batch will have a implementation dependent size.
+	// Each updated domain represents the SHA256 of the textual domain that was updated and
+	// present in the `updates` table.
+	UpdatedDomains() (chan []common.SHA256Output, chan error)
 }
