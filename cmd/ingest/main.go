@@ -44,25 +44,28 @@ func mainFunction() int {
 	cpuProfile := flag.String("cpuprofile", "", "write a CPU profile to file")
 	memProfile := flag.String("memprofile", "", "write a memory profile to file")
 	certUpdateStrategy := flag.String("strategy", "keep", "strategy to update certificates\n"+
-		"\"overwrite\": always send certificates to DB, even if they exist already\n"+
-		"\"keep\": first check if each certificate exists already in DB before sending it\n"+
+		"\"overwrite\": always send certificates to DB, even if they exist already.\n"+
+		"\"keep\": first check if each certificate exists already in DB before sending it.\n"+
+		"\"coalesce\": only coalesce payloads of domains in the dirty table.\n"+
 		`If data transfer to DB is expensive, "keep" is recommended.`)
 	flag.Parse()
 
-	if flag.NArg() != 1 {
-		flag.Usage()
-		return 1
-	}
-
 	// Update strategy.
 	var strategy CertificateUpdateStrategy
+	var coalesceOnly bool
 	switch *certUpdateStrategy {
 	case "overwrite":
 		strategy = CertificateUpdateOverwrite
 	case "keep":
 		strategy = CertificateUpdateKeepExisting
+	case "coalesce":
+		coalesceOnly = true
 	default:
 		panic(fmt.Errorf("bad update strategy: %v", *certUpdateStrategy))
+	}
+	if !coalesceOnly && flag.NArg() != 1 {
+		flag.Usage()
+		return 1
 	}
 
 	// Profiling:
@@ -86,7 +89,7 @@ func mainFunction() int {
 	defer stopProfiles()
 
 	// Signals catching:
-	signals := make(chan os.Signal)
+	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-signals
@@ -100,18 +103,22 @@ func mainFunction() int {
 	conn, err := db.Connect(config)
 	exitIfError(err)
 
-	// All GZ and CSV files found under the directory of the argument.
-	gzFiles, csvFiles := listOurFiles(flag.Arg(0))
-	fmt.Printf("# gzFiles: %d, # csvFiles: %d\n", len(gzFiles), len(csvFiles))
+	if !coalesceOnly {
+		// All GZ and CSV files found under the directory of the argument.
+		gzFiles, csvFiles := listOurFiles(flag.Arg(0))
+		fmt.Printf("# gzFiles: %d, # csvFiles: %d\n", len(gzFiles), len(csvFiles))
 
-	// Truncate DB.
-	exitIfError(conn.TruncateAllTables())
+		// Truncate DB.
+		exitIfError(conn.TruncateAllTables())
 
-	// Update certificates and chains.
-	proc := NewProcessor(conn, strategy)
-	proc.AddGzFiles(gzFiles)
-	proc.AddCsvFiles(csvFiles)
-	exitIfError(proc.Wait())
+		// Update certificates and chains.
+		proc := NewProcessor(conn, strategy)
+		proc.AddGzFiles(gzFiles)
+		proc.AddCsvFiles(csvFiles)
+		exitIfError(proc.Wait())
+	}
+	// Coalesce the payloads of all modified domains.
+	CoalescePayloadsForDirtyDomains(conn.DB())
 
 	// Close DB and check errors.
 	err = conn.Close()

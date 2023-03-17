@@ -57,7 +57,7 @@ USE fpki;
 CREATE TABLE domain_payloads (
   id VARBINARY(32) NOT NULL,
   payload LONGBLOB,
-  payload_hash VARBINARY(32) DEFAULT NULL,
+  payload_id VARBINARY(32) DEFAULT NULL,
   PRIMARY KEY (id)
 ) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
 EOF
@@ -140,3 +140,49 @@ EOF
 )
 echo "$CMD" | $MYSQLCMD
 
+
+CMD=$(cat <<EOF
+USE fpki;
+DROP PROCEDURE IF EXISTS calc_domain_payload;
+DELIMITER $$
+  -- procedure that given a domain computes its payload and its SHA256 hash.
+  CREATE PROCEDURE calc_domain_payload(
+    IN domain_id VARBINARY(32)
+  )
+  BEGIN
+      DECLARE payloadVar LONGBLOB;
+
+    SET group_concat_max_len = 1073741824; -- so that GROUP_CONCAT doesn't truncate results
+    -- Get all certificates for this domain.
+    SELECT GROUP_CONCAT(payload SEPARATOR '') INTO payloadVar
+      FROM certs INNER JOIN domains ON certs.id = domains.cert_id
+      WHERE domains.domain_id = domain_id ORDER BY expiration,payload;
+    REPLACE INTO domain_payloads(id, payload, payload_id) VALUES(domain_id,payloadVar,UNHEX(SHA2(payloadVar, 256)));
+  END$$
+DELIMITER ;
+EOF
+)
+echo "$CMD" | mysql -u root
+
+
+CMD=$(cat <<EOF
+USE fpki;
+DROP PROCEDURE IF EXISTS calc_several_domain_payloads;
+DELIMITER $$
+  CREATE PROCEDURE calc_several_domain_payloads(
+    IN domain_ids LONGBLOB
+  )
+  BEGIN
+      DECLARE IDS LONGBLOB;
+          DECLARE ID VARBINARY(32);
+    SET IDS = domain_ids;
+    WHILE LENGTH(IDS) > 0 DO
+      SET ID = LEFT(IDS,32);
+      CALL calc_domain_payload(ID);
+          SET IDS = RIGHT(IDS,LENGTH(IDS)-32);
+      END WHILE;
+  END$$
+DELIMITER ;
+EOF
+)
+echo "$CMD" | mysql -u root
