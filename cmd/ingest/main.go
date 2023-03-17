@@ -108,9 +108,6 @@ func mainFunction() int {
 		gzFiles, csvFiles := listOurFiles(flag.Arg(0))
 		fmt.Printf("# gzFiles: %d, # csvFiles: %d\n", len(gzFiles), len(csvFiles))
 
-		// Truncate DB.
-		exitIfError(conn.TruncateAllTables())
-
 		// Update certificates and chains.
 		proc := NewProcessor(conn, strategy)
 		proc.AddGzFiles(gzFiles)
