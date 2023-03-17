@@ -131,12 +131,15 @@ func (c *mysqlDB) Close() error {
 
 func (c *mysqlDB) TruncateAllTables() error {
 	tables := []string{
-		"domainEntries",
 		"tree",
-		"updates",
+		"root",
+		"certs",
+		"domains",
+		"domain_payloads",
+		"dirty",
 	}
 	for _, t := range tables {
-		if _, err := c.db.Exec(fmt.Sprintf("DELETE FROM %s", t)); err != nil {
+		if _, err := c.db.Exec(fmt.Sprintf("TRUNCATE %s", t)); err != nil {
 			return err
 		}
 	}
