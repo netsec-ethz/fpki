@@ -275,12 +275,12 @@ func testDomainEntriesTable() {
 	//              check if value is correctly inserted
 	//              RetrieveDomainEntry()
 	// *****************************************************************
-	keys := getKeys(1511, 4555)
+	keys := getKeyPtrs(1511, 4555)
 	prevKeySize := len(keys)
 	result := make([]*db.KeyValuePair, 0, len(keys))
 
 	for _, key := range keys {
-		value, err := conn.RetrieveDomainEntry(ctx, key)
+		value, err := conn.RetrieveDomainEntry(ctx, *key)
 		if err != nil && err != sql.ErrNoRows {
 			panic(err)
 		}
@@ -289,7 +289,7 @@ func testDomainEntriesTable() {
 			if !bytes.Equal(value, []byte("hi this is a test")) {
 				panic("Domain entries Table Read test 1: Stored value is not correct")
 			}
-			result = append(result, &db.KeyValuePair{Key: key, Value: value})
+			result = append(result, &db.KeyValuePair{Key: *key, Value: value})
 		}
 	}
 
@@ -298,11 +298,11 @@ func testDomainEntriesTable() {
 	}
 
 	// query a larger range
-	keys = getKeys(1011, 5555)
+	keys = getKeyPtrs(1011, 5555)
 	result = make([]*db.KeyValuePair, 0, len(keys))
 
 	for _, key := range keys {
-		value, err := conn.RetrieveDomainEntry(ctx, key)
+		value, err := conn.RetrieveDomainEntry(ctx, *key)
 		if err != nil && err != sql.ErrNoRows {
 			panic(err)
 		}
@@ -311,7 +311,7 @@ func testDomainEntriesTable() {
 			if !bytes.Equal(value, []byte("hi this is a test")) {
 				panic("Domain entries Table Read test 2: Stored value is not correct")
 			}
-			result = append(result, &db.KeyValuePair{Key: key, Value: value})
+			result = append(result, &db.KeyValuePair{Key: *key, Value: value})
 		}
 	}
 
@@ -341,16 +341,16 @@ func testDomainEntriesTable() {
 	// *****************************************************************
 	//                       read empty keys
 	// *****************************************************************
-	keys = getKeys(11511, 14555)
+	keys = getKeyPtrs(11511, 14555)
 	result = make([]*db.KeyValuePair, 0, len(keys))
 
 	for _, key := range keys {
-		value, err := conn.RetrieveDomainEntry(ctx, key)
+		value, err := conn.RetrieveDomainEntry(ctx, *key)
 		if err != nil && err != sql.ErrNoRows {
 			panic(err)
 		}
 		if value != nil {
-			result = append(result, &db.KeyValuePair{Key: key, Value: value})
+			result = append(result, &db.KeyValuePair{Key: *key, Value: value})
 		}
 	}
 
@@ -467,6 +467,15 @@ func getKeys(startIdx, endIdx int) []common.SHA256Output {
 		keyHash32Bytes := [32]byte{}
 		copy(keyHash32Bytes[:], keyHash)
 		result = append(result, keyHash32Bytes)
+	}
+	return result
+}
+
+func getKeyPtrs(startIdx, endIdx int) []*common.SHA256Output {
+	result := []*common.SHA256Output{}
+	for i := startIdx; i <= endIdx; i++ {
+		keyHash := common.SHA256Hash32Bytes([]byte(strconv.Itoa(i)))
+		result = append(result, (*common.SHA256Output)(&keyHash))
 	}
 	return result
 }

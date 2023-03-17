@@ -129,7 +129,7 @@ func (c *mysqlDB) Close() error {
 	return c.db.Close()
 }
 
-func (c *mysqlDB) TruncateAllTables() error {
+func (c *mysqlDB) TruncateAllTables(ctx context.Context) error {
 	tables := []string{
 		"tree",
 		"root",
@@ -139,21 +139,19 @@ func (c *mysqlDB) TruncateAllTables() error {
 		"dirty",
 	}
 	for _, t := range tables {
-		if _, err := c.db.Exec(fmt.Sprintf("TRUNCATE %s", t)); err != nil {
+		if _, err := c.db.ExecContext(ctx, fmt.Sprintf("TRUNCATE %s", t)); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (c *mysqlDB) DisableIndexing(table string) error {
-	_, err := c.db.Exec(fmt.Sprintf("ALTER TABLE `%s` DISABLE KEYS", table))
-	return err
-}
-
-func (c *mysqlDB) EnableIndexing(table string) error {
-	_, err := c.db.Exec(fmt.Sprintf("ALTER TABLE `%s` ENABLE KEYS", table))
-	return err
+func (c *mysqlDB) LoadRoot(ctx context.Context) (*common.SHA256Output, error) {
+	var key []byte
+	if err := c.db.QueryRowContext(ctx, "SELECT key32 FROM root").Scan(&key); err != nil {
+		return nil, fmt.Errorf("error obtaining the root entry: %w", err)
+	}
+	return (*common.SHA256Output)(key), nil
 }
 
 // CheckCertsExist returns a slice of true/false values. Each value indicates if

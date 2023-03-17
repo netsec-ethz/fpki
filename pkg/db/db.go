@@ -24,13 +24,13 @@ type Conn interface {
 	Close() error
 
 	// TruncateAllTables resets the DB to an initial state.
-	TruncateAllTables() error
+	TruncateAllTables(ctx context.Context) error
 
-	// DisableIndexing stops the indexing in the table.
-	DisableIndexing(table string) error
+	LoadRoot(ctx context.Context) (*common.SHA256Output, error)
 
-	// DisableIndexing starts the indexing in the table.
-	EnableIndexing(table string) error
+	//////////////////////////////////////////////////////////////////
+	// check if the functions below are needed after the new design //
+	//////////////////////////////////////////////////////////////////
 
 	// CheckCertsExist returns a slice of true/false values. Each value indicates if
 	// the corresponding certificate identified by its ID is already present in the DB.

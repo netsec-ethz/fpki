@@ -90,7 +90,7 @@ func TestResponderWithPoP(t *testing.T) {
 	require.Len(t, certs, count)
 
 	// create responder and request proof for those names
-	responder, err := NewMapResponder(ctx, root, 233, "./testdata/mapserver_config.json")
+	responder, err := NewOldMapResponder(ctx, root, 233, "./testdata/mapserver_config.json")
 	require.NoError(t, err)
 	for _, cert := range certs {
 		responses, err := responder.GetProof(ctx, cert.Subject.CommonName)
@@ -136,7 +136,7 @@ func TestGetDomainProof(t *testing.T) {
 }
 
 // getMockResponder builds a mock responder.
-func getMockResponder(t require.TestingT, certs []*x509.Certificate) *MapResponder {
+func getMockResponder(t require.TestingT, certs []*x509.Certificate) *OldMapResponder {
 	// update the certs, and get the mock db of SMT and db
 	conn, root, err := getUpdatedUpdater(t, certs)
 	require.NoError(t, err)

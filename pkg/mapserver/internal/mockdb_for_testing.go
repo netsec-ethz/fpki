@@ -36,11 +36,9 @@ func (d *MockDB) DB() *sql.DB {
 // Close closes the connection.
 func (d *MockDB) Close() error { return nil }
 
-func (d *MockDB) TruncateAllTables() error { return nil }
+func (d *MockDB) TruncateAllTables(ctx context.Context) error { return nil }
 
-func (d *MockDB) DisableIndexing(table string) error { return nil }
-
-func (d *MockDB) EnableIndexing(table string) error { return nil }
+func (*MockDB) LoadRoot(ctx context.Context) (*common.SHA256Output, error) { return nil, nil }
 
 func (d *MockDB) CheckCertsExist(ctx context.Context, ids []*common.SHA256Output) ([]bool, error) {
 	return make([]bool, len(ids)), nil

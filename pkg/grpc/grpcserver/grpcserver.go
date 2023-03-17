@@ -21,7 +21,7 @@ var (
 // ResponderServer: server to distribute map response
 type ResponderServer struct {
 	pb.UnimplementedMapResponderServer
-	responder *responder.MapResponder
+	responder *responder.OldMapResponder
 }
 
 type GRPCProofs struct {
@@ -49,7 +49,7 @@ func (server ResponderServer) QueryMapEntries(ctx context.Context, in *pb.MapCli
 }
 
 func NewGRPCServer(ctx context.Context, root []byte, cacheHeight int, mapserverConfigPath string) (*ResponderServer, error) {
-	responder, err := responder.NewMapResponder(ctx, root, cacheHeight, mapserverConfigPath)
+	responder, err := responder.NewOldMapResponder(ctx, root, cacheHeight, mapserverConfigPath)
 	if err != nil {
 		return nil, err
 	}
