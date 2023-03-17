@@ -10,7 +10,7 @@ import (
 )
 
 // GetDomainProofsTest deleteme! only used to print extra info in benchmarks.
-func (mapResponder *MapResponder) GetDomainProofsTest(ctx context.Context, domainNames []string) (map[string][]*mapCommon.MapServerResponse, int, error) {
+func (mapResponder *OldMapResponder) GetDomainProofsTest(ctx context.Context, domainNames []string) (map[string][]*mapCommon.MapServerResponse, int, error) {
 	start := time.Now()
 	domainResultMap, domainProofMap, err := getMapping(domainNames, mapResponder.GetSignTreeHead())
 	if err != nil {
