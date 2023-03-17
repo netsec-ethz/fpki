@@ -204,7 +204,10 @@ func KeyValuePairToSMTInput(keyValuePair []*db.KeyValuePair) ([][]byte, [][]byte
 	updateInput := make([]UpdateInput, 0, len(keyValuePair))
 
 	for _, pair := range keyValuePair {
-		updateInput = append(updateInput, UpdateInput{Key: pair.Key, Value: common.SHA256Hash(pair.Value)})
+		updateInput = append(updateInput, UpdateInput{
+			Key:   pair.Key,
+			Value: common.SHA256Hash(pair.Value),
+		})
 	}
 
 	sort.Slice(updateInput, func(i, j int) bool {

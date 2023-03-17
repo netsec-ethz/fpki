@@ -1,29 +1,19 @@
 package main
 
 import (
-	"database/sql"
+	"context"
 	"fmt"
 	"sync"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/db"
 )
 
-func CoalescePayloadsForDirtyDomains(db *sql.DB) {
+func CoalescePayloadsForDirtyDomains(ctx context.Context, conn db.Conn) {
 	// Get all dirty domain IDs.
-	str := "SELECT domain_id FROM dirty"
-	rows, err := db.Query(str)
+	domainIDs, err := conn.UpdatedDomains(ctx)
 	if err != nil {
-		panic(fmt.Errorf("error querying dirty domains: %w", err))
-	}
-	domainIDs := make([]*common.SHA256Output, 0)
-	for rows.Next() {
-		var domainId []byte
-		err = rows.Scan(&domainId)
-		if err != nil {
-			panic(fmt.Errorf("error scanning domain ID: %w", err))
-		}
-		ptr := (*common.SHA256Output)(domainId)
-		domainIDs = append(domainIDs, ptr)
+		panic(err)
 	}
 
 	// Start NumDBWriters workers.
@@ -43,7 +33,7 @@ func CoalescePayloadsForDirtyDomains(db *sql.DB) {
 				}
 				// Now call the stored procedure with this parameter.
 				str := "CALL calc_several_domain_payloads(?)"
-				_, err := db.Exec(str, param)
+				_, err := conn.DB().Exec(str, param)
 				if err != nil {
 					panic(fmt.Errorf("error coalescing payload for domains: %w", err))
 				}
@@ -71,11 +61,5 @@ func CoalescePayloadsForDirtyDomains(db *sql.DB) {
 	// And wait for all workers to finish.
 	wg.Wait()
 
-	// Remove all entries from the dirty table.
-	str = "TRUNCATE dirty"
-	_, err = db.Exec(str)
-	if err != nil {
-		panic(fmt.Errorf("error truncating dirty table: %w", err))
-	}
 	fmt.Println("Done coalescing.")
 }

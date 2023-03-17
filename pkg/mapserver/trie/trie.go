@@ -68,7 +68,7 @@ func NewTrie(root []byte, hash func(data ...[]byte) []byte, store db.Conn) (*Tri
 }
 
 func (s *Trie) PrintCacheSize() {
-	fmt.Println(len(s.db.liveCache))
+	fmt.Println(s.db.GetLiveCacheSize())
 }
 
 func (s *Trie) Close() error {
@@ -81,14 +81,11 @@ func (s *Trie) Close() error {
 // If Update is called multiple times, only the state after the last update
 // is committed.
 func (s *Trie) Update(ctx context.Context, keys, values [][]byte) ([]byte, error) {
+	if len(keys) != len(values) {
+		return nil, fmt.Errorf("key value size does not match")
+	}
 	if len(keys) == 0 {
 		return nil, nil
-	}
-	if len(values) == 0 {
-		return nil, nil
-	}
-	if len(keys) != len(values) {
-		return nil, fmt.Errorf("key value size does not mathc")
 	}
 
 	s.lock.Lock()
@@ -520,7 +517,7 @@ func (s *Trie) loadBatch(ctx context.Context, root []byte, height int) ([][]byte
 		// Added: add the newly fetched nodes, and cache them into memory
 		resultBytes := parseBatch(value)
 		if height >= s.CacheHeightLimit && height%4 == 0 {
-			s.db.liveCache[rootCopy] = resultBytes
+			s.db.updateLiveCache(rootCopy, resultBytes)
 		}
 		return resultBytes, nil
 	}

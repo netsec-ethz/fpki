@@ -110,13 +110,6 @@ func (p *Processor) start() {
 		// Wait for the next stage to finish
 		p.batchProcessor.Wait()
 
-		// Now start processing the changed domains into the SMT:
-		smtProcessor := NewSMTUpdater(p.Conn, nil, 32)
-		smtProcessor.Start()
-		if err := smtProcessor.Wait(); err != nil {
-			p.errorCh <- err
-		}
-
 		// There is no more processing to do, close the errors channel and allow the
 		// error processor to finish.
 		close(p.errorCh)

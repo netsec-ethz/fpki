@@ -65,7 +65,7 @@ type Conn interface {
 	RetrieveDomainEntry(ctx context.Context, id common.SHA256Output) ([]byte, error)
 
 	// RetrieveDomainEntries: Retrieve a list of domain entries table
-	RetrieveDomainEntries(ctx context.Context, id []common.SHA256Output) ([]*KeyValuePair, error)
+	RetrieveDomainEntries(ctx context.Context, id []*common.SHA256Output) ([]*KeyValuePair, error)
 
 	// UpdateDomainEntries: Update a list of key-value pairs in domain entries table
 	UpdateDomainEntries(ctx context.Context, keyValuePairs []*KeyValuePair) (int, error)
@@ -91,5 +91,7 @@ type Conn interface {
 	// A batch will have a implementation dependent size.
 	// Each updated domain represents the SHA256 of the textual domain that was updated and
 	// present in the `updates` table.
-	UpdatedDomains() (chan []common.SHA256Output, chan error)
+	UpdatedDomains(ctx context.Context) ([]*common.SHA256Output, error)
+	CleanupDirty(ctx context.Context) error
+	SaveRoot(ctx context.Context, root *common.SHA256Output) error
 }

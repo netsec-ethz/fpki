@@ -261,12 +261,13 @@ func (c *mysqlDB) UpdateDomainsWithCerts(ctx context.Context, certIDs, domainIDs
 	return err
 }
 
-// repeatStmt returns  ( (?,..inner..,?), ...outer...  )
-func repeatStmt(outer int, inner int) string {
-	components := make([]string, inner)
+// repeatStmt returns  ( (?,..dimensions..,?), ...elemCount...  )
+// Use it like repeatStmt(1, len(IDs)) to obtain (?,?,...)
+func repeatStmt(elemCount int, dimensions int) string {
+	components := make([]string, dimensions)
 	for i := 0; i < len(components); i++ {
 		components[i] = "?"
 	}
 	toRepeat := "(" + strings.Join(components, ",") + ")"
-	return strings.Repeat(toRepeat+",", outer-1) + toRepeat
+	return strings.Repeat(toRepeat+",", elemCount-1) + toRepeat
 }

@@ -28,10 +28,11 @@ func (mapUpdater *MapUpdater) retrieveAffectedDomainFromDB(ctx context.Context,
 		affectedDomainHashes = append(affectedDomainHashes, k)
 	}
 
-	work := func(domainHashes []common.SHA256Output, resultChan chan dbResult) {
-		domainEntries, err := mapUpdater.dbConn.RetrieveDomainEntries(ctx, domainHashes)
-		resultChan <- dbResult{pairs: domainEntries, err: err}
-	}
+	// work := func(domainHashes []common.SHA256Output, resultChan chan dbResult) {
+	// 	domainEntries, err := mapUpdater.dbConn.RetrieveDomainEntries(ctx, domainHashes)
+	// 	resultChan <- dbResult{pairs: domainEntries, err: err}
+	// }
+	work := func(domainHashes []common.SHA256Output, resultChan chan dbResult) {}
 
 	resultChan := make(chan dbResult)
 

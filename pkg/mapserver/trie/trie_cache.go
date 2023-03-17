@@ -98,7 +98,7 @@ func (cacheDB *CacheDB) getValueLimit(ctx context.Context, key []byte) ([]byte, 
 }
 
 func (cacheDB *CacheDB) getValueLockFree(ctx context.Context, key []byte) ([]byte, error) {
-	value, err := cacheDB.Store.RetrieveTreeNode(ctx, *(*[32]byte)(key))
+	value, err := cacheDB.Store.RetrieveTreeNode(ctx, *(*common.SHA256Output)(key))
 	if err != nil {
 		return nil, fmt.Errorf("getValue | RetrieveOneKeyValuePair | %w", err)
 	}
@@ -121,11 +121,15 @@ func serializeBatch(batch [][]byte) []byte {
 	return serialized
 }
 
-//**************************************************
-//          functions for live cache
-//**************************************************
+// **************************************************
+//
+//	functions for live cache
+//
+// **************************************************
 // GetLiveCacheSize: get current size of live cache
 func (db *CacheDB) GetLiveCacheSize() int {
+	db.liveMux.RLock()
+	defer db.liveMux.RUnlock()
 	return len(db.liveCache)
 }
 
@@ -151,9 +155,11 @@ func (db *CacheDB) getLiveCache(node common.SHA256Output) ([][]byte, bool) {
 	return val, exists
 }
 
-//**************************************************
-//          functions for updated nodes
-//**************************************************
+// **************************************************
+//
+//	functions for updated nodes
+//
+// **************************************************
 // getUpdatedNodes: get one node from updated nodes
 func (db *CacheDB) getUpdatedNodes(node common.SHA256Output) ([][]byte, bool) {
 	db.updatedMux.RLock()

@@ -12,17 +12,38 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/common"
 )
 
+func (c *mysqlDB) UpdateDomainEntries(ctx context.Context, pairs []*KeyValuePair) (int, error) {
+	panic("not available")
+}
+
 // UpdateDomainEntries: Update a list of key-value store
-func (c *mysqlDB) UpdateDomainEntries(ctx context.Context, keyValuePairs []*KeyValuePair) (int, error) {
-	numOfUpdatedRecords, err := c.doUpdatePairs(ctx, keyValuePairs, c.getDomainEntriesUpdateStmts, "domainEntries")
+func (c *mysqlDB) UpdateDomainEntriesOLD(ctx context.Context, keyValuePairs []*KeyValuePair) (int, error) {
+	numOfUpdatedRecords, err := c.doUpdatePairs(ctx, keyValuePairs, c.getDomainEntriesUpdateStmts)
 	if err != nil {
 		return 0, fmt.Errorf("UpdateDomainEntries | %w", err)
 	}
 	return numOfUpdatedRecords, nil
 }
 
-// DeleteTreeNodes  deletes a list of key-value stored in the tree table.
 func (c *mysqlDB) DeleteTreeNodes(ctx context.Context, keys []common.SHA256Output) (int, error) {
+	str := "DELETE FROM tree WHERE key32 IN " + repeatStmt(1, len(keys))
+	params := make([]interface{}, len(keys))
+	for i, k := range keys {
+		params[i] = k[:]
+	}
+	res, err := c.db.ExecContext(ctx, str, params...)
+	if err != nil {
+		return 0, fmt.Errorf("error deleting keys from tree: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		panic(fmt.Errorf("unsupported retrieving number of rows affected: %w", err))
+	}
+	return int(n), nil
+}
+
+// DeleteTreeNodes  deletes a list of key-value stored in the tree table.
+func (c *mysqlDB) DeleteTreeNodesOLD(ctx context.Context, keys []common.SHA256Output) (int, error) {
 	n, err := c.doUpdateKeys(ctx, keys, c.getTreeDeleteStmts)
 	if err != nil {
 		return 0, fmt.Errorf("DeleteTreeNodes | %w", err)
@@ -31,9 +52,30 @@ func (c *mysqlDB) DeleteTreeNodes(ctx context.Context, keys []common.SHA256Outpu
 	return n, nil
 }
 
-// UpdateTreeNodes: Update a list of key-value store
 func (c *mysqlDB) UpdateTreeNodes(ctx context.Context, keyValuePairs []*KeyValuePair) (int, error) {
-	numOfUpdatedPairs, err := c.doUpdatePairs(ctx, keyValuePairs, c.getTreeStructureUpdateStmts, "tree")
+	if len(keyValuePairs) == 0 {
+		return 0, nil
+	}
+	str := "REPLACE INTO tree (key32,value) VALUES " + repeatStmt(len(keyValuePairs), 2)
+	params := make([]interface{}, 2*len(keyValuePairs))
+	for i, pair := range keyValuePairs {
+		params[i*2] = pair.Key[:]
+		params[i*2+1] = pair.Value
+	}
+	res, err := c.db.ExecContext(ctx, str, params...)
+	if err != nil {
+		return 0, fmt.Errorf("error inserting key-values into tree: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		panic(fmt.Errorf("unsupported retrieving number of rows affected: %w", err))
+	}
+	return int(n), nil
+}
+
+// UpdateTreeNodes: Update a list of key-value store
+func (c *mysqlDB) UpdateTreeNodesOLD(ctx context.Context, keyValuePairs []*KeyValuePair) (int, error) {
+	numOfUpdatedPairs, err := c.doUpdatePairs(ctx, keyValuePairs, c.getTreeStructureUpdateStmts)
 	if err != nil {
 		return 0, fmt.Errorf("UpdateTreeNodes | %w", err)
 	}
@@ -58,6 +100,15 @@ func (c *mysqlDB) RemoveAllUpdatedDomains(ctx context.Context) error {
 	_, err := c.db.Exec("TRUNCATE `fpki`.`updates`;")
 	if err != nil {
 		return fmt.Errorf("RemoveAllUpdatedDomains | TRUNCATE | %w", err)
+	}
+	return nil
+}
+
+func (c *mysqlDB) SaveRoot(ctx context.Context, root *common.SHA256Output) error {
+	str := "REPLACE INTO root (key32) VALUES (?)"
+	_, err := c.db.ExecContext(ctx, str, (*root)[:])
+	if err != nil {
+		return fmt.Errorf("error inserting root ID: %w", err)
 	}
 	return nil
 }
