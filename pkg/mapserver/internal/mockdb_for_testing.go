@@ -141,3 +141,5 @@ func (d *MockDB) RemoveAllUpdatedDomains(ctx context.Context) error {
 }
 
 func (d *MockDB) UpdatedDomains() (chan []common.SHA256Output, chan error) { return nil, nil }
+
+func (*MockDB) CleanupDirty(ctx context.Context) error { return nil }

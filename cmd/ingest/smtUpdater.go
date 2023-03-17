@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
@@ -12,7 +11,7 @@ import (
 )
 
 type SMTUpdater struct {
-	Store   db.Conn
+	conn    db.Conn
 	smtTrie *trie.Trie
 
 	errorCh chan error
@@ -26,46 +25,40 @@ func NewSMTUpdater(conn db.Conn, root []byte, cacheHeight int) *SMTUpdater {
 	}
 	smtTrie.CacheHeightLimit = cacheHeight
 	return &SMTUpdater{
-		Store:   conn,
+		conn:    conn,
 		smtTrie: smtTrie,
 		errorCh: make(chan error),
 		doneCh:  make(chan error),
 	}
 }
 
-func (u *SMTUpdater) Start() {
+func (u *SMTUpdater) Start(ctx context.Context) {
 	fmt.Println("Starting SMT updater")
 
 	// Start processing the error channel.
 	go u.processErrorChannel()
 
-	if 4%5 != 0 { // deleteme
-		close(u.errorCh)
-		return
-	}
-
 	// Read batches of updated nodes from `updates`:
 	go func() {
-		domainsCh, errorCh := u.Store.UpdatedDomains()
-		wg := sync.WaitGroup{}
-		for batch := range domainsCh {
-			// Process the batches concurrently.
-			batch := batch
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				u.processBatch(batch)
-			}()
-		}
-		for err := range errorCh {
+		// This is the last and only processing function. After it finishes, there is nothing
+		// else to process, close error channel on exiting.
+		defer close(u.errorCh)
+
+		domains, err := u.conn.UpdatedDomains(ctx)
+		if err != nil {
 			u.errorCh <- err
+			return
 		}
-		wg.Wait()
+		u.processBatch(ctx, domains)
 
-		// Nothing else to process, close error channel.
-		close(u.errorCh)
+		// Save root value:
+		err = u.conn.SaveRoot(ctx, (*common.SHA256Output)(u.smtTrie.Root))
+		if err != nil {
+			u.errorCh <- err
+			return
+		}
+		fmt.Println("Done SMT updater.")
 	}()
-
 }
 
 func (u *SMTUpdater) Wait() error {
@@ -88,9 +81,9 @@ func (u *SMTUpdater) processErrorChannel() {
 	close(u.doneCh)
 }
 
-func (u *SMTUpdater) processBatch(batch []common.SHA256Output) {
+func (u *SMTUpdater) processBatch(ctx context.Context, batch []*common.SHA256Output) {
 	// Read those certificates:
-	entries, err := u.Store.RetrieveDomainEntries(context.Background(), batch)
+	entries, err := u.conn.RetrieveDomainEntries(ctx, batch)
 	if err != nil {
 		u.errorCh <- err
 		return
@@ -113,5 +106,4 @@ func (u *SMTUpdater) processBatch(batch []common.SHA256Output) {
 		u.errorCh <- err
 		return
 	}
-	fmt.Printf("deleteme SMT processed batch of %d elements\n", len(batch))
 }

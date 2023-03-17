@@ -14,9 +14,22 @@ type readKeyResult struct {
 	Err  error
 }
 
+func (c *mysqlDB) RetrieveTreeNode(ctx context.Context, key common.SHA256Output) ([]byte, error) {
+	var value []byte
+	str := "SELECT value FROM tree WHERE key32 = ?"
+	err := c.db.QueryRowContext(ctx, str, key[:]).Scan(&value)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("error retrieving node from tree: %w", err)
+	}
+	return value, nil
+}
+
 // RetrieveTreeNode retrieves one single key-value pair from tree table
 // Return sql.ErrNoRows if no row is round
-func (c *mysqlDB) RetrieveTreeNode(ctx context.Context, key common.SHA256Output) ([]byte, error) {
+func (c *mysqlDB) RetrieveTreeNodeOLD(ctx context.Context, key common.SHA256Output) ([]byte, error) {
 	c.getProofLimiter <- struct{}{}
 	defer func() { <-c.getProofLimiter }()
 
@@ -46,14 +59,41 @@ func (c *mysqlDB) RetrieveDomainEntry(ctx context.Context, key common.SHA256Outp
 
 // RetrieveDomainEntries: Retrieve a list of key-value pairs from domain entries table
 // No sql.ErrNoRows will be thrown, if some records does not exist. Check the length of result
-func (c *mysqlDB) RetrieveDomainEntries(ctx context.Context, key []common.SHA256Output) (
+func (c *mysqlDB) RetrieveDomainEntries(ctx context.Context, keys []*common.SHA256Output) (
 	[]*KeyValuePair, error) {
 
-	return c.retrieveDomainEntries(ctx, key)
+	return c.retrieveDomainEntries(ctx, keys)
+}
+
+func (c *mysqlDB) retrieveDomainEntries(ctx context.Context, domainIDs []*common.SHA256Output,
+) ([]*KeyValuePair, error) {
+
+	str := "SELECT id,payload FROM domain_payloads WHERE id IN " + repeatStmt(1, len(domainIDs))
+	params := make([]interface{}, len(domainIDs))
+	for i, id := range domainIDs {
+		params[i] = (*id)[:]
+	}
+	rows, err := c.db.QueryContext(ctx, str, params...)
+	if err != nil {
+		return nil, fmt.Errorf("error obtaining payloads for domains: %w", err)
+	}
+	pairs := make([]*KeyValuePair, 0, len(domainIDs))
+	for rows.Next() {
+		var id, payload []byte
+		err := rows.Scan(&id, &payload)
+		if err != nil {
+			return nil, fmt.Errorf("error scanning domain ID and its payload")
+		}
+		pairs = append(pairs, &KeyValuePair{
+			Key:   *(*common.SHA256Output)(id),
+			Value: payload,
+		})
+	}
+	return pairs, nil
 }
 
 // used for retrieving key value pair
-func (c *mysqlDB) retrieveDomainEntries(ctx context.Context, keys []common.SHA256Output) (
+func (c *mysqlDB) retrieveDomainEntriesOld(ctx context.Context, keys []*common.SHA256Output) (
 	[]*KeyValuePair, error) {
 	str := "SELECT `key`, `value` FROM domainEntries WHERE `key` IN " + repeatStmt(1, len(keys))
 	args := make([]interface{}, len(keys))
@@ -147,44 +187,35 @@ func (c *mysqlDB) RetrieveUpdatedDomains(ctx context.Context, perQueryLimit int)
 	return keys, nil
 }
 
-// UpdatedDomains reads the updates table, which was written by e.g. AddUpdatedDomains.
-func (c *mysqlDB) UpdatedDomains() (chan []common.SHA256Output, chan error) {
-	domainsCh := make(chan []common.SHA256Output)
-	errorCh := make(chan error)
-	go func() {
-		defer close(errorCh)
-		rows, err := c.prepGetUpdatedDomains.Query()
+// UpdatedDomains returns the domain IDs that are still dirty, i.e. modified certificates for
+// that domain, but not yet coalesced and ingested by the SMT.
+func (c *mysqlDB) UpdatedDomains(ctx context.Context) ([]*common.SHA256Output, error) {
+	str := "SELECT domain_id FROM dirty"
+	rows, err := c.db.QueryContext(ctx, str)
+	if err != nil {
+		return nil, fmt.Errorf("error querying dirty domains: %w", err)
+	}
+	domainIDs := make([]*common.SHA256Output, 0)
+	for rows.Next() {
+		var domainId []byte
+		err = rows.Scan(&domainId)
 		if err != nil {
-			close(domainsCh)
-			errorCh <- err
-			return
+			return nil, fmt.Errorf("error scanning domain ID: %w", err)
 		}
-		defer rows.Close()
-		for {
-			batch := make([]common.SHA256Output, 0, batchSize)
-			for i := 0; i < batchSize && rows.Next(); i++ {
-				var key []byte
-				if err := rows.Scan(&key); err != nil {
-					close(domainsCh)
-					errorCh <- err
-					return
-				}
-				batch = append(batch, *(*common.SHA256Output)(key[:common.SHA256Size]))
-			}
-			if err := rows.Err(); err != nil {
-				close(domainsCh)
-				errorCh <- err
-				return
-			}
+		ptr := (*common.SHA256Output)(domainId)
+		domainIDs = append(domainIDs, ptr)
+	}
+	return domainIDs, nil
+}
 
-			if len(batch) == 0 {
-				break
-			}
-			domainsCh <- batch
-		}
-		close(domainsCh)
-	}()
-	return domainsCh, errorCh
+func (c *mysqlDB) CleanupDirty(ctx context.Context) error {
+	// Remove all entries from the dirty table.
+	str := "TRUNCATE dirty"
+	_, err := c.db.ExecContext(ctx, str)
+	if err != nil {
+		return fmt.Errorf("error truncating dirty table: %w", err)
+	}
+	return nil
 }
 
 func retrieveValue(ctx context.Context, stmt *sql.Stmt, key common.SHA256Output) ([]byte, error) {

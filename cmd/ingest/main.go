@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -37,6 +38,8 @@ func main() {
 	os.Exit(mainFunction())
 }
 func mainFunction() int {
+	ctx := context.Background()
+
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage:\n%s directory\n", os.Args[0])
 		flag.PrintDefaults()
@@ -115,9 +118,20 @@ func mainFunction() int {
 		exitIfError(proc.Wait())
 	}
 	// Coalesce the payloads of all modified domains.
-	CoalescePayloadsForDirtyDomains(conn.DB())
+	CoalescePayloadsForDirtyDomains(ctx, conn)
 
-	// Close DB and check errors.
+	// Now start processing the changed domains into the SMT:
+	// conn.LoadRoot deleteme TODO load root
+	smtProcessor := NewSMTUpdater(conn, nil, 32)
+	smtProcessor.Start(ctx)
+	err = smtProcessor.Wait()
+	exitIfError(err)
+
+	// Cleanup dirty entries.
+	err = conn.CleanupDirty(ctx)
+	exitIfError(err)
+
+	// Close DB.
 	err = conn.Close()
 	exitIfError(err)
 	return 0
