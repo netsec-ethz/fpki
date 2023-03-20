@@ -1,29 +1,23 @@
 #!/bin/bash
 
-echo "This will destroy everything in the fpki database"
 
+create_new_db() {
+  set -e
 
-read -p "Are you sure? (y/n) default=n " answer
-case ${answer:0:1} in
-    y|Y )
-    ;;
-    * )
-        exit 1
-    ;;
-esac
+  DBNAME=$1
+  MYSQLCMD="mysql -u root"
 
-set -e # after call to read
 
 CMD=$(cat <<EOF
-DROP DATABASE IF EXISTS fpki;
-CREATE DATABASE fpki /*!40100 DEFAULT CHARACTER SET binary */ /*!80016 DEFAULT ENCRYPTION='N' */;
+DROP DATABASE IF EXISTS $DBNAME;
+CREATE DATABASE $DBNAME /*!40100 DEFAULT CHARACTER SET binary */ /*!80016 DEFAULT ENCRYPTION='N' */;
 EOF
-)
-echo "$CMD" | mysql -u root
+  )
+  echo "$CMD" | $MYSQLCMD
 
 
 CMD=$(cat <<EOF
-USE fpki;
+USE $DBNAME;
 CREATE TABLE certs (
   id VARBINARY(32) NOT NULL,
   parent VARBINARY(32) DEFAULT NULL,
@@ -32,12 +26,12 @@ CREATE TABLE certs (
   PRIMARY KEY(id)
 ) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
 EOF
-)
-echo "$CMD" | mysql -u root
+  )
+  echo "$CMD" | $MYSQLCMD
 
 
 CMD=$(cat <<EOF
-USE fpki;
+USE $DBNAME;
 CREATE TABLE domains (
   cert_id VARBINARY(32) NOT NULL,
   domain_id VARBINARY(32) NOT NULL,
@@ -46,12 +40,12 @@ CREATE TABLE domains (
   INDEX domain_id (domain_id)
 ) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
 EOF
-)
-echo "$CMD" | mysql -u root
+  )
+  echo "$CMD" | $MYSQLCMD
 
 
 CMD=$(cat <<EOF
-USE fpki;
+USE $DBNAME;
 CREATE TABLE domain_payloads (
   id VARBINARY(32) NOT NULL,
   payload LONGBLOB,
@@ -59,34 +53,34 @@ CREATE TABLE domain_payloads (
   PRIMARY KEY (id)
 ) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
 EOF
-)
-echo "$CMD" | mysql -u root
+  )
+  echo "$CMD" | $MYSQLCMD
 
 
 CMD=$(cat <<EOF
-USE fpki;
+USE $DBNAME;
 CREATE TABLE dirty (
   domain_id VARBINARY(32) NOT NULL,
   PRIMARY KEY (domain_id)
 ) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
 EOF
-)
-echo "$CMD" | mysql -u root
+  )
+  echo "$CMD" | $MYSQLCMD
 
 
 CMD=$(cat <<EOF
-USE fpki;
+USE $DBNAME;
 CREATE TABLE root (
   key32 VARBINARY(32) NOT NULL,
   PRIMARY KEY (key32)
 ) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
 EOF
-)
-echo "$CMD" | mysql -u root
+  )
+  echo "$CMD" | $MYSQLCMD
 
 
 CMD=$(cat <<EOF
-USE fpki;
+USE $DBNAME;
 CREATE TABLE tree (
   key32 VARBINARY(32) NOT NULL,
   value longblob NOT NULL,
@@ -95,13 +89,13 @@ CREATE TABLE tree (
   UNIQUE KEY key_UNIQUE (key32)
 ) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
 EOF
-)
-echo "$CMD" | mysql -u root
+  )
+  echo "$CMD" | $MYSQLCMD
 
 
 
 # CMD=$(cat <<EOF
-# USE fpki;
+# USE $DBNAME;
 # CREATE TABLE nodes (
 #   idhash      VARBINARY(33) NOT NULL,
 #   parentnode  VARBINARY(33) DEFAULT NULL,
@@ -112,35 +106,36 @@ echo "$CMD" | mysql -u root
 #   UNIQUE KEY idhash (idhash)
 # ) ENGINE=InnoDB CHARSET=\`binary\` COLLATE=\`binary\`;
 # EOF
-# )
-# echo "$CMD" | mysql -u root
+  # )
+  # echo "$CMD" | $MYSQLCMD
 
 
-# TODO(juagargi) delete
+  # TODO(juagargi) delete
 
+# TODO(juagargi) remove
 CMD=$(cat <<EOF
-CREATE TABLE \`fpki\`.\`domainEntries\` (
-   \`key\` VARBINARY(32) NOT NULL,
-   \`value\` LONGBLOB NOT NULL,
-   UNIQUE INDEX \`key_UNIQUE\` (\`key\` ASC));
+CREATE TABLE \`$DBNAME\`.\`domainEntries\` (
+  \`key\` VARBINARY(32) NOT NULL,
+  \`value\` LONGBLOB NOT NULL,
+  UNIQUE INDEX \`key_UNIQUE\` (\`key\` ASC));
 EOF
-)
-echo "$CMD" | mysql -u root
+  )
+  echo "$CMD" | $MYSQLCMD
 
 
 CMD=$(cat <<EOF
-USE fpki;
+USE $DBNAME;
 CREATE TABLE updates (
   id VARBINARY(32) NOT NULL,
   PRIMARY KEY (id)
 ) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
 EOF
-)
-echo "$CMD" | mysql -u root
+  )
+  echo "$CMD" | $MYSQLCMD
 
 
 CMD=$(cat <<EOF
-USE fpki;
+USE $DBNAME;
 DROP PROCEDURE IF EXISTS calc_domain_payload;
 DELIMITER $$
   -- procedure that given a domain computes its payload and its SHA256 hash.
@@ -159,12 +154,12 @@ DELIMITER $$
   END$$
 DELIMITER ;
 EOF
-)
-echo "$CMD" | mysql -u root
+  )
+  echo "$CMD" | $MYSQLCMD
 
 
 CMD=$(cat <<EOF
-USE fpki;
+USE $DBNAME;
 DROP PROCEDURE IF EXISTS calc_several_domain_payloads;
 DELIMITER $$
   CREATE PROCEDURE calc_several_domain_payloads(
@@ -182,5 +177,21 @@ DELIMITER $$
   END$$
 DELIMITER ;
 EOF
-)
-echo "$CMD" | mysql -u root
+  )
+  echo "$CMD" | $MYSQLCMD
+}
+
+if [ "${BASH_SOURCE[0]}" -ef "$0" ]
+then
+  echo "This will destroy everything in the fpki database"
+  read -p "Are you sure? (y/n) default=n " answer
+  case ${answer:0:1} in
+      y|Y )
+      ;;
+      * )
+          exit 1
+      ;;
+  esac
+  create_new_db fpki
+fi
+
