@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"github.com/netsec-ethz/fpki/pkg/db"
+	"github.com/netsec-ethz/fpki/pkg/db/mysql"
 )
 
 const (
@@ -101,9 +102,12 @@ func mainFunction() int {
 	}()
 
 	// Connect to DB via local socket, should be faster.
-	config := db.ConfigFromEnvironment()
-	config.Dsn = "root@unix(/var/run/mysqld/mysqld.sock)/fpki"
-	conn, err := db.Connect(config)
+	config := db.NewConfig(
+		mysql.WithDefaults(),
+		mysql.WithEnvironment(),
+		mysql.WithLocalSocket("/var/run/mysqld/mysqld.sock"),
+	)
+	conn, err := mysql.Connect(config)
 	exitIfError(err)
 
 	// Load root if any:
