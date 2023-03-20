@@ -11,12 +11,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/domain"
 	"github.com/netsec-ethz/fpki/pkg/grpc/grpcclient"
 	"github.com/netsec-ethz/fpki/pkg/grpc/grpcserver"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/prover"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
+	dbtest "github.com/netsec-ethz/fpki/tests/pkg/db"
 
 	ct "github.com/google/certificate-transparency-go"
 	ctTls "github.com/google/certificate-transparency-go/tls"
@@ -27,7 +27,7 @@ import (
 var wg sync.WaitGroup
 
 func main() {
-	db.TruncateAllTablesWithoutTestObject()
+	dbtest.TruncateAllTablesWithoutTestObject()
 
 	// new map updator
 	mapUpdater, err := updater.NewMapUpdater(nil, 233)

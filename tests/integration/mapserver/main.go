@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/db"
+	"github.com/netsec-ethz/fpki/pkg/db/mysql"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/responder"
 	testdb "github.com/netsec-ethz/fpki/tests/pkg/db"
 )
@@ -29,7 +30,7 @@ func mainFunc() int {
 	// Connect to DB via local socket, should be faster.
 	config := db.ConfigFromEnvironment()
 	// config.Dsn = "root@unix(/var/run/mysqld/mysqld.sock)/fpki"
-	conn, err := db.Connect(config)
+	conn, err := mysql.Connect(config)
 	panicIfError(err)
 
 	root, err := conn.LoadRoot(ctx)

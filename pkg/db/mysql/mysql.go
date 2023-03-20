@@ -1,4 +1,4 @@
-package db
+package mysql
 
 import (
 	"context"
@@ -10,6 +10,8 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/netsec-ethz/fpki/pkg/common"
 )
+
+const batchSize = 1000
 
 // NOTE
 // The project contains three tables:

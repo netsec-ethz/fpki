@@ -1,4 +1,4 @@
-package db
+package mysql
 
 import (
 	"context"
@@ -7,11 +7,12 @@ import (
 	"strconv"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/db"
 )
 
 // keyValueResult: used in worker thread; in multi-thread read
 type keyValueResult struct {
-	Pairs []*KeyValuePair
+	Pairs []*db.KeyValuePair
 	Err   error
 }
 

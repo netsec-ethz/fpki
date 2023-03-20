@@ -11,6 +11,7 @@ import (
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
+	"github.com/netsec-ethz/fpki/pkg/db/mysql"
 )
 
 func main() {
@@ -34,7 +35,7 @@ func testTreeTable() {
 	// *****************************************************************
 	//                     open a db connection
 	// *****************************************************************
-	conn, err := db.Connect(nil)
+	conn, err := mysql.Connect(nil)
 	if err != nil {
 		panic(err)
 	}
@@ -233,7 +234,7 @@ func testDomainEntriesTable() {
 	// *****************************************************************
 	//                     open a db connection
 	// *****************************************************************
-	conn, err := db.Connect(nil)
+	conn, err := mysql.Connect(nil)
 	if err != nil {
 		panic(err)
 	}
@@ -372,7 +373,7 @@ func testUpdateTable() {
 	// *****************************************************************
 	//                     open a db connection
 	// *****************************************************************
-	conn, err := db.Connect(nil)
+	conn, err := mysql.Connect(nil)
 	if err != nil {
 		panic(err)
 	}

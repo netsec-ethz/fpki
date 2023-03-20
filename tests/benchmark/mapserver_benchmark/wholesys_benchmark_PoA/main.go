@@ -12,11 +12,11 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/domain"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/responder"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
+	dbtest "github.com/netsec-ethz/fpki/tests/pkg/db"
 )
 
 var domainCount int
@@ -33,7 +33,7 @@ func main() {
 	}
 
 	domainCount = 0
-	db.TruncateAllTablesWithoutTestObject()
+	dbtest.TruncateAllTablesWithoutTestObject()
 
 	csvFile, err := os.Create("result.csv")
 	respondeCSVFile, err := os.Create("result_responder.csv")
@@ -86,7 +86,7 @@ func main() {
 		fmt.Println("time to commit the changes: ", time.Since(start))
 		timeToUpdateSMT := time.Since(start)
 
-		domainCount = db.GetDomainNamesForTest()
+		domainCount = dbtest.GetDomainCountWithoutTestObject()
 		fmt.Println("total domains: ", domainCount)
 
 		err = csvwriter.Write(append(append([]string{strconv.Itoa(i), timeToUpdateSMT.String()}, timeList...), strconv.Itoa(domainCount)))

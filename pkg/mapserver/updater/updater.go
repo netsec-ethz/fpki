@@ -11,6 +11,7 @@ import (
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
+	"github.com/netsec-ethz/fpki/pkg/db/mysql"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/logpicker"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
@@ -25,7 +26,7 @@ type MapUpdater struct {
 // NewMapUpdater: return a new map updater.
 func NewMapUpdater(root []byte, cacheHeight int) (*MapUpdater, error) {
 	// db conn for map updater
-	dbConn, err := db.Connect(nil)
+	dbConn, err := mysql.Connect(nil)
 	if err != nil {
 		return nil, fmt.Errorf("NewMapUpdater | db.Connect | %w", err)
 	}
