@@ -106,6 +106,14 @@ func mainFunction() int {
 	conn, err := db.Connect(config)
 	exitIfError(err)
 
+	// Load root if any:
+	root, err := conn.LoadRoot(ctx)
+	exitIfError(err)
+	if root == nil {
+		fmt.Print("Empty root!!. DB should be empty, but not checking.\n\n")
+		// TODO(juagargi) check that DB is empty if root is empty.
+	}
+
 	if !coalesceOnly {
 		// All GZ and CSV files found under the directory of the argument.
 		gzFiles, csvFiles := listOurFiles(flag.Arg(0))
@@ -121,8 +129,7 @@ func mainFunction() int {
 	CoalescePayloadsForDirtyDomains(ctx, conn)
 
 	// Now start processing the changed domains into the SMT:
-	// conn.LoadRoot deleteme TODO load root
-	smtProcessor := NewSMTUpdater(conn, nil, 32)
+	smtProcessor := NewSMTUpdater(conn, root, 32)
 	smtProcessor.Start(ctx)
 	err = smtProcessor.Wait()
 	exitIfError(err)

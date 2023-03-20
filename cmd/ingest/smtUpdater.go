@@ -18,8 +18,12 @@ type SMTUpdater struct {
 	doneCh  chan error // Will have just one entry when all the processing is done
 }
 
-func NewSMTUpdater(conn db.Conn, root []byte, cacheHeight int) *SMTUpdater {
-	smtTrie, err := trie.NewTrie(root, common.SHA256Hash, conn)
+func NewSMTUpdater(conn db.Conn, root *common.SHA256Output, cacheHeight int) *SMTUpdater {
+	var rootSlice []byte
+	if root != nil {
+		rootSlice = (*root)[:]
+	}
+	smtTrie, err := trie.NewTrie(rootSlice, common.SHA256Hash, conn)
 	if err != nil {
 		panic(err)
 	}
