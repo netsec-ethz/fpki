@@ -1,4 +1,4 @@
-package db
+package mysql
 
 import (
 	"context"
@@ -10,14 +10,15 @@ import (
 
 	"github.com/go-sql-driver/mysql"
 	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/db"
 )
 
-func (c *mysqlDB) UpdateDomainEntries(ctx context.Context, pairs []*KeyValuePair) (int, error) {
+func (c *mysqlDB) UpdateDomainEntries(ctx context.Context, pairs []*db.KeyValuePair) (int, error) {
 	panic("not available")
 }
 
 // UpdateDomainEntries: Update a list of key-value store
-func (c *mysqlDB) UpdateDomainEntriesOLD(ctx context.Context, keyValuePairs []*KeyValuePair) (int, error) {
+func (c *mysqlDB) UpdateDomainEntriesOLD(ctx context.Context, keyValuePairs []*db.KeyValuePair) (int, error) {
 	numOfUpdatedRecords, err := c.doUpdatePairs(ctx, keyValuePairs, c.getDomainEntriesUpdateStmts)
 	if err != nil {
 		return 0, fmt.Errorf("UpdateDomainEntries | %w", err)
@@ -52,7 +53,7 @@ func (c *mysqlDB) DeleteTreeNodesOLD(ctx context.Context, keys []common.SHA256Ou
 	return n, nil
 }
 
-func (c *mysqlDB) UpdateTreeNodes(ctx context.Context, keyValuePairs []*KeyValuePair) (int, error) {
+func (c *mysqlDB) UpdateTreeNodes(ctx context.Context, keyValuePairs []*db.KeyValuePair) (int, error) {
 	if len(keyValuePairs) == 0 {
 		return 0, nil
 	}
@@ -74,7 +75,7 @@ func (c *mysqlDB) UpdateTreeNodes(ctx context.Context, keyValuePairs []*KeyValue
 }
 
 // UpdateTreeNodes: Update a list of key-value store
-func (c *mysqlDB) UpdateTreeNodesOLD(ctx context.Context, keyValuePairs []*KeyValuePair) (int, error) {
+func (c *mysqlDB) UpdateTreeNodesOLD(ctx context.Context, keyValuePairs []*db.KeyValuePair) (int, error) {
 	numOfUpdatedPairs, err := c.doUpdatePairs(ctx, keyValuePairs, c.getTreeStructureUpdateStmts)
 	if err != nil {
 		return 0, fmt.Errorf("UpdateTreeNodes | %w", err)
@@ -119,7 +120,7 @@ func (c *mysqlDB) SaveRoot(ctx context.Context, root *common.SHA256Output) error
 //
 // ********************************************************************
 // worker to update key-value pairs
-func (c *mysqlDB) doUpdatePairs(ctx context.Context, keyValuePairs []*KeyValuePair,
+func (c *mysqlDB) doUpdatePairs(ctx context.Context, keyValuePairs []*db.KeyValuePair,
 	stmtGetter prepStmtGetter) (int, error) {
 
 func (HugeLeafError) Error() string {

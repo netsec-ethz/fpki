@@ -8,6 +8,7 @@ import (
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
+	"github.com/netsec-ethz/fpki/pkg/db/mysql"
 	"github.com/netsec-ethz/fpki/pkg/domain"
 	mapCommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
@@ -25,7 +26,7 @@ type OldMapResponder struct {
 // NewOldMapResponder: return a new responder
 func NewOldMapResponder(ctx context.Context, root []byte, cacheHeight int, mapServerConfigPath string) (*OldMapResponder, error) {
 	// new db connection for SMT
-	conn, err := db.Connect(nil)
+	conn, err := mysql.Connect(nil)
 	if err != nil {
 		return nil, fmt.Errorf("NewMapResponder | Connect | %w", err)
 	}

@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
-	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
+	"github.com/netsec-ethz/fpki/tests/pkg/db"
 )
 
 var wg sync.WaitGroup

@@ -11,7 +11,7 @@ import (
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/netsec-ethz/fpki/pkg/common"
-	"github.com/netsec-ethz/fpki/pkg/db"
+	"github.com/netsec-ethz/fpki/pkg/db/mysql"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
 
@@ -30,7 +30,7 @@ func testUpdateWithSameKeys() {
 	//***************************************************************
 	//                     connect to db
 	//***************************************************************
-	db, err := db.Connect(nil)
+	db, err := mysql.Connect(nil)
 	if err != nil {
 		panic(err)
 	}
@@ -100,7 +100,7 @@ func testTrieMerkleProofAndReloadTree() {
 	//***************************************************************
 	//                     connect to a new db
 	//***************************************************************
-	dbConn, err := db.Connect(nil)
+	dbConn, err := mysql.Connect(nil)
 	if err != nil {
 		panic(err)
 	}
@@ -154,7 +154,7 @@ func testTrieMerkleProofAndReloadTree() {
 	//***************************************************************
 	//                          start a new db
 	//***************************************************************
-	dbConn1, err := db.Connect(nil)
+	dbConn1, err := mysql.Connect(nil)
 	if err != nil {
 		panic(err)
 	}
@@ -202,7 +202,7 @@ func testTrieMerkleProofAndReloadTree() {
 }
 
 func testTrieLoadCache() {
-	dbConn, err := db.Connect(nil)
+	dbConn, err := mysql.Connect(nil)
 	if err != nil {
 		panic(err)
 	}

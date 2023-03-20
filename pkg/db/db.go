@@ -8,8 +8,6 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/common"
 )
 
-const batchSize = 1000
-
 // KeyValuePair: key-value pair
 type KeyValuePair struct {
 	Key   common.SHA256Output

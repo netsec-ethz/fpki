@@ -10,15 +10,17 @@ import (
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
+	"github.com/netsec-ethz/fpki/pkg/db/mysql"
+	dbtest "github.com/netsec-ethz/fpki/tests/pkg/db"
 )
 
 func main() {
-	db.TruncateAllTablesWithoutTestObject()
+	dbtest.TruncateAllTablesWithoutTestObject()
 	// *****************************************************************
 	//                     open a db connection
 	// *****************************************************************
 
-	conn, err := db.Connect(nil)
+	conn, err := mysql.Connect(nil)
 	if err != nil {
 		panic(err)
 	}
