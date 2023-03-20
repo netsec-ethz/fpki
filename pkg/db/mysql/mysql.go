@@ -29,7 +29,7 @@ type mysqlDB struct {
 
 	prepGetValueDomainEntries *sql.Stmt // returns the domain entries
 	prepGetValueTree          *sql.Stmt // get key-value pair from tree table
-	prepGetUpdatedDomains     *sql.Stmt // get updated domains
+	// prepGetUpdatedDomains     *sql.Stmt // get updated domains
 
 	getDomainEntriesUpdateStmts prepStmtGetter // used to update key-values in domain entries
 	getTreeStructureUpdateStmts prepStmtGetter // used to update key-values in the tree table

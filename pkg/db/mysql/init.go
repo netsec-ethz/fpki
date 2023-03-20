@@ -5,18 +5,21 @@ import (
 	"fmt"
 	"net/url"
 
+	_ "github.com/go-sql-driver/mysql"
+
 	"github.com/netsec-ethz/fpki/pkg/db"
 )
 
 // Connect: connect to db, using the config file
 func Connect(config *db.Configuration) (db.Conn, error) {
 	if config == nil {
-		config = db.ConfigFromEnvironment()
+		return nil, fmt.Errorf("nil config not allowed")
 	}
+	config.Dsn = parseDSN(config)
 
 	db, err := connect(config)
 	if err != nil {
-		return nil, fmt.Errorf("cannot open DB: %w", err)
+		return nil, fmt.Errorf("with DSN: %s, cannot open DB: %w", config.Dsn, err)
 	}
 
 	// Set a very small number of concurrent connections per sql.DB .
@@ -33,6 +36,37 @@ func Connect(config *db.Configuration) (db.Conn, error) {
 		}
 	}
 	return NewMysqlDB(db)
+}
+
+func parseDSN(config *db.Configuration) string {
+	val := config.Values
+	dsnString := val[keyUser]
+	// If a local socket is requested, the DSN is composed of different keys.
+	if path, ok := val[keyLocalSocket]; ok {
+		// Form a string like "root@unix(/var/run/mysqld/mysqld.sock)/fpki"
+		dsnString += fmt.Sprintf("@unix(%s)/%s",
+			path, val[db.KeyDBName])
+	} else {
+		// Form a string like "root:password@tcp(1.1.1.1:8080)/fpki"
+		if val[keyPassword] != "" {
+			dsnString += ":" + val[keyPassword]
+		}
+		dsnString += "@tcp(" + val[keyHost]
+		if val[keyPort] != "" {
+			dsnString += ":" + val[keyPort]
+		}
+		dsnString += fmt.Sprintf(")/%s", val[db.KeyDBName])
+	}
+
+	// Remove all values that are used to establish the DSN from the remaining pairs.
+	delete(val, keyUser)
+	delete(val, keyPassword)
+	delete(val, keyHost)
+	delete(val, keyPort)
+	delete(val, keyLocalSocket)
+	delete(val, db.KeyDBName)
+
+	return dsnString
 }
 
 func connect(config *db.Configuration) (*sql.DB, error) {

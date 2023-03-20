@@ -22,16 +22,20 @@ func mainFunc() int {
 	defer cancelF()
 
 	// Create an empty test DB
-	dbName := "testo"
+	dbName := "mapServerIT"
 	err := testdb.CreateTestDB(ctx, dbName)
 	panicIfError(err)
+	defer func() {
+		// TODO(juagargi) destroy the DB with
+	}()
 
 	// Connect to the test DB
-	// Connect to DB via local socket, should be faster.
-	config := db.ConfigFromEnvironment()
-	// config.Dsn = "root@unix(/var/run/mysqld/mysqld.sock)/fpki"
+	// config := db.NewConfig(mysql.WithDefaults(), mysql.WithEnvironment(), db.WithDB("mapserverIT"))
+	config := db.NewConfig(mysql.WithDefaults(), db.WithDB(dbName))
 	conn, err := mysql.Connect(config)
 	panicIfError(err)
+
+	// Ingest the testdata.
 
 	root, err := conn.LoadRoot(ctx)
 	panicIfError(err)
