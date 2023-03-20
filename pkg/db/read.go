@@ -68,6 +68,9 @@ func (c *mysqlDB) RetrieveDomainEntries(ctx context.Context, keys []*common.SHA2
 func (c *mysqlDB) retrieveDomainEntries(ctx context.Context, domainIDs []*common.SHA256Output,
 ) ([]*KeyValuePair, error) {
 
+	if len(domainIDs) == 0 {
+		return nil, nil
+	}
 	str := "SELECT id,payload FROM domain_payloads WHERE id IN " + repeatStmt(1, len(domainIDs))
 	params := make([]interface{}, len(domainIDs))
 	for i, id := range domainIDs {
@@ -75,6 +78,7 @@ func (c *mysqlDB) retrieveDomainEntries(ctx context.Context, domainIDs []*common
 	}
 	rows, err := c.db.QueryContext(ctx, str, params...)
 	if err != nil {
+		fmt.Printf("Query is: '%s'\n", str)
 		return nil, fmt.Errorf("error obtaining payloads for domains: %w", err)
 	}
 	pairs := make([]*KeyValuePair, 0, len(domainIDs))

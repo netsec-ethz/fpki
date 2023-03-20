@@ -149,6 +149,9 @@ func (c *mysqlDB) TruncateAllTables(ctx context.Context) error {
 func (c *mysqlDB) LoadRoot(ctx context.Context) (*common.SHA256Output, error) {
 	var key []byte
 	if err := c.db.QueryRowContext(ctx, "SELECT key32 FROM root").Scan(&key); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("error obtaining the root entry: %w", err)
 	}
 	return (*common.SHA256Output)(key), nil

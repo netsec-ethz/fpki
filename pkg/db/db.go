@@ -27,6 +27,7 @@ type Conn interface {
 	TruncateAllTables(ctx context.Context) error
 
 	LoadRoot(ctx context.Context) (*common.SHA256Output, error)
+	SaveRoot(ctx context.Context, root *common.SHA256Output) error
 
 	//////////////////////////////////////////////////////////////////
 	// check if the functions below are needed after the new design //
@@ -93,5 +94,4 @@ type Conn interface {
 	// present in the `updates` table.
 	UpdatedDomains(ctx context.Context) ([]*common.SHA256Output, error)
 	CleanupDirty(ctx context.Context) error
-	SaveRoot(ctx context.Context, root *common.SHA256Output) error
 }
