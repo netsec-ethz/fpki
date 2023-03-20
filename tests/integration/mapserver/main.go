@@ -9,6 +9,7 @@ import (
 
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/responder"
+	testdb "github.com/netsec-ethz/fpki/tests/pkg/db"
 )
 
 func main() {
@@ -20,6 +21,10 @@ func mainFunc() int {
 	defer cancelF()
 
 	// Create an empty test DB
+	dbName := "testo"
+	err := testdb.CreateTestDB(ctx, dbName)
+	panicIfError(err)
+
 	// Connect to the test DB
 	// Connect to DB via local socket, should be faster.
 	config := db.ConfigFromEnvironment()
