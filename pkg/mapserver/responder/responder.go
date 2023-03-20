@@ -12,11 +12,12 @@ import (
 )
 
 type MapResponder struct {
-	conn db.Conn
-	smt  *trie.Trie
+	conn           db.Conn
+	smt            *trie.Trie
+	signedTreeHead []byte
 }
 
-func NewMapResponder(ctx context.Context, conn db.Conn) (*MapResponder, error) {
+func NewMapResponder(ctx context.Context, configFile string, conn db.Conn) (*MapResponder, error) {
 	// Load root.
 	root, err := conn.LoadRoot(ctx)
 	if err != nil {
@@ -33,6 +34,7 @@ func NewMapResponder(ctx context.Context, conn db.Conn) (*MapResponder, error) {
 		conn: conn,
 		smt:  smt,
 	}
+	r.signTreeHead(configFile)
 	return r, nil
 }
 
@@ -77,4 +79,30 @@ func (r *MapResponder) GetProof(ctx context.Context, domainName string,
 		}
 	}
 	return proofList, nil
+}
+
+func (r *MapResponder) signTreeHead(configFile string) error {
+	// Load configuration.
+	config := &MapserverConfig{}
+	err := ReadConfigFromFile(config, configFile)
+	if err != nil {
+		return fmt.Errorf("ReadConfigFromFile | %w", err)
+	}
+
+	// Load private key from configuration.
+	keyPair, err := common.LoadRSAKeyPairFromFile(config.KeyPath)
+	if err != nil {
+		return fmt.Errorf("LoadRSAKeyPairFromFile | %w", err)
+	}
+
+	// Sign the tree head.
+	signature, err := common.SignStructRSASHA256(r.smt.Root, keyPair)
+	if err != nil {
+		return fmt.Errorf("SignStructRSASHA256 | %w", err)
+	}
+
+	// Keep it for the proofs.
+	r.signedTreeHead = signature
+
+	return nil
 }

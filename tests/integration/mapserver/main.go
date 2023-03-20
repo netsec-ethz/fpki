@@ -34,7 +34,7 @@ func mainFunc() int {
 	// Ingest mock data
 
 	// Retrieve some domains
-	res, err := responder.NewMapResponder(ctx, conn)
+	res, err := responder.NewMapResponder(ctx, "./config/mapserver_config.json", conn)
 	panicIfError(err)
 	p, err := res.GetProof(ctx, "aname.com")
 	panicIfError(err)
