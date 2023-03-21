@@ -38,7 +38,8 @@ func (d *MockDB) Close() error { return nil }
 
 func (d *MockDB) TruncateAllTables(ctx context.Context) error { return nil }
 
-func (*MockDB) LoadRoot(ctx context.Context) (*common.SHA256Output, error) { return nil, nil }
+func (*MockDB) LoadRoot(ctx context.Context) (*common.SHA256Output, error)    { return nil, nil }
+func (*MockDB) SaveRoot(ctx context.Context, root *common.SHA256Output) error { return nil }
 
 func (d *MockDB) CheckCertsExist(ctx context.Context, ids []*common.SHA256Output) ([]bool, error) {
 	return make([]bool, len(ids)), nil
@@ -77,16 +78,16 @@ func (d *MockDB) RetrieveKeyValuePairTreeStruct(ctx context.Context, id []common
 	return result, nil
 }
 
-func (d *MockDB) RetrieveDomainEntries(ctx context.Context, ids []common.SHA256Output) (
+func (d *MockDB) RetrieveDomainEntries(ctx context.Context, ids []*common.SHA256Output) (
 	[]*db.KeyValuePair, error) {
 
 	result := make([]*db.KeyValuePair, 0, len(ids))
 	for _, key := range ids {
-		value, ok := d.DomainEntriesTable[key]
+		value, ok := d.DomainEntriesTable[*key]
 		if !ok {
 			continue
 		}
-		result = append(result, &db.KeyValuePair{Key: key, Value: value})
+		result = append(result, &db.KeyValuePair{Key: *key, Value: value})
 	}
 	return result, nil
 }
@@ -138,6 +139,8 @@ func (d *MockDB) RemoveAllUpdatedDomains(ctx context.Context) error {
 	return nil
 }
 
-func (d *MockDB) UpdatedDomains() (chan []common.SHA256Output, chan error) { return nil, nil }
+func (d *MockDB) UpdatedDomains(context.Context) ([]*common.SHA256Output, error) {
+	return nil, nil
+}
 
 func (*MockDB) CleanupDirty(ctx context.Context) error { return nil }

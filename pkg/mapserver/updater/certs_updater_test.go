@@ -162,10 +162,10 @@ func TestUpdateSameCertTwice(t *testing.T) {
 
 func TestUnfoldCerts(t *testing.T) {
 	// `a` and `b` are leaves. `a` is root, `b` has `c`->`d` as its trust chain.
-	a := &ctx509.Certificate{}
-	b := &ctx509.Certificate{}
-	c := &ctx509.Certificate{}
-	d := &ctx509.Certificate{}
+	a := &ctx509.Certificate{Raw: []byte{0}}
+	b := &ctx509.Certificate{Raw: []byte{1}}
+	c := &ctx509.Certificate{Raw: []byte{2}}
+	d := &ctx509.Certificate{Raw: []byte{3}}
 	certs := []*ctx509.Certificate{
 		a,
 		b,
@@ -174,23 +174,39 @@ func TestUnfoldCerts(t *testing.T) {
 		nil,
 		{c, d},
 	}
-	allCerts, parents := UnfoldCerts(certs, chains)
+	allCerts, IDs, parentIDs := UnfoldCerts(certs, chains)
 
 	fmt.Printf("[%p %p %p %p]\n", a, b, c, d)
 	fmt.Printf("%v\n", allCerts)
-	fmt.Printf("%v\n", parents)
+	fmt.Printf("%v\n", IDs)
+	fmt.Printf("%v\n", parentIDs)
 
 	assert.Len(t, allCerts, 4)
-	assert.Len(t, parents, 4)
+	assert.Len(t, IDs, 4)
+	assert.Len(t, parentIDs, 4)
 
+	// Check payloads.
 	assert.Equal(t, a, allCerts[0])
 	assert.Equal(t, b, allCerts[1])
 	assert.Equal(t, c, allCerts[2])
 	assert.Equal(t, d, allCerts[3])
 
-	nilParent := (*ctx509.Certificate)(nil)
-	assert.Equal(t, nilParent, parents[0], "bad parent at 0")
-	assert.Equal(t, c, parents[1], "bad parent at 1")
-	assert.Equal(t, d, parents[2], "bad parent at 2")
-	assert.Equal(t, nilParent, parents[3], "bad parent at 3")
+	// Check IDs.
+	aID := common.SHA256Hash32Bytes(a.Raw)
+	bID := common.SHA256Hash32Bytes(b.Raw)
+	cID := common.SHA256Hash32Bytes(c.Raw)
+	dID := common.SHA256Hash32Bytes(d.Raw)
+
+	assert.Equal(t, aID, *IDs[0])
+	assert.Equal(t, bID, *IDs[1])
+	assert.Equal(t, cID, *IDs[2])
+	assert.Equal(t, dID, *IDs[3])
+
+	// Check parent IDs.
+
+	nilID := (*common.SHA256Output)(nil)
+	assert.Equal(t, nilID, parentIDs[0], "bad parent at 0")
+	assert.Equal(t, cID, *parentIDs[1], "bad parent at 1")
+	assert.Equal(t, dID, *parentIDs[2], "bad parent at 2")
+	assert.Equal(t, nilID, parentIDs[3], "bad parent at 3")
 }
