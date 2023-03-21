@@ -28,10 +28,10 @@ func TestUpdateCerts(t *testing.T) {
 	require.NoError(t, err)
 
 	certs := []*x509.Certificate{}
-
 	// load test certs
 	files, err := ioutil.ReadDir("./testdata/certs/")
 	require.NoError(t, err, "ioutil.ReadDir")
+
 	for _, file := range files {
 		cert, err := projectCommon.CTX509CertFromFile("./testdata/certs/" + file.Name())
 		require.NoError(t, err, "projectCommon.CTX509CertFromFile")

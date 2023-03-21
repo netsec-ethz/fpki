@@ -153,27 +153,31 @@ func GetAffectedDomainAndCertMap(certs []*ctx509.Certificate, certChains [][]*ct
 // The parents returned slice has the same elements as the certificates returned slice.
 // When a certificate is root, it's corresponding parents entry is nil.
 // The leaf certificates are always returned at the head of the slice.
-func UnfoldCerts(certs []*ctx509.Certificate, chains [][]*ctx509.Certificate) (
-	certificates, parents []*ctx509.Certificate) {
+func UnfoldCerts(leafCerts []*ctx509.Certificate, chains [][]*ctx509.Certificate,
+) (certificates []*ctx509.Certificate, certIDs, parentIDs []*common.SHA256Output) {
 
-	for len(certs) > 0 {
+	for len(leafCerts) > 0 {
 		var pendingCerts []*ctx509.Certificate
 		var pendingChains [][]*ctx509.Certificate
-		for i, c := range certs {
+		for i, c := range leafCerts {
 			certificates = append(certificates, c)
-			var parent *ctx509.Certificate
+			ID := common.SHA256Hash32Bytes(c.Raw)
+			certIDs = append(certIDs, &ID)
+			var parentID *common.SHA256Output
 			if len(chains[i]) > 0 {
 				// The certificate has a trust chain (it is not root): add the first certificate
 				// from the chain as the parent.
-				parent = chains[i][0]
+				parent := chains[i][0]
+				ID := common.SHA256Hash32Bytes(parent.Raw)
+				parentID = &ID
 				// Add this parent to the back of the certs, plus the corresponding chain entry,
 				// so that it's processed as a certificate.
 				pendingCerts = append(pendingCerts, parent)
 				pendingChains = append(pendingChains, chains[i][1:])
 			}
-			parents = append(parents, parent)
+			parentIDs = append(parentIDs, parentID)
 		}
-		certs = pendingCerts
+		leafCerts = pendingCerts
 		chains = pendingChains
 	}
 	return
@@ -186,18 +190,15 @@ func UnfoldCerts(certs []*ctx509.Certificate, chains [][]*ctx509.Certificate) (
 // and any posterior ancestors.
 func UnfoldCert(leafCert *ctx509.Certificate, certID *common.SHA256Output,
 	chain []*ctx509.Certificate, chainIDs []*common.SHA256Output,
-) (certPayloads []*ctx509.Certificate, certIDs []*common.SHA256Output,
-	parentPayloads []*ctx509.Certificate, parentIDs []*common.SHA256Output) {
+) (certs []*ctx509.Certificate, certIDs, parentIDs []*common.SHA256Output) {
 
-	certPayloads = make([]*ctx509.Certificate, 0, len(parentPayloads)+1)
-	certIDs = make([]*common.SHA256Output, 0, len(parentPayloads)+1)
-	parentPayloads = make([]*ctx509.Certificate, 0, len(parentPayloads)+1)
-	parentIDs = make([]*common.SHA256Output, 0, len(parentPayloads)+1)
+	certs = make([]*ctx509.Certificate, 0, len(chainIDs)+1)
+	certIDs = make([]*common.SHA256Output, 0, len(chainIDs)+1)
+	parentIDs = make([]*common.SHA256Output, 0, len(chainIDs)+1)
 
 	// Always add the leaf certificate.
-	certPayloads = append(certPayloads, leafCert)
+	certs = append(certs, leafCert)
 	certIDs = append(certIDs, certID)
-	parentPayloads = append(parentPayloads, chain[0])
 	parentIDs = append(parentIDs, chainIDs[0])
 	// Add the intermediate certs iff their payload is not nil.
 	i := 0
@@ -208,16 +209,14 @@ func UnfoldCert(leafCert *ctx509.Certificate, certID *common.SHA256Output,
 			// There are no more parents to insert.
 			return
 		}
-		certPayloads = append(certPayloads, chain[i])
+		certs = append(certs, chain[i])
 		certIDs = append(certIDs, chainIDs[i])
-		parentPayloads = append(parentPayloads, chain[i+1])
 		parentIDs = append(parentIDs, chainIDs[i+1])
 	}
 	// Add the root certificate (no parent) iff we haven't inserted it yet.
 	if chain[i] != nil {
-		certPayloads = append(certPayloads, chain[i])
+		certs = append(certs, chain[i])
 		certIDs = append(certIDs, chainIDs[i])
-		parentPayloads = append(parentPayloads, nil)
 		parentIDs = append(parentIDs, nil)
 	}
 	return

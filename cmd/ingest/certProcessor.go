@@ -17,7 +17,6 @@ type CertificateNode struct {
 	CertID   *common.SHA256Output
 	Cert     *ctx509.Certificate
 	ParentID *common.SHA256Output
-	Parent   *ctx509.Certificate
 	IsLeaf   bool
 }
 
@@ -28,7 +27,6 @@ type CertBatch struct {
 	Expirations []*time.Time
 	Certs       []*ctx509.Certificate
 	CertIDs     []*common.SHA256Output
-	Parents     []*ctx509.Certificate
 	ParentIDs   []*common.SHA256Output
 	AreLeaves   []bool
 }
@@ -39,7 +37,6 @@ func NewCertificateBatch() *CertBatch {
 		Expirations: make([]*time.Time, 0, BatchSize),
 		Certs:       make([]*ctx509.Certificate, 0, BatchSize),
 		CertIDs:     make([]*common.SHA256Output, 0, BatchSize),
-		Parents:     make([]*ctx509.Certificate, 0, BatchSize),
 		ParentIDs:   make([]*common.SHA256Output, 0, BatchSize),
 		AreLeaves:   make([]bool, 0, BatchSize),
 	}
@@ -50,7 +47,6 @@ func (b *CertBatch) AddCertificate(c *CertificateNode) {
 	b.Expirations = append(b.Expirations, &c.Cert.NotAfter)
 	b.Certs = append(b.Certs, c.Cert)
 	b.CertIDs = append(b.CertIDs, c.CertID)
-	b.Parents = append(b.Parents, c.Parent)
 	b.ParentIDs = append(b.ParentIDs, c.ParentID)
 	b.AreLeaves = append(b.AreLeaves, c.IsLeaf)
 }
@@ -85,7 +81,7 @@ const (
 )
 
 type UpdateCertificateFunction func(context.Context, db.Conn, [][]string, []*time.Time,
-	[]*ctx509.Certificate, []*common.SHA256Output, []*ctx509.Certificate, []bool) error
+	[]*ctx509.Certificate, []*common.SHA256Output, []*common.SHA256Output, []bool) error
 
 func NewCertProcessor(conn db.Conn, incoming chan *CertificateNode,
 	strategy CertificateUpdateStrategy) *CertificateProcessor {
@@ -245,7 +241,7 @@ func (p *CertificateProcessor) createBatches() {
 func (p *CertificateProcessor) processBatch(batch *CertBatch) {
 	// Store certificates in DB:
 	err := p.updateCertBatch(context.Background(), p.conn, batch.Names, batch.Expirations,
-		batch.Certs, batch.CertIDs, batch.Parents, batch.AreLeaves)
+		batch.Certs, batch.CertIDs, batch.ParentIDs, batch.AreLeaves)
 	if err != nil {
 		panic(err)
 	}
