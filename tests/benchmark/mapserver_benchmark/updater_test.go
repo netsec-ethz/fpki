@@ -1,10 +1,8 @@
 package benchmark
 
 import (
-	"compress/gzip"
 	"context"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -15,6 +13,7 @@ import (
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
+	"github.com/netsec-ethz/fpki/pkg/util"
 	"github.com/stretchr/testify/require"
 )
 
@@ -86,7 +85,7 @@ func benchmarkFullUpdate(b *testing.B, count int) {
 	expensiveBenchmark(b, count)
 	swapBack := swapDBs(b)
 	defer swapBack()
-	raw, err := gunzip(b, "testdata/certs.pem.gz")
+	raw, err := gunzip(b, "../../testdata/certs.pem.gz")
 	require.NoError(b, err)
 	certs := loadCertsFromPEM(b, raw)
 
@@ -127,9 +126,10 @@ func TestDoUpdatesFromTestDataCerts(t *testing.T) {
 	swapBack := swapDBs(t)
 	defer swapBack()
 	fmt.Println("Loading certs ...")
-	raw, err := gunzip(t, "testdata/certs.pem.gz")
+	raw, err := util.Gunzip("../../testdata/certs.pem.gz")
 	require.NoError(t, err)
-	certs := loadCertsFromPEM(t, raw)
+	certs, err := util.LoadCertsFromPEM(raw)
+	require.NoError(t, err)
 	emptyChains := make([][]*ctx509.Certificate, len(certs))
 
 	db.TruncateAllTablesForTest(t)
@@ -149,12 +149,12 @@ func TestDoUpdatesFromTestDataCerts(t *testing.T) {
 	root := up.GetRoot()
 	err = up.Close()
 	require.NoError(t, err)
-	err = ioutil.WriteFile("testdata/root100K.bin", root, 0664)
+	err = ioutil.WriteFile("../../testdata/root100K.bin", root, 0664)
 	require.NoError(t, err)
 
 	// dump contents using mysqldump
 	err = exec.Command("bash", "-c", "mysqldump -u root  fpki |gzip - "+
-		">testdata/dump100K.sql.gz").Run()
+		">../../testdata/dump100K.sql.gz").Run()
 	require.NoError(t, err)
 }
 
@@ -166,9 +166,10 @@ func BenchmarkUpdateDomainEntriesUsingCerts10K(b *testing.B) {
 func benchmarkUpdateDomainEntriesUsingCerts(b *testing.B, count int) {
 	swapBack := swapDBs(b)
 	defer swapBack()
-	raw, err := gunzip(b, "testdata/certs.pem.gz")
+	raw, err := gunzip(b, "../../testdata/certs.pem.gz")
 	require.NoError(b, err)
-	certs := loadCertsFromPEM(b, raw)
+	certs, err := util.LoadCertsFromPEM(raw)
+	require.NoError(b, err)
 	require.GreaterOrEqual(b, len(certs), count)
 	certs = certs[:count]
 	emptyChains := make([][]*ctx509.Certificate, len(certs))
@@ -199,7 +200,7 @@ func BenchmarkFetchUpdatedDomainHash10K(b *testing.B) {
 func benchmarkFetchUpdatedDomainHash(b *testing.B, count int) {
 	swapBack := swapDBs(b)
 	defer swapBack()
-	raw, err := gunzip(b, "testdata/certs.pem.gz")
+	raw, err := gunzip(b, "../../testdata/certs.pem.gz")
 	require.NoError(b, err)
 	certs := loadCertsFromPEM(b, raw)
 	require.GreaterOrEqual(b, len(certs), count)
@@ -234,7 +235,7 @@ func BenchmarkRetrieveDomainEntries10K(b *testing.B) {
 func benchmarkRetrieveDomainEntries(b *testing.B, count int) {
 	swapBack := swapDBs(b)
 	defer swapBack()
-	raw, err := gunzip(b, "testdata/certs.pem.gz")
+	raw, err := gunzip(b, "../../testdata/certs.pem.gz")
 	require.NoError(b, err)
 	certs := loadCertsFromPEM(b, raw)
 	require.GreaterOrEqual(b, len(certs), count)
@@ -271,7 +272,7 @@ func BenchmarkKeyValuePairToSMTInput10K(b *testing.B) {
 func benchmarkKeyValuePairToSMTInput(b *testing.B, count int) {
 	swapBack := swapDBs(b)
 	defer swapBack()
-	raw, err := gunzip(b, "testdata/certs.pem.gz")
+	raw, err := gunzip(b, "../../testdata/certs.pem.gz")
 	require.NoError(b, err)
 	certs := loadCertsFromPEM(b, raw)
 	require.GreaterOrEqual(b, len(certs), count)
@@ -311,7 +312,7 @@ func BenchmarkSmtUpdate10K(b *testing.B) {
 func benchmarkSmtUpdate(b *testing.B, count int) {
 	swapBack := swapDBs(b)
 	defer swapBack()
-	raw, err := gunzip(b, "testdata/certs.pem.gz")
+	raw, err := gunzip(b, "../../testdata/certs.pem.gz")
 	require.NoError(b, err)
 	certs := loadCertsFromPEM(b, raw)
 	require.GreaterOrEqual(b, len(certs), count)
@@ -354,7 +355,7 @@ func BenchmarkCommitChanges10K(b *testing.B) {
 func benchmarkCommitChanges(b *testing.B, count int) {
 	swapBack := swapDBs(b)
 	defer swapBack()
-	raw, err := gunzip(b, "testdata/certs.pem.gz")
+	raw, err := gunzip(b, "../../testdata/certs.pem.gz")
 	require.NoError(b, err)
 	certs := loadCertsFromPEM(b, raw)
 	require.GreaterOrEqual(b, len(certs), count)
@@ -404,22 +405,6 @@ func swapDBs(t require.TestingT) func() {
 	// prepare the DB for the benchmark
 	db.TruncateAllTablesForTest(t)
 	return swapBack
-}
-
-func gunzip(t require.TestingT, filename string) ([]byte, error) {
-	f, err := os.Open(filename)
-	require.NoError(t, err)
-	z, err := gzip.NewReader(f)
-	require.NoError(t, err)
-
-	raw, theErr := io.ReadAll(z)
-
-	err = z.Close()
-	require.NoError(t, err)
-	err = f.Close()
-	require.NoError(t, err)
-
-	return raw, theErr
 }
 
 func expensiveBenchmark(b *testing.B, count int) {

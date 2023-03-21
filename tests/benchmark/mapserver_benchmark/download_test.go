@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/domain"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/logpicker"
 	"github.com/stretchr/testify/require"
@@ -65,7 +64,7 @@ func TestCreateCerts(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, certs, count, "we have %d certificates", len(certs))
 
-	f, err := os.Create("testdata/certs.pem.gz")
+	f, err := os.Create("../../testdata/certs.pem.gz")
 	require.NoError(t, err)
 	z, err := gzip.NewWriterLevel(f, gzip.BestCompression)
 	require.NoError(t, err)
@@ -93,7 +92,7 @@ func TestCreateCerts(t *testing.T) {
 		}
 	}
 	sort.Strings(names)
-	f, err = os.Create("testdata/uniqueNames.txt")
+	f, err = os.Create("../../testdata/uniqueNames.txt")
 	require.NoError(t, err)
 	for _, n := range names {
 		_, err = f.WriteString(n + "\n")
@@ -101,19 +100,4 @@ func TestCreateCerts(t *testing.T) {
 	}
 	err = f.Close()
 	require.NoError(t, err)
-}
-
-func loadCertsFromPEM(t require.TestingT, raw []byte) []*ctx509.Certificate {
-	certs := make([]*ctx509.Certificate, 0)
-	for len(raw) > 0 {
-		var block *pem.Block
-		block, raw = pem.Decode(raw)
-		if block.Type != "CERTIFICATE" {
-			continue
-		}
-		c, err := ctx509.ParseTBSCertificate(block.Bytes)
-		require.NoError(t, err)
-		certs = append(certs, c)
-	}
-	return certs
 }

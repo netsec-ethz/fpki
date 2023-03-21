@@ -184,14 +184,10 @@ func UnfoldCerts(certs []*ctx509.Certificate, chains [][]*ctx509.Certificate) (
 // Additionally, if the payload of any of the ancestors of the certificate is nil, this function
 // interprets it as the ancestor is already present in the DB, and thus will omit returning it
 // and any posterior ancestors.
-func UnfoldCert(cert *ctx509.Certificate, certID *common.SHA256Output,
+func UnfoldCert(leafCert *ctx509.Certificate, certID *common.SHA256Output,
 	chain []*ctx509.Certificate, chainIDs []*common.SHA256Output,
 ) (certPayloads []*ctx509.Certificate, certIDs []*common.SHA256Output,
 	parentPayloads []*ctx509.Certificate, parentIDs []*common.SHA256Output) {
-
-	// return UnfoldCerts([]*ctx509.Certificate{cert}, [][]*ctx509.Certificate{chain})
-
-	// todo: do not add parents that have their payload to nil, because they must be in DB already
 
 	certPayloads = make([]*ctx509.Certificate, 0, len(parentPayloads)+1)
 	certIDs = make([]*common.SHA256Output, 0, len(parentPayloads)+1)
@@ -199,7 +195,7 @@ func UnfoldCert(cert *ctx509.Certificate, certID *common.SHA256Output,
 	parentIDs = make([]*common.SHA256Output, 0, len(parentPayloads)+1)
 
 	// Always add the leaf certificate.
-	certPayloads = append(certPayloads, cert)
+	certPayloads = append(certPayloads, leafCert)
 	certIDs = append(certIDs, certID)
 	parentPayloads = append(parentPayloads, chain[0])
 	parentIDs = append(parentIDs, chainIDs[0])
@@ -207,8 +203,9 @@ func UnfoldCert(cert *ctx509.Certificate, certID *common.SHA256Output,
 	i := 0
 	for ; i < len(chain)-1; i++ {
 		if chain[i] == nil {
-			// This parent has been inserted already in DB.
-			// Its parent must have been inserted as well. There are no more parents to insert.
+			// This parent has been inserted already in DB. This implies that its own parent,
+			// the grandparent of the leaf, must have been inserted as well; and so on.
+			// There are no more parents to insert.
 			return
 		}
 		certPayloads = append(certPayloads, chain[i])
