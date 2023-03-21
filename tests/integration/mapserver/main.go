@@ -10,6 +10,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/responder"
+	"github.com/netsec-ethz/fpki/pkg/util"
 	testdb "github.com/netsec-ethz/fpki/tests/pkg/db"
 )
 
@@ -36,6 +37,14 @@ func mainFunc() int {
 	panicIfError(err)
 
 	// Ingest the testdata.
+	raw, err := util.ReadAllGzippedFile("./tests/testdata/2-xenon2023.csv.gz")
+	panicIfError(err)
+	payloads, IDs, parentIDs, names, err := util.LoadCertsAndChainsFromCSV(raw)
+	panicIfError(err)
+
+	certs, err := util.LoadCertsFromPEM(raw)
+	panicIfError(err)
+	_ = certs
 
 	root, err := conn.LoadRoot(ctx)
 	panicIfError(err)
