@@ -377,6 +377,44 @@ func UpdateSMTfromDomains(
 	return nil
 }
 
+// UpdateSMT reads all the dirty domains (pending to update their contents in the SMT), creates
+// a SMT Trie, loads it, and updates its entries with the new values.
+// It finally commits the Trie and saves its root in the DB.
+func UpdateSMT(ctx context.Context, conn db.Conn, cacheHeight int) error {
+	// Load root.
+	var root []byte
+	if rootID, err := conn.LoadRoot(ctx); err != nil {
+		return err
+	} else if rootID != nil {
+		root = rootID[:]
+	}
+
+	// Load SMT.
+	smtTrie, err := trie.NewTrie(root, common.SHA256Hash, conn)
+	if err != nil {
+		panic(err)
+	}
+	smtTrie.CacheHeightLimit = cacheHeight
+
+	// Get the dirty domains.
+	domains, err := conn.UpdatedDomains(ctx)
+	if err != nil {
+		return err
+	}
+	err = UpdateSMTfromDomains(ctx, conn, smtTrie, domains)
+	if err != nil {
+		return err
+	}
+
+	// Save root value:
+	err = conn.SaveRoot(ctx, (*common.SHA256Output)(smtTrie.Root))
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func insertCerts(ctx context.Context, conn db.Conn, names [][]string,
 	ids, parentIDs []*common.SHA256Output, expirations []*time.Time, payloads [][]byte) error {
 
