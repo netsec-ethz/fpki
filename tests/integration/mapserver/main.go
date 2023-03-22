@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"time"
 
@@ -34,6 +35,7 @@ func mainFunc() int {
 		err := testdb.RemoveTestDB(ctx, *config)
 		panicIfError(err)
 	}()
+	fmt.Printf("created DB %s.\n", DBName)
 
 	// Test connect several times.
 	conn, err := mysql.Connect(config)
@@ -42,12 +44,15 @@ func mainFunc() int {
 	conn, err = mysql.Connect(config)
 	panicIfError(err)
 	panicIfError(conn.Close())
+	fmt.Println("done testing the DB connection.")
 
 	// Ingest data.
 	ingestData(ctx, config)
+	fmt.Println("done ingesting test data.")
 
 	// Get some proofs.
 	retrieveSomeProofs(ctx, config)
+	fmt.Println("done loading a responder.")
 
 	// Compare expected results
 	return 0
@@ -83,7 +88,12 @@ func ingestData(ctx context.Context, config *db.Configuration) {
 		payloads[b:], IDs[b:], parentIDs[b:])
 	panicIfError(err)
 
+	// Build the domain_payloads entries from dirty.
 	err = updater.CoalescePayloadsForDirtyDomains(ctx, conn, 2)
+	panicIfError(err)
+
+	// Do the SMT update.
+	err = updater.UpdateSMT(ctx, conn, 32)
 	panicIfError(err)
 }
 
