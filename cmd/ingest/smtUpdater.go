@@ -13,9 +13,6 @@ import (
 type SMTUpdater struct {
 	conn    db.Conn
 	smtTrie *trie.Trie
-
-	errorCh chan error
-	doneCh  chan error // Will have just one entry when all the processing is done
 }
 
 func NewSMTUpdater(conn db.Conn, root *common.SHA256Output, cacheHeight int) *SMTUpdater {
@@ -31,83 +28,50 @@ func NewSMTUpdater(conn db.Conn, root *common.SHA256Output, cacheHeight int) *SM
 	return &SMTUpdater{
 		conn:    conn,
 		smtTrie: smtTrie,
-		errorCh: make(chan error),
-		doneCh:  make(chan error),
 	}
 }
 
-func (u *SMTUpdater) Start(ctx context.Context) {
+func (u *SMTUpdater) Update(ctx context.Context) error {
 	fmt.Println("Starting SMT updater")
 
-	// Start processing the error channel.
-	go u.processErrorChannel()
-
-	// Read batches of updated nodes from `updates`:
-	go func() {
-		// This is the last and only processing function. After it finishes, there is nothing
-		// else to process, close error channel on exiting.
-		defer close(u.errorCh)
-
-		domains, err := u.conn.UpdatedDomains(ctx)
-		if err != nil {
-			u.errorCh <- err
-			return
-		}
-		u.processBatch(ctx, domains)
-
-		// Save root value:
-		err = u.conn.SaveRoot(ctx, (*common.SHA256Output)(u.smtTrie.Root))
-		if err != nil {
-			u.errorCh <- err
-			return
-		}
-		fmt.Println("Done SMT updater.")
-	}()
-}
-
-func (u *SMTUpdater) Wait() error {
-	return <-u.doneCh
-}
-
-func (u *SMTUpdater) processErrorChannel() {
-	var withErrors bool
-	for err := range u.errorCh {
-		if err != nil {
-			withErrors = true
-			fmt.Printf("SMT update, error: %s\n", err)
-		}
+	domains, err := u.conn.UpdatedDomains(ctx)
+	if err != nil {
+		return err
 	}
-	if withErrors {
-		u.doneCh <- fmt.Errorf("errors found")
-	} else {
-		u.doneCh <- nil
+	err = u.processBatch(ctx, domains)
+	if err != nil {
+		return err
 	}
-	close(u.doneCh)
+
+	// Save root value:
+	err = u.conn.SaveRoot(ctx, (*common.SHA256Output)(u.smtTrie.Root))
+	if err != nil {
+		return err
+	}
+	fmt.Println("Done SMT updater.")
+	return nil
 }
 
-func (u *SMTUpdater) processBatch(ctx context.Context, batch []*common.SHA256Output) {
+func (u *SMTUpdater) processBatch(ctx context.Context, batch []*common.SHA256Output) error {
 	// Read those certificates:
 	entries, err := u.conn.RetrieveDomainEntries(ctx, batch)
 	if err != nil {
-		u.errorCh <- err
-		return
+		return err
 	}
 	keys, values, err := updater.KeyValuePairToSMTInput(entries)
 	if err != nil {
-		u.errorCh <- err
-		return
+		return err
 	}
 
 	// Update the tree.
 	_, err = u.smtTrie.Update(context.Background(), keys, values)
 	if err != nil {
-		u.errorCh <- err
-		return
+		return err
 	}
 	// And update the tree in the DB.
 	err = u.smtTrie.Commit(context.Background())
 	if err != nil {
-		u.errorCh <- err
-		return
+		return err
 	}
+	return nil
 }

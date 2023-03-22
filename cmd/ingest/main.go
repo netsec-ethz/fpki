@@ -134,8 +134,7 @@ func mainFunction() int {
 
 	// Now start processing the changed domains into the SMT:
 	smtProcessor := NewSMTUpdater(conn, root, 32)
-	smtProcessor.Start(ctx)
-	err = smtProcessor.Wait()
+	err = smtProcessor.Update(ctx)
 	exitIfError(err)
 
 	// Cleanup dirty entries.
