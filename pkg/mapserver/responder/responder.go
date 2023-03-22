@@ -19,13 +19,15 @@ type MapResponder struct {
 
 func NewMapResponder(ctx context.Context, configFile string, conn db.Conn) (*MapResponder, error) {
 	// Load root.
-	root, err := conn.LoadRoot(ctx)
-	if err != nil {
+	var root []byte
+	if rootID, err := conn.LoadRoot(ctx); err != nil {
 		return nil, err
+	} else if root != nil {
+		root = rootID[:]
 	}
 
 	// Build the Sparse Merkle Tree (SMT).
-	smt, err := trie.NewTrie(root[:], common.SHA256Hash, conn)
+	smt, err := trie.NewTrie(root, common.SHA256Hash, conn)
 	if err != nil {
 		return nil, fmt.Errorf("error loading SMT: %w", err)
 	}
