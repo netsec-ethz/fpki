@@ -21,7 +21,7 @@ type SMTUpdater struct {
 func NewSMTUpdater(conn db.Conn, root *common.SHA256Output, cacheHeight int) *SMTUpdater {
 	var rootSlice []byte
 	if root != nil {
-		rootSlice = (*root)[:]
+		rootSlice = root[:]
 	}
 	smtTrie, err := trie.NewTrie(rootSlice, common.SHA256Hash, conn)
 	if err != nil {

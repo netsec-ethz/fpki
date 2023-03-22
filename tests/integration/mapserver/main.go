@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"time"
 
@@ -59,7 +58,6 @@ func ingestData(ctx context.Context, config *db.Configuration) {
 	conn, err := mysql.Connect(config)
 	panicIfError(err)
 	defer func() {
-		fmt.Println("deleteme closing")
 		err := conn.Close()
 		panicIfError(err)
 	}()
@@ -95,7 +93,10 @@ func retrieveSomeProofs(ctx context.Context, config *db.Configuration) {
 	panicIfError(err)
 
 	// Retrieve some domains
-	res, err := responder.NewMapResponder(ctx, "./config/mapserver_config.json", conn)
+	res, err := responder.NewMapResponder(
+		ctx,
+		"./tests/integration/mapserver/config/mapserver_config.json",
+		conn)
 	panicIfError(err)
 	p, err := res.GetProof(ctx, "aname.com")
 	panicIfError(err)
