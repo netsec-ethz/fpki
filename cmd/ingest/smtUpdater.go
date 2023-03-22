@@ -38,7 +38,7 @@ func (u *SMTUpdater) Update(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	err = u.processBatch(ctx, domains)
+	err = updater.UpdateSMTfromDomains(ctx, u.conn, u.smtTrie, domains)
 	if err != nil {
 		return err
 	}
@@ -49,29 +49,5 @@ func (u *SMTUpdater) Update(ctx context.Context) error {
 		return err
 	}
 	fmt.Println("Done SMT updater.")
-	return nil
-}
-
-func (u *SMTUpdater) processBatch(ctx context.Context, batch []*common.SHA256Output) error {
-	// Read those certificates:
-	entries, err := u.conn.RetrieveDomainEntries(ctx, batch)
-	if err != nil {
-		return err
-	}
-	keys, values, err := updater.KeyValuePairToSMTInput(entries)
-	if err != nil {
-		return err
-	}
-
-	// Update the tree.
-	_, err = u.smtTrie.Update(context.Background(), keys, values)
-	if err != nil {
-		return err
-	}
-	// And update the tree in the DB.
-	err = u.smtTrie.Commit(context.Background())
-	if err != nil {
-		return err
-	}
 	return nil
 }
