@@ -92,14 +92,14 @@ func (p *Processor) start() {
 	// Process the parsed content into the DB, and from DB into SMT:
 	go func() {
 		for data := range p.certWithChainChan {
-			certs, certIDs, parentIDs := updater.UnfoldCert(data.Cert, data.CertID,
+			certs, certIDs, parentIDs, names := updater.UnfoldCert(data.Cert, data.CertID,
 				data.ChainPayloads, data.ChainIDs)
 			for i := range certs {
 				p.nodeChan <- &CertificateNode{
 					CertID:   certIDs[i],
 					Cert:     certs[i],
 					ParentID: parentIDs[i],
-					IsLeaf:   i == 0, // Only the first certificate is a leaf.
+					Names:    names[i],
 				}
 			}
 		}

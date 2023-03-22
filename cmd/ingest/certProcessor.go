@@ -17,7 +17,7 @@ type CertificateNode struct {
 	CertID   *common.SHA256Output
 	Cert     *ctx509.Certificate
 	ParentID *common.SHA256Output
-	IsLeaf   bool
+	Names    []string
 }
 
 // CertBatch is an unwrapped collection of Certificate.
@@ -28,7 +28,6 @@ type CertBatch struct {
 	Certs       []*ctx509.Certificate
 	CertIDs     []*common.SHA256Output
 	ParentIDs   []*common.SHA256Output
-	AreLeaves   []bool
 }
 
 func NewCertificateBatch() *CertBatch {
@@ -38,17 +37,15 @@ func NewCertificateBatch() *CertBatch {
 		Certs:       make([]*ctx509.Certificate, 0, BatchSize),
 		CertIDs:     make([]*common.SHA256Output, 0, BatchSize),
 		ParentIDs:   make([]*common.SHA256Output, 0, BatchSize),
-		AreLeaves:   make([]bool, 0, BatchSize),
 	}
 }
 
 func (b *CertBatch) AddCertificate(c *CertificateNode) {
-	b.Names = append(b.Names, updater.ExtractCertDomains(c.Cert))
+	b.Names = append(b.Names, c.Names)
 	b.Expirations = append(b.Expirations, &c.Cert.NotAfter)
 	b.Certs = append(b.Certs, c.Cert)
 	b.CertIDs = append(b.CertIDs, c.CertID)
 	b.ParentIDs = append(b.ParentIDs, c.ParentID)
-	b.AreLeaves = append(b.AreLeaves, c.IsLeaf)
 }
 
 func (b *CertBatch) IsFull() bool {
@@ -81,7 +78,7 @@ const (
 )
 
 type UpdateCertificateFunction func(context.Context, db.Conn, [][]string, []*time.Time,
-	[]*ctx509.Certificate, []*common.SHA256Output, []*common.SHA256Output, []bool) error
+	[]*ctx509.Certificate, []*common.SHA256Output, []*common.SHA256Output) error
 
 func NewCertProcessor(conn db.Conn, incoming chan *CertificateNode,
 	strategy CertificateUpdateStrategy) *CertificateProcessor {
@@ -241,7 +238,7 @@ func (p *CertificateProcessor) createBatches() {
 func (p *CertificateProcessor) processBatch(batch *CertBatch) {
 	// Store certificates in DB:
 	err := p.updateCertBatch(context.Background(), p.conn, batch.Names, batch.Expirations,
-		batch.Certs, batch.CertIDs, batch.ParentIDs, batch.AreLeaves)
+		batch.Certs, batch.CertIDs, batch.ParentIDs)
 	if err != nil {
 		panic(err)
 	}
