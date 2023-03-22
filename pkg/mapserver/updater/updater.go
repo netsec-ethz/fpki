@@ -347,6 +347,36 @@ func CoalescePayloadsForDirtyDomains(ctx context.Context, conn db.Conn, numDBWri
 	return nil
 }
 
+func UpdateSMTfromDomains(
+	ctx context.Context,
+	conn db.Conn,
+	smtTrie *trie.Trie,
+	domainIDs []*common.SHA256Output,
+) error {
+
+	// Read those certificates:
+	entries, err := conn.RetrieveDomainEntries(ctx, domainIDs)
+	if err != nil {
+		return err
+	}
+	keys, values, err := KeyValuePairToSMTInput(entries)
+	if err != nil {
+		return err
+	}
+
+	// Update the tree.
+	_, err = smtTrie.Update(context.Background(), keys, values)
+	if err != nil {
+		return err
+	}
+	// And update the tree in the DB.
+	err = smtTrie.Commit(context.Background())
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func insertCerts(ctx context.Context, conn db.Conn, names [][]string,
 	ids, parentIDs []*common.SHA256Output, expirations []*time.Time, payloads [][]byte) error {
 
