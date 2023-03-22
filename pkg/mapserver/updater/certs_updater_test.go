@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
+	"github.com/google/certificate-transparency-go/x509/pkix"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -162,10 +163,35 @@ func TestUpdateSameCertTwice(t *testing.T) {
 
 func TestUnfoldCerts(t *testing.T) {
 	// `a` and `b` are leaves. `a` is root, `b` has `c`->`d` as its trust chain.
-	a := &ctx509.Certificate{Raw: []byte{0}}
-	b := &ctx509.Certificate{Raw: []byte{1}}
-	c := &ctx509.Certificate{Raw: []byte{2}}
-	d := &ctx509.Certificate{Raw: []byte{3}}
+	a := &ctx509.Certificate{
+		Raw: []byte{0},
+		Subject: pkix.Name{
+			CommonName: "a",
+		},
+		DNSNames: []string{"a", "a", "a.com"},
+	}
+	b := &ctx509.Certificate{
+		Raw: []byte{1},
+		Subject: pkix.Name{
+			CommonName: "b",
+		},
+		DNSNames: []string{"b", "b", "b.com"},
+	}
+	c := &ctx509.Certificate{
+		Raw: []byte{1},
+		Subject: pkix.Name{
+			CommonName: "c",
+		},
+		DNSNames: []string{"c", "c", "c.com"},
+	}
+	d := &ctx509.Certificate{
+		Raw: []byte{3},
+		Subject: pkix.Name{
+			CommonName: "d",
+		},
+		DNSNames: []string{"d", "d", "d.com"},
+	}
+
 	certs := []*ctx509.Certificate{
 		a,
 		b,
@@ -174,7 +200,7 @@ func TestUnfoldCerts(t *testing.T) {
 		nil,
 		{c, d},
 	}
-	allCerts, IDs, parentIDs := UnfoldCerts(certs, chains)
+	allCerts, IDs, parentIDs, names := UnfoldCerts(certs, chains)
 
 	fmt.Printf("[%p %p %p %p]\n", a, b, c, d)
 	fmt.Printf("%v\n", allCerts)
@@ -203,10 +229,16 @@ func TestUnfoldCerts(t *testing.T) {
 	assert.Equal(t, dID, *IDs[3])
 
 	// Check parent IDs.
-
 	nilID := (*common.SHA256Output)(nil)
 	assert.Equal(t, nilID, parentIDs[0], "bad parent at 0")
 	assert.Equal(t, cID, *parentIDs[1], "bad parent at 1")
 	assert.Equal(t, dID, *parentIDs[2], "bad parent at 2")
 	assert.Equal(t, nilID, parentIDs[3], "bad parent at 3")
+
+	// Check domain names.
+	nilNames := ([]string)(nil)
+	assert.ElementsMatch(t, []string{"a", "a.com"}, names[0]) // root but also a leaf
+	assert.ElementsMatch(t, []string{"b", "b.com"}, names[1]) // just a leaf
+	assert.Equal(t, nilNames, names[2])                       // not a leaf
+	assert.Equal(t, nilNames, names[3])                       // not a leaf
 }
