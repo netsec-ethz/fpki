@@ -12,6 +12,7 @@ import (
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 )
 
 const (
@@ -19,7 +20,7 @@ const (
 	CertChainColumn   = 4
 )
 
-func Gunzip(filename string) ([]byte, error) {
+func ReadAllGzippedFile(filename string) ([]byte, error) {
 	f, err := os.Open(filename)
 	if err != nil {
 		return nil, err
@@ -43,11 +44,11 @@ func Gunzip(filename string) ([]byte, error) {
 	return raw, err
 }
 
-func LoadCertsFromPEM(raw []byte) ([]*ctx509.Certificate, error) {
+func LoadCertsFromPEM(buff []byte) ([]*ctx509.Certificate, error) {
 	certs := make([]*ctx509.Certificate, 0)
-	for len(raw) > 0 {
+	for len(buff) > 0 {
 		var block *pem.Block
-		block, raw = pem.Decode(raw)
+		block, buff = pem.Decode(buff)
 		if block.Type != "CERTIFICATE" {
 			continue
 		}
@@ -61,57 +62,72 @@ func LoadCertsFromPEM(raw []byte) ([]*ctx509.Certificate, error) {
 	return certs, nil
 }
 
-// LoadCertsAndChainsFromCSV returns a ready to insert-in-DB collection of IDs and payloads for
-// each certificate and its ancestry.
-//
-// a slice containing N elements, which represent the certificate
-// chain from the leaf to the root certificate.
-func LoadCertsAndChainsFromCSV(raw []byte) ([]*ctx509.Certificate, error) {
-	r := bytes.NewReader(raw)
+// LoadCertsAndChainsFromCSV returns a ready to insert-in-DB collection of the leaf certificate
+// payload, its ID, its parent ID, and its names, for each certificate and its ancestry chain.
+// The returned names contains nil unless the corresponding certificate is a leaf certificate.
+func LoadCertsAndChainsFromCSV(
+	fileContents []byte,
+) (payloads []*ctx509.Certificate,
+	IDs []*common.SHA256Output,
+	parentIDs []*common.SHA256Output,
+	names [][]string,
+	errRet error,
+) {
+
+	r := bytes.NewReader(fileContents)
 	reader := csv.NewReader(r)
 	reader.FieldsPerRecord = -1 // don't check number of fields
 
 	records, err := reader.ReadAll()
 	if err != nil {
-		return nil, err
+		errRet = err
+		return
 	}
+	leafs := make([]*ctx509.Certificate, 0, len(payloads))
+	chains := make([][]*ctx509.Certificate, 0, len(payloads))
 	for _, fields := range records {
 		if len(fields) == 0 {
 			continue
 		}
 
-		// Parse the certificate.
-		rawBytes, err := base64.StdEncoding.DecodeString(fields[CertificateColumn])
+		cert, err := ParseCertFromCSVField(fields[CertificateColumn])
 		if err != nil {
-			return nil, err
+			errRet = err
+			return
 		}
-		certID := common.SHA256Hash32Bytes(rawBytes)
-		cert, err := ctx509.ParseCertificate(rawBytes)
-		if err != nil {
-			return nil, err
-		}
+		leafs = append(leafs, cert)
 
 		// Parse the chain.
 		// The certificate chain is a list of base64 strings separated by semicolon (;).
 		strs := strings.Split(fields[CertChainColumn], ";")
 		chain := make([]*ctx509.Certificate, len(strs))
-		chainIDs := make([]*common.SHA256Output, len(strs))
 		for i, s := range strs {
-			rawBytes, err = base64.StdEncoding.DecodeString(s)
+			chain[i], err = ParseCertFromCSVField(s)
 			if err != nil {
-				return nil, err
-			}
-			chain[i], err = ctx509.ParseCertificate(rawBytes)
-			if err != nil {
-				return nil, err
+				errRet = err
+				return
 			}
 		}
-
-		_ = certID
-		_ = cert
-		_ = chainIDs
-
+		chains = append(chains, chain)
 	}
 
-	return nil, nil
+	// Unfold the received certificates.
+	payloads, IDs, parentIDs, names = updater.UnfoldCerts(leafs, chains)
+	return
+}
+
+// ParseCertFromCSVField takes a row from a CSV encoding certs and chains in base64 and returns
+// the CT x509 Certificate or error.
+func ParseCertFromCSVField(field string) (*ctx509.Certificate, error) {
+	// Base64 to raw bytes.
+	rawBytes, err := base64.StdEncoding.DecodeString(field)
+	if err != nil {
+		return nil, err
+	}
+	// Parse the certificate.
+	cert, err := ctx509.ParseCertificate(rawBytes)
+	if err != nil {
+		return nil, err
+	}
+	return cert, nil
 }

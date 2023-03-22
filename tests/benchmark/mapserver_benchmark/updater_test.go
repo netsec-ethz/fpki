@@ -126,7 +126,7 @@ func TestDoUpdatesFromTestDataCerts(t *testing.T) {
 	swapBack := swapDBs(t)
 	defer swapBack()
 	fmt.Println("Loading certs ...")
-	raw, err := util.Gunzip("../../testdata/certs.pem.gz")
+	raw, err := util.ReadAllGzippedFile("../../testdata/certs.pem.gz")
 	require.NoError(t, err)
 	certs, err := util.LoadCertsFromPEM(raw)
 	require.NoError(t, err)

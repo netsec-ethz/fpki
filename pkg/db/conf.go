@@ -5,6 +5,7 @@ const KeyDBName = "DBNAME"
 // Configuration for the db connection
 type Configuration struct {
 	Dsn         string
+	DBName      string
 	Values      map[string]string
 	CheckSchema bool // indicates if opening the connection checks the health of the schema
 }
