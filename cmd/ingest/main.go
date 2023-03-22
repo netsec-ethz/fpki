@@ -13,6 +13,7 @@ import (
 
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 )
 
 const (
@@ -132,10 +133,11 @@ func mainFunction() int {
 	// Coalesce the payloads of all modified domains.
 	CoalescePayloadsForDirtyDomains(ctx, conn)
 
-	// Now start processing the changed domains into the SMT:
-	smtProcessor := NewSMTUpdater(conn, root, 32)
-	err = smtProcessor.Update(ctx)
+	// Now update the SMT Trie with the changed domains:
+	fmt.Println("Starting SMT update ...")
+	err = updater.UpdateSMT(ctx, conn, 32)
 	exitIfError(err)
+	fmt.Println("Done SMT update.")
 
 	// Cleanup dirty entries.
 	err = conn.CleanupDirty(ctx)
