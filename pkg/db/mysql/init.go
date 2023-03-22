@@ -15,7 +15,11 @@ func Connect(config *db.Configuration) (db.Conn, error) {
 	if config == nil {
 		return nil, fmt.Errorf("nil config not allowed")
 	}
-	config.Dsn = parseDSN(config)
+	if config.Dsn == "" {
+		config.Dsn = parseDSN(config)
+		config.DBName = config.Values[db.KeyDBName]
+		delete(config.Values, db.KeyDBName)
+	}
 
 	db, err := connect(config)
 	if err != nil {
@@ -64,7 +68,6 @@ func parseDSN(config *db.Configuration) string {
 	delete(val, keyHost)
 	delete(val, keyPort)
 	delete(val, keyLocalSocket)
-	delete(val, db.KeyDBName)
 
 	return dsnString
 }

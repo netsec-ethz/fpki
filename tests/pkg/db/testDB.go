@@ -27,6 +27,19 @@ func CreateTestDB(ctx context.Context, dbName string) error {
 	return nil
 }
 
+func RemoveTestDB(ctx context.Context, config db.Configuration) error {
+	conn, err := Connect(&config)
+	if err != nil {
+		return fmt.Errorf("connecting to test DB: %w", err)
+	}
+	str := fmt.Sprintf("DROP DATABASE IF EXISTS %s", config.DBName)
+	_, err = conn.DB().ExecContext(ctx, str)
+	if err != nil {
+		return fmt.Errorf("removing the database: %w", err)
+	}
+	return nil
+}
+
 func Connect(config *db.Configuration) (db.Conn, error) {
 	return mysql.Connect(config)
 }

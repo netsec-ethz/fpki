@@ -27,6 +27,12 @@ type Conn interface {
 	LoadRoot(ctx context.Context) (*common.SHA256Output, error)
 	SaveRoot(ctx context.Context, root *common.SHA256Output) error
 
+	// CoalesceDomainsPayloads takes some IDs (which should come from the dirty table) and
+	// retrieves the payloads of all certificates for each domain, represented by each ID.
+	// With those payloads it writes an entry in domain_payloads and computes the SHA256 of it.
+	// This is done via a stored procedure, to avoid moving data from DB to server.
+	CoalesceDomainsPayloads(ctx context.Context, ids []*common.SHA256Output) error
+
 	//////////////////////////////////////////////////////////////////
 	// check if the functions below are needed after the new design //
 	//////////////////////////////////////////////////////////////////

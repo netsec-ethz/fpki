@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"time"
@@ -10,8 +9,14 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/responder"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 	"github.com/netsec-ethz/fpki/pkg/util"
 	testdb "github.com/netsec-ethz/fpki/tests/pkg/db"
+)
+
+const (
+	BatchSize = 1000
+	DBName    = "mapServerIT"
 )
 
 func main() {
@@ -23,18 +28,41 @@ func mainFunc() int {
 	defer cancelF()
 
 	// Create an empty test DB
-	dbName := "mapServerIT"
-	err := testdb.CreateTestDB(ctx, dbName)
+	err := testdb.CreateTestDB(ctx, DBName)
+	config := db.NewConfig(mysql.WithDefaults(), db.WithDB(DBName))
 	panicIfError(err)
 	defer func() {
-		// TODO(juagargi) destroy the DB with
+		err := testdb.RemoveTestDB(ctx, *config)
+		panicIfError(err)
 	}()
 
-	// Connect to the test DB
-	// config := db.NewConfig(mysql.WithDefaults(), mysql.WithEnvironment(), db.WithDB("mapserverIT"))
-	config := db.NewConfig(mysql.WithDefaults(), db.WithDB(dbName))
+	// Test connect several times.
 	conn, err := mysql.Connect(config)
 	panicIfError(err)
+	panicIfError(conn.Close())
+	conn, err = mysql.Connect(config)
+	panicIfError(err)
+	panicIfError(conn.Close())
+
+	// Ingest data.
+	ingestData(ctx, config)
+
+	// Get some proofs.
+	retrieveSomeProofs(ctx, config)
+
+	// Compare expected results
+	return 0
+}
+
+func ingestData(ctx context.Context, config *db.Configuration) {
+	// Connect to the test DB
+	conn, err := mysql.Connect(config)
+	panicIfError(err)
+	defer func() {
+		fmt.Println("deleteme closing")
+		err := conn.Close()
+		panicIfError(err)
+	}()
 
 	// Ingest the testdata.
 	raw, err := util.ReadAllGzippedFile("./tests/testdata/2-xenon2023.csv.gz")
@@ -42,15 +70,29 @@ func mainFunc() int {
 	payloads, IDs, parentIDs, names, err := util.LoadCertsAndChainsFromCSV(raw)
 	panicIfError(err)
 
-	certs, err := util.LoadCertsFromPEM(raw)
+	// Insert the certificates into the test DB in batches.
+	expirations := util.ExtractExpirations(payloads)
+	for i := 0; i < (len(names) / BatchSize); i++ {
+		b := i * BatchSize       // begin
+		e := (i + 1) * BatchSize // end
+		err = updater.UpdateCertsWithKeepExisting(ctx, conn, names[b:e], expirations[b:e],
+			payloads[b:e], IDs[b:e], parentIDs[b:e])
+		panicIfError(err)
+	}
+	// Remainder of the certificates
+	b := (len(names) / BatchSize) * BatchSize
+	err = updater.UpdateCertsWithKeepExisting(ctx, conn, names[b:], expirations[b:],
+		payloads[b:], IDs[b:], parentIDs[b:])
 	panicIfError(err)
-	_ = certs
 
-	root, err := conn.LoadRoot(ctx)
+	err = updater.CoalescePayloadsForDirtyDomains(ctx, conn, 2)
 	panicIfError(err)
-	fmt.Printf("root is %s\n", hex.EncodeToString((*root)[:]))
+}
 
-	// Ingest mock data
+func retrieveSomeProofs(ctx context.Context, config *db.Configuration) {
+	// Connect to the test DB
+	conn, err := mysql.Connect(config)
+	panicIfError(err)
 
 	// Retrieve some domains
 	res, err := responder.NewMapResponder(ctx, "./config/mapserver_config.json", conn)
@@ -58,9 +100,6 @@ func mainFunc() int {
 	p, err := res.GetProof(ctx, "aname.com")
 	panicIfError(err)
 	_ = p
-
-	// Compare results
-	return 0
 }
 
 func panicIfError(err error) {

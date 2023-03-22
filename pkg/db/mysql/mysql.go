@@ -264,6 +264,23 @@ func (c *mysqlDB) UpdateDomainsWithCerts(ctx context.Context, certIDs, domainIDs
 	return err
 }
 
+func (c *mysqlDB) CoalesceDomainsPayloads(ctx context.Context, ids []*common.SHA256Output) error {
+
+	// We receive ids as a slice of IDs. We ought to build a long slice of bytes
+	// with all the bytes concatenated.
+	param := make([]byte, len(ids)*common.SHA256Size)
+	for i, id := range ids {
+		copy(param[i*common.SHA256Size:], id[:])
+	}
+	// Now call the stored procedure with this parameter.
+	str := "CALL calc_several_domain_payloads(?)"
+	_, err := c.db.Exec(str, param)
+	if err != nil {
+		return fmt.Errorf("coalescing payload for domains: %w", err)
+	}
+	return nil
+}
+
 // repeatStmt returns  ( (?,..dimensions..,?), ...elemCount...  )
 // Use it like repeatStmt(1, len(IDs)) to obtain (?,?,...)
 func repeatStmt(elemCount int, dimensions int) string {
