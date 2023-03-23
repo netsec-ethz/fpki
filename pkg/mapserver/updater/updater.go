@@ -25,9 +25,9 @@ type MapUpdater struct {
 }
 
 // NewMapUpdater: return a new map updater.
-func NewMapUpdater(root []byte, cacheHeight int) (*MapUpdater, error) {
+func NewMapUpdater(config *db.Configuration, root []byte, cacheHeight int) (*MapUpdater, error) {
 	// db conn for map updater
-	dbConn, err := mysql.Connect(nil)
+	dbConn, err := mysql.Connect(config)
 	if err != nil {
 		return nil, fmt.Errorf("NewMapUpdater | db.Connect | %w", err)
 	}
@@ -98,7 +98,6 @@ func (mapUpdater *MapUpdater) UpdateCertsLocally(ctx context.Context, certList [
 
 // updateCerts: update the tables and SMT (in memory) using certificates
 func (mapUpdater *MapUpdater) updateCerts(ctx context.Context, certs []*ctx509.Certificate, certChains [][]*ctx509.Certificate) error {
-	start := time.Now()
 
 	keyValuePairs, numOfUpdates, err := mapUpdater.UpdateDomainEntriesTableUsingCerts(ctx, certs, certChains)
 	if err != nil {
@@ -106,9 +105,6 @@ func (mapUpdater *MapUpdater) updateCerts(ctx context.Context, certs []*ctx509.C
 	} else if numOfUpdates == 0 {
 		return nil
 	}
-
-	end := time.Now()
-	fmt.Println("(db and memory) time to update domain entries: ", end.Sub(start))
 
 	if len(keyValuePairs) == 0 {
 		return nil
@@ -119,13 +115,10 @@ func (mapUpdater *MapUpdater) updateCerts(ctx context.Context, certs []*ctx509.C
 		return fmt.Errorf("CollectCerts | keyValuePairToSMTInput | %w", err)
 	}
 
-	start = time.Now()
 	_, err = mapUpdater.smt.Update(ctx, keyInput, valueInput)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | Update | %w", err)
 	}
-	end = time.Now()
-	fmt.Println("(memory) time to update tree in memory: ", end.Sub(start))
 
 	return nil
 }

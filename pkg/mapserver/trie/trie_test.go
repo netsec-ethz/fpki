@@ -7,7 +7,6 @@ package trie
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
 	"sort"
 	"testing"
@@ -220,7 +219,6 @@ func TestTrieMerkleProofCompressed(t *testing.T) {
 	smt.Update(ctx, keys, values)
 
 	for i, key := range keys {
-		fmt.Printf("i=%d\n", i)
 		bitmap, ap, length, _, k, v, _ := smt.MerkleProofCompressed(ctx, key)
 		require.True(t, smt.VerifyInclusionC(bitmap, key, values[i], ap, length))
 		// (key,value) can be 1- (nil, value), value of the included key, 2- the kv of a LeafNode

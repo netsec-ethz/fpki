@@ -9,6 +9,7 @@ import (
 	"github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
+	"github.com/netsec-ethz/fpki/pkg/db/mysql"
 	mapcommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/logpicker"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/prover"
@@ -48,12 +49,21 @@ func TestGetProof(t *testing.T) {
 }
 
 func TestResponderWithPoP(t *testing.T) {
-	tests.TruncateAllTablesForTest(t)
-
-	mapUpdater, err := updater.NewMapUpdater(nil, 233)
-	require.NoError(t, err)
-	ctx, cancelF := context.WithTimeout(context.Background(), 15*time.Minute)
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
 	defer cancelF()
+
+	dbName := t.Name()
+	config := db.NewConfig(mysql.WithDefaults(), db.WithDB(dbName))
+
+	err := tests.CreateTestDB(ctx, dbName)
+	require.NoError(t, err)
+	defer func() {
+		err = tests.RemoveTestDB(ctx, config)
+		require.NoError(t, err)
+	}()
+
+	mapUpdater, err := updater.NewMapUpdater(config, nil, 233)
+	require.NoError(t, err)
 
 	mapUpdater.Fetcher.BatchSize = 10000
 	const baseCTSize = 2 * 1000
@@ -90,7 +100,7 @@ func TestResponderWithPoP(t *testing.T) {
 	require.Len(t, certs, count)
 
 	// create responder and request proof for those names
-	responder, err := NewOldMapResponder(ctx, root, 233, "./testdata/mapserver_config.json")
+	responder, err := NewOldMapResponder(ctx, config, root, 233, "./testdata/mapserver_config.json")
 	require.NoError(t, err)
 	for _, cert := range certs {
 		responses, err := responder.GetProof(ctx, cert.Subject.CommonName)

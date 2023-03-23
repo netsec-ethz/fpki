@@ -24,9 +24,16 @@ type OldMapResponder struct {
 }
 
 // NewOldMapResponder: return a new responder
-func NewOldMapResponder(ctx context.Context, root []byte, cacheHeight int, mapServerConfigPath string) (*OldMapResponder, error) {
+func NewOldMapResponder(
+	ctx context.Context,
+	config *db.Configuration,
+	root []byte,
+	cacheHeight int,
+	mapServerConfigPath string,
+) (*OldMapResponder, error) {
+
 	// new db connection for SMT
-	conn, err := mysql.Connect(nil)
+	conn, err := mysql.Connect(config)
 	if err != nil {
 		return nil, fmt.Errorf("NewMapResponder | Connect | %w", err)
 	}
