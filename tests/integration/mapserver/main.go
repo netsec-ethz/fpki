@@ -32,10 +32,10 @@ func mainFunc() int {
 	config := db.NewConfig(mysql.WithDefaults(), db.WithDB(DBName))
 
 	// // Create an empty test DB
-	// err := testdb.CreateTestDB(ctx, DBName)
+	// err := tests.CreateTestDB(ctx, DBName)
 	// panicIfError(err)
 	// defer func() {
-	// 	err := testdb.RemoveTestDB(ctx, *config)
+	// 	err := tests.RemoveTestDB(ctx, config)
 	// 	panicIfError(err)
 	// }()
 	// fmt.Printf("created DB %s.\n", DBName)
@@ -59,21 +59,22 @@ func mainFunc() int {
 
 	// Compare proofs against expected results.
 	data := getSomeDataPointsToTest(ctx, config)
-	errors := make([]error, 0)
+	errors := false
 	for _, d := range data {
 		fmt.Printf("checking %s ... ", d.Name)
 		proof, err := res.GetProof(ctx, d.Name)
 		panicIfError(err)
 		fmt.Printf("has %d steps\n", len(proof))
-		err = util.CheckProof(proof, d.Name, d.Certs[0])
-		if err != nil {
-			errors = append(errors, err)
+		// Present domains will surely have certificates.
+		for _, c := range d.Certs {
+			err = util.CheckProof(proof, d.Name, c)
+			if err != nil {
+				errors = true
+				fmt.Printf("error found with %s: %s\n", d.Name, err)
+			}
 		}
 	}
-	for _, err := range errors {
-		fmt.Fprintf(os.Stderr, "%s\n", err)
-	}
-	if len(errors) > 0 {
+	if errors {
 		return 1
 	}
 

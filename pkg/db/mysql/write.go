@@ -10,7 +10,18 @@ import (
 )
 
 func (c *mysqlDB) UpdateDomainEntries(ctx context.Context, pairs []*db.KeyValuePair) (int, error) {
-	panic("not available")
+	str := "REPLACE into domainEntries (`key`, `value`) values " + repeatStmt(len(pairs), 2)
+	params := make([]interface{}, len(pairs)*2)
+	for i, p := range pairs {
+		params[i*2] = p.Key[:]
+		params[i*2+1] = p.Value
+	}
+	_, err := c.db.ExecContext(ctx, str, params...)
+	if err != nil {
+		return 0, fmt.Errorf("UpdateDomainEntries | %w", err)
+	}
+
+	return 666666666, nil
 }
 
 // UpdateDomainEntries: Update a list of key-value store

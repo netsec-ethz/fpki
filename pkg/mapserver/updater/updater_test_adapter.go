@@ -11,8 +11,8 @@ import (
 
 type UpdaterTestAdapter MapUpdater
 
-func NewMapTestUpdater(root []byte, cacheHeight int) (*UpdaterTestAdapter, error) {
-	up, err := NewMapUpdater(root, cacheHeight)
+func NewMapTestUpdater(config *db.Configuration, root []byte, cacheHeight int) (*UpdaterTestAdapter, error) {
+	up, err := NewMapUpdater(config, root, cacheHeight)
 	return (*UpdaterTestAdapter)(up), err
 }
 
