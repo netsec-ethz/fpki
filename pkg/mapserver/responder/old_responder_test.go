@@ -10,11 +10,11 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	mapcommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/internal"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/logpicker"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/prover"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
+	"github.com/netsec-ethz/fpki/pkg/tests"
 	"github.com/stretchr/testify/require"
 )
 
@@ -48,7 +48,7 @@ func TestGetProof(t *testing.T) {
 }
 
 func TestResponderWithPoP(t *testing.T) {
-	db.TruncateAllTablesForTest(t)
+	tests.TruncateAllTablesForTest(t)
 
 	mapUpdater, err := updater.NewMapUpdater(nil, 233)
 	require.NoError(t, err)
@@ -154,7 +154,7 @@ func getUpdatedUpdater(t require.TestingT, certs []*x509.Certificate) (db.Conn, 
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	conn := internal.NewMockDB()
+	conn := tests.NewMockDB()
 	smt, err := trie.NewTrie(nil, common.SHA256Hash, conn)
 	require.NoError(t, err)
 	smt.CacheHeightLimit = 233

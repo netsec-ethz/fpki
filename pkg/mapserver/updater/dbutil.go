@@ -23,16 +23,15 @@ func (mapUpdater *MapUpdater) retrieveAffectedDomainFromDB(ctx context.Context,
 
 	// XXX(juagargi) review why passing a set (we need to convert it to a slice)
 	// list of domain hashes to fetch the domain entries from db
-	affectedDomainHashes := make([]common.SHA256Output, 0, len(affectedDomainsSet))
+	affectedDomainHashes := make([]*common.SHA256Output, 0, len(affectedDomainsSet))
 	for k := range affectedDomainsSet {
-		affectedDomainHashes = append(affectedDomainHashes, k)
+		affectedDomainHashes = append(affectedDomainHashes, &k)
 	}
 
-	// work := func(domainHashes []common.SHA256Output, resultChan chan dbResult) {
-	// 	domainEntries, err := mapUpdater.dbConn.RetrieveDomainEntries(ctx, domainHashes)
-	// 	resultChan <- dbResult{pairs: domainEntries, err: err}
-	// }
-	work := func(domainHashes []common.SHA256Output, resultChan chan dbResult) {}
+	work := func(domainHashes []*common.SHA256Output, resultChan chan dbResult) {
+		domainEntries, err := mapUpdater.dbConn.RetrieveDomainEntries(ctx, domainHashes)
+		resultChan <- dbResult{pairs: domainEntries, err: err}
+	}
 
 	resultChan := make(chan dbResult)
 

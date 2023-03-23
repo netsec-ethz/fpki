@@ -99,6 +99,7 @@ func (mapUpdater *MapUpdater) UpdateCertsLocally(ctx context.Context, certList [
 // updateCerts: update the tables and SMT (in memory) using certificates
 func (mapUpdater *MapUpdater) updateCerts(ctx context.Context, certs []*ctx509.Certificate, certChains [][]*ctx509.Certificate) error {
 	start := time.Now()
+
 	keyValuePairs, numOfUpdates, err := mapUpdater.UpdateDomainEntriesTableUsingCerts(ctx, certs, certChains)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingCerts | %w", err)

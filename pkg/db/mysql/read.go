@@ -46,16 +46,13 @@ func (c *mysqlDB) RetrieveTreeNodeOLD(ctx context.Context, key common.SHA256Outp
 func (c *mysqlDB) RetrieveDomainEntry(ctx context.Context, key common.SHA256Output) (
 	[]byte, error) {
 
-	keyValuePair, err := retrieveValue(ctx, c.prepGetValueDomainEntries, key)
-	if err != nil {
-		if err != sql.ErrNoRows {
-			return nil, fmt.Errorf("RetrieveDomainEntry | %w", err)
-		} else {
-			// return sql.ErrNoRows
-			return nil, err
-		}
+	str := "SELECT payload FROM domain_payloads WHERE id = ?"
+	var payload []byte
+	err := c.db.QueryRowContext(ctx, str, key[:]).Scan(&payload)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, fmt.Errorf("RetrieveDomainEntry | %w", err)
 	}
-	return keyValuePair, nil
+	return payload, nil
 }
 
 // RetrieveDomainEntries: Retrieve a list of key-value pairs from domain entries table

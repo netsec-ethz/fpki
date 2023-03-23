@@ -64,7 +64,10 @@ func (r *MapResponder) GetProof(ctx context.Context, domainName string,
 		proofType := mapCommon.PoA
 		if isPoP {
 			proofType = mapCommon.PoP
-			_ = payload
+			payload, err = r.conn.RetrieveDomainEntry(ctx, hash)
+			if err != nil {
+				return nil, fmt.Errorf("error obtaining payload for %s: %w", domainPart, err)
+			}
 		}
 
 		proofList[i] = &mapCommon.MapServerResponse{
@@ -77,7 +80,7 @@ func (r *MapResponder) GetProof(ctx context.Context, domainName string,
 				ProofValue: proofValue,
 			},
 			DomainEntryBytes: payload,
-			// TreeHeadSig: ,
+			// TreeHeadSig: , TODO(juagargi)
 		}
 	}
 	return proofList, nil

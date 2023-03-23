@@ -29,7 +29,7 @@ type CacheDB struct {
 	wholeCacheDBLock sync.RWMutex
 
 	// dbConn is the conn to mysql db
-	Store       db.Conn
+	Store       DBConn
 	readLimiter chan struct{}
 
 	// nodes to be removed from db
@@ -37,8 +37,15 @@ type CacheDB struct {
 	removeMux   sync.RWMutex
 }
 
+type DBConn interface {
+	Close() error
+	RetrieveTreeNode(ctx context.Context, key common.SHA256Output) ([]byte, error)
+	UpdateTreeNodes(ctx context.Context, keyValuePairs []*db.KeyValuePair) (int, error)
+	DeleteTreeNodes(ctx context.Context, keys []common.SHA256Output) (int, error)
+}
+
 // NewCacheDB: return a cached db
-func NewCacheDB(store db.Conn) (*CacheDB, error) {
+func NewCacheDB(store DBConn) (*CacheDB, error) {
 	return &CacheDB{
 		liveCache:    make(map[Hash][][]byte),
 		updatedNodes: make(map[Hash][][]byte),

@@ -10,8 +10,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-
-	"github.com/netsec-ethz/fpki/pkg/db"
 )
 
 // Trie is a modified sparse Merkle tree.
@@ -49,7 +47,7 @@ type Trie struct {
 }
 
 // NewSMT creates a new SMT given a keySize and a hash function.
-func NewTrie(root []byte, hash func(data ...[]byte) []byte, store db.Conn) (*Trie, error) {
+func NewTrie(root []byte, hash func(data ...[]byte) []byte, store DBConn) (*Trie, error) {
 	s := &Trie{
 		hash:       hash,
 		TrieHeight: len(hash([]byte("height"))) * 8, // hash any string to get output length
