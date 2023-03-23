@@ -10,20 +10,20 @@ import (
 	projectCommon "github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/domain"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/internal"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/logpicker"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
+	"github.com/netsec-ethz/fpki/pkg/tests"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // TestUpdateCerts: test updateCerts()
 func TestUpdateCerts(t *testing.T) {
-	smt, err := trie.NewTrie(nil, projectCommon.SHA256Hash, internal.NewMockDB())
+	smt, err := trie.NewTrie(nil, projectCommon.SHA256Hash, tests.NewMockDB())
 	require.NoError(t, err)
 	smt.CacheHeightLimit = 233
 
-	updaterDB := internal.NewMockDB()
+	updaterDB := tests.NewMockDB()
 	updater, err := getMockUpdater(smt, updaterDB)
 	require.NoError(t, err)
 
@@ -82,11 +82,11 @@ func TestUpdateRPCAndPC(t *testing.T) {
 	pcList, rpcList, err := logpicker.GetPCAndRPC("./testdata/domain_list/domains.txt", 0, 0, 20)
 	require.NoError(t, err)
 
-	smt, err := trie.NewTrie(nil, projectCommon.SHA256Hash, internal.NewMockDB())
+	smt, err := trie.NewTrie(nil, projectCommon.SHA256Hash, tests.NewMockDB())
 	require.NoError(t, err)
 	smt.CacheHeightLimit = 233
 
-	updaterDB := internal.NewMockDB()
+	updaterDB := tests.NewMockDB()
 	updater, err := getMockUpdater(smt, updaterDB)
 	require.NoError(t, err)
 
@@ -145,11 +145,11 @@ func TestUpdateRPCAndPC(t *testing.T) {
 
 // TestFetchUpdatedDomainHash: test fetchUpdatedDomainHash()
 func TestFetchUpdatedDomainHash(t *testing.T) {
-	smt, err := trie.NewTrie(nil, projectCommon.SHA256Hash, internal.NewMockDB())
+	smt, err := trie.NewTrie(nil, projectCommon.SHA256Hash, tests.NewMockDB())
 	require.NoError(t, err)
 	smt.CacheHeightLimit = 233
 
-	updaterDB := internal.NewMockDB()
+	updaterDB := tests.NewMockDB()
 	updater, err := getMockUpdater(smt, updaterDB)
 	require.NoError(t, err)
 
@@ -218,7 +218,7 @@ func getRandomHash() projectCommon.SHA256Output {
 }
 
 // get a updater using mock db
-func getMockUpdater(smt *trie.Trie, updaterDB *internal.MockDB) (*MapUpdater, error) {
+func getMockUpdater(smt *trie.Trie, updaterDB *tests.MockDB) (*MapUpdater, error) {
 	return &MapUpdater{
 		smt:    smt,
 		dbConn: updaterDB,
