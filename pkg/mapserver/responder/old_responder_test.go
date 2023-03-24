@@ -20,7 +20,7 @@ import (
 )
 
 // TestGetProof: test GetProof()
-func TestGetProof(t *testing.T) {
+func TestOldGetProof(t *testing.T) {
 	certs := []*x509.Certificate{}
 
 	// load test certs
@@ -34,7 +34,7 @@ func TestGetProof(t *testing.T) {
 	}
 
 	// get mock responder
-	responder := getMockResponder(t, certs)
+	responder := getMockOldResponder(t, certs)
 	require.NoError(t, err)
 
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
@@ -48,8 +48,8 @@ func TestGetProof(t *testing.T) {
 	}
 }
 
-func TestResponderWithPoP(t *testing.T) {
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Hour)
+func TestOldResponderWithPoP(t *testing.T) {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
 	defer cancelF()
 
 	dbName := t.Name()
@@ -119,7 +119,7 @@ func TestResponderWithPoP(t *testing.T) {
 }
 
 // TestGetDomainProof: test getDomainProof()
-func TestGetDomainProof(t *testing.T) {
+func TestOldGetDomainProof(t *testing.T) {
 	certs := []*x509.Certificate{}
 
 	// load test certs
@@ -132,7 +132,7 @@ func TestGetDomainProof(t *testing.T) {
 		certs = append(certs, cert)
 	}
 
-	responderWorker := getMockResponder(t, certs)
+	responderWorker := getMockOldResponder(t, certs)
 
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
@@ -145,8 +145,8 @@ func TestGetDomainProof(t *testing.T) {
 	}
 }
 
-// getMockResponder builds a mock responder.
-func getMockResponder(t require.TestingT, certs []*x509.Certificate) *OldMapResponder {
+// getMockOldResponder builds a mock responder.
+func getMockOldResponder(t require.TestingT, certs []*x509.Certificate) *OldMapResponder {
 	// update the certs, and get the mock db of SMT and db
 	conn, root, err := getUpdatedUpdater(t, certs)
 	require.NoError(t, err)
