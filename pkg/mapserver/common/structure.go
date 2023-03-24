@@ -18,11 +18,11 @@ type DomainEntry struct {
 type CAEntry struct {
 	CAName           string
 	CAHash           []byte
-	CurrentRPC       common.RPC
-	FutureRPC        common.RPC
-	CurrentPC        common.SP
-	Revocation       [][]byte
-	FutureRevocation [][]byte
+	CurrentRPC       common.RPC // TODO(juagargi) we will have a list of RPCs
+	FutureRPC        common.RPC //
+	CurrentPC        common.SP  // TODO(juagargi) we will have a list of PCs
+	Revocation       [][]byte   // TODO(juagargi) these are policy revocations
+	FutureRevocation [][]byte   // TODO(juagargi) these are policy revocations
 	DomainCerts      [][]byte
 	DomainCertChains [][][]byte
 }
