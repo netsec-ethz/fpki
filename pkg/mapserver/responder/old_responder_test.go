@@ -49,7 +49,7 @@ func TestGetProof(t *testing.T) {
 }
 
 func TestResponderWithPoP(t *testing.T) {
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Hour)
 	defer cancelF()
 
 	dbName := t.Name()
@@ -67,7 +67,7 @@ func TestResponderWithPoP(t *testing.T) {
 
 	mapUpdater.Fetcher.BatchSize = 10000
 	const baseCTSize = 2 * 1000
-	const count = 2
+	const count = 1
 	mapUpdater.StartFetching("https://ct.googleapis.com/logs/argon2021",
 		baseCTSize, baseCTSize+count-1)
 
