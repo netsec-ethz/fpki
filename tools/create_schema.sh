@@ -136,50 +136,94 @@ EOF
 
 CMD=$(cat <<EOF
 USE $DBNAME;
-DROP PROCEDURE IF EXISTS calc_domain_payload;
+DROP PROCEDURE IF EXISTS cert_IDs_for_domain;
 DELIMITER $$
-  -- procedure that given a domain computes its payload and its SHA256 hash.
-  CREATE PROCEDURE calc_domain_payload(
-    IN domain_id VARBINARY(32)
-  )
-  BEGIN
-      DECLARE payloadVar LONGBLOB;
-
-    SET group_concat_max_len = 1073741824; -- so that GROUP_CONCAT doesn't truncate results
-    -- Get all certificates for this domain.
-    SELECT GROUP_CONCAT(payload SEPARATOR '') INTO payloadVar
-      FROM certs INNER JOIN domains ON certs.id = domains.cert_id
-      WHERE domains.domain_id = domain_id ORDER BY expiration,payload;
-    REPLACE INTO domain_payloads(id, payload, payload_id) VALUES(domain_id,payloadVar,UNHEX(SHA2(payloadVar, 256)));
-  END$$
+CREATE PROCEDURE cert_IDs_for_domain( IN domainID LONGBLOB , OUT cert_ids LONGTEXT )
+BEGIN
+	SET group_concat_max_len = 1073741824; -- so that GROUP_CONCAT doesn't truncate results
+	SELECT GROUP_CONCAT(
+    DISTINCT CONCAT('"', HEX(cert_id), '"')
+    SEPARATOR ',') INTO @leaves FROM domains WHERE domain_id = domainID;
+    -- @leaves contains now the list of cert IDs that are leaves.
+    -- Keep retrieving parents until no more certs.
+    SET @pending = @leaves;
+    SET @leaves = '';
+    WHILE @pending IS NOT NULL DO
+		SET @leaves = CONCAT(@leaves, ",", @pending);
+		SET @str = CONCAT(
+			"SELECT GROUP_CONCAT(
+			DISTINCT CONCAT('\"', HEX(parent), '\"')
+			SEPARATOR ',' ) INTO @pending FROM certs WHERE HEX(id) IN (",@pending,");");
+		PREPARE stmt FROM @str;
+		EXECUTE stmt;
+        DEALLOCATE PREPARE stmt;
+    END WHILE;
+    -- Remove the leading comma from ,CERT1,CERT2...
+    SET @leaves = RIGHT(@leaves, LENGTH(@leaves)-1);
+    -- Run a last query to get only the DISTINCT IDs, from all that we have in @leaves.
+    SET @str = CONCAT(
+		"SELECT GROUP_CONCAT(
+		DISTINCT CONCAT('\"', HEX(id), '\"')
+		SEPARATOR ',' ) INTO @leaves FROM certs WHERE HEX(id) IN (",@leaves,");");
+	PREPARE stmt FROM @str;
+	EXECUTE stmt;
+	DEALLOCATE PREPARE stmt;
+    -- @leaves contains now all the certificate IDs in hexadecimal
+    -- that are reachable from the domain names
+    SET cert_ids = @leaves;
+END $$
 DELIMITER ;
 EOF
   )
   echo "$CMD" | $MYSQLCMD
 
 
-CMD=$(cat <<EOF
+  CMD=$(cat <<EOF
+USE $DBNAME;
+DROP PROCEDURE IF EXISTS payloads_for_certs;
+DELIMITER $$
+-- expects the cert_ids in HEX, returns the payload in binary.
+CREATE PROCEDURE payloads_for_certs( IN cert_ids LONGBLOB , OUT payload LONGBLOB )
+BEGIN
+	SET group_concat_max_len = 1073741824; -- so that GROUP_CONCAT doesn't truncate results
+	SELECT CAST(cert_ids AS CHAR);
+	SET @str = CONCAT(
+		"SELECT GROUP_CONCAT(payload SEPARATOR '') INTO @payload
+		FROM certs WHERE HEX(id) IN (", cert_ids, ") ORDER BY expiration,payload;");
+	SELECT CAST(@str AS CHAR);
+	PREPARE stmt FROM @str;
+	EXECUTE stmt;
+	DEALLOCATE PREPARE stmt;
+    SET payload = @payload;
+END$$
+DELIMITER ;
+EOF
+  )
+  echo "$CMD" | $MYSQLCMD
+
+
+  CMD=$(cat <<EOF
 USE $DBNAME;
 DROP PROCEDURE IF EXISTS calc_several_domain_payloads;
 DELIMITER $$
-  CREATE PROCEDURE calc_several_domain_payloads(
-    IN domain_ids LONGBLOB
-  )
-  BEGIN
-      DECLARE IDS LONGBLOB;
-          DECLARE ID VARBINARY(32);
-    SET IDS = domain_ids;
-    WHILE LENGTH(IDS) > 0 DO
-      SET ID = LEFT(IDS,32);
-      CALL calc_domain_payload(ID);
-          SET IDS = RIGHT(IDS,LENGTH(IDS)-32);
-      END WHILE;
-  END$$
+CREATE PROCEDURE calc_several_domain_payloads( IN domain_ids LONGBLOB )
+BEGIN
+	WHILE LENGTH(domain_ids) > 0 DO
+		SET @id = LEFT(domain_ids, 32);
+        SET domain_ids = RIGHT(domain_ids,LENGTH(domain_ids)-32);
+        CALL cert_IDs_for_domain(@id, @certIDs);
+        CALL payloads_for_certs(@certIDs, @payload);
+        REPLACE INTO domain_payloads(id, payload, payload_id) VALUES(@id, @payload, UNHEX(SHA2(@payload, 256)));
+    END WHILE;
+END$$
 DELIMITER ;
 EOF
   )
   echo "$CMD" | $MYSQLCMD
+
 }
+
+
 
 if [ "${BASH_SOURCE[0]}" -ef "$0" ]
 then
