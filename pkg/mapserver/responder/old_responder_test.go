@@ -44,7 +44,7 @@ func TestOldGetProof(t *testing.T) {
 		proofs, err := responder.GetProof(ctx, cert.Subject.CommonName)
 		require.NoError(t, err)
 
-		checkProof(t, *cert, proofs)
+		checkProofOld(t, *cert, proofs)
 	}
 }
 
@@ -111,7 +111,7 @@ func TestOldResponderWithPoP(t *testing.T) {
 		}
 
 		require.NotEmpty(t, responses)
-		checkProof(t, *cert, responses)
+		checkProofOld(t, *cert, responses)
 		// ensure that the response for the whole name is a PoP
 		require.Equal(t, mapcommon.PoP, responses[len(responses)-1].PoI.ProofType,
 			"PoP not found for %s", cert.Subject.CommonName)
@@ -141,7 +141,7 @@ func TestOldGetDomainProof(t *testing.T) {
 		proofs, err := responderWorker.getProof(ctx, cert.Subject.CommonName)
 		require.NoError(t, err)
 
-		checkProof(t, *cert, proofs)
+		checkProofOld(t, *cert, proofs)
 	}
 }
 
@@ -184,8 +184,40 @@ func getUpdatedUpdater(t require.TestingT, certs []*x509.Certificate) (db.Conn, 
 	return conn, updater.SMT().Root, nil
 }
 
+func checkProofOld(t *testing.T, cert x509.Certificate, proofs []mapcommon.MapServerResponse) {
+	t.Helper()
+	caName := cert.Issuer.String()
+	require.Equal(t, mapcommon.PoP, proofs[len(proofs)-1].PoI.ProofType,
+		"PoP not found for %s", cert.Subject.CommonName)
+	for _, proof := range proofs {
+		require.Contains(t, cert.Subject.CommonName, proof.Domain)
+		proofType, isCorrect, err := prover.VerifyProofByDomainOld(proof)
+		require.NoError(t, err)
+		require.True(t, isCorrect)
+
+		if proofType == mapcommon.PoA {
+			require.Empty(t, proof.DomainEntryBytes)
+		}
+		if proofType == mapcommon.PoP {
+			domainEntry, err := mapcommon.DeserializeDomainEntry(proof.DomainEntryBytes)
+			require.NoError(t, err)
+			// get the correct CA entry
+			for _, caEntry := range domainEntry.CAEntry {
+				if caEntry.CAName == caName {
+					// check if the cert is in the CA entry
+					for _, certRaw := range caEntry.DomainCerts {
+						require.Equal(t, certRaw, cert.Raw)
+						return
+					}
+				}
+			}
+		}
+	}
+	require.Fail(t, "cert/CA not found")
+}
+
 // checkProof checks the proof to be correct.
-func checkProof(t *testing.T, cert x509.Certificate, proofs []mapcommon.MapServerResponse) {
+func checkProof(t *testing.T, cert *x509.Certificate, proofs []*mapcommon.MapServerResponse) {
 	t.Helper()
 	caName := cert.Issuer.String()
 	require.Equal(t, mapcommon.PoP, proofs[len(proofs)-1].PoI.ProofType,

@@ -8,6 +8,9 @@ import (
 )
 
 // DomainEntry: Value of the leaf. The value will be hashed, and stored in the sparse merkle tree
+// The design for the v1 version has changed the semantics of this payload. It is computed in DB
+// via a stored procedure during ingestion, and retrieved from DB by the responder.
+// The domain is identified by the SHA256 of the DomainName in the DB.
 type DomainEntry struct {
 	DomainName string
 	CAEntry    []CAEntry
