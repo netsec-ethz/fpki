@@ -25,7 +25,7 @@ func CheckProof(
 			return fmt.Errorf("proof step %d of %s: subdomain %s not in name %s",
 				i, name, proof.Domain, name)
 		}
-		proofType, correct, err := prover.VerifyProofByDomain(*proof)
+		proofType, correct, err := prover.VerifyProofByDomain(proof)
 		if err != nil {
 			return fmt.Errorf("proof step %d of %s: verifying proof: %w",
 				i, name, err)
