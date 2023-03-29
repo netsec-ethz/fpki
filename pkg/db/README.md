@@ -22,8 +22,9 @@ For performance reasons, no foreign keys exist in any table.
 
 - `certs` table
     1. `id`: PK, this is the SHA256 of the certificate.
-    2. `payload`: BLOB, this is the certificate, serialized.
-    3. `parent`: this is the parent certificate, in the trust chain, or `NULL` if root.
+    2. `parent_id`: this is the parent certificate, in the trust chain, or `NULL` if root.
+    3. `expiration`: this is the _not_after_ field of the certificate.
+    3. `payload`: BLOB, this is the certificate, serialized.
 - `domains` table. This table is updated in DB from the `certs` table
     1. `cert_id`: PK, SHA256 of the certificate
     2. `domain_id`: PK, SHA256 of the domain

@@ -213,7 +213,8 @@ func (c *mysqlDB) InsertCerts(ctx context.Context, ids, parents []*common.SHA256
 	// Because the primary key is the SHA256 of the payload, if there is a clash, it must
 	// be that the certificates are identical. Thus always REPLACE or INSERT IGNORE.
 	const N = 4
-	str := "REPLACE INTO certs (id, parent, expiration, payload) VALUES " + repeatStmt(len(ids), N)
+	str := "REPLACE INTO certs (id, parent_id, expiration, payload) VALUES " +
+		repeatStmt(len(ids), N)
 	data := make([]interface{}, N*len(ids))
 	for i := range ids {
 		data[i*N] = ids[i][:]
