@@ -22,7 +22,7 @@ CMD=$(cat <<EOF
 USE $DBNAME;
 CREATE TABLE certs (
   id VARBINARY(32) NOT NULL,
-  parent VARBINARY(32) DEFAULT NULL,
+  parent_id VARBINARY(32) DEFAULT NULL,
   expiration DATETIME NOT NULL,
   payload LONGBLOB,
   PRIMARY KEY(id)
@@ -49,10 +49,10 @@ EOF
 CMD=$(cat <<EOF
 USE $DBNAME;
 CREATE TABLE domain_payloads (
-  id VARBINARY(32) NOT NULL,
+  domain_id VARBINARY(32) NOT NULL,
   payload LONGBLOB,
   payload_id VARBINARY(32) DEFAULT NULL,
-  PRIMARY KEY (id)
+  PRIMARY KEY (domain_id)
 ) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
 EOF
   )
@@ -136,37 +136,57 @@ EOF
   echo "$CMD" | $MYSQLCMD
 
 
-CMD=$(cat <<EOF
+  CMD=$(cat <<EOF
+USE $DBNAME;
+DROP FUNCTION IF EXISTS IDsToSql;
+DELIMITER $$
+-- Receives a stream of IDs 32 bytes after another 32 bytes, etc.
+-- Returns UNHEX("ID1_in_HEX"), UNHEX(........
+CREATE FUNCTION IDsToSql( IDs LONGBLOB ) RETURNS LONGTEXT DETERMINISTIC
+BEGIN
+	SET @sql_ids = '';
+	WHILE LENGTH(IDs) > 0 DO
+		SET @id = LEFT(IDs, 32);
+        SET IDs = RIGHT(IDs, LENGTH(IDs)-32);
+        SET @sql_ids = CONCAT(@sql_ids, "UNHEX('", HEX(@id),"'),");
+    END WHILE;
+    -- Remove trailing comma.
+    RETURN LEFT(@sql_ids, LENGTH(@sql_ids)-1);
+END $$
+DELIMITER ;
+EOF
+  )
+  echo "$CMD" | $MYSQLCMD
+
+
+  CMD=$(cat <<EOF
 USE $DBNAME;
 DROP PROCEDURE IF EXISTS cert_IDs_for_domain;
 DELIMITER $$
-CREATE PROCEDURE cert_IDs_for_domain( IN domainID LONGBLOB , OUT cert_ids LONGTEXT )
+-- Takes the domain IDs in binary, 32 bytes.
+-- Returns the certificate IDs for that domain ID, in binary, all bytes glued together
+-- (this is, 32 bytes, then 32 more, then ...).
+CREATE PROCEDURE cert_IDs_for_domain( IN domainID LONGBLOB , OUT cert_ids LONGBLOB )
 BEGIN
 	SET group_concat_max_len = 1073741824; -- so that GROUP_CONCAT doesn't truncate results
-	SELECT GROUP_CONCAT(
-    DISTINCT CONCAT('"', HEX(cert_id), '"')
-    SEPARATOR ',') INTO @leaves FROM domains WHERE domain_id = domainID;
-    -- @leaves contains now the list of cert IDs that are leaves.
+	SELECT GROUP_CONCAT( DISTINCT cert_id SEPARATOR '')
+    INTO @pending FROM domains WHERE domain_id = domainID;
+    -- @pending contains now the list of cert IDs that are leaves.
     -- Keep retrieving parents until no more certs.
-    SET @pending = @leaves;
     SET @leaves = '';
-    WHILE @pending IS NOT NULL DO
-		SET @leaves = CONCAT(@leaves, ",", @pending);
+    WHILE LENGTH(@pending) > 0 DO
+		SET @leaves = CONCAT(@leaves, @pending);
 		SET @str = CONCAT(
-			"SELECT GROUP_CONCAT(
-			DISTINCT CONCAT('\"', HEX(parent), '\"')
-			SEPARATOR ',' ) INTO @pending FROM certs WHERE HEX(id) IN (",@pending,");");
+			"SELECT GROUP_CONCAT( DISTINCT parent_id SEPARATOR '' )
+            INTO @pending FROM certs WHERE id IN (", IDsToSql(@pending), ");");
 		PREPARE stmt FROM @str;
 		EXECUTE stmt;
         DEALLOCATE PREPARE stmt;
     END WHILE;
-    -- Remove the leading comma from ,CERT1,CERT2...
-    SET @leaves = RIGHT(@leaves, LENGTH(@leaves)-1);
     -- Run a last query to get only the DISTINCT IDs, from all that we have in @leaves.
     SET @str = CONCAT(
-		"SELECT GROUP_CONCAT(
-		DISTINCT CONCAT('\"', HEX(id), '\"')
-		SEPARATOR ',' ) INTO @leaves FROM certs WHERE HEX(id) IN (",@leaves,");");
+		"SELECT GROUP_CONCAT( DISTINCT id SEPARATOR '' )
+        INTO @leaves FROM certs WHERE id IN (", IDsToSql(@leaves), ");");
 	PREPARE stmt FROM @str;
 	EXECUTE stmt;
 	DEALLOCATE PREPARE stmt;
@@ -184,15 +204,14 @@ EOF
 USE $DBNAME;
 DROP PROCEDURE IF EXISTS payloads_for_certs;
 DELIMITER $$
--- expects the cert_ids in HEX, returns the payload in binary.
+-- Expects the cert_ids in binary, 32 bytes then 32 more, etc.
+-- Returns the payload in binary.
 CREATE PROCEDURE payloads_for_certs( IN cert_ids LONGBLOB , OUT payload LONGBLOB )
 BEGIN
 	SET group_concat_max_len = 1073741824; -- so that GROUP_CONCAT doesn't truncate results
-	SELECT CAST(cert_ids AS CHAR);
 	SET @str = CONCAT(
 		"SELECT GROUP_CONCAT(payload SEPARATOR '') INTO @payload
-		FROM certs WHERE HEX(id) IN (", cert_ids, ") ORDER BY expiration,payload;");
-	SELECT CAST(@str AS CHAR);
+		FROM certs WHERE id IN (", IDsToSql(cert_ids), ") ORDER BY expiration,payload;");
 	PREPARE stmt FROM @str;
 	EXECUTE stmt;
 	DEALLOCATE PREPARE stmt;
@@ -213,9 +232,10 @@ BEGIN
 	WHILE LENGTH(domain_ids) > 0 DO
 		SET @id = LEFT(domain_ids, 32);
         SET domain_ids = RIGHT(domain_ids,LENGTH(domain_ids)-32);
+        SET @certIDs = '';
         CALL cert_IDs_for_domain(@id, @certIDs);
         CALL payloads_for_certs(@certIDs, @payload);
-        REPLACE INTO domain_payloads(id, payload, payload_id) VALUES(@id, @payload, UNHEX(SHA2(@payload, 256)));
+        REPLACE INTO domain_payloads(domain_id, payload_id, payload) VALUES( @id, UNHEX(SHA2(@payload, 256)), @payload );
     END WHILE;
 END$$
 DELIMITER ;
