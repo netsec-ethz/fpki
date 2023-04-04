@@ -211,6 +211,15 @@ func (c *mysqlDB) UpdatedDomains(ctx context.Context) ([]*common.SHA256Output, e
 	return domainIDs, nil
 }
 
+func (c *mysqlDB) DirtyDomainsCount(ctx context.Context) (int, error) {
+	str := "SELECT COUNT(*) FROM dirty"
+	var count int
+	if err := c.db.QueryRowContext(ctx, str).Scan(&count); err != nil {
+		return 0, fmt.Errorf("querying number of dirty domains: %w", err)
+	}
+	return count, nil
+}
+
 func (c *mysqlDB) CleanupDirty(ctx context.Context) error {
 	// Remove all entries from the dirty table.
 	str := "TRUNCATE dirty"

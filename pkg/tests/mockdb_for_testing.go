@@ -145,6 +145,10 @@ func (d *MockDB) UpdatedDomains(context.Context) ([]*common.SHA256Output, error)
 
 func (*MockDB) CleanupDirty(ctx context.Context) error { return nil }
 
-func (*MockDB) CoalesceDomainsPayloads(context.Context, []*common.SHA256Output) error {
+func (*MockDB) DirtyDomainsCount(ctx context.Context) (int, error) {
+	return 0, nil
+}
+
+func (*MockDB) ReplaceDirtyDomainPayloads(ctx context.Context, firstRow, lastRow int) error {
 	return nil
 }

@@ -9,9 +9,9 @@ import (
 )
 
 func CoalescePayloadsForDirtyDomains(ctx context.Context, conn db.Conn) error {
-	fmt.Printf("Starting %d workers coalescing payloads for modified domains\n", NumDBWriters)
+	fmt.Println("Starting coalescing payloads for modified domains ...")
 	// Use NumDBWriters.
-	err := updater.CoalescePayloadsForDirtyDomains(ctx, conn, NumDBWriters)
+	err := updater.CoalescePayloadsForDirtyDomains(ctx, conn)
 	if err != nil {
 		return err
 	}
