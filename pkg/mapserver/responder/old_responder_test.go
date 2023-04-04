@@ -221,7 +221,7 @@ func checkProof(t *testing.T, cert *x509.Certificate, proofs []*mapcommon.MapSer
 	t.Helper()
 	caName := cert.Issuer.String()
 	require.Equal(t, mapcommon.PoP, proofs[len(proofs)-1].PoI.ProofType,
-		"PoP not found for %s", cert.Subject.CommonName)
+		"PoP not found for \"%s\"", cert.Subject.CommonName)
 	for _, proof := range proofs {
 		require.Contains(t, cert.Subject.CommonName, proof.Domain)
 		proofType, isCorrect, err := prover.VerifyProofByDomain(proof)
