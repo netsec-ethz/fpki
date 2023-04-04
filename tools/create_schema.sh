@@ -243,7 +243,59 @@ EOF
   )
   echo "$CMD" | $MYSQLCMD
 
-}
+  CMD=$(cat <<EOF
+USE $DBNAME;
+DROP PROCEDURE IF EXISTS calc_some_dirty_domain_payloads;
+DELIMITER $$
+-- firstRow and lastRow are parameters specifying which is the first row of dirty,
+-- and the last one for which it will update the payloads.
+-- The SP needs ~ 5 seconds per 20K dirty domains.
+CREATE PROCEDURE calc_some_dirty_domain_payloads( IN firstRow INT, IN lastRow INT )
+BEGIN
+		DECLARE numRows INT;
+
+	SET group_concat_max_len = 1073741824; -- so that GROUP_CONCAT doesn't truncate results
+	-- Replace the domain ID, its payload, and its SHA256 for a limitted subset of dirty domains.
+  SET numRows = lastRow - firstRow +1;
+	REPLACE INTO domain_payloads(domain_id, payload_id, payload) -- Use this subquery for the values:
+	SELECT domain_id, UNHEX(SHA2(payload, 256)), payload FROM ( -- Subquery to compute the SHA256 in place.
+
+    SELECT domain_id, GROUP_CONCAT(payload SEPARATOR '') AS payload FROM (
+        -- Recursive Common Table Expression that retrieves cert IDs, parent IDs, expiration and payloads.
+      WITH RECURSIVE cte AS (
+        SELECT id, parent_id, payload, expiration FROM certs
+          UNION ALL
+        SELECT c.id, t.parent_id, t.payload, t.expiration
+        FROM cte c
+        INNER JOIN certs t ON t.id = c.parent_id
+      )
+      SELECT domains.domain_id, payload
+      FROM cte
+      INNER JOIN domains ON cte.id = domains.cert_id
+      INNER JOIN dirty ON domains.domain_id = dirty.domain_id
+        WHERE dirty.domain_id IN (
+          -- Forced to use an extra subquery due to mysql not being able
+          -- to use LIMITs directly in a subquery. Wrapping in an extra
+          -- subquery solves this.
+          SELECT * FROM (
+            SELECT domain_id FROM dirty
+            ORDER BY domain_id
+                      LIMIT firstRow, numRows -- Beware that mysql can only use SP variables here.
+                                              -- https://bugs.mysql.com/bug.php?id=11918
+          ) AS limitter_query
+        )
+      ORDER BY expiration,payload
+    ) AS sortedpayload_query
+
+  GROUP BY domain_id
+	) AS hasher_query;
+END$$
+DELIMITER ;
+EOF
+  )
+  echo "$CMD" | $MYSQLCMD
+
+} # end of `create_new_db` function
 
 
 

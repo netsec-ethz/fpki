@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"sync"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -274,70 +273,16 @@ func UpdateCertsWithKeepExisting(ctx context.Context, conn db.Conn, names [][]st
 	return insertCerts(ctx, conn, names, ids, parentIDs, expirations, payloads)
 }
 
-func CoalescePayloadsForDirtyDomains(ctx context.Context, conn db.Conn, numDBWriters int) error {
-	// Get all dirty domain IDs.
-	domainIDs, err := conn.UpdatedDomains(ctx)
+func CoalescePayloadsForDirtyDomains(ctx context.Context, conn db.Conn) error {
+	// How many domains to update?
+	dirtyCount, err := conn.DirtyDomainsCount(ctx)
 	if err != nil {
 		return err
 	}
-
-	// Start numWriters workers.
-	errCh := make(chan error)
-	ch := make(chan []*common.SHA256Output)
-	wg := sync.WaitGroup{}
-	wg.Add(numDBWriters)
-	for i := 0; i < numDBWriters; i++ {
-		go func() {
-			defer wg.Done()
-			for ids := range ch {
-				err := conn.CoalesceDomainsPayloads(ctx, ids)
-				if err != nil {
-					errCh <- err
-					return
-				}
-			}
-			errCh <- nil
-		}()
+	// Do all updates at once, in one thread/connection (faster than multiple routines).
+	if err := conn.ReplaceDirtyDomainPayloads(ctx, 0, dirtyCount-1); err != nil {
+		return fmt.Errorf("coalescing payloads of dirty domains: %w", err)
 	}
-
-	// Split the dirty domain ID list in numWriters
-	batchSize := len(domainIDs) / numDBWriters
-	// First workers handle one more ID than the rest, to take into account also the remainder.
-	for i := 0; i < len(domainIDs)%numDBWriters; i++ {
-		b := domainIDs[i*(batchSize+1) : (i+1)*(batchSize+1)]
-		ch <- b
-	}
-	// The rest of the workers will do a batchSize-sized item.
-	restOfWorkersCount := numDBWriters - (len(domainIDs) % numDBWriters)
-	domainIDs = domainIDs[(len(domainIDs)%numDBWriters)*(batchSize+1):]
-	for i := 0; i < restOfWorkersCount; i++ {
-		b := domainIDs[i*batchSize : (i+1)*batchSize]
-		ch <- b
-	}
-
-	// Close the batches channel.
-	close(ch)
-
-	var errs []error
-	go func() {
-		// Absorb any errors encountered.
-		for err := range errCh {
-			if err != nil {
-				errs = append(errs, err)
-			}
-		}
-	}()
-
-	// And wait for all workers to finish.
-	wg.Wait()
-
-	// Any errors?
-	close(errCh)
-	if len(errs) > 0 {
-		// There have been errors. Just return the first one.
-		return fmt.Errorf("encountered %d errors, first one is: %w", len(errs), errs[0])
-	}
-
 	return nil
 }
 

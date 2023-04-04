@@ -27,11 +27,12 @@ type Conn interface {
 	LoadRoot(ctx context.Context) (*common.SHA256Output, error)
 	SaveRoot(ctx context.Context, root *common.SHA256Output) error
 
-	// CoalesceDomainsPayloads takes some IDs (which should come from the dirty table) and
-	// retrieves the payloads of all certificates for each domain, represented by each ID.
-	// With those payloads it writes an entry in domain_payloads and computes the SHA256 of it.
-	// This is done via a stored procedure, to avoid moving data from DB to server.
-	CoalesceDomainsPayloads(ctx context.Context, ids []*common.SHA256Output) error
+	// ReplaceDirtyDomainPayloads retrieves dirty domains from the dirty list, starting
+	// at firstRow and finishing at lastRow (for a total of lastRow - firstRow + 1 domains),
+	// computes the aggregated payload for their certificates and policies, and stores it in the DB.
+	// The aggregated payload takes into account all policies and certificates needed for that
+	// domain, including e.g. the trust chain.
+	ReplaceDirtyDomainPayloads(ctx context.Context, firstRow, lastRow int) error
 
 	//////////////////////////////////////////////////////////////////
 	// check if the functions below are needed after the new design //
@@ -97,5 +98,8 @@ type Conn interface {
 	// Each updated domain represents the SHA256 of the textual domain that was updated and
 	// present in the `updates` table.
 	UpdatedDomains(ctx context.Context) ([]*common.SHA256Output, error)
+
+	//DirtyDomainsCount returns the number of domains that are still to be updated.
+	DirtyDomainsCount(ctx context.Context) (int, error)
 	CleanupDirty(ctx context.Context) error
 }

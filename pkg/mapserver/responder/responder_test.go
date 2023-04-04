@@ -44,7 +44,7 @@ func TestProofWithPoP(t *testing.T) {
 	require.NoError(t, err)
 
 	// Final stage of ingestion: coalescing of payloads.
-	err = updater.CoalescePayloadsForDirtyDomains(ctx, conn, 1)
+	err = updater.CoalescePayloadsForDirtyDomains(ctx, conn)
 	require.NoError(t, err)
 
 	// // Create a responder.
