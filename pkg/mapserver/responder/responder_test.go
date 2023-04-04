@@ -2,17 +2,22 @@ package responder
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
+
+	ctx509 "github.com/google/certificate-transparency-go/x509"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
 	"github.com/netsec-ethz/fpki/pkg/domain"
+	mapcommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/prover"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 	"github.com/netsec-ethz/fpki/pkg/tests"
 	"github.com/netsec-ethz/fpki/pkg/util"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestProofWithPoP(t *testing.T) {
@@ -38,6 +43,7 @@ func TestProofWithPoP(t *testing.T) {
 
 	// Ingest two certificates and their chains.
 	raw, err := util.ReadAllGzippedFile("../../../tests/testdata/2-xenon2023.csv.gz")
+	// raw, err := util.ReadAllGzippedFile("../../../tests/testdata/100K-xenon2023.csv.gz")
 	require.NoError(t, err)
 	certs, IDs, parentIDs, names, err := util.LoadCertsAndChainsFromCSV(raw)
 	require.NoError(t, err)
@@ -45,9 +51,19 @@ func TestProofWithPoP(t *testing.T) {
 		certs, IDs, parentIDs)
 	require.NoError(t, err)
 
-	// Final stage of ingestion: coalescing of payloads.
+	// Coalescing of payloads.
 	err = updater.CoalescePayloadsForDirtyDomains(ctx, conn)
 	require.NoError(t, err)
+
+	// Final stage: create/update a SMT.
+	err = updater.UpdateSMT(ctx, conn, 32)
+	require.NoError(t, err)
+
+	// And cleanup dirty, flagging the end of the update cycle.
+	err = conn.CleanupDirty(ctx)
+	require.NoError(t, err)
+
+	// Now to the test.
 
 	// Create a responder.
 	responder, err := NewMapResponder(ctx, "./testdata/mapserver_config.json", conn)
@@ -67,6 +83,7 @@ func TestProofWithPoP(t *testing.T) {
 	// Check proofs for the previously ingested certificates.
 	foundValidDomainNames := false
 	for i, c := range certs {
+		t.Logf("Certificate subject is: \"%s\"", domain.CertSubjectName(c))
 		if names[i] == nil {
 			// This is a non leaf certificate, skip.
 			continue
@@ -87,4 +104,52 @@ func TestProofWithPoP(t *testing.T) {
 		}
 	}
 	require.True(t, foundValidDomainNames, "bad test: not one valid checkable domain name")
+}
+
+// checkProof checks the proof to be correct.
+func checkProof(t *testing.T, cert *ctx509.Certificate, proofs []*mapcommon.MapServerResponse) {
+	t.Helper()
+	// caName := cert.Issuer.String()
+	require.Equal(t, mapcommon.PoP, proofs[len(proofs)-1].PoI.ProofType,
+		"PoP not found for \"%s\"", domain.CertSubjectName(cert))
+	for _, proof := range proofs {
+		// require.Contains(t, cert.Subject.CommonName, proof.Domain)
+		includesDomainName(t, proof.Domain, cert)
+		proofType, isCorrect, err := prover.VerifyProofByDomain(proof)
+		require.NoError(t, err)
+		require.True(t, isCorrect)
+
+		if proofType == mapcommon.PoA {
+			require.Empty(t, proof.DomainEntryBytes)
+		}
+		// if proofType == mapcommon.PoP {
+		// 	domainEntry, err := mapcommon.DeserializeDomainEntry(proof.DomainEntryBytes)
+		// 	require.NoError(t, err)
+		// 	// get the correct CA entry
+		// 	for _, caEntry := range domainEntry.CAEntry {
+		// 		if caEntry.CAName == caName {
+		// 			// check if the cert is in the CA entry
+		// 			for _, certRaw := range caEntry.DomainCerts {
+		// 				require.Equal(t, certRaw, cert.Raw)
+		// 				return
+		// 			}
+		// 		}
+		// 	}
+		// }
+	}
+	// require.Fail(t, "cert/CA not found")
+}
+
+// includesDomainName checks that the subDomain appears as a substring of at least one of the
+// names in the certificate.
+func includesDomainName(t *testing.T, subDomain string, cert *ctx509.Certificate) {
+	names := updater.ExtractCertDomains(cert)
+
+	for _, s := range names {
+		if strings.Contains(s, subDomain) {
+			return
+		}
+	}
+	require.FailNow(t, "the subdomain \"%s\" is not present as a preffix in any of the contained "+
+		"names of the certtificate: [%s]", subDomain, strings.Join(names, ", "))
 }

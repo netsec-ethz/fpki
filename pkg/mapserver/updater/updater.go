@@ -304,12 +304,12 @@ func UpdateSMTfromDomains(
 	}
 
 	// Update the tree.
-	_, err = smtTrie.Update(context.Background(), keys, values)
+	_, err = smtTrie.Update(ctx, keys, values)
 	if err != nil {
 		return err
 	}
 	// And update the tree in the DB.
-	err = smtTrie.Commit(context.Background())
+	err = smtTrie.Commit(ctx)
 	if err != nil {
 		return err
 	}
@@ -333,7 +333,7 @@ func UpdateSMT(ctx context.Context, conn db.Conn, cacheHeight int) error {
 	if err != nil {
 		panic(err)
 	}
-	smtTrie.CacheHeightLimit = cacheHeight
+	// smtTrie.CacheHeightLimit = cacheHeight
 
 	// Get the dirty domains.
 	domains, err := conn.UpdatedDomains(ctx)

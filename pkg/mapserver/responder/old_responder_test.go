@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/certificate-transparency-go/x509"
+	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
@@ -21,7 +21,7 @@ import (
 
 // TestGetProof: test GetProof()
 func TestOldGetProof(t *testing.T) {
-	certs := []*x509.Certificate{}
+	certs := []*ctx509.Certificate{}
 
 	// load test certs
 	files, err := ioutil.ReadDir("../updater/testdata/certs/")
@@ -120,7 +120,7 @@ func TestOldResponderWithPoP(t *testing.T) {
 
 // TestGetDomainProof: test getDomainProof()
 func TestOldGetDomainProof(t *testing.T) {
-	certs := []*x509.Certificate{}
+	certs := []*ctx509.Certificate{}
 
 	// load test certs
 	files, err := ioutil.ReadDir("../updater/testdata/certs/")
@@ -146,7 +146,7 @@ func TestOldGetDomainProof(t *testing.T) {
 }
 
 // getMockOldResponder builds a mock responder.
-func getMockOldResponder(t require.TestingT, certs []*x509.Certificate) *OldMapResponder {
+func getMockOldResponder(t require.TestingT, certs []*ctx509.Certificate) *OldMapResponder {
 	// update the certs, and get the mock db of SMT and db
 	conn, root, err := getUpdatedUpdater(t, certs)
 	require.NoError(t, err)
@@ -160,7 +160,7 @@ func getMockOldResponder(t require.TestingT, certs []*x509.Certificate) *OldMapR
 
 // getUpdatedUpdater builds an updater using a mock db, updates the certificates
 // and returns the mock db.
-func getUpdatedUpdater(t require.TestingT, certs []*x509.Certificate) (db.Conn, []byte, error) {
+func getUpdatedUpdater(t require.TestingT, certs []*ctx509.Certificate) (db.Conn, []byte, error) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
@@ -174,7 +174,7 @@ func getUpdatedUpdater(t require.TestingT, certs []*x509.Certificate) (db.Conn, 
 	updater.SetSMT(smt)
 
 	// Update the db using the certs and empty chains:
-	emptyChains := make([][]*x509.Certificate, len(certs))
+	emptyChains := make([][]*ctx509.Certificate, len(certs))
 	err = updater.UpdateCerts(ctx, certs, emptyChains)
 	require.NoError(t, err)
 
@@ -184,7 +184,7 @@ func getUpdatedUpdater(t require.TestingT, certs []*x509.Certificate) (db.Conn, 
 	return conn, updater.SMT().Root, nil
 }
 
-func checkProofOld(t *testing.T, cert x509.Certificate, proofs []mapcommon.MapServerResponse) {
+func checkProofOld(t *testing.T, cert ctx509.Certificate, proofs []mapcommon.MapServerResponse) {
 	t.Helper()
 	caName := cert.Issuer.String()
 	require.Equal(t, mapcommon.PoP, proofs[len(proofs)-1].PoI.ProofType,
@@ -192,39 +192,6 @@ func checkProofOld(t *testing.T, cert x509.Certificate, proofs []mapcommon.MapSe
 	for _, proof := range proofs {
 		require.Contains(t, cert.Subject.CommonName, proof.Domain)
 		proofType, isCorrect, err := prover.VerifyProofByDomainOld(proof)
-		require.NoError(t, err)
-		require.True(t, isCorrect)
-
-		if proofType == mapcommon.PoA {
-			require.Empty(t, proof.DomainEntryBytes)
-		}
-		if proofType == mapcommon.PoP {
-			domainEntry, err := mapcommon.DeserializeDomainEntry(proof.DomainEntryBytes)
-			require.NoError(t, err)
-			// get the correct CA entry
-			for _, caEntry := range domainEntry.CAEntry {
-				if caEntry.CAName == caName {
-					// check if the cert is in the CA entry
-					for _, certRaw := range caEntry.DomainCerts {
-						require.Equal(t, certRaw, cert.Raw)
-						return
-					}
-				}
-			}
-		}
-	}
-	require.Fail(t, "cert/CA not found")
-}
-
-// checkProof checks the proof to be correct.
-func checkProof(t *testing.T, cert *x509.Certificate, proofs []*mapcommon.MapServerResponse) {
-	t.Helper()
-	caName := cert.Issuer.String()
-	require.Equal(t, mapcommon.PoP, proofs[len(proofs)-1].PoI.ProofType,
-		"PoP not found for \"%s\"", cert.Subject.CommonName)
-	for _, proof := range proofs {
-		require.Contains(t, cert.Subject.CommonName, proof.Domain)
-		proofType, isCorrect, err := prover.VerifyProofByDomain(proof)
 		require.NoError(t, err)
 		require.True(t, isCorrect)
 

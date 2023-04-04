@@ -22,7 +22,7 @@ func NewMapResponder(ctx context.Context, configFile string, conn db.Conn) (*Map
 	var root []byte
 	if rootID, err := conn.LoadRoot(ctx); err != nil {
 		return nil, err
-	} else if root != nil {
+	} else if rootID != nil {
 		root = rootID[:]
 	}
 
