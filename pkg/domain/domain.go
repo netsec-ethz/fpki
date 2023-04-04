@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 
+	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"golang.org/x/net/publicsuffix"
 )
 
@@ -136,6 +137,21 @@ func SplitE2LD(domain string) ([]string, error) {
 	subdomains = append(subdomains, e2LD)
 
 	return subdomains, nil
+}
+
+// CertSubjectName extracts one name that identifies the certificate. If there is an entry in the
+// Subject.CommonName, that is used. Otherwise, the first non-empty DNSName will be used.
+// In the case that no non-empty name was found, an empty string will be returned.
+func CertSubjectName(c *ctx509.Certificate) string {
+	if c.Subject.CommonName != "" {
+		return c.Subject.CommonName
+	}
+	for _, n := range c.DNSNames {
+		if n != "" {
+			return n
+		}
+	}
+	return ""
 }
 
 // removeWildCardAndWWW: remove www. and *.

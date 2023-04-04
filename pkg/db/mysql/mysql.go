@@ -255,7 +255,7 @@ func (c *mysqlDB) UpdateDomainsWithCerts(ctx context.Context, certIDs,
 		data := make([]interface{}, 2*len(uniqueDomainIDs))
 		i := 0
 		for k, v := range uniqueDomainIDs {
-			data[2*i] = k[:]
+			data[2*i] = append([]byte{}, k[:]...)
 			data[2*i+1] = v
 			i++
 		}
