@@ -135,8 +135,9 @@ func (c *mysqlDB) TruncateAllTables(ctx context.Context) error {
 	tables := []string{
 		"tree",
 		"root",
-		"certs",
 		"domains",
+		"certs",
+		"domain_certs",
 		"domain_payloads",
 		"dirty",
 	}
@@ -175,16 +176,16 @@ func (c *mysqlDB) CheckCertsExist(ctx context.Context, ids []*common.SHA256Outpu
 	// Prepare a query that returns a vector of bits, 1 means ID is present, 0 means is not.
 	elems := make([]string, len(data))
 	for i := range elems {
-		elems[i] = "SELECT ? AS id"
+		elems[i] = "SELECT ? AS cert_id"
 	}
 
 	// The query means: join two tables, one with the values I am passing as arguments (those
 	// are the ids) and the certs table, and for those that exist write a 1, otherwise a 0.
 	// Finally, group_concat all rows into just one field of type string.
 	str := "SELECT GROUP_CONCAT(presence SEPARATOR '') FROM (" +
-		"SELECT (CASE WHEN certs.id IS NOT NULL THEN 1 ELSE 0 END) AS presence FROM (" +
+		"SELECT (CASE WHEN certs.cert_id IS NOT NULL THEN 1 ELSE 0 END) AS presence FROM (" +
 		strings.Join(elems, " UNION ALL ") +
-		") AS request left JOIN ( SELECT id FROM certs ) AS certs ON certs.id = request.id" +
+		") AS request left JOIN ( SELECT cert_id FROM certs ) AS certs ON certs.cert_id = request.cert_id" +
 		") AS t"
 
 	// Return slice of booleans:
@@ -213,7 +214,7 @@ func (c *mysqlDB) InsertCerts(ctx context.Context, ids, parents []*common.SHA256
 	// Because the primary key is the SHA256 of the payload, if there is a clash, it must
 	// be that the certificates are identical. Thus always REPLACE or INSERT IGNORE.
 	const N = 4
-	str := "REPLACE INTO certs (id, parent_id, expiration, payload) VALUES " +
+	str := "REPLACE INTO certs (cert_id, parent_id, expiration, payload) VALUES " +
 		repeatStmt(len(ids), N)
 	data := make([]interface{}, N*len(ids))
 	for i := range ids {
@@ -233,35 +234,59 @@ func (c *mysqlDB) InsertCerts(ctx context.Context, ids, parents []*common.SHA256
 }
 
 // UpdateDomainsWithCerts updates both the domains and the dirty tables.
-func (c *mysqlDB) UpdateDomainsWithCerts(ctx context.Context, certIDs, domainIDs []*common.SHA256Output,
-	domainNames []string) error {
+func (c *mysqlDB) UpdateDomainsWithCerts(ctx context.Context, certIDs,
+	domainIDs []*common.SHA256Output, domainNames []string) error {
 
 	if len(certIDs) == 0 {
 		return nil
 	}
-	// First insert into domains:
-	const N = 3
-	str := "INSERT IGNORE INTO domains (cert_id,domain_id,domain_name) VALUES " +
-		repeatStmt(len(certIDs), N)
-	data := make([]interface{}, N*len(certIDs))
-	for i := range certIDs {
-		data[i*N] = certIDs[i][:]
-		data[i*N+1] = domainIDs[i][:]
-		data[i*N+2] = domainNames[i]
+
+	// First insert into domains. Find out which domain IDs are unique, and attach the
+	// corresponding name to them.
+	{
+		uniqueDomainIDs := make(map[common.SHA256Output]string)
+		for i, id := range domainIDs {
+			uniqueDomainIDs[*id] = domainNames[i]
+		}
+
+		str := "INSERT IGNORE INTO domains (domain_id,domain_name) VALUES " +
+			repeatStmt(len(uniqueDomainIDs), 2)
+
+		data := make([]interface{}, 2*len(uniqueDomainIDs))
+		i := 0
+		for k, v := range uniqueDomainIDs {
+			data[2*i] = k[:]
+			data[2*i+1] = v
+			i++
+		}
+		_, err := c.db.ExecContext(ctx, str, data...)
+		if err != nil {
+			return err
+		}
 	}
-	_, err := c.db.Exec(str, data...)
-	if err != nil {
-		return err
+
+	// Now insert into the domain_certs:
+	{
+		str := "INSERT IGNORE INTO domain_certs (domain_id,cert_id) VALUES " +
+			repeatStmt(len(certIDs), 2)
+		data := make([]interface{}, 2*len(certIDs))
+		for i := range certIDs {
+			data[2*i] = domainIDs[i][:]
+			data[2*i+1] = certIDs[i][:]
+		}
+		_, err := c.db.Exec(str, data...)
+		if err != nil {
+			return err
+		}
 	}
 
 	// Now insert into dirty.
-	str = "REPLACE INTO dirty (domain_id) VALUES " + repeatStmt(len(domainIDs), 1)
-	data = make([]interface{}, len(domainIDs))
+	str := "REPLACE INTO dirty (domain_id) VALUES " + repeatStmt(len(domainIDs), 1)
+	data := make([]interface{}, len(domainIDs))
 	for i, id := range domainIDs {
 		data[i] = id[:]
 	}
-	_, err = c.db.Exec(str, data...)
-
+	_, err := c.db.Exec(str, data...)
 	return err
 }
 

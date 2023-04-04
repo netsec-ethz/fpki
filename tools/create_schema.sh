@@ -18,14 +18,16 @@ EOF
   echo "$CMD" | $MYSQLCMD
 
 
+
 CMD=$(cat <<EOF
 USE $DBNAME;
-CREATE TABLE certs (
-  id VARBINARY(32) NOT NULL,
-  parent_id VARBINARY(32) DEFAULT NULL,
-  expiration DATETIME NOT NULL,
-  payload LONGBLOB,
-  PRIMARY KEY(id)
+CREATE TABLE domains (
+  domain_id VARBINARY(32) NOT NULL,
+  domain_name VARCHAR(300) COLLATE ascii_bin DEFAULT NULL,
+
+  PRIMARY KEY (domain_id),
+  INDEX domain_id (domain_id),
+  INDEX domain_name (domain_name)
 ) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
 EOF
   )
@@ -34,11 +36,27 @@ EOF
 
 CMD=$(cat <<EOF
 USE $DBNAME;
-CREATE TABLE domains (
+CREATE TABLE certs (
   cert_id VARBINARY(32) NOT NULL,
+  parent_id VARBINARY(32) DEFAULT NULL,
+  expiration DATETIME NOT NULL,
+  payload LONGBLOB,
+
+  PRIMARY KEY(cert_id)
+) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
+EOF
+  )
+  echo "$CMD" | $MYSQLCMD
+
+
+
+CMD=$(cat <<EOF
+USE $DBNAME;
+CREATE TABLE domain_certs (
   domain_id VARBINARY(32) NOT NULL,
-  domain_name VARCHAR(300) COLLATE ascii_bin DEFAULT NULL,
-  PRIMARY KEY (cert_id,domain_id),
+  cert_id VARBINARY(32) NOT NULL,
+
+  PRIMARY KEY (domain_id,cert_id),
   INDEX domain_id (domain_id)
 ) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
 EOF
@@ -52,6 +70,7 @@ CREATE TABLE domain_payloads (
   domain_id VARBINARY(32) NOT NULL,
   payload LONGBLOB,
   payload_id VARBINARY(32) DEFAULT NULL,
+
   PRIMARY KEY (domain_id)
 ) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
 EOF
@@ -63,6 +82,7 @@ CMD=$(cat <<EOF
 USE $DBNAME;
 CREATE TABLE dirty (
   domain_id VARBINARY(32) NOT NULL,
+
   PRIMARY KEY (domain_id)
 ) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
 EOF
@@ -74,6 +94,7 @@ CMD=$(cat <<EOF
 USE $DBNAME;
 CREATE TABLE root (
   key32 VARBINARY(32) NOT NULL,
+
   PRIMARY KEY (key32)
 ) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
 EOF
@@ -87,6 +108,7 @@ CREATE TABLE tree (
   key32 VARBINARY(32) NOT NULL,
   value longblob NOT NULL,
   id BIGINT NOT NULL AUTO_INCREMENT,
+
   PRIMARY KEY (id),
   UNIQUE KEY key_UNIQUE (key32)
 ) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
@@ -257,22 +279,22 @@ BEGIN
 	SET group_concat_max_len = 1073741824; -- so that GROUP_CONCAT doesn't truncate results
 	-- Replace the domain ID, its payload, and its SHA256 for a limitted subset of dirty domains.
   SET numRows = lastRow - firstRow +1;
-	REPLACE INTO domain_payloads(domain_id, payload_id, payload) -- Use this subquery for the values:
+	REPLACE INTO domain_payloads(domain_id, payload_id, payload) -- Values from subquery.
 	SELECT domain_id, UNHEX(SHA2(payload, 256)), payload FROM ( -- Subquery to compute the SHA256 in place.
 
     SELECT domain_id, GROUP_CONCAT(payload SEPARATOR '') AS payload FROM (
         -- Recursive Common Table Expression that retrieves cert IDs, parent IDs, expiration and payloads.
       WITH RECURSIVE cte AS (
-        SELECT id, parent_id, payload, expiration FROM certs
+        SELECT cert_id, parent_id, payload, expiration FROM certs
           UNION ALL
-        SELECT c.id, t.parent_id, t.payload, t.expiration
+        SELECT c.cert_id, t.parent_id, t.payload, t.expiration
         FROM cte c
-        INNER JOIN certs t ON t.id = c.parent_id
+        INNER JOIN certs t ON t.cert_id = c.parent_id
       )
-      SELECT domains.domain_id, payload
+      SELECT domain_certs.domain_id, payload
       FROM cte
-      INNER JOIN domains ON cte.id = domains.cert_id
-      INNER JOIN dirty ON domains.domain_id = dirty.domain_id
+      INNER JOIN domain_certs ON cte.cert_id = domain_certs.cert_id
+      INNER JOIN dirty ON domain_certs.domain_id = dirty.domain_id
         WHERE dirty.domain_id IN (
           -- Forced to use an extra subquery due to mysql not being able
           -- to use LIMITs directly in a subquery. Wrapping in an extra
