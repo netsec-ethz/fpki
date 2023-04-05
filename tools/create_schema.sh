@@ -66,8 +66,8 @@ CMD=$(cat <<EOF
 USE $DBNAME;
 CREATE TABLE domain_payloads (
   domain_id VARBINARY(32) NOT NULL,
-  payload LONGBLOB,
-  payload_id VARBINARY(32) DEFAULT NULL,
+  cert_payload LONGBLOB,
+  cert_payload_id VARBINARY(32) DEFAULT NULL,
 
   PRIMARY KEY (domain_id)
 ) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
@@ -277,10 +277,10 @@ BEGIN
 	SET group_concat_max_len = 1073741824; -- so that GROUP_CONCAT doesn't truncate results
 	-- Replace the domain ID, its payload, and its SHA256 for a limitted subset of dirty domains.
   SET numRows = lastRow - firstRow +1;
-	REPLACE INTO domain_payloads(domain_id, payload_id, payload) -- Values from subquery.
-	SELECT domain_id, UNHEX(SHA2(payload, 256)), payload FROM ( -- Subquery to compute the SHA256 in place.
+	REPLACE INTO domain_payloads(domain_id, cert_payload_id, cert_payload) -- Values from subquery.
+	SELECT domain_id, UNHEX(SHA2(cert_payload, 256)), cert_payload FROM ( -- Subquery to compute the SHA256 in place.
 
-    SELECT domain_id, GROUP_CONCAT(payload SEPARATOR '') AS payload FROM (
+    SELECT domain_id, GROUP_CONCAT(cert_payload SEPARATOR '') AS cert_payload FROM (
         -- Recursive Common Table Expression that retrieves cert IDs, parent IDs, expiration and payloads.
       WITH RECURSIVE cte AS (
         SELECT cert_id, parent_id, payload, expiration FROM certs
@@ -289,7 +289,7 @@ BEGIN
         FROM cte c
         INNER JOIN certs t ON t.cert_id = c.parent_id
       )
-      SELECT domain_certs.domain_id, payload
+      SELECT domain_certs.domain_id, payload AS cert_payload
       FROM cte
       INNER JOIN domain_certs ON cte.cert_id = domain_certs.cert_id
       INNER JOIN dirty ON domain_certs.domain_id = dirty.domain_id
