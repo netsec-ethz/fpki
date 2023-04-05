@@ -46,7 +46,7 @@ func (c *mysqlDB) RetrieveTreeNodeOLD(ctx context.Context, key common.SHA256Outp
 func (c *mysqlDB) RetrieveDomainEntry(ctx context.Context, key common.SHA256Output) (
 	[]byte, error) {
 
-	str := "SELECT payload FROM domain_payloads WHERE domain_id = ?"
+	str := "SELECT cert_payload FROM domain_payloads WHERE domain_id = ?"
 	var payload []byte
 	err := c.db.QueryRowContext(ctx, str, key[:]).Scan(&payload)
 	if err != nil && err != sql.ErrNoRows {
@@ -69,7 +69,7 @@ func (c *mysqlDB) retrieveDomainEntries(ctx context.Context, domainIDs []*common
 	if len(domainIDs) == 0 {
 		return nil, nil
 	}
-	str := "SELECT domain_id,payload FROM domain_payloads WHERE domain_id IN " +
+	str := "SELECT domain_id,cert_payload FROM domain_payloads WHERE domain_id IN " +
 		repeatStmt(1, len(domainIDs))
 	params := make([]interface{}, len(domainIDs))
 	for i, id := range domainIDs {
