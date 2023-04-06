@@ -57,7 +57,7 @@ type ProofType int
 
 const (
 	PoA ProofType = iota
-	PoP ProofType = iota
+	PoP
 )
 
 // MapServerResponse: response from map server to client
@@ -65,6 +65,7 @@ type MapServerResponse struct {
 	Domain string
 	// serialized bytes of DomainEntry
 	DomainEntryBytes []byte `json:"DomainEntryBytes"`
+	DomainEntryID    *common.SHA256Output
 	PoI              PoI
 	TreeHeadSig      []byte
 }

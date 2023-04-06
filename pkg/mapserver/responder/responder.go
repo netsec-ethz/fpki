@@ -52,19 +52,20 @@ func (r *MapResponder) GetProof(ctx context.Context, domainName string,
 	// Prepare proof with the help of the SMT.
 	proofList := make([]*mapCommon.MapServerResponse, len(domainParts))
 	for i, domainPart := range domainParts {
-		hash := common.SHA256Hash32Bytes([]byte(domainPart))
-		proof, isPoP, proofKey, proofValue, err := r.smt.MerkleProof(ctx, hash[:])
+		domainPartID := common.SHA256Hash32Bytes([]byte(domainPart))
+		proof, isPoP, proofKey, proofValue, err := r.smt.MerkleProof(ctx, domainPartID[:])
 		if err != nil {
 			return nil, fmt.Errorf("error obtaining Merkle proof for %s: %w",
 				domainPart, err)
 		}
 
 		// If it is a proof of presence, obtain the payload.
+		var payloadID *common.SHA256Output
 		var payload []byte
 		proofType := mapCommon.PoA
 		if isPoP {
 			proofType = mapCommon.PoP
-			payload, err = r.conn.RetrieveDomainEntry(ctx, hash)
+			payloadID, payload, err = r.conn.RetrieveDomainEntry(ctx, domainPartID)
 			if err != nil {
 				return nil, fmt.Errorf("error obtaining payload for %s: %w", domainPart, err)
 			}
@@ -79,6 +80,7 @@ func (r *MapResponder) GetProof(ctx context.Context, domainName string,
 				ProofKey:   proofKey,
 				ProofValue: proofValue,
 			},
+			DomainEntryID:    payloadID,
 			DomainEntryBytes: payload,
 			// TreeHeadSig: , TODO(juagargi)
 		}
