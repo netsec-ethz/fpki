@@ -34,6 +34,11 @@ type RPC struct {
 	SPTs               []SPT              `json:",omitempty"`
 }
 
+// PCRevocation is for now empty.
+type PCRevocation struct {
+	// TODO(juagargi) define the revocation.
+}
+
 // signed policy timestamp
 type SPT struct {
 	Version         int       `json:",omitempty"`

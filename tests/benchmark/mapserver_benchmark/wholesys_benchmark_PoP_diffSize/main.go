@@ -201,7 +201,7 @@ func countPathSize(proofs []common.MapServerResponse) float64 {
 func countCertSize(entry *common.DomainEntry) int {
 	size := 0
 
-	for _, caList := range entry.CAEntry {
+	for _, caList := range entry.Entries {
 		for _, certRaw := range caList.DomainCerts {
 			size = size + len(certRaw)
 		}

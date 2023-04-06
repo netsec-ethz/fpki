@@ -41,7 +41,7 @@ func CheckProof(
 					i, name, err)
 			}
 			// Find the CA entry that corresponds to the CA in this certificate.
-			for _, ca := range domainEntry.CAEntry {
+			for _, ca := range domainEntry.Entries {
 				if ca.CAName == caName {
 					for _, raw := range ca.DomainCerts {
 						if bytes.Equal(raw, cert.Raw) {

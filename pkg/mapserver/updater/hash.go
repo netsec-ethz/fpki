@@ -21,7 +21,7 @@ type UpdateInput struct {
 func HashDomainEntriesThenSort(domainEntries []mapCommon.DomainEntry) ([]UpdateInput, error) {
 	result := make([]UpdateInput, 0, len(domainEntries))
 	for _, v := range domainEntries {
-		domainEntryBytes, err := mapCommon.SerializedDomainEntry(&v)
+		domainEntryBytes, err := mapCommon.SerializeDomainEntry(&v)
 		if err != nil {
 			return nil, fmt.Errorf("HashDomainEntriesThenSort | SerializedDomainEntry | %w", err)
 		}

@@ -135,7 +135,7 @@ func checkProof(cert ctX509.Certificate, proofs []mapCommon.MapServerResponse) b
 				panic(err)
 			}
 			// get the correct CA entry
-			for _, caEntry := range domainEntry.CAEntry {
+			for _, caEntry := range domainEntry.Entries {
 				if caEntry.CAName == caName {
 					// check if the cert is in the CA entry
 					for _, certRaw := range caEntry.DomainCerts {

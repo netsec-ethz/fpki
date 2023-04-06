@@ -126,10 +126,11 @@ func TestDoUpdatesFromTestDataCerts(t *testing.T) {
 	swapBack := swapDBs(t)
 	defer swapBack()
 	fmt.Println("Loading certs ...")
-	raw, err := util.ReadAllGzippedFile("../../testdata/certs.pem.gz")
+	r, err := util.NewGzipReader("../../testdata/certs.pem.gz")
 	require.NoError(t, err)
-	certs, err := util.LoadCertsFromPEM(raw)
+	certs, err := util.LoadCertsWithPEMReader(r)
 	require.NoError(t, err)
+	require.NoError(t, r.Close())
 	emptyChains := make([][]*ctx509.Certificate, len(certs))
 
 	db.TruncateAllTablesForTest(t)
@@ -166,10 +167,11 @@ func BenchmarkUpdateDomainEntriesUsingCerts10K(b *testing.B) {
 func benchmarkUpdateDomainEntriesUsingCerts(b *testing.B, count int) {
 	swapBack := swapDBs(b)
 	defer swapBack()
-	raw, err := gunzip(b, "../../testdata/certs.pem.gz")
+	r, err := util.NewGzipReader("../../testdata/certs.pem.gz")
 	require.NoError(b, err)
-	certs, err := util.LoadCertsFromPEM(raw)
+	certs, err := util.LoadCertsWithPEMReader(r)
 	require.NoError(b, err)
+	require.NoError(t, r.Close())
 	require.GreaterOrEqual(b, len(certs), count)
 	certs = certs[:count]
 	emptyChains := make([][]*ctx509.Certificate, len(certs))
