@@ -67,8 +67,10 @@ type Conn interface {
 	//             Function for DomainEntries table
 	// ************************************************************
 
-	// RetrieveDomainEntry: Retrieve one key-value pair from domain entries table
-	RetrieveDomainEntry(ctx context.Context, id common.SHA256Output) ([]byte, error)
+	// RetrieveDomainEntry retrieves the domain's certificate payload ID and the payload
+	// itself, given the domain ID.
+	RetrieveDomainEntry(ctx context.Context, id common.SHA256Output) (
+		certPayloadID *common.SHA256Output, certPayload []byte, err error)
 
 	// RetrieveDomainEntries: Retrieve a list of domain entries table
 	RetrieveDomainEntries(ctx context.Context, id []*common.SHA256Output) ([]*KeyValuePair, error)

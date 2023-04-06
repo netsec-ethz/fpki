@@ -139,11 +139,12 @@ func (r *OldMapResponder) getProof(ctx context.Context, domainName string) (
 		}
 
 		var proofType mapCommon.ProofType
+		var payloadID *common.SHA256Output
 		domainBytes := []byte{}
 		// If it is PoP, query the domain entry. If it is PoA, directly return the PoA
 		if isPoP {
 			proofType = mapCommon.PoP
-			domainBytes, err = r.conn.RetrieveDomainEntry(ctx, domainHash)
+			payloadID, domainBytes, err = r.conn.RetrieveDomainEntry(ctx, domainHash)
 			if err != nil {
 				return nil, fmt.Errorf("GetDomainProof | %w", err)
 			}
@@ -159,6 +160,7 @@ func (r *OldMapResponder) getProof(ctx context.Context, domainName string) (
 				ProofType:  proofType,
 				ProofKey:   proofKey,
 				ProofValue: ProofValue},
+			DomainEntryID:    payloadID,
 			DomainEntryBytes: domainBytes,
 			TreeHeadSig:      r.signedTreeHead,
 		})

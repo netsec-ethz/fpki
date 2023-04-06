@@ -41,18 +41,18 @@ func (c *mysqlDB) RetrieveTreeNodeOLD(ctx context.Context, key common.SHA256Outp
 	return value, err
 }
 
-// RetrieveDomainEntry: Retrieve one key-value pair from domain entries table
-// Return sql.ErrNoRows if no row is round
-func (c *mysqlDB) RetrieveDomainEntry(ctx context.Context, key common.SHA256Output) (
-	[]byte, error) {
+// RetrieveDomainEntry retrieves the domain's certificate payload ID and the payload
+// itself, given the domain ID.
+func (c *mysqlDB) RetrieveDomainEntry(ctx context.Context, domainID common.SHA256Output,
+) (*common.SHA256Output, []byte, error) {
 
-	str := "SELECT cert_payload FROM domain_payloads WHERE domain_id = ?"
-	var payload []byte
-	err := c.db.QueryRowContext(ctx, str, key[:]).Scan(&payload)
+	str := "SELECT cert_payload_id, cert_payload FROM domain_payloads WHERE domain_id = ?"
+	var payloadID, payload []byte
+	err := c.db.QueryRowContext(ctx, str, domainID[:]).Scan(&payloadID, &payload)
 	if err != nil && err != sql.ErrNoRows {
-		return nil, fmt.Errorf("RetrieveDomainEntry | %w", err)
+		return nil, nil, fmt.Errorf("RetrieveDomainEntry | %w", err)
 	}
-	return payload, nil
+	return (*common.SHA256Output)(payloadID),payload,nil
 }
 
 // RetrieveDomainEntries: Retrieve a list of key-value pairs from domain entries table
