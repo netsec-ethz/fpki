@@ -5,8 +5,6 @@ import (
 	"compress/gzip"
 	"encoding/base64"
 	"encoding/csv"
-	"encoding/pem"
-	"io"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -61,69 +59,6 @@ func ReadAllGzippedFile(filename string) ([]byte, error) {
 		return nil, err
 	}
 	return buff, r.Close()
-}
-
-func LoadCertsFromPEMBuffer(buff []byte) ([]*ctx509.Certificate, error) {
-	r := bytes.NewReader(buff)
-	return LoadCertsWithPEMReader(r)
-}
-
-// LoadCertsWithPEMReader uses the reader to read more data to memory if the PEM parsing cannot
-// find an appropriate block. If there exists a PEM block bigger than the current buffer, the
-// function will double its size and try again, until all data has been read from the reader.
-func LoadCertsWithPEMReader(r io.Reader) ([]*ctx509.Certificate, error) {
-	storage := make([]byte, 1024)
-	var buff []byte
-	bytesPending := true
-
-	certs := make([]*ctx509.Certificate, 0)
-	for bytesPending {
-		// Move len(buff) bytes to beginning of storage.
-		n := copy(storage[:], buff)
-		// Set buff to be the remaining of the storage.
-		buff = storage[n:]
-
-		// Read as much as possible.
-		newBytes, err := r.Read(buff)
-		if err != nil && err != io.EOF {
-			return nil, err
-		}
-		// Set buff to beginning of storage and until last read byte.
-		buff = storage[:n+newBytes]
-
-		if newBytes == 0 {
-			if err != io.EOF {
-				// Storage support might be too small to fit this PEM block. Increase by double
-				// its size and try again; the copy at the beginning of the loop will restore
-				// the original contents to this new buffer.
-				storage = make([]byte, 2*len(storage))
-				continue
-			}
-			// End of File.
-			bytesPending = false
-		}
-
-		// Proceed to parse as many CERTIFICATE PEM blocks as possible.
-		var block *pem.Block
-		for { // do-while block != nil && block.Type == CERTIFICATE
-			block, buff = pem.Decode(buff)
-			if block == nil {
-				// No PEM block found, try to read more data and try again.
-				break
-			}
-			if block.Type != "CERTIFICATE" {
-				// Wrong PEM block, try to find another one.
-				continue
-			}
-			// It must be a certificate. Complain if parsing fails.
-			c, err := ctx509.ParseTBSCertificate(block.Bytes)
-			if err != nil {
-				return nil, err
-			}
-			certs = append(certs, c)
-		}
-	}
-	return certs, nil
 }
 
 // LoadCertsAndChainsFromCSV returns a ready to insert-in-DB collection of the leaf certificate
