@@ -13,25 +13,16 @@ import (
 // The domain is identified by the SHA256 of the DomainName in the DB.
 type DomainEntry struct {
 	DomainName string
-	CAEntry    []CAEntry
+	DomainID   []byte
+
+	RPCs        []common.RPC
+	PCs         []common.SP
+	Revocations []common.PCRevocation
+	DomainCerts []byte // Includes leafs and trust chain certificates, raw x509 DER.1.
 }
 
-// CAEntry: All certificate, RPC, PC and revocation issued by one specific CA.
-// TODO(yongzhe): add PC
-type CAEntry struct {
-	CAName           string
-	CAHash           []byte
-	CurrentRPC       common.RPC // TODO(juagargi) we will have a list of RPCs
-	FutureRPC        common.RPC //
-	CurrentPC        common.SP  // TODO(juagargi) we will have a list of PCs
-	Revocation       [][]byte   // TODO(juagargi) these are policy revocations
-	FutureRevocation [][]byte   // TODO(juagargi) these are policy revocations
-	DomainCerts      [][]byte
-	DomainCertChains [][][]byte
-}
-
-// SerializedDomainEntry: DomainEntry -> bytes. Use json
-func SerializedDomainEntry(domainEntry *DomainEntry) ([]byte, error) {
+// SerializeDomainEntry uses json to serialize.
+func SerializeDomainEntry(domainEntry *DomainEntry) ([]byte, error) {
 	result, err := json.Marshal(domainEntry)
 	if err != nil {
 		return nil, fmt.Errorf("SerializedDomainEntry | Marshal | %w", err)
@@ -39,7 +30,7 @@ func SerializedDomainEntry(domainEntry *DomainEntry) ([]byte, error) {
 	return result, nil
 }
 
-// DeserializeDomainEntry: bytes -> DomainEntry. Use json
+// DeserializeDomainEntry converts json into a DomainEntry.
 func DeserializeDomainEntry(input []byte) (*DomainEntry, error) {
 	result := &DomainEntry{}
 

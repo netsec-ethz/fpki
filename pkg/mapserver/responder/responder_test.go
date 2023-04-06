@@ -122,20 +122,21 @@ func checkProof(t *testing.T, cert *ctx509.Certificate, proofs []*mapcommon.MapS
 		if proofType == mapcommon.PoA {
 			require.Empty(t, proof.DomainEntryBytes)
 		}
-		// if proofType == mapcommon.PoP {
-		// 	domainEntry, err := mapcommon.DeserializeDomainEntry(proof.DomainEntryBytes)
-		// 	require.NoError(t, err)
-		// 	// get the correct CA entry
-		// 	for _, caEntry := range domainEntry.CAEntry {
-		// 		if caEntry.CAName == caName {
-		// 			// check if the cert is in the CA entry
-		// 			for _, certRaw := range caEntry.DomainCerts {
-		// 				require.Equal(t, certRaw, cert.Raw)
-		// 				return
-		// 			}
-		// 		}
-		// 	}
-		// }
+		if proofType == mapcommon.PoP {
+			domainEntry, err := mapcommon.DeserializeDomainEntry(proof.DomainEntryBytes)
+			require.NoError(t, err)
+			domainEntry.
+			// 	// get the correct CA entry
+			// 	for _, caEntry := range domainEntry.CAEntry {
+			// 		if caEntry.CAName == caName {
+			// 			// check if the cert is in the CA entry
+			// 			for _, certRaw := range caEntry.DomainCerts {
+			// 				require.Equal(t, certRaw, cert.Raw)
+			// 				return
+			// 			}
+			// 		}
+			// 	}
+		}
 	}
 	// require.Fail(t, "cert/CA not found")
 }

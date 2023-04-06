@@ -14,6 +14,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/logpicker"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
+	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
 // MapUpdater: map updater. It is responsible for updating the tree, and writing to db
@@ -90,7 +91,7 @@ func (mapUpdater *MapUpdater) UpdateCertsLocally(ctx context.Context, certList [
 		}
 		certChains = append(certChains, chain)
 	}
-	certs, IDs, parentIDs, names := UnfoldCerts(certs, certChains)
+	certs, IDs, parentIDs, names := util.UnfoldCerts(certs, certChains)
 	return UpdateCertsWithKeepExisting(ctx, mapUpdater.dbConn, names, expirations, certs,
 		IDs, parentIDs)
 }

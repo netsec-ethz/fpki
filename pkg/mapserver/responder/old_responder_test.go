@@ -202,7 +202,7 @@ func checkProofOld(t *testing.T, cert ctx509.Certificate, proofs []mapcommon.Map
 			domainEntry, err := mapcommon.DeserializeDomainEntry(proof.DomainEntryBytes)
 			require.NoError(t, err)
 			// get the correct CA entry
-			for _, caEntry := range domainEntry.CAEntry {
+			for _, caEntry := range domainEntry.Entries {
 				if caEntry.CAName == caName {
 					// check if the cert is in the CA entry
 					for _, certRaw := range caEntry.DomainCerts {
