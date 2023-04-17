@@ -87,18 +87,18 @@ func (pca *PCA) findRPCAndVerifyPSR(psr *common.PSR) error {
 
 // save file to output dir
 func (pca *PCA) sendRPCToPolicyLog(rpc *common.RPC, fileName string) error {
-	return common.JsonStructToFile(rpc, pca.policyLogExgPath+"/rpc/"+fileName)
+	return common.ToJSONFile(rpc, pca.policyLogExgPath+"/rpc/"+fileName)
 }
 
 // save file to output dir
 func (pca *PCA) sendSPToPolicyLog(sp *common.SP, fileName string) error {
-	return common.JsonStructToFile(sp, pca.policyLogExgPath+"/sp/"+fileName)
+	return common.ToJSONFile(sp, pca.policyLogExgPath+"/sp/"+fileName)
 }
 
 func (pca *PCA) getHashName(s interface{}) (string, error) {
-	structBytes, err := common.JsonStructToBytes(s)
+	structBytes, err := common.ToJSON(s)
 	if err != nil {
-		return "", fmt.Errorf("getHashName | JsonStructToBytes | %w", err)
+		return "", fmt.Errorf("getHashName | ToJSON | %w", err)
 	}
 
 	bytesHash := pca.logVerifier.HashLeaf([]byte(structBytes))

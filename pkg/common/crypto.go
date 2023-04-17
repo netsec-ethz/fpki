@@ -27,9 +27,9 @@ const (
 
 // SignStructRSASHA256: generate a signature using SHA256 and RSA
 func SignStructRSASHA256(s interface{}, privKey *rsa.PrivateKey) ([]byte, error) {
-	bytes, err := JsonStructToBytes(s)
+	bytes, err := ToJSON(s)
 	if err != nil {
-		return nil, fmt.Errorf("SignStructRSASHA256 | JsonStructToBytes | %w", err)
+		return nil, fmt.Errorf("SignStructRSASHA256 | ToJSON | %w", err)
 	}
 
 	hashOutput := sha256.Sum256(bytes)
@@ -81,9 +81,9 @@ func RCSRVerifySignature(rcsr *RCSR) error {
 	// Serialize without signature:
 	sig := rcsr.Signature
 	rcsr.Signature = nil
-	serializedStruct, err := JsonStructToBytes(rcsr)
+	serializedStruct, err := ToJSON(rcsr)
 	if err != nil {
-		return fmt.Errorf("RCSRVerifySignature | JsonStructToBytes | %w", err)
+		return fmt.Errorf("RCSRVerifySignature | ToJSON | %w", err)
 	}
 	rcsr.Signature = sig
 
@@ -106,9 +106,9 @@ func RCSRVerifyRPCSignature(rcsr *RCSR, rpc *RPC) error {
 	// Serialize without signature:
 	sig := rcsr.Signature
 	rcsr.Signature = nil
-	serializedStruct, err := JsonStructToBytes(rcsr)
+	serializedStruct, err := ToJSON(rcsr)
 	if err != nil {
-		return fmt.Errorf("RCSRVerifySignature | JsonStructToBytes | %w", err)
+		return fmt.Errorf("RCSRVerifySignature | ToJSON | %w", err)
 	}
 	rcsr.Signature = sig
 
@@ -163,9 +163,9 @@ func RPCVerifyCASignature(caCert *x509.Certificate, rpc *RPC) error {
 	// Serialize without CA signature or SPTs:
 	caSig, SPTs := rpc.CASignature, rpc.SPTs
 	rpc.CASignature, rpc.SPTs = nil, nil
-	bytes, err := JsonStructToBytes(rpc)
+	bytes, err := ToJSON(rpc)
 	if err != nil {
-		return fmt.Errorf("RCSRVerifySignature | JsonStructToBytes | %w", err)
+		return fmt.Errorf("RCSRVerifySignature | ToJSON | %w", err)
 	}
 	rpc.CASignature, rpc.SPTs = caSig, SPTs
 
@@ -196,9 +196,9 @@ func VerifyPSRUsingRPC(psr *PSR, rpc *RPC) error {
 	// Serialize without signature:
 	sig := psr.RootCertSignature
 	psr.RootCertSignature = nil
-	serializedStruct, err := JsonStructToBytes(psr)
+	serializedStruct, err := ToJSON(psr)
 	if err != nil {
-		return fmt.Errorf("RCSRVerifySignature | JsonStructToBytes | %w", err)
+		return fmt.Errorf("RCSRVerifySignature | ToJSON | %w", err)
 	}
 	psr.RootCertSignature = sig
 
@@ -245,9 +245,9 @@ func VerifyCASigInSP(caCert *x509.Certificate, sp *SP) error {
 	// Serialize without CA signature or SPTs:
 	caSig, SPTs := sp.CASignature, sp.SPTs
 	sp.CASignature, sp.SPTs = nil, nil
-	serializedStruct, err := JsonStructToBytes(sp)
+	serializedStruct, err := ToJSON(sp)
 	if err != nil {
-		return fmt.Errorf("RCSRVerifySignature | JsonStructToBytes | %w", err)
+		return fmt.Errorf("RCSRVerifySignature | ToJSON | %w", err)
 	}
 	sp.CASignature, sp.SPTs = caSig, SPTs
 

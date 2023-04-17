@@ -15,7 +15,7 @@ import (
 	"github.com/netsec-ethz/fpki/cmd/ingest/cache"
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
+	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
 // Processor is the pipeline that takes file names and process them into certificates
@@ -92,7 +92,7 @@ func (p *Processor) start() {
 	// Process the parsed content into the DB, and from DB into SMT:
 	go func() {
 		for data := range p.certWithChainChan {
-			certs, certIDs, parentIDs, names := updater.UnfoldCert(data.Cert, data.CertID,
+			certs, certIDs, parentIDs, names := util.UnfoldCert(data.Cert, data.CertID,
 				data.ChainPayloads, data.ChainIDs)
 			for i := range certs {
 				p.nodeChan <- &CertificateNode{

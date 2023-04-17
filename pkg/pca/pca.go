@@ -128,14 +128,14 @@ func (pca *PCA) ReceiveSPTFromPolicyLog() error {
 
 func (pca *PCA) OutputRPCAndSP() error {
 	for domain, rpc := range pca.validRPCsByDomains {
-		err := common.JsonStructToFile(rpc, pca.outputPath+"/"+domain+"_"+rpc.CAName+"_"+"rpc")
+		err := common.ToJSONFile(rpc, pca.outputPath+"/"+domain+"_"+rpc.CAName+"_"+"rpc")
 		if err != nil {
 			return fmt.Errorf("OutputRPCAndSP | JsonStructToFile | %w", err)
 		}
 	}
 
 	for domain, rpc := range pca.validSPsByDomains {
-		err := common.JsonStructToFile(rpc, pca.outputPath+"/"+domain+"_"+rpc.CAName+"_"+"sp")
+		err := common.ToJSONFile(rpc, pca.outputPath+"/"+domain+"_"+rpc.CAName+"_"+"sp")
 		if err != nil {
 			return fmt.Errorf("OutputRPCAndSP | JsonStructToFile | %w", err)
 		}
@@ -153,14 +153,14 @@ func (pca *PCA) verifySPTWithRPC(spt *common.SPT, rpc *common.RPC) error {
 	}
 
 	// get leaf hash
-	rpcBytes, err := common.JsonStructToBytes(rpc)
+	rpcBytes, err := common.ToJSON(rpc)
 	if err != nil {
 		return fmt.Errorf("verifySPT | Json_StructToBytes | %w", err)
 	}
 	leafHash := pca.logVerifier.HashLeaf(rpcBytes)
 
 	// get LogRootV1
-	logRoot, err := common.JsonBytesToLogRoot(spt.STH)
+	logRoot, err := common.JSONToLogRoot(spt.STH)
 	if err != nil {
 		return fmt.Errorf("verifySPT | JsonBytesToLogRoot | %w", err)
 	}
@@ -183,14 +183,14 @@ func (pca *PCA) verifySPTWithSP(spt *common.SPT, sp *common.SP) error {
 	}
 
 	// get leaf hash
-	spBytes, err := common.JsonStructToBytes(sp)
+	spBytes, err := common.ToJSON(sp)
 	if err != nil {
 		return fmt.Errorf("verifySPT | Json_StructToBytes | %w", err)
 	}
 	leafHash := pca.logVerifier.HashLeaf(spBytes)
 
 	// get LogRootV1
-	logRoot, err := common.JsonBytesToLogRoot(spt.STH)
+	logRoot, err := common.JSONToLogRoot(spt.STH)
 	if err != nil {
 		return fmt.Errorf("verifySPT | JsonBytesToLogRoot | %w", err)
 	}
