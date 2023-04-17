@@ -301,17 +301,16 @@ func (c *LogClient) readRPCFromFileToBytes() ([][]byte, error) {
 	for _, filaName := range fileNames {
 		filaPath := c.config.PolicyLogExchangePath + "/rpc/" + filaName.Name()
 
-		rpc := &common.RPC{}
 		// read RPC from file
-		err := common.JsonFileToRPC(rpc, filaPath)
+		rpc, err := common.JsonFileToRPC(filaPath)
 		if err != nil {
 			return nil, fmt.Errorf("readRPCFromFileToBytes | JsonFileToRPC %w", err)
 		}
 
 		// serialize rpc
-		bytes, err := common.JsonStructToBytes(rpc)
+		bytes, err := common.ToJSON(rpc)
 		if err != nil {
-			return nil, fmt.Errorf("readRPCFromFileToBytes | JsonStructToBytes: %w", err)
+			return nil, fmt.Errorf("readRPCFromFileToBytes | ToJSON: %w", err)
 		}
 
 		data = append(data, bytes)
@@ -333,25 +332,24 @@ func (c *LogClient) readSPFromFileToBytes() ([][]byte, error) {
 
 	// read SPT from "fileTransfer" folder
 	for _, filaName := range fileNames {
-		filaPath := c.config.PolicyLogExchangePath + "/sp/" + filaName.Name()
+		filePath := c.config.PolicyLogExchangePath + "/sp/" + filaName.Name()
 
-		sp := &common.SP{}
 		// read RPC from file
-		err := common.JsonFileToSP(sp, filaPath)
+		sp, err := common.JsonFileToSP(filePath)
 		if err != nil {
 			return nil, fmt.Errorf("readSPFromFileToBytes | JsonFileToRPC %w", err)
 		}
 
 		// serialize sp
-		bytes, err := common.JsonStructToBytes(sp)
+		bytes, err := common.ToJSON(sp)
 		if err != nil {
-			return nil, fmt.Errorf("readSPFromFileToBytes | JsonStructToBytes: %w", err)
+			return nil, fmt.Errorf("readSPFromFileToBytes | ToJSON: %w", err)
 		}
 
 		data = append(data, bytes)
 
 		// delete rpc
-		os.Remove(filaPath)
+		os.Remove(filePath)
 	}
 	return data, nil
 }
@@ -364,17 +362,17 @@ func (c *LogClient) storeProofMapToSPT(proofMap map[string]*PoIAndSTH) error {
 
 		// serialize proof to bytes
 		for _, proof := range v.PoIs {
-			bytes, err := common.JsonStructToBytes(proof)
+			bytes, err := common.ToJSON(proof)
 			if err != nil {
-				return fmt.Errorf("storeProofMapToSPT | JsonStructToBytes: %w", err)
+				return fmt.Errorf("storeProofMapToSPT | ToJSON: %w", err)
 			}
 			proofBytes = append(proofBytes, bytes)
 		}
 
 		// serialize log root (signed tree head) to bytes
-		sth, err := common.JsonStructToBytes(&v.STH)
+		sth, err := common.ToJSON(&v.STH)
 		if err != nil {
-			return fmt.Errorf("storeProofMapToSPT | JsonStructToBytes: %w", err)
+			return fmt.Errorf("storeProofMapToSPT | ToJSON: %w", err)
 		}
 
 		// attach PoI and STH to SPT
@@ -385,7 +383,7 @@ func (c *LogClient) storeProofMapToSPT(proofMap map[string]*PoIAndSTH) error {
 		}
 
 		// store SPT to file
-		err = common.JsonStructToFile(spt, c.config.PolicyLogExchangePath+"/spt/"+k)
+		err = common.ToJSONFile(spt, c.config.PolicyLogExchangePath+"/spt/"+k)
 		if err != nil {
 			return fmt.Errorf("storeProofMapToSPT | JsonStructToFile: %w", err)
 		}

@@ -13,7 +13,7 @@ import (
 // The domain is identified by the SHA256 of the DomainName in the DB.
 type DomainEntry struct {
 	DomainName string
-	DomainID   []byte
+	DomainID   []byte // This is the SHA256 of the domain name
 
 	RPCs        []common.RPC
 	PCs         []common.SP

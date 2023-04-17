@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/google/trillian"
-	"github.com/google/trillian/types"
 	"github.com/netsec-ethz/fpki/pkg/common"
 
 	"github.com/stretchr/testify/require"
@@ -12,23 +11,20 @@ import (
 
 // TestVerification: Test logverifier.VerifyInclusionByHash()
 func TestVerification(t *testing.T) {
-	proof := &trillian.Proof{}
-
-	err := common.JsonFileToProof(proof, "./testdata/POI.json")
+	proof, err := common.JsonFileToProof("./testdata/POI.json")
 	require.NoError(t, err, "Json File To Proof Error")
 
-	sth, err := common.JsonBytesToLogRoot([]byte("{\"TreeSize\":2,\"RootHash\":\"VsGAf6yfqGWcEno9aRBj3O1N9E8fY/XE9nJmYKjefPM=\",\"TimestampNanos\":1661986742112252000,\"Revision\":0,\"Metadata\":\"\"}"))
+	sth, err := common.JSONToLogRoot([]byte("{\"TreeSize\":2,\"RootHash\":\"VsGAf6yfqGWcEno9aRBj3O1N9E8fY/XE9nJmYKjefPM=\",\"TimestampNanos\":1661986742112252000,\"Revision\":0,\"Metadata\":\"\"}"))
 	require.NoError(t, err, "Json bytes To STH Error")
 
 	logverifier := NewLogVerifier(nil)
 
-	rpc := &common.RPC{}
-	err = common.JsonFileToRPC(rpc, "./testdata/rpc.json")
+	rpc, err := common.JsonFileToRPC("./testdata/rpc.json")
 	require.NoError(t, err, "Json File To RPC Error")
 
 	rpc.SPTs = []common.SPT{}
 
-	rpcBytes, err := common.JsonStructToBytes(rpc)
+	rpcBytes, err := common.ToJSON(rpc)
 	require.NoError(t, err, "Json Struct To Bytes Error")
 
 	rpcHash := logverifier.HashLeaf(rpcBytes)
@@ -39,12 +35,10 @@ func TestVerification(t *testing.T) {
 
 // TestConsistencyBetweenSTH: test logverifier.VerifyRoot()
 func TestConsistencyBetweenSTH(t *testing.T) {
-	sth := &types.LogRootV1{}
-	err := common.JsonFileToSTH(sth, "./testdata/OldSTH.json")
+	sth, err := common.JsonFileToSTH("./testdata/OldSTH.json")
 	require.NoError(t, err, "Json File To STH Error")
 
-	newSTH := &types.LogRootV1{}
-	err = common.JsonFileToSTH(newSTH, "./testdata/NewSTH.json")
+	newSTH, err := common.JsonFileToSTH("./testdata/NewSTH.json")
 	require.NoError(t, err, "Json File To STH Error")
 
 	logverifier := NewLogVerifier(nil)
@@ -57,9 +51,7 @@ func TestConsistencyBetweenSTH(t *testing.T) {
 }
 
 func TestCheckRPC(t *testing.T) {
-	rpc := &common.RPC{}
-
-	err := common.JsonFileToRPC(rpc, "./testdata/rpc.json")
+	rpc, err := common.JsonFileToRPC("./testdata/rpc.json")
 	require.NoError(t, err, "Json File To RPC Error")
 
 	logverifier := NewLogVerifier(nil)
@@ -69,9 +61,7 @@ func TestCheckRPC(t *testing.T) {
 }
 
 func TestCheckSP(t *testing.T) {
-	sp := &common.SP{}
-
-	err := common.JsonFileToSP(sp, "./testdata/sp.json")
+	sp, err := common.JsonFileToSP("./testdata/sp.json")
 	require.NoError(t, err, "Json File To RPC Error")
 
 	logverifier := NewLogVerifier(nil)
