@@ -147,7 +147,7 @@ func (pca *PCA) OutputRPCAndSP() error {
 func (pca *PCA) verifySPTWithRPC(spt *common.SPT, rpc *common.RPC) error {
 	// construct proofs
 
-	proofs, err := common.JsonBytesToPoI(spt.PoI)
+	proofs, err := common.JSONToPoI(spt.PoI)
 	if err != nil {
 		return fmt.Errorf("verifySPT | JsonBytesToPoI | %w", err)
 	}
@@ -177,7 +177,7 @@ func (pca *PCA) verifySPTWithRPC(spt *common.SPT, rpc *common.RPC) error {
 // verify the SPT of the RPC.
 func (pca *PCA) verifySPTWithSP(spt *common.SPT, sp *common.SP) error {
 	// construct proofs
-	proofs, err := common.JsonBytesToPoI(spt.PoI)
+	proofs, err := common.JSONToPoI(spt.PoI)
 	if err != nil {
 		return fmt.Errorf("verifySPT | JsonBytesToPoI | %w", err)
 	}

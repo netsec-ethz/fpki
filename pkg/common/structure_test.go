@@ -34,7 +34,7 @@ func TestEqual(t *testing.T) {
 		CertType:        0x11,
 		AddedTS:         time.Now(),
 		STH:             generateRandomBytes(),
-		PoI:             generateRandomBytesArray(),
+		PoI:             generateRandomBytes(),
 		STHSerialNumber: 131678,
 		Signature:       generateRandomBytes(),
 	}
@@ -47,7 +47,7 @@ func TestEqual(t *testing.T) {
 		CertType:        0x21,
 		AddedTS:         time.Now(),
 		STH:             generateRandomBytes(),
-		PoI:             generateRandomBytesArray(),
+		PoI:             generateRandomBytes(),
 		STHSerialNumber: 114378,
 		Signature:       generateRandomBytes(),
 	}
@@ -55,17 +55,19 @@ func TestEqual(t *testing.T) {
 	assert.True(t, spt1.Equal(spt1) && spt2.Equal(spt2) && !spt1.Equal(spt2) && !spt2.Equal(spt1), "SPT Equal() error")
 
 	sprt := &SPRT{
-		Version:         12314,
-		Subject:         "bad domain",
-		CAName:          "I'm malicious CA, nice to meet you",
-		LogID:           1729381,
-		CertType:        0x21,
-		AddedTS:         time.Now(),
-		STH:             generateRandomBytes(),
-		PoI:             generateRandomBytesArray(),
-		STHSerialNumber: 1729381,
-		Reason:          1729381,
-		Signature:       generateRandomBytes(),
+		SPT: SPT{
+			Version:         12314,
+			Subject:         "bad domain",
+			CAName:          "I'm malicious CA, nice to meet you",
+			LogID:           1729381,
+			CertType:        0x21,
+			AddedTS:         time.Now(),
+			STH:             generateRandomBytes(),
+			PoI:             generateRandomBytes(),
+			STHSerialNumber: 1729381,
+			Signature:       generateRandomBytes(),
+		},
+		Reason: 1729381,
 	}
 
 	assert.True(t, sprt.Equal(sprt), "SPRT Equal() error")
@@ -99,7 +101,7 @@ func TestJsonReadWrite(t *testing.T) {
 		CertType:        0x11,
 		AddedTS:         time.Now(),
 		STH:             generateRandomBytes(),
-		PoI:             generateRandomBytesArray(),
+		PoI:             generateRandomBytes(),
 		STHSerialNumber: 131678,
 		Signature:       generateRandomBytes(),
 	}
@@ -112,7 +114,7 @@ func TestJsonReadWrite(t *testing.T) {
 		CertType:        0x21,
 		AddedTS:         time.Now(),
 		STH:             generateRandomBytes(),
-		PoI:             generateRandomBytesArray(),
+		PoI:             generateRandomBytes(),
 		STHSerialNumber: 114378,
 		Signature:       generateRandomBytes(),
 	}
@@ -189,24 +191,26 @@ func TestSingleObject(t *testing.T) {
 				CertType:        0x11,
 				AddedTS:         time.Unix(1234, 0),
 				STH:             generateRandomBytes(),
-				PoI:             generateRandomBytesArray(),
+				PoI:             generateRandomBytes(),
 				STHSerialNumber: 131678,
 				Signature:       generateRandomBytes(),
 			},
 		},
 		"sprt": {
 			data: &SPRT{
-				Version:         12314,
-				Subject:         "bad domain",
-				CAName:          "I'm malicious CA, nice to meet you",
-				LogID:           1729381,
-				CertType:        0x21,
-				AddedTS:         nowWithoutMonotonic(),
-				STH:             generateRandomBytes(),
-				PoI:             generateRandomBytesArray(),
-				STHSerialNumber: 1729381,
-				Reason:          1729381,
-				Signature:       generateRandomBytes(),
+				SPT: SPT{
+					Version:         12314,
+					Subject:         "bad domain",
+					CAName:          "I'm malicious CA, nice to meet you",
+					LogID:           1729381,
+					CertType:        0x21,
+					AddedTS:         nowWithoutMonotonic(),
+					STH:             generateRandomBytes(),
+					PoI:             generateRandomBytes(),
+					STHSerialNumber: 1729381,
+					Signature:       generateRandomBytes(),
+				},
+				Reason: 1729381,
 			},
 		},
 		"sp": {
@@ -266,7 +270,7 @@ func randomSPT() *SPT {
 		CertType:        0x21,
 		AddedTS:         nowWithoutMonotonic(),
 		STH:             generateRandomBytes(),
-		PoI:             generateRandomBytesArray(),
+		PoI:             generateRandomBytes(),
 		STHSerialNumber: 114378,
 		Signature:       generateRandomBytes(),
 	}

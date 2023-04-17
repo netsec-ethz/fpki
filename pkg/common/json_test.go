@@ -30,7 +30,7 @@ func TestEncodeAndDecodeOfSPT(t *testing.T) {
 		CertType:        0x11,
 		AddedTS:         nowWithoutMonotonic(),
 		STH:             generateRandomBytes(),
-		PoI:             generateRandomBytesArray(),
+		PoI:             generateRandomBytes(),
 		STHSerialNumber: 7689,
 		Signature:       generateRandomBytes(),
 	}
@@ -58,7 +58,7 @@ func TestEncodeAndDecodeOfRPC(t *testing.T) {
 		CertType:        0x11,
 		AddedTS:         time.Now(),
 		STH:             generateRandomBytes(),
-		PoI:             generateRandomBytesArray(),
+		PoI:             generateRandomBytes(),
 		STHSerialNumber: 131678,
 		Signature:       generateRandomBytes(),
 	}
@@ -71,7 +71,7 @@ func TestEncodeAndDecodeOfRPC(t *testing.T) {
 		CertType:        0x21,
 		AddedTS:         time.Now(),
 		STH:             generateRandomBytes(),
-		PoI:             generateRandomBytesArray(),
+		PoI:             generateRandomBytes(),
 		STHSerialNumber: 114378,
 		Signature:       generateRandomBytes(),
 	}
@@ -114,7 +114,7 @@ func TestEncodeAndDecodeOfPC(t *testing.T) {
 		CertType:        0x21,
 		AddedTS:         time.Now(),
 		STH:             generateRandomBytes(),
-		PoI:             generateRandomBytesArray(),
+		PoI:             generateRandomBytes(),
 		STHSerialNumber: 114378,
 		Signature:       generateRandomBytes(),
 	}
