@@ -46,7 +46,7 @@ func TestSerializeDomainEntry(t *testing.T) {
 						Subject:         "spt subject",
 						STH:             []byte{0, 1, 2, 3},
 						STHSerialNumber: 12345,
-						PoI:             [][]byte{{0, 1, 2, 3}, {4, 5, 6, 7}},
+						PoI:             []byte{0, 1, 2, 3, 4, 5, 6, 7},
 					},
 				},
 			},

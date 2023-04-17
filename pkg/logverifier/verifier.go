@@ -123,7 +123,7 @@ func (c *LogVerifier) VerifySP(sp *common.SP) error {
 		if err != nil {
 			return fmt.Errorf("VerifySP | JsonBytesToLogRoot | %w", err)
 		}
-		poi, err := common.JsonBytesToPoI(p.PoI)
+		poi, err := common.JSONToPoI(p.PoI)
 		if err != nil {
 			return fmt.Errorf("VerifySP | JsonBytesToPoI | %w", err)
 		}
@@ -152,7 +152,7 @@ func (c *LogVerifier) VerifyRPC(rpc *common.RPC) error {
 		if err != nil {
 			return fmt.Errorf("VerifyRPC | JsonBytesToLogRoot | %w", err)
 		}
-		poi, err := common.JsonBytesToPoI(p.PoI)
+		poi, err := common.JSONToPoI(p.PoI)
 		if err != nil {
 			return fmt.Errorf("VerifyRPC | JsonBytesToPoI | %w", err)
 		}

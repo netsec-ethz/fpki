@@ -9,29 +9,15 @@ import (
 	trilliantypes "github.com/google/trillian/types"
 )
 
-func JsonBytesToPoI(poiBytesArray [][]byte) ([]*trillian.Proof, error) {
-	// po, err := FromJSON(poiBytesArray)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("JsonBytesToPoI | Unmarshal | %w", err)
-	// }
-	// result, ok := po.(*trilliantypes.LogRootV1)
-	// if !ok {
-	// 	return nil, fmt.Errorf("JsonFileToPoI | object is %T", po)
-	// }
-
-	// deleteme
-
-	result := []*trillian.Proof{}
-
-	for _, poiBytes := range poiBytesArray {
-		newPOI := &trillian.Proof{}
-		err := json.Unmarshal(poiBytes, newPOI)
-		if err != nil {
-			return nil, fmt.Errorf("JsonBytesToPoI | Unmarshal | %w", err)
-		}
-		result = append(result, newPOI)
+func JSONToPoI(poiBytes []byte) ([]*trillian.Proof, error) {
+	po, err := FromJSON(poiBytes)
+	if err != nil {
+		return nil, fmt.Errorf("JsonBytesToPoI | Unmarshal | %w", err)
 	}
-
+	result, ok := po.([]*trillian.Proof)
+	if !ok {
+		return nil, fmt.Errorf("JsonFileToPoI | object is %T", po)
+	}
 	return result, nil
 }
 

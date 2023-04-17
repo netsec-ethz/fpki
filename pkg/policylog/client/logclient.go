@@ -358,21 +358,16 @@ func (c *LogClient) readSPFromFileToBytes() ([][]byte, error) {
 func (c *LogClient) storeProofMapToSPT(proofMap map[string]*PoIAndSTH) error {
 	// for every proof in the map
 	for k, v := range proofMap {
-		proofBytes := [][]byte{}
-
-		// serialize proof to bytes
-		for _, proof := range v.PoIs {
-			bytes, err := common.ToJSON(proof)
-			if err != nil {
-				return fmt.Errorf("storeProofMapToSPT | ToJSON: %w", err)
-			}
-			proofBytes = append(proofBytes, bytes)
+		// serialize the proof
+		proofBytes, err := common.ToJSON(v.PoIs)
+		if err != nil {
+			return fmt.Errorf("storeProofMapToSPT | PoIs ToJSON: %w", err)
 		}
 
 		// serialize log root (signed tree head) to bytes
 		sth, err := common.ToJSON(&v.STH)
 		if err != nil {
-			return fmt.Errorf("storeProofMapToSPT | ToJSON: %w", err)
+			return fmt.Errorf("storeProofMapToSPT | STH ToJSON: %w", err)
 		}
 
 		// attach PoI and STH to SPT
