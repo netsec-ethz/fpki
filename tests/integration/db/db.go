@@ -281,7 +281,7 @@ func testDomainEntriesTable() {
 	result := make([]*db.KeyValuePair, 0, len(keys))
 
 	for _, key := range keys {
-		value, err := conn.RetrieveDomainEntry(ctx, *key)
+		_, value, err := conn.RetrieveDomainEntry(ctx, *key)
 		if err != nil && err != sql.ErrNoRows {
 			panic(err)
 		}
@@ -303,7 +303,7 @@ func testDomainEntriesTable() {
 	result = make([]*db.KeyValuePair, 0, len(keys))
 
 	for _, key := range keys {
-		value, err := conn.RetrieveDomainEntry(ctx, *key)
+		_, value, err := conn.RetrieveDomainEntry(ctx, *key)
 		if err != nil && err != sql.ErrNoRows {
 			panic(err)
 		}
@@ -346,7 +346,7 @@ func testDomainEntriesTable() {
 	result = make([]*db.KeyValuePair, 0, len(keys))
 
 	for _, key := range keys {
-		value, err := conn.RetrieveDomainEntry(ctx, *key)
+		_, value, err := conn.RetrieveDomainEntry(ctx, *key)
 		if err != nil && err != sql.ErrNoRows {
 			panic(err)
 		}
