@@ -31,10 +31,10 @@ func TestProofWithPoP(t *testing.T) {
 	// Create a new DB with that name. On exiting the function, it will be removed.
 	err := tests.CreateTestDB(ctx, dbName)
 	require.NoError(t, err)
-	// defer func() {
-	// 	err = tests.RemoveTestDB(ctx, config)
-	// 	require.NoError(t, err)
-	// }()
+	defer func() {
+		err = tests.RemoveTestDB(ctx, config)
+		require.NoError(t, err)
+	}()
 
 	// Connect to the DB.
 	conn, err := mysql.Connect(config)
@@ -43,7 +43,6 @@ func TestProofWithPoP(t *testing.T) {
 
 	// Ingest two certificates and their chains.
 	raw, err := util.ReadAllGzippedFile("../../../tests/testdata/2-xenon2023.csv.gz")
-	// raw, err := util.ReadAllGzippedFile("../../../tests/testdata/100K-xenon2023.csv.gz")
 	require.NoError(t, err)
 	certs, IDs, parentIDs, names, err := util.LoadCertsAndChainsFromCSV(raw)
 	require.NoError(t, err)
@@ -51,11 +50,13 @@ func TestProofWithPoP(t *testing.T) {
 		certs, IDs, parentIDs)
 	require.NoError(t, err)
 
+	// Ingest two policies.
+
 	// Coalescing of payloads.
 	err = updater.CoalescePayloadsForDirtyDomains(ctx, conn)
 	require.NoError(t, err)
 
-	// Final stage: create/update a SMT.
+	// Create/update the SMT.
 	err = updater.UpdateSMT(ctx, conn, 32)
 	require.NoError(t, err)
 
@@ -109,11 +110,9 @@ func TestProofWithPoP(t *testing.T) {
 // checkProof checks the proof to be correct.
 func checkProof(t *testing.T, cert *ctx509.Certificate, proofs []*mapcommon.MapServerResponse) {
 	t.Helper()
-	// caName := cert.Issuer.String()
 	require.Equal(t, mapcommon.PoP, proofs[len(proofs)-1].PoI.ProofType,
 		"PoP not found for \"%s\"", domain.CertSubjectName(cert))
 	for _, proof := range proofs {
-		// require.Contains(t, cert.Subject.CommonName, proof.Domain)
 		includesDomainName(t, proof.Domain, cert)
 		proofType, isCorrect, err := prover.VerifyProofByDomain(proof)
 		require.NoError(t, err)
@@ -125,17 +124,14 @@ func checkProof(t *testing.T, cert *ctx509.Certificate, proofs []*mapcommon.MapS
 		if proofType == mapcommon.PoP {
 			domainEntry, err := mapcommon.DeserializeDomainEntry(proof.DomainEntryBytes)
 			require.NoError(t, err)
-			domainEntry.
-			// 	// get the correct CA entry
-			// 	for _, caEntry := range domainEntry.CAEntry {
-			// 		if caEntry.CAName == caName {
-			// 			// check if the cert is in the CA entry
-			// 			for _, certRaw := range caEntry.DomainCerts {
-			// 				require.Equal(t, certRaw, cert.Raw)
-			// 				return
-			// 			}
-			// 		}
-			// 	}
+			certs, err := util.DeserializeCertificates(domainEntry.DomainCerts)
+			require.NoError(t, err)
+			// The certificate must be present.
+			for _, c := range certs {
+				if cert.Equal(c) {
+					return
+				}
+			}
 		}
 	}
 	// require.Fail(t, "cert/CA not found")
@@ -144,7 +140,7 @@ func checkProof(t *testing.T, cert *ctx509.Certificate, proofs []*mapcommon.MapS
 // includesDomainName checks that the subDomain appears as a substring of at least one of the
 // names in the certificate.
 func includesDomainName(t *testing.T, subDomain string, cert *ctx509.Certificate) {
-	names := updater.ExtractCertDomains(cert)
+	names := util.ExtractCertDomains(cert)
 
 	for _, s := range names {
 		if strings.Contains(s, subDomain) {
