@@ -71,9 +71,27 @@ func (r *CertReader) Read(certs []*ctx509.Certificate) (int, error) {
 			certPointers[0] = c
 			certPointers = certPointers[1:]
 		}
-		if r.eofReached{
+		if r.eofReached {
 			break
 		}
 	}
 	return len(certs) - len(certPointers), nil
+}
+
+// ReadAll reads all pending certificates from the internal reader this CertReader was created
+// from. This function is usually called right after creating the CertReader.
+func (r *CertReader) ReadAll() ([]*ctx509.Certificate, error) {
+	certs := make([]*ctx509.Certificate, 1)
+	for {
+		n, err := r.Read(certs[len(certs)-1:]) // read one certificate, at the end of the slice
+		if err != nil {
+			return nil, err
+		}
+		if n == 0 {
+			certs = certs[:len(certs)-1] // remove the empty gap
+			break
+		}
+		certs = append(certs, nil) // make room for one more, with an empty gap
+	}
+	return certs, nil
 }

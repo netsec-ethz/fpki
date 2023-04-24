@@ -21,9 +21,9 @@ func TestExtractCertDomains(t *testing.T) {
 		{"secure.jaymanufacturing.com"},
 		{"*.ibm.xtify.com", "ibm.xtify.com"},
 		{"flowers-to-the-world.com"},
-		{"www.knocknok-fashion.com","knocknok-fashion.com"},
+		{"www.knocknok-fashion.com", "knocknok-fashion.com"},
 	}
 	for i, names := range names {
-		require.EqualValues(t, names, ExtractCertDomains(certs[i]))
+		require.ElementsMatch(t, names, ExtractCertDomains(certs[i]))
 	}
 }

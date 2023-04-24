@@ -88,3 +88,26 @@ func TestCertReaderOneByOne(t *testing.T) {
 
 	require.NoError(t, f.Close())
 }
+
+func TestCertReaderReadAll(t *testing.T) {
+	f, err := os.Open("../../tests/testdata/3-certs.pem")
+	require.NoError(t, err)
+
+	r := NewCertReader(f)
+	N := 3
+	certs, err := r.ReadAll()
+	require.NoError(t, err)
+	require.Len(t, certs, N)
+	err = f.Close()
+	require.NoError(t, err)
+
+	// Read three certificates exactly, and compare the results with ReadAll.
+	f, err = os.Open("../../tests/testdata/3-certs.pem")
+	require.NoError(t, err)
+	r = NewCertReader(f)
+	threeCerts := make([]*ctx509.Certificate, N)
+	n, err := r.Read(threeCerts)
+	require.Equal(t, N, n)
+	require.NoError(t, err)
+	require.ElementsMatch(t, certs, threeCerts)
+}
