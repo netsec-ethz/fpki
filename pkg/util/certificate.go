@@ -1,6 +1,8 @@
 package util
 
 import (
+	"bytes"
+	"fmt"
 	"time"
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
@@ -24,6 +26,28 @@ func ExtractExpirations(certs []*ctx509.Certificate) []*time.Time {
 		expirations[i] = &c.NotAfter
 	}
 	return expirations
+}
+
+// SerializeCertificates serializes a sequence of certificates into their ASN.1 DER form.
+func SerializeCertificates(certs []*ctx509.Certificate) ([]byte, error) {
+	buff := bytes.NewBuffer(nil)
+	w := NewCertWriter(buff)
+	n, err := w.Write(certs)
+	if err != nil {
+		return nil, err
+	}
+	if n != len(certs) {
+		err = fmt.Errorf("not all certificates were serialized, only %d", n)
+	}
+	return buff.Bytes(), err
+}
+
+// DeserializeCertificates takes a stream of bytes that contains a sequence of certificates in
+// ASN.1 DER form, and returns the original sequence of certificates.
+func DeserializeCertificates(payload []byte) ([]*ctx509.Certificate, error) {
+	br := bytes.NewReader(payload)
+	r := NewCertReader(br)
+	return r.ReadAll()
 }
 
 // UnfoldCerts takes a slice of certificates and chains with the same length,
