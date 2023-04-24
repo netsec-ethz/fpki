@@ -2,14 +2,41 @@ package util
 
 import (
 	"fmt"
+	"os"
 	"testing"
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/google/certificate-transparency-go/x509/pkix"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 )
+
+func TestDeserializeCertificates(t *testing.T) {
+	// Load three certificates.
+	N := 3
+	f, err := os.Open("../../tests/testdata/3-certs.pem")
+	require.NoError(t, err)
+	r := NewCertReader(f)
+	certs := make([]*ctx509.Certificate, N)
+	n, err := r.Read(certs)
+	require.NoError(t, err)
+	require.Equal(t, N, n)
+
+	// Serialize them.
+	payload, err := SerializeCertificates(certs)
+	require.NoError(t, err)
+	require.Greater(t, len(payload), 0)
+
+	// Deserialize them.
+	newCerts, err := DeserializeCertificates(payload)
+	require.NoError(t, err)
+	require.Len(t, newCerts, N)
+
+	// Compare their contents.
+	require.ElementsMatch(t, certs, newCerts)
+}
 
 func TestUnfoldCerts(t *testing.T) {
 	// `a` and `b` are leaves. `a` is root, `b` has `c`->`d` as its trust chain.
