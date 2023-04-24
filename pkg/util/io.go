@@ -89,7 +89,7 @@ func LoadCertsAndChainsFromCSV(
 			continue
 		}
 
-		cert, err := ParseCertFromCSVField(fields[CertificateColumn])
+		cert, err := parseCertFromCSVField(fields[CertificateColumn])
 		if err != nil {
 			errRet = err
 			return
@@ -101,7 +101,7 @@ func LoadCertsAndChainsFromCSV(
 		strs := strings.Split(fields[CertChainColumn], ";")
 		chain := make([]*ctx509.Certificate, len(strs))
 		for i, s := range strs {
-			chain[i], err = ParseCertFromCSVField(s)
+			chain[i], err = parseCertFromCSVField(s)
 			if err != nil {
 				errRet = err
 				return
@@ -115,9 +115,9 @@ func LoadCertsAndChainsFromCSV(
 	return
 }
 
-// ParseCertFromCSVField takes a row from a CSV encoding certs and chains in base64 and returns
+// parseCertFromCSVField takes a row from a CSV encoding certs and chains in base64 and returns
 // the CT x509 Certificate or error.
-func ParseCertFromCSVField(field string) (*ctx509.Certificate, error) {
+func parseCertFromCSVField(field string) (*ctx509.Certificate, error) {
 	// Base64 to raw bytes.
 	rawBytes, err := base64.StdEncoding.DecodeString(field)
 	if err != nil {
