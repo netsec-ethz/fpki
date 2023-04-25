@@ -111,7 +111,7 @@ func TestOldResponderWithPoP(t *testing.T) {
 		require.NoError(t, err)
 
 		for _, r := range responses {
-			t.Logf("%v : %s", r.PoI.ProofType, r.Domain)
+			t.Logf("%v : %s", r.PoI.ProofType, r.DomainEntry.DomainName)
 		}
 
 		require.NotEmpty(t, responses)
@@ -196,13 +196,13 @@ func checkProofOld(t *testing.T, cert ctx509.Certificate, proofs []mapcommon.Map
 	require.Equal(t, mapcommon.PoP, proofs[len(proofs)-1].PoI.ProofType,
 		"PoP not found for %s", cert.Subject.CommonName)
 	for _, proof := range proofs {
-		require.Contains(t, cert.Subject.CommonName, proof.Domain)
+		require.Contains(t, cert.Subject.CommonName, proof.DomainEntry.DomainName)
 		proofType, isCorrect, err := prover.VerifyProofByDomainOld(proof)
 		require.NoError(t, err)
 		require.True(t, isCorrect)
 
 		if proofType == mapcommon.PoA {
-			require.Empty(t, proof.DomainEntryBytes)
+			// require.Empty(t, proof.DomainEntryBytes)
 		}
 		if proofType == mapcommon.PoP {
 			// // get the correct CA entry

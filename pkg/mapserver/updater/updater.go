@@ -99,7 +99,7 @@ func (mapUpdater *MapUpdater) UpdateCertsLocally(ctx context.Context, certList [
 // updateCerts: update the tables and SMT (in memory) using certificates
 func (mapUpdater *MapUpdater) updateCerts(ctx context.Context, certs []*ctx509.Certificate, certChains [][]*ctx509.Certificate) error {
 
-	keyValuePairs, numOfUpdates, err := mapUpdater.UpdateDomainEntriesTableUsingCerts(ctx, certs, certChains)
+	keyValuePairs, numOfUpdates, err := mapUpdater.DeletemeUpdateDomainEntriesTableUsingCerts(ctx, certs, certChains)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingCerts | %w", err)
 	} else if numOfUpdates == 0 {
@@ -110,7 +110,7 @@ func (mapUpdater *MapUpdater) updateCerts(ctx context.Context, certs []*ctx509.C
 		return nil
 	}
 
-	keyInput, valueInput, err := KeyValuePairToSMTInput(keyValuePairs)
+	keyInput, valueInput, err := keyValuePairToSMTInput(keyValuePairs)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | keyValuePairToSMTInput | %w", err)
 	}
@@ -141,7 +141,7 @@ func (mapUpdater *MapUpdater) UpdateRPCAndPCLocally(ctx context.Context, spList 
 // updateRPCAndPC: update the tables and SMT (in memory) using PC and RPC
 func (mapUpdater *MapUpdater) updateRPCAndPC(ctx context.Context, pcList []*common.SP, rpcList []*common.RPC) error {
 	// update the domain and
-	keyValuePairs, _, err := mapUpdater.UpdateDomainEntriesTableUsingRPCAndPC(ctx, rpcList, pcList, 10)
+	keyValuePairs, _, err := mapUpdater.DeletemeUpdateDomainEntriesTableUsingRPCAndPC(ctx, rpcList, pcList, 10)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingRPCAndPC | %w", err)
 	}
@@ -150,7 +150,7 @@ func (mapUpdater *MapUpdater) updateRPCAndPC(ctx context.Context, pcList []*comm
 		return nil
 	}
 
-	keyInput, valueInput, err := KeyValuePairToSMTInput(keyValuePairs)
+	keyInput, valueInput, err := keyValuePairToSMTInput(keyValuePairs)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | keyValuePairToSMTInput | %w", err)
 	}
@@ -187,17 +187,24 @@ func (mapUpdater *MapUpdater) fetchUpdatedDomainHash(ctx context.Context) ([]com
 	return keys, nil
 }
 
-// KeyValuePairToSMTInput: key value pair -> SMT update input
-func KeyValuePairToSMTInput(keyValuePair []*db.KeyValuePair) ([][]byte, [][]byte, error) {
-	updateInput := make([]UpdateInput, 0, len(keyValuePair))
-
+// keyValuePairToSMTInput: key value pair -> SMT update input
+// deleteme: this function takes the payload and computes the hash of it. The hash is already
+// stored in the DB with the new design: change both the function RetrieveDomainEntries and
+// remove the hashing from this keyValuePairToSMTInput function.
+func keyValuePairToSMTInput(keyValuePair []*db.KeyValuePair) ([][]byte, [][]byte, error) {
+	type inputPair struct {
+		Key   [32]byte
+		Value []byte
+	}
+	updateInput := make([]inputPair, 0, len(keyValuePair))
 	for _, pair := range keyValuePair {
-		updateInput = append(updateInput, UpdateInput{
+		updateInput = append(updateInput, inputPair{
 			Key:   pair.Key,
-			Value: common.SHA256Hash(pair.Value),
+			Value: common.SHA256Hash(pair.Value), // Compute SHA256 of the payload.
 		})
 	}
 
+	// Sorting is important, as the Trie.Update function expects the keys in sorted order.
 	sort.Slice(updateInput, func(i, j int) bool {
 		return bytes.Compare(updateInput[i].Key[:], updateInput[j].Key[:]) == -1
 	})
@@ -299,7 +306,7 @@ func UpdateSMTfromDomains(
 	if err != nil {
 		return err
 	}
-	keys, values, err := KeyValuePairToSMTInput(entries)
+	keys, values, err := keyValuePairToSMTInput(entries)
 	if err != nil {
 		return err
 	}

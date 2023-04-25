@@ -124,7 +124,7 @@ func TestUpdateDomainEntriesUsingCerts(t *testing.T) {
 	require.NoError(t, err)
 
 	// serialized the domainEntry -> key-value pair
-	_, err = SerializeUpdatedDomainEntries(domainEntriesToWrite)
+	_, err = DeletemeSerializeUpdatedDomainEntries(domainEntriesToWrite)
 	require.NoError(t, err)
 }
 

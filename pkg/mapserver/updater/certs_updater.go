@@ -18,8 +18,8 @@ import (
 type uniqueSet map[common.SHA256Output]struct{}
 type uniqueStringSet map[string]struct{}
 
-// UpdateDomainEntriesTableUsingCerts: Update the domain entries using the domain certificates
-func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCerts(
+// DeletemeUpdateDomainEntriesTableUsingCerts: Update the domain entries using the domain certificates
+func (mapUpdater *MapUpdater) DeletemeUpdateDomainEntriesTableUsingCerts(
 	ctx context.Context,
 	certs []*ctx509.Certificate,
 	certChains [][]*ctx509.Certificate,
@@ -44,7 +44,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCerts(
 
 	// retrieve (possibly)affected domain entries from db
 	// It's possible that no records will be changed, because the certs are already recorded.
-	domainEntriesMap, err := mapUpdater.retrieveAffectedDomainFromDB(ctx, affectedDomainsSet)
+	domainEntriesMap, err := mapUpdater.deletemeRetrieveAffectedDomainFromDB(ctx, affectedDomainsSet)
 	if err != nil {
 		return nil, 0, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | %w", err)
 	}
@@ -67,7 +67,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCerts(
 	}
 
 	// serialized the domainEntry -> key-value pair
-	keyValuePairs, err := SerializeUpdatedDomainEntries(domainEntriesToWrite)
+	keyValuePairs, err := DeletemeSerializeUpdatedDomainEntries(domainEntriesToWrite)
 	if err != nil {
 		return nil, 0, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | serializeUpdatedDomainEntries | %w", err)
 	}
@@ -194,14 +194,14 @@ func GetDomainEntriesToWrite(updatedDomain uniqueSet,
 	return result, nil
 }
 
-// SerializeUpdatedDomainEntries: serialize the updated domains
-func SerializeUpdatedDomainEntries(domains map[common.SHA256Output]*mcommon.DomainEntry) (
+// DeletemeSerializeUpdatedDomainEntries: serialize the updated domains
+func DeletemeSerializeUpdatedDomainEntries(domains map[common.SHA256Output]*mcommon.DomainEntry) (
 	[]*db.KeyValuePair, error) {
 
 	result := make([]*db.KeyValuePair, 0, len(domains))
 
 	for domainNameHash, domainEntry := range domains {
-		domainBytes, err := mcommon.SerializeDomainEntry(domainEntry)
+		domainBytes, err := mcommon.DeletemeSerializeDomainEntry(domainEntry)
 		if err != nil {
 			return nil, fmt.Errorf("serializeUpdatedDomainEntries | SerializedDomainEntry | %w", err)
 		}

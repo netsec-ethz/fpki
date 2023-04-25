@@ -61,11 +61,17 @@ func (d *MockDB) RetrieveTreeNode(ctx context.Context, id common.SHA256Output) (
 	return d.TreeTable[id], nil
 }
 
-func (d *MockDB) RetrieveDomainEntry(ctx context.Context, key common.SHA256Output) (
+func (d *MockDB) RetrieveDomainCertificatesPayload(ctx context.Context, key common.SHA256Output) (
 	*common.SHA256Output, []byte, error) {
 
 	id := common.SHA256Hash32Bytes(d.DomainEntriesTable[key])
 	return &id, d.DomainEntriesTable[key], nil
+}
+
+func (d *MockDB) RetrieveDomainPoliciesPayload(ctx context.Context, id common.SHA256Output) (
+	payloadID *common.SHA256Output, payload []byte, err error) {
+
+	return nil, nil, nil
 }
 
 func (d *MockDB) RetrieveKeyValuePairTreeStruct(ctx context.Context, id []common.SHA256Output,

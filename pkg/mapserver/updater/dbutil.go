@@ -17,8 +17,8 @@ type dbResult struct {
 	err   error
 }
 
-// retrieveAffectedDomainFromDB: get affected domain entries from db
-func (mapUpdater *MapUpdater) retrieveAffectedDomainFromDB(ctx context.Context,
+// deletemeRetrieveAffectedDomainFromDB: get affected domain entries from db
+func (mapUpdater *MapUpdater) deletemeRetrieveAffectedDomainFromDB(ctx context.Context,
 	affectedDomainsSet uniqueSet) (map[common.SHA256Output]*mapCommon.DomainEntry, error) {
 
 	// XXX(juagargi) review why passing a set (we need to convert it to a slice)
@@ -65,7 +65,7 @@ func (mapUpdater *MapUpdater) retrieveAffectedDomainFromDB(ctx context.Context,
 
 	//fmt.Println(len(domainEntries))
 	// parse the key-value pair -> domain map
-	domainEntriesMap, err := parseDomainBytes(domainEntries)
+	domainEntriesMap, err := deletemeParseDomainBytes(domainEntries)
 	if err != nil {
 		return nil, fmt.Errorf("retrieveAffectedDomainFromDB | %w", err)
 	}
@@ -96,7 +96,7 @@ type parserResult struct {
 }
 
 // domain bytes -> domain entries
-func parseDomainBytes(domainEntries []*db.KeyValuePair) (
+func deletemeParseDomainBytes(domainEntries []*db.KeyValuePair) (
 	map[common.SHA256Output]*mapCommon.DomainEntry, error) {
 	/*
 		unique := make(map[[32]byte]byte)
@@ -125,7 +125,7 @@ func parseDomainBytes(domainEntries []*db.KeyValuePair) (
 		entries := []*mapCommon.DomainEntry{}
 		keys := [][32]byte{}
 		for _, entry := range domainBytes {
-			newPair, err := mapCommon.DeserializeDomainEntry(entry.Value)
+			newPair, err := mapCommon.DeletemeDeserializeDomainEntry(entry.Value)
 			if err != nil {
 				resultChan <- parserResult{err: err}
 			}
