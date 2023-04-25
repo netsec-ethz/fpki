@@ -56,7 +56,7 @@ func (mapUpdater *MapUpdater) updateCertsReturnTime(ctx context.Context, certs [
 		return nil, nil, []*db.KeyValuePair{}, []*db.KeyValuePair{}, 0
 	}
 
-	_, _, err = KeyValuePairToSMTInput(keyValuePairs)
+	_, _, err = keyValuePairToSMTInput(keyValuePairs)
 	if err != nil {
 		return nil, fmt.Errorf("CollectCerts | keyValuePairToSMTInput | %w", err), nil, nil, 0
 	}
@@ -137,7 +137,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingCertsReturnTime(ctx c
 	//fmt.Println(" domain entries size:                                                          ", readSize/1024/1024, " MB")
 
 	// serialized the domainEntry -> key-value pair
-	keyValuePairs, err := SerializeUpdatedDomainEntries(domainEntriesToWrite)
+	keyValuePairs, err := DeletemeSerializeUpdatedDomainEntries(domainEntriesToWrite)
 	if err != nil {
 		return nil, 0, nil, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | serializeUpdatedDomainEntries | %w", err), nil, nil
 	}
@@ -235,7 +235,7 @@ func (mapUpdater *MapUpdater) retrieveAffectedDomainFromDBReturnReadDomains(ctx 
 
 	//fmt.Println(len(domainEntries))
 	// parse the key-value pair -> domain map
-	domainEntriesMap, err := parseDomainBytes(domainEntries)
+	domainEntriesMap, err := deletemeParseDomainBytes(domainEntries)
 	if err != nil {
 		return nil, nil, fmt.Errorf("retrieveAffectedDomainFromDB | %w", err)
 	}

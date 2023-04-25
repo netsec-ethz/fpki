@@ -34,6 +34,16 @@ type Conn interface {
 	// domain, including e.g. the trust chain.
 	ReplaceDirtyDomainPayloads(ctx context.Context, firstRow, lastRow int) error
 
+	// RetrieveDomainCertificatesPayload retrieves the domain's certificate payload ID and the payload
+	// itself, given the domain ID.
+	RetrieveDomainCertificatesPayload(ctx context.Context, id common.SHA256Output) (
+		certPayloadID *common.SHA256Output, certPayload []byte, err error)
+
+	// RetrieveDomainPoliciesPayload returns the policy related payload for a given domain.
+	// This includes the RPCs, SPs, etc.
+	RetrieveDomainPoliciesPayload(ctx context.Context, id common.SHA256Output) (
+		payloadID *common.SHA256Output, payload []byte, err error)
+
 	//////////////////////////////////////////////////////////////////
 	// check if the functions below are needed after the new design //
 	//////////////////////////////////////////////////////////////////
@@ -66,11 +76,6 @@ type Conn interface {
 	// ************************************************************
 	//             Function for DomainEntries table
 	// ************************************************************
-
-	// RetrieveDomainEntry retrieves the domain's certificate payload ID and the payload
-	// itself, given the domain ID.
-	RetrieveDomainEntry(ctx context.Context, id common.SHA256Output) (
-		certPayloadID *common.SHA256Output, certPayload []byte, err error)
 
 	// RetrieveDomainEntries: Retrieve a list of domain entries table
 	RetrieveDomainEntries(ctx context.Context, id []*common.SHA256Output) ([]*KeyValuePair, error)

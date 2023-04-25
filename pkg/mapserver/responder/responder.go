@@ -60,19 +60,30 @@ func (r *MapResponder) GetProof(ctx context.Context, domainName string,
 		}
 
 		// If it is a proof of presence, obtain the payload.
-		var payloadID *common.SHA256Output
-		var payload []byte
+		de := &mapCommon.DomainEntry{
+			DomainName: domainPart,
+			DomainID:   &domainPartID,
+		}
 		proofType := mapCommon.PoA
 		if isPoP {
 			proofType = mapCommon.PoP
-			payloadID, payload, err = r.conn.RetrieveDomainEntry(ctx, domainPartID)
+			de.DomainCertsPayloadID, de.DomainCertsPayload, err =
+				r.conn.RetrieveDomainCertificatesPayload(ctx, domainPartID)
 			if err != nil {
-				return nil, fmt.Errorf("error obtaining payload for %s: %w", domainPart, err)
+				return nil, fmt.Errorf("error obtaining x509 payload for %s: %w", domainPart, err)
 			}
+			de.DomainPoliciesPayloadID, de.DomainPoliciesPayload, err =
+				r.conn.RetrieveDomainPoliciesPayload(ctx, domainPartID)
+			if err != nil {
+				return nil, fmt.Errorf("error obtaining policies payload for %s: %w",
+					domainPart, err)
+			}
+			// deleteme change this to sha(certIDs || polIDs)
+			de.DomainValue = de.DomainCertsPayloadID
 		}
 
 		proofList[i] = &mapCommon.MapServerResponse{
-			Domain: domainPart,
+			DomainEntry: de,
 			PoI: mapCommon.PoI{
 				ProofType:  proofType,
 				Proof:      proof,
@@ -80,8 +91,6 @@ func (r *MapResponder) GetProof(ctx context.Context, domainName string,
 				ProofKey:   proofKey,
 				ProofValue: proofValue,
 			},
-			DomainEntryID:    payloadID,
-			DomainEntryBytes: payload,
 			// TreeHeadSig: , TODO(juagargi)
 		}
 	}

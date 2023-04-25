@@ -274,14 +274,14 @@ func testDomainEntriesTable() {
 
 	// *****************************************************************
 	//              check if value is correctly inserted
-	//              RetrieveDomainEntry()
+	//              RetrieveDomainCertificatesPayload()
 	// *****************************************************************
 	keys := getKeyPtrs(1511, 4555)
 	prevKeySize := len(keys)
 	result := make([]*db.KeyValuePair, 0, len(keys))
 
 	for _, key := range keys {
-		_, value, err := conn.RetrieveDomainEntry(ctx, *key)
+		_, value, err := conn.RetrieveDomainCertificatesPayload(ctx, *key)
 		if err != nil && err != sql.ErrNoRows {
 			panic(err)
 		}
@@ -303,7 +303,7 @@ func testDomainEntriesTable() {
 	result = make([]*db.KeyValuePair, 0, len(keys))
 
 	for _, key := range keys {
-		_, value, err := conn.RetrieveDomainEntry(ctx, *key)
+		_, value, err := conn.RetrieveDomainCertificatesPayload(ctx, *key)
 		if err != nil && err != sql.ErrNoRows {
 			panic(err)
 		}
@@ -346,7 +346,7 @@ func testDomainEntriesTable() {
 	result = make([]*db.KeyValuePair, 0, len(keys))
 
 	for _, key := range keys {
-		_, value, err := conn.RetrieveDomainEntry(ctx, *key)
+		_, value, err := conn.RetrieveDomainCertificatesPayload(ctx, *key)
 		if err != nil && err != sql.ErrNoRows {
 			panic(err)
 		}

@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
-	"github.com/netsec-ethz/fpki/pkg/db"
 )
 
 // used during main thread and worker thread
@@ -39,91 +38,6 @@ func (c *mysqlDB) RetrieveTreeNodeOLD(ctx context.Context, key common.SHA256Outp
 		return nil, fmt.Errorf("RetrieveTreeNode | %w", err)
 	}
 	return value, err
-}
-
-// RetrieveDomainEntry retrieves the domain's certificate payload ID and the payload
-// itself, given the domain ID.
-func (c *mysqlDB) RetrieveDomainEntry(ctx context.Context, domainID common.SHA256Output,
-) (*common.SHA256Output, []byte, error) {
-
-	str := "SELECT cert_payload_id, cert_payload FROM domain_payloads WHERE domain_id = ?"
-	var payloadID, payload []byte
-	err := c.db.QueryRowContext(ctx, str, domainID[:]).Scan(&payloadID, &payload)
-	if err != nil && err != sql.ErrNoRows {
-		return nil, nil, fmt.Errorf("RetrieveDomainEntry | %w", err)
-	}
-	return (*common.SHA256Output)(payloadID),payload,nil
-}
-
-// RetrieveDomainEntries: Retrieve a list of key-value pairs from domain entries table
-// No sql.ErrNoRows will be thrown, if some records does not exist. Check the length of result
-func (c *mysqlDB) RetrieveDomainEntries(ctx context.Context, keys []*common.SHA256Output) (
-	[]*db.KeyValuePair, error) {
-
-	return c.retrieveDomainEntries(ctx, keys)
-}
-
-func (c *mysqlDB) retrieveDomainEntries(ctx context.Context, domainIDs []*common.SHA256Output,
-) ([]*db.KeyValuePair, error) {
-
-	if len(domainIDs) == 0 {
-		return nil, nil
-	}
-	str := "SELECT domain_id,cert_payload FROM domain_payloads WHERE domain_id IN " +
-		repeatStmt(1, len(domainIDs))
-	params := make([]interface{}, len(domainIDs))
-	for i, id := range domainIDs {
-		params[i] = (*id)[:]
-	}
-	rows, err := c.db.QueryContext(ctx, str, params...)
-	if err != nil {
-		fmt.Printf("Query is: '%s'\n", str)
-		return nil, fmt.Errorf("error obtaining payloads for domains: %w", err)
-	}
-	pairs := make([]*db.KeyValuePair, 0, len(domainIDs))
-	for rows.Next() {
-		var id, payload []byte
-		err := rows.Scan(&id, &payload)
-		if err != nil {
-			return nil, fmt.Errorf("error scanning domain ID and its payload")
-		}
-		pairs = append(pairs, &db.KeyValuePair{
-			Key:   *(*common.SHA256Output)(id),
-			Value: payload,
-		})
-	}
-	return pairs, nil
-}
-
-// used for retrieving key value pair
-func (c *mysqlDB) retrieveDomainEntriesOld(ctx context.Context, keys []*common.SHA256Output) (
-	[]*db.KeyValuePair, error) {
-	str := "SELECT `key`, `value` FROM domainEntries WHERE `key` IN " + repeatStmt(1, len(keys))
-	args := make([]interface{}, len(keys))
-	for i, k := range keys {
-		k := k         // XXX(juagargi): create a copy
-		args[i] = k[:] // assign the slice covering the copy (the original k changes !!)
-	}
-	rows, err := c.db.QueryContext(ctx, str, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var k, v []byte
-	domainEntries := make([]*db.KeyValuePair, 0, len(keys))
-	for rows.Next() {
-		if err = rows.Scan(&k, &v); err != nil {
-			return nil, err
-		}
-		domainEntries = append(domainEntries, &db.KeyValuePair{
-			Key:   *(*common.SHA256Output)(k),
-			Value: v,
-		})
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return domainEntries, nil
 }
 
 // ********************************************************************

@@ -16,8 +16,8 @@ type newUpdates struct {
 	pc  []*projectCommon.SP
 }
 
-// UpdateDomainEntriesTableUsingRPCAndPC: update the domain entries table, given RPC and PC
-func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingRPCAndPC(ctx context.Context,
+// DeletemeUpdateDomainEntriesTableUsingRPCAndPC: update the domain entries table, given RPC and PC
+func (mapUpdater *MapUpdater) DeletemeUpdateDomainEntriesTableUsingRPCAndPC(ctx context.Context,
 	rpc []*projectCommon.RPC, pc []*projectCommon.SP, readerNum int) (
 	[]*db.KeyValuePair, int, error) {
 
@@ -32,7 +32,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingRPCAndPC(ctx context.
 
 	// retrieve (possibly)affected domain entries from db
 	// It's possible that no records will be changed, because the certs are already recorded.
-	domainEntriesMap, err := mapUpdater.retrieveAffectedDomainFromDB(ctx, affectedDomainsMap)
+	domainEntriesMap, err := mapUpdater.deletemeRetrieveAffectedDomainFromDB(ctx, affectedDomainsMap)
 	if err != nil {
 		return nil, 0, fmt.Errorf("UpdateDomainEntriesTableUsingRPCAndPC | retrieveAffectedDomainFromDB | %w", err)
 	}
@@ -50,7 +50,7 @@ func (mapUpdater *MapUpdater) UpdateDomainEntriesTableUsingRPCAndPC(ctx context.
 	}
 
 	// serialize the domainEntry -> key-value pair
-	keyValuePairs, err := SerializeUpdatedDomainEntries(domainEntriesToWrite)
+	keyValuePairs, err := DeletemeSerializeUpdatedDomainEntries(domainEntriesToWrite)
 	if err != nil {
 		return nil, 0, fmt.Errorf("UpdateDomainEntriesTableUsingRPCAndPC | serializeUpdatedDomainEntries | %w", err)
 	}

@@ -12,17 +12,18 @@ import (
 // via a stored procedure during ingestion, and retrieved from DB by the responder.
 // The domain is identified by the SHA256 of the DomainName in the DB.
 type DomainEntry struct {
-	DomainName string
-	DomainID   []byte // This is the SHA256 of the domain name
+	DomainName  string
+	DomainID    *common.SHA256Output // This is the SHA256 of the domain name
+	DomainValue *common.SHA256Output // = SHA256 ( certsPayloadID || polsPayloadID )
 
-	RPCs        []common.RPC
-	PCs         []common.SP
-	Revocations []common.PCRevocation
-	DomainCerts []byte // Includes leafs and trust chain certificates, raw x509 DER.1.
+	DomainCertsPayloadID    *common.SHA256Output
+	DomainCertsPayload      []byte // Includes x509 leafs and trust chains, raw ASN.1 DER.
+	DomainPoliciesPayloadID *common.SHA256Output
+	DomainPoliciesPayload   []byte // Includes RPCs, SPs, etc. JSON.
 }
 
-// SerializeDomainEntry uses json to serialize.
-func SerializeDomainEntry(domainEntry *DomainEntry) ([]byte, error) {
+// DeletemeSerializeDomainEntry uses json to serialize.
+func DeletemeSerializeDomainEntry(domainEntry *DomainEntry) ([]byte, error) {
 	result, err := json.Marshal(domainEntry)
 	if err != nil {
 		return nil, fmt.Errorf("SerializedDomainEntry | Marshal | %w", err)
@@ -30,8 +31,8 @@ func SerializeDomainEntry(domainEntry *DomainEntry) ([]byte, error) {
 	return result, nil
 }
 
-// DeserializeDomainEntry converts json into a DomainEntry.
-func DeserializeDomainEntry(input []byte) (*DomainEntry, error) {
+// DeletemeDeserializeDomainEntry converts json into a DomainEntry.
+func DeletemeDeserializeDomainEntry(input []byte) (*DomainEntry, error) {
 	result := &DomainEntry{}
 	err := json.Unmarshal(input, result)
 	if err != nil {

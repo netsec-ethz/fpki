@@ -73,11 +73,10 @@ func (s *Trie) Close() error {
 	return s.db.Store.Close()
 }
 
-// Update adds and deletes a sorted list of keys and their values to the trie
+// Update adds and deletes a sorted list of keys and their values to the trie.
 // Adding and deleting can be simultaneous.
 // To delete, set the value to DefaultLeaf.
-// If Update is called multiple times, only the state after the last update
-// is committed.
+// If Update is called multiple times, only the state after the last update is committed.
 func (s *Trie) Update(ctx context.Context, keys, values [][]byte) ([]byte, error) {
 	if len(keys) != len(values) {
 		return nil, fmt.Errorf("key value size does not match")

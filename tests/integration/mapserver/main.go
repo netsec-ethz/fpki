@@ -166,7 +166,7 @@ func getSomeDataPointsToTest(ctx context.Context, config *db.Configuration) []Da
 	for i, name := range names {
 		data[i].Name = name
 		ID := common.SHA256Hash32Bytes([]byte(name))
-		payload, err := conn.RetrieveDomainEntry(ctx, ID)
+		_, payload, err := conn.RetrieveDomainCertificatesPayload(ctx, ID)
 		panicIfError(err)
 		// payload contains several certificates.
 		data[i].Certs, err = ctx509.ParseCertificates(payload)

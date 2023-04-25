@@ -31,10 +31,10 @@ func TestProofWithPoP(t *testing.T) {
 	// Create a new DB with that name. On exiting the function, it will be removed.
 	err := tests.CreateTestDB(ctx, dbName)
 	require.NoError(t, err)
-	defer func() {
-		err = tests.RemoveTestDB(ctx, config)
-		require.NoError(t, err)
-	}()
+	// defer func() {
+	// 	err = tests.RemoveTestDB(ctx, config)
+	// 	require.NoError(t, err)
+	// }()
 
 	// Connect to the DB.
 	conn, err := mysql.Connect(config)
@@ -113,18 +113,17 @@ func checkProof(t *testing.T, cert *ctx509.Certificate, proofs []*mapcommon.MapS
 	require.Equal(t, mapcommon.PoP, proofs[len(proofs)-1].PoI.ProofType,
 		"PoP not found for \"%s\"", domain.CertSubjectName(cert))
 	for _, proof := range proofs {
-		includesDomainName(t, proof.Domain, cert)
+		includesDomainName(t, proof.DomainEntry.DomainName, cert)
 		proofType, isCorrect, err := prover.VerifyProofByDomain(proof)
 		require.NoError(t, err)
 		require.True(t, isCorrect)
 
 		if proofType == mapcommon.PoA {
-			require.Empty(t, proof.DomainEntryBytes)
+			require.Empty(t, proof.DomainEntry.DomainCertsPayload)
+			require.Empty(t, proof.DomainEntry.DomainPoliciesPayload)
 		}
 		if proofType == mapcommon.PoP {
-			domainEntry, err := mapcommon.DeserializeDomainEntry(proof.DomainEntryBytes)
-			require.NoError(t, err)
-			certs, err := util.DeserializeCertificates(domainEntry.DomainCerts)
+			certs, err := util.DeserializeCertificates(proof.DomainEntry.DomainCertsPayload)
 			require.NoError(t, err)
 			// The certificate must be present.
 			for _, c := range certs {

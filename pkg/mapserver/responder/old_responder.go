@@ -9,7 +9,6 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
-	"github.com/netsec-ethz/fpki/pkg/domain"
 	mapCommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 )
@@ -120,105 +119,113 @@ func (mapResponder *OldMapResponder) Close() error {
 func (r *OldMapResponder) getProof(ctx context.Context, domainName string) (
 	[]mapCommon.MapServerResponse, error) {
 
-	// check domain name first
-	domainList, err := domain.ParseDomainName(domainName)
-	if err != nil {
-		if err == domain.ErrInvalidDomainName {
-			return nil, err
-		}
-		return nil, fmt.Errorf("GetDomainProof | parseDomainName | %w", err)
-	}
-	proofsResult := make([]mapCommon.MapServerResponse, 0, len(domainList))
+	return nil, nil
+	// 	// check domain name first
+	// 	domainList, err := domain.ParseDomainName(domainName)
+	// 	if err != nil {
+	// 		if err == domain.ErrInvalidDomainName {
+	// 			return nil, err
+	// 		}
+	// 		return nil, fmt.Errorf("GetDomainProof | parseDomainName | %w", err)
+	// 	}
+	// 	proofsResult := make([]mapCommon.MapServerResponse, 0, len(domainList))
 
-	for _, domain := range domainList {
-		domainHash := common.SHA256Hash32Bytes([]byte(domain))
+	// 	for _, domain := range domainList {
+	// 		domainHash := common.SHA256Hash32Bytes([]byte(domain))
 
-		proof, isPoP, proofKey, ProofValue, err := r.smt.MerkleProof(ctx, domainHash[:])
-		if err != nil {
-			return nil, fmt.Errorf("getDomainProof | MerkleProof | %w", err)
-		}
+	// 		proof, isPoP, proofKey, ProofValue, err := r.smt.MerkleProof(ctx, domainHash[:])
+	// 		if err != nil {
+	// 			return nil, fmt.Errorf("getDomainProof | MerkleProof | %w", err)
+	// 		}
 
-		var proofType mapCommon.ProofType
-		var payloadID *common.SHA256Output
-		domainBytes := []byte{}
-		// If it is PoP, query the domain entry. If it is PoA, directly return the PoA
-		if isPoP {
-			proofType = mapCommon.PoP
-			payloadID, domainBytes, err = r.conn.RetrieveDomainEntry(ctx, domainHash)
-			if err != nil {
-				return nil, fmt.Errorf("GetDomainProof | %w", err)
-			}
-		} else {
-			proofType = mapCommon.PoA
-		}
+	// 		var proofType mapCommon.ProofType
+	// 		var payloadID *common.SHA256Output
+	// 		domainBytes := []byte{}
+	// 		// If it is PoP, query the domain entry. If it is PoA, directly return the PoA
+	// 		if isPoP {
+	// 			proofType = mapCommon.PoP
+	// 			payloadID, domainBytes, err = r.conn.RetrieveDomainEntry(ctx, domainHash)
+	// 			if err != nil {
+	// 				return nil, fmt.Errorf("GetDomainProof | %w", err)
+	// 			}
+	// 		} else {
+	// 			proofType = mapCommon.PoA
+	// 		}
 
-		proofsResult = append(proofsResult, mapCommon.MapServerResponse{
-			Domain: domain,
-			PoI: mapCommon.PoI{
-				Proof:      proof,
-				Root:       r.smt.Root,
-				ProofType:  proofType,
-				ProofKey:   proofKey,
-				ProofValue: ProofValue},
-			DomainEntryID:    payloadID,
-			DomainEntryBytes: domainBytes,
-			TreeHeadSig:      r.signedTreeHead,
-		})
-	}
-	return proofsResult, nil
+	//		proofsResult = append(proofsResult, mapCommon.MapServerResponse{
+	//			Domain: domain,
+	//			PoI: mapCommon.PoI{
+	//				Proof:      proof,
+	//				Root:       r.smt.Root,
+	//				ProofType:  proofType,
+	//				ProofKey:   proofKey,
+	//				ProofValue: ProofValue},
+	//			DomainEntryID:    payloadID,
+	//			DomainEntryBytes: domainBytes,
+	//			TreeHeadSig:      r.signedTreeHead,
+	//		})
+	//	}
+	//
+	// return proofsResult, nil
 }
 
-func (mapResponder *OldMapResponder) GetDomainProofs(ctx context.Context, domainNames []string) (map[string][]*mapCommon.MapServerResponse, error) {
-	domainResultMap, domainProofMap, err := getMapping(domainNames, mapResponder.GetSignTreeHead())
-	if err != nil {
-		return nil, fmt.Errorf("GetDomainProofs | getMapping | %w", err)
-	}
+func (mapResponder *OldMapResponder) GetDomainProofs(ctx context.Context, domainNames []string) (
+	map[string][]*mapCommon.MapServerResponse, error) {
 
-	domainToFetch, err := mapResponder.getProofFromSMT(ctx, domainProofMap)
-	if err != nil {
-		return nil, fmt.Errorf("GetDomainProofs | getProofFromSMT | %w", err)
-	}
+	return nil, nil
+	// domainResultMap, domainProofMap, err := getMapping(domainNames, mapResponder.GetSignTreeHead())
+	// if err != nil {
+	// 	return nil, fmt.Errorf("GetDomainProofs | getMapping | %w", err)
+	// }
 
-	result, err := mapResponder.conn.RetrieveDomainEntries(ctx, domainToFetch)
-	if err != nil {
-		return nil, fmt.Errorf("GetDomainProofs | RetrieveKeyValuePairMultiThread | %w", err)
-	}
-	for _, keyValuePair := range result {
-		domainProofMap[keyValuePair.Key].DomainEntryBytes = keyValuePair.Value
-	}
+	// domainToFetch, err := mapResponder.getProofFromSMT(ctx, domainProofMap)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("GetDomainProofs | getProofFromSMT | %w", err)
+	// }
 
-	return domainResultMap, nil
+	// result, err := mapResponder.conn.RetrieveDomainEntries(ctx, domainToFetch)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("GetDomainProofs | RetrieveKeyValuePairMultiThread | %w", err)
+	// }
+	// for _, keyValuePair := range result {
+	// 	domainProofMap[keyValuePair.Key].DomainEntryBytes = keyValuePair.Value
+	// }
+
+	// return domainResultMap, nil
 }
 
-func getMapping(domainNames []string, signedTreeHead []byte) (map[string][]*mapCommon.MapServerResponse, map[common.SHA256Output]*mapCommon.MapServerResponse, error) {
-	domainResultMap := make(map[string][]*mapCommon.MapServerResponse)
-	domainProofMap := make(map[common.SHA256Output]*mapCommon.MapServerResponse)
+func getMapping(domainNames []string, signedTreeHead []byte) (
+	map[string][]*mapCommon.MapServerResponse, map[common.SHA256Output]*mapCommon.MapServerResponse, error) {
 
-	for _, domainName := range domainNames {
-		_, ok := domainResultMap[domainName]
-		if !ok {
-			// list of proofs for this domain
-			resultsList := []*mapCommon.MapServerResponse{}
-			subDomainNames, err := domain.ParseDomainName(domainName)
+	return nil, nil, nil
+	// domainResultMap := make(map[string][]*mapCommon.MapServerResponse)
+	// domainProofMap := make(map[common.SHA256Output]*mapCommon.MapServerResponse)
 
-			if err != nil {
-				return nil, nil, fmt.Errorf("getMapping | parseDomainName | %w", err)
-			}
-			for _, subDomainName := range subDomainNames {
-				var domainHash32Bytes common.SHA256Output
-				copy(domainHash32Bytes[:], common.SHA256Hash([]byte(subDomainName)))
-				subDomainResult, ok := domainProofMap[domainHash32Bytes]
-				if ok {
-					resultsList = append(resultsList, subDomainResult)
-				} else {
-					domainProofMap[domainHash32Bytes] = &mapCommon.MapServerResponse{Domain: subDomainName, TreeHeadSig: signedTreeHead}
-					resultsList = append(resultsList, domainProofMap[domainHash32Bytes])
-				}
-			}
-			domainResultMap[domainName] = resultsList
-		}
-	}
-	return domainResultMap, domainProofMap, nil
+	// for _, domainName := range domainNames {
+	// 	_, ok := domainResultMap[domainName]
+	// 	if !ok {
+	// 		// list of proofs for this domain
+	// 		resultsList := []*mapCommon.MapServerResponse{}
+	// 		subDomainNames, err := domain.ParseDomainName(domainName)
+
+	// 		if err != nil {
+	// 			return nil, nil, fmt.Errorf("getMapping | parseDomainName | %w", err)
+	// 		}
+	// 		for _, subDomainName := range subDomainNames {
+	// 			var domainHash32Bytes common.SHA256Output
+	// 			copy(domainHash32Bytes[:], common.SHA256Hash([]byte(subDomainName)))
+	// 			subDomainResult, ok := domainProofMap[domainHash32Bytes]
+	// 			if ok {
+	// 				resultsList = append(resultsList, subDomainResult)
+	// 			} else {
+	// 				domainProofMap[domainHash32Bytes] = &mapCommon.MapServerResponse{Domain: subDomainName, TreeHeadSig: signedTreeHead}
+	// 				resultsList = append(resultsList, domainProofMap[domainHash32Bytes])
+	// 			}
+	// 		}
+	// 		domainResultMap[domainName] = resultsList
+	// 	}
+	// }
+	// return domainResultMap, domainProofMap, nil
 }
 
 func (mapResponder *OldMapResponder) getProofFromSMT(ctx context.Context,

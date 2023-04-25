@@ -18,7 +18,7 @@ func TestSerializeDomainEntry(t *testing.T) {
 
 	testDomainEntry := &DomainEntry{
 		DomainName: "test.com",
-		DomainID:   common.SHA256Hash([]byte("test.com")),
+		DomainID:   common.SHA256Hash32Bytes([]byte("test.com")),
 		RPCs: []common.RPC{
 			{
 				PublicKey:          []byte{1, 4, 7, 3, 2},
@@ -54,11 +54,11 @@ func TestSerializeDomainEntry(t *testing.T) {
 		DomainCerts: cert.Raw,
 	}
 
-	domainBytes, err := SerializeDomainEntry(testDomainEntry)
+	domainBytes, err := DeletemeSerializeDomainEntry(testDomainEntry)
 	require.NoError(t, err, "SerializedDomainEntry error")
 
 	fmt.Println(string(domainBytes))
-	testDomainEntryDeserialized, err := DeserializeDomainEntry(domainBytes)
+	testDomainEntryDeserialized, err := DeletemeDeserializeDomainEntry(domainBytes)
 	require.NoError(t, err, "DeserializeDomainEntry error")
 
 	require.True(t, cmp.Equal(testDomainEntry, testDomainEntryDeserialized))

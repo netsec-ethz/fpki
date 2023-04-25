@@ -27,7 +27,7 @@ func (u *UpdaterTestAdapter) UpdateCerts(ctx context.Context, certs []*ctx509.Ce
 func (u *UpdaterTestAdapter) UpdateDomainEntriesUsingCerts(ctx context.Context,
 	certs []*ctx509.Certificate, certChains [][]*ctx509.Certificate, readerNum int) ([]*db.KeyValuePair, int, error) {
 
-	return (*MapUpdater)(u).UpdateDomainEntriesTableUsingCerts(ctx, certs, certChains)
+	return (*MapUpdater)(u).DeletemeUpdateDomainEntriesTableUsingCerts(ctx, certs, certChains)
 }
 
 func (a *UpdaterTestAdapter) FetchUpdatedDomainHash(ctx context.Context) (
@@ -38,7 +38,7 @@ func (a *UpdaterTestAdapter) FetchUpdatedDomainHash(ctx context.Context) (
 func (a *UpdaterTestAdapter) KeyValuePairToSMTInput(keyValuePair []*db.KeyValuePair) (
 	[][]byte, [][]byte, error) {
 
-	return KeyValuePairToSMTInput(keyValuePair)
+	return keyValuePairToSMTInput(keyValuePair)
 }
 
 func (a *UpdaterTestAdapter) SMT() *trie.Trie {
