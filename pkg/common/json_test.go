@@ -178,6 +178,19 @@ func TestToFromJSON(t *testing.T) {
 				Metadata:       generateRandomBytes(),
 			},
 		},
+		"slice_of_SP": {
+			data: []any{
+				randomSPT(),
+				randomSPT(),
+			},
+		},
+		"slice_of_many_things": {
+			data: []any{
+				randomSPT(),
+				randomRPC(),
+				randomSP(),
+			},
+		},
 	}
 
 	for name, tc := range cases {
