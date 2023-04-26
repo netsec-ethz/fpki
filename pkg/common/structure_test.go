@@ -1,6 +1,7 @@
 package common
 
 import (
+	"math/rand"
 	"os"
 	"path"
 	"reflect"
@@ -166,35 +167,10 @@ func TestSingleObject(t *testing.T) {
 			},
 		},
 		"rpc": {
-			data: &RPC{
-				SerialNumber:       1729381,
-				Subject:            "bad domain",
-				Version:            1729381,
-				PublicKeyAlgorithm: RSA,
-				PublicKey:          generateRandomBytes(),
-				NotBefore:          nowWithoutMonotonic(),
-				NotAfter:           nowWithoutMonotonic(),
-				CAName:             "bad domain",
-				SignatureAlgorithm: SHA256,
-				TimeStamp:          nowWithoutMonotonic(),
-				PRCSignature:       generateRandomBytes(),
-				CASignature:        generateRandomBytes(),
-				SPTs:               []SPT{*randomSPT(), *randomSPT()},
-			},
+			data: randomRPC(),
 		},
 		"spt": {
-			data: &SPT{
-				Version:         11,
-				Subject:         "hihihihihhi",
-				CAName:          "this is the CA name",
-				LogID:           42,
-				CertType:        0x11,
-				AddedTS:         time.Unix(1234, 0),
-				STH:             generateRandomBytes(),
-				PoI:             generateRandomBytes(),
-				STHSerialNumber: 131678,
-				Signature:       generateRandomBytes(),
-			},
+			data: randomSPT(),
 		},
 		"sprt": {
 			data: &SPRT{
@@ -214,19 +190,7 @@ func TestSingleObject(t *testing.T) {
 			},
 		},
 		"sp": {
-			data: &SP{
-				Policies: Policy{
-					TrustedCA:         []string{"one CA", "another CA"},
-					AllowedSubdomains: []string{"sub1.com", "sub2.com"},
-				},
-				TimeStamp:         nowWithoutMonotonic(),
-				Subject:           "sp subject",
-				CAName:            "one CA",
-				SerialNumber:      1234,
-				CASignature:       generateRandomBytes(),
-				RootCertSignature: generateRandomBytes(),
-				SPTs:              []SPT{*randomSPT(), *randomSPT(), *randomSPT()},
-			},
+			data: randomSP(),
 		},
 		"psr": {
 			data: &PSR{
@@ -258,6 +222,43 @@ func TestSingleObject(t *testing.T) {
 			gotType := reflect.TypeOf(o)
 			require.Equal(t, expectedType, gotType)
 		})
+	}
+}
+
+func randomRPC() *RPC {
+	return &RPC{
+		SerialNumber:       1729381,
+		Subject:            "bad domain",
+		Version:            1729381,
+		PublicKeyAlgorithm: RSA,
+		PublicKey:          generateRandomBytes(),
+		NotBefore:          nowWithoutMonotonic(),
+		NotAfter:           nowWithoutMonotonic(),
+		CAName:             "bad domain",
+		SignatureAlgorithm: SHA256,
+		TimeStamp:          nowWithoutMonotonic(),
+		PRCSignature:       generateRandomBytes(),
+		CASignature:        generateRandomBytes(),
+		SPTs:               []SPT{*randomSPT(), *randomSPT()},
+	}
+}
+
+func randomSP() *SP {
+	return &SP{
+		Policies: Policy{
+			TrustedCA: []string{"ca1", "ca2"},
+		},
+		TimeStamp:         nowWithoutMonotonic(),
+		Subject:           "domainname.com",
+		CAName:            "ca1",
+		SerialNumber:      rand.Int(),
+		CASignature:       generateRandomBytes(),
+		RootCertSignature: generateRandomBytes(),
+		SPTs: []SPT{
+			*randomSPT(),
+			*randomSPT(),
+			*randomSPT(),
+		},
 	}
 }
 

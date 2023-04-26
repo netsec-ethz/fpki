@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"reflect"
 
 	"github.com/google/trillian"
 	trilliantypes "github.com/google/trillian/types"
@@ -133,7 +134,21 @@ func ToJSON(o any) ([]byte, error) {
 		r.T = "[]trillian.Proof"
 	case *trilliantypes.LogRootV1:
 		r.T = "LogRootV1"
+	case listOfMarshallable:
+		r.T = "[]"
 	default:
+		if t := reflect.TypeOf(o); t.Kind() == reflect.Slice {
+			// If slice, try to serialize all elements inside, then write its type as slice.
+			s := reflect.ValueOf(o)
+			listOfAny := make([]any, s.Len())
+			for i := 0; i < len(listOfAny); i++ {
+				listOfAny[i] = s.Index(i).Interface()
+			}
+			b, err := ToJSON(listOfMarshallable{
+				List: listOfAny,
+			})
+			return b, err
+		}
 		return nil, fmt.Errorf("unrecognized type %T", o)
 	}
 
@@ -236,6 +251,18 @@ func FromJSON(data []byte) (any, error) {
 			return nil, fmt.Errorf("unmarshalling internal type: %w", err)
 		}
 		return typeAndValue.O, nil
+	case "[]":
+		// This is a special case. We have received a list of "things" that should be
+		// deserializable again with FromJSON. Deserialize this object of type listOfMarshallable
+		// and return all its internal objects
+		typeAndValue := struct {
+			T string
+			O listOfMarshallable
+		}{}
+		if err := json.Unmarshal(data, &typeAndValue); err != nil {
+			return nil, fmt.Errorf("unmarshalling internal type: %w", err)
+		}
+		return typeAndValue.O.List, nil
 	default:
 		return nil, fmt.Errorf("unmarshalling internal type: bad type \"%s\"", typeOnly.T)
 	}
@@ -262,4 +289,69 @@ func FromJSONFile(filePath string) (any, error) {
 	}
 
 	return FromJSON(data)
+}
+
+// marshallableObject is used only on deserialization. A list of these objects is read from the
+// JSON and should be parsed using FromJSON(). See listOfMarshallable.UnmarshalJSON.
+type marshallableObject struct {
+	O any
+}
+
+func (o marshallableObject) MarshalJSON() ([]byte, error) {
+	return ToJSON(o.O)
+}
+
+func (o *marshallableObject) UnmarshalJSON(b []byte) error {
+	obj, err := FromJSON(b)
+	o.O = obj
+	return err
+}
+
+// listOfMarshallable is used to allow (de)serialization (from)to JSON. When a list of our
+// types is to be serialized, a list of these objects is created instead (see ToJSON).
+type listOfMarshallable struct {
+	List []any
+}
+
+// MarshalJSON serializes to JSON a list of objects than can be convertible to JSON via
+// the method ToJSON.
+func (l listOfMarshallable) MarshalJSON() ([]byte, error) {
+	payloads := make([][]byte, len(l.List))
+	for i, e := range l.List {
+		b, err := ToJSON(e)
+		if err != nil {
+			return nil, fmt.Errorf("cannot marshal list to JSON, elem at %d failed with error: %s",
+				i, err)
+		}
+		payloads[i] = b
+	}
+	// this list in JSON consists in the type and then the ToJSON elements.
+	payload := []byte(`{"List":[`)
+	for _, p := range payloads {
+		payload = append(payload, p...)
+		payload = append(payload, []byte(`,`)...)
+	}
+	// Remove last ","
+	payload = payload[:len(payload)-1]
+	// Close list and close object itself.
+	payload = append(payload, []byte(`]}`)...)
+
+	return payload, nil
+}
+
+func (l *listOfMarshallable) UnmarshalJSON(b []byte) error {
+	// Deserialize an object with a "List" field that will use FromJSON for its elements.
+	tempObject := struct {
+		List []marshallableObject
+	}{}
+	err := json.Unmarshal(b, &tempObject)
+	if err != nil {
+		return err
+	}
+	// Take the list with wrapped objects and unwrap them to this list.
+	l.List = make([]any, len(tempObject.List))
+	for i, o := range tempObject.List {
+		l.List[i] = o.O
+	}
+	return nil
 }
