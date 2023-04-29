@@ -10,30 +10,209 @@ import (
 	trilliantypes "github.com/google/trillian/types"
 )
 
-func JSONToPoI(poiBytes []byte) ([]*trillian.Proof, error) {
-	po, err := FromJSON(poiBytes)
-	if err != nil {
-		return nil, fmt.Errorf("JsonBytesToPoI | Unmarshal | %w", err)
-	}
-	result, ok := po.([]*trillian.Proof)
-	if !ok {
-		return nil, fmt.Errorf("JsonFileToPoI | object is %T", po)
-	}
-	return result, nil
+type serializableObjectBase struct {
+	O any
 }
 
-// JSONToLogRoot: Bytes -> log root in json
-func JSONToLogRoot(logRootBytes []byte) (*trilliantypes.LogRootV1, error) {
-	po, err := FromJSON(logRootBytes)
-	if err != nil {
-		return nil, fmt.Errorf("JsonBytesToLogRoot | Unmarshal | %w", err)
+func ToJSON(obj any) ([]byte, error) {
+	if _, ok := obj.(serializableObjectBase); !ok {
+		obj = serializableObjectBase{
+			O: obj,
+		}
 	}
-	result, ok := po.(*trilliantypes.LogRootV1)
-	if !ok {
-		return nil, fmt.Errorf("JsonFileToLogRoot | object is %T", po)
-	}
-	return result, nil
+	return json.Marshal(obj)
 }
+
+func FromJSON(data []byte) (any, error) {
+	var base serializableObjectBase
+	err := json.Unmarshal(data, &base)
+	return base.O, err
+}
+
+func (o serializableObjectBase) MarshalJSON() ([]byte, error) {
+	T, O, err := o.marshalJSON(o.O)
+	if err != nil {
+		return nil, err
+	}
+
+	tmp := struct {
+		T string
+		O json.RawMessage
+	}{
+		T: T,
+		O: O,
+	}
+	return json.Marshal(tmp)
+}
+
+// marshalJSON returns two components matching T and O: the Type (string) and the payload of O.
+func (*serializableObjectBase) marshalJSON(obj any) (string, []byte, error) {
+	var T string
+	switch obj.(type) {
+	case RCSR:
+		T = "rcsr"
+	case RPC:
+		T = "rpc"
+	case PCRevocation:
+		T = "rev"
+	case SP:
+		T = "sp"
+	case SPT:
+		T = "spt"
+	case SPRT:
+		T = "sprt"
+	case PSR:
+		T = "psr"
+	case trillian.Proof:
+		T = "trillian.Proof"
+	case trilliantypes.LogRootV1:
+		T = "logrootv1"
+	default:
+		valOf := reflect.ValueOf(obj)
+		switch valOf.Type().Kind() {
+		case reflect.Pointer:
+			// Dereference and convert to "any".
+			T, O, err := (*serializableObjectBase)(nil).marshalJSON(valOf.Elem().Interface())
+			return fmt.Sprintf("*%s", T), O, err
+		case reflect.Slice:
+			// A slice. Serialize each item and also serialize the slice itself.
+			children := make([]json.RawMessage, valOf.Len())
+			for i := 0; i < len(children); i++ {
+				v := valOf.Index(i).Interface()
+				b, err := ToJSON(v)
+				if err != nil {
+					return "", nil, fmt.Errorf("marshaling slice, element %d failed: %w", i, err)
+				}
+				children[i] = b
+			}
+			data, err := json.Marshal(children)
+			return "[]", data, err
+		default:
+			return "", nil, fmt.Errorf("unknown type %T", obj)
+		}
+	}
+	data, err := json.Marshal(obj)
+	return T, data, err
+}
+
+func (o *serializableObjectBase) UnmarshalJSON(data []byte) error {
+	tmp := struct {
+		T string
+		O json.RawMessage
+	}{}
+
+	err := json.Unmarshal(data, &tmp)
+	if err != nil {
+		return err
+	}
+	// Parse the T,O that we received.
+	ok, obj, err := unmarshalTypeObject(tmp.T, tmp.O)
+	if !ok {
+		if len(tmp.T) > 0 && tmp.T[0] == '*' {
+			// Pointer, try again just once.
+			tmp.T = tmp.T[1:]
+			_, obj, err = unmarshalTypeObject(tmp.T, tmp.O)
+			// Now convert to a pointer to the original object.
+			objPtr := reflect.New(reflect.TypeOf(obj))
+			objPtr.Elem().Set(reflect.ValueOf(obj)) // assign original object
+			obj = objPtr.Interface()
+		}
+	}
+	o.O = obj
+	return err
+}
+
+// unmarshalTypeObject returns true if the function understood the type in T, and the object with
+// the specific type represented by T.
+func unmarshalTypeObject(T string, data []byte) (bool, any, error) {
+	var obj any
+	var err error
+	switch T {
+	case "[]":
+		// There is a slice of objects beneath this object.
+		var tmp []json.RawMessage
+		err = json.Unmarshal(data, &tmp)
+		if err != nil {
+			err = fmt.Errorf("unmarshaling slice, object doesn't seem to be a slice: %w", err)
+		}
+		if err == nil {
+			list := make([]any, len(tmp))
+			obj = list
+			for i, objData := range tmp {
+				// Is this an embedded SerializableObjectBase?
+				tmp := serializableObjectBase{}
+				err = json.Unmarshal(objData, &tmp)
+				if err != nil {
+					err = fmt.Errorf("unmarshaling slice, element at %d failed: %w", i, err)
+					break
+				}
+				list[i] = tmp.O
+			}
+		}
+	case "rcsr":
+		obj, err = inflateObj[RCSR](data)
+	case "rpc":
+		obj, err = inflateObj[RPC](data)
+	case "rev":
+		obj, err = inflateObj[PCRevocation](data)
+	case "sp":
+		obj, err = inflateObj[SP](data)
+	case "spt":
+		obj, err = inflateObj[SPT](data)
+	case "sprt":
+		obj, err = inflateObj[SPRT](data)
+	case "psr":
+		obj, err = inflateObj[PSR](data)
+	case "trillian.Proof":
+		obj, err = inflateObj[trillian.Proof](data)
+	case "logrootv1":
+		obj, err = inflateObj[trilliantypes.LogRootV1](data)
+	default:
+		err = fmt.Errorf("unknown type represented by \"%s\"", T)
+		obj = nil
+	}
+	return obj != nil, obj, err
+}
+
+func inflateObj[T any](data []byte) (any, error) {
+	var tmp T
+	err := json.Unmarshal(data, &tmp)
+	return tmp, err
+}
+
+//
+//
+//
+//
+//
+//
+//
+//
+
+// func JSONToPoI(poiBytes []byte) ([]*trillian.Proof, error) {
+// 	po, err := FromJSON(poiBytes)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("JsonBytesToPoI | Unmarshal | %w", err)
+// 	}
+// 	result, ok := po.([]*trillian.Proof)
+// 	if !ok {
+// 		return nil, fmt.Errorf("JsonFileToPoI | object is %T", po)
+// 	}
+// 	return result, nil
+// }
+
+// // JSONToLogRoot: Bytes -> log root in json
+// func JSONToLogRoot(logRootBytes []byte) (*trilliantypes.LogRootV1, error) {
+// 	po, err := FromJSON(logRootBytes)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("JsonBytesToLogRoot | Unmarshal | %w", err)
+// 	}
+// 	result, ok := po.(*trilliantypes.LogRootV1)
+// 	if !ok {
+// 		return nil, fmt.Errorf("JsonFileToLogRoot | object is %T", po)
+// 	}
+// 	return result, nil
+// }
 
 // JsonFileToRPC: read json files and unmarshal it to Root Policy Certificate
 func JsonFileToRPC(filePath string) (*RPC, error) {
@@ -105,171 +284,8 @@ func JsonFileToSP(filePath string) (*SP, error) {
 	return o, err
 }
 
-func ToJSON(o any) ([]byte, error) {
-	r := struct {
-		T string
-		O any
-	}{
-		O: o,
-	}
-	// Find the internal type of the object to marshal.
-	switch o := o.(type) {
-	case *RCSR:
-		r.T = "rcsr"
-	case *RPC:
-		r.T = "rpc"
-	case *PCRevocation:
-		r.T = "pcrevocation"
-	case *SPT:
-		r.T = "spt"
-	case *SPRT:
-		r.T = "sprt"
-	case *SP:
-		r.T = "sp"
-	case *PSR:
-		r.T = "psr"
-	case *trillian.Proof:
-		r.T = "trillian.Proof"
-	case []*trillian.Proof:
-		r.T = "[]trillian.Proof"
-	case *trilliantypes.LogRootV1:
-		r.T = "LogRootV1"
-	case listOfMarshallable:
-		r.T = "[]"
-	default:
-		if t := reflect.TypeOf(o); t.Kind() == reflect.Slice {
-			// If slice, try to serialize all elements inside, then write its type as slice.
-			s := reflect.ValueOf(o)
-			listOfAny := make([]any, s.Len())
-			for i := 0; i < len(listOfAny); i++ {
-				listOfAny[i] = s.Index(i).Interface()
-			}
-			b, err := ToJSON(listOfMarshallable{
-				List: listOfAny,
-			})
-			return b, err
-		}
-		return nil, fmt.Errorf("unrecognized type %T", o)
-	}
-
-	// Now Marshal the wrapper.
-	d, err := json.Marshal(r)
-	if err != nil {
-		return nil, fmt.Errorf("wrapping marshalling of object: %w", err)
-	}
-	return d, nil
-}
-
-func FromJSON(data []byte) (any, error) {
-	// Get only the type.
-	typeOnly := struct {
-		T string
-	}{}
-	if err := json.Unmarshal(data, &typeOnly); err != nil {
-		return nil, fmt.Errorf("obtaining the wrapping type: %w", err)
-	}
-
-	switch typeOnly.T {
-	case "rcsr":
-		typeAndValue := struct {
-			T string
-			O *RCSR
-		}{}
-		if err := json.Unmarshal(data, &typeAndValue); err != nil {
-			return nil, fmt.Errorf("unmarshalling internal type: %w", err)
-		}
-		return typeAndValue.O, nil
-	case "rpc":
-		typeAndValue := struct {
-			T string
-			O *RPC
-		}{}
-		if err := json.Unmarshal(data, &typeAndValue); err != nil {
-			return nil, fmt.Errorf("unmarshalling internal type: %w", err)
-		}
-		return typeAndValue.O, nil
-	case "spt":
-		typeAndValue := struct {
-			T string
-			O *SPT
-		}{}
-		if err := json.Unmarshal(data, &typeAndValue); err != nil {
-			return nil, fmt.Errorf("unmarshalling internal type: %w", err)
-		}
-		return typeAndValue.O, nil
-	case "sprt":
-		typeAndValue := struct {
-			T string
-			O *SPRT
-		}{}
-		if err := json.Unmarshal(data, &typeAndValue); err != nil {
-			return nil, fmt.Errorf("unmarshalling internal type: %w", err)
-		}
-		return typeAndValue.O, nil
-	case "sp":
-		typeAndValue := struct {
-			T string
-			O *SP
-		}{}
-		if err := json.Unmarshal(data, &typeAndValue); err != nil {
-			return nil, fmt.Errorf("unmarshalling internal type: %w", err)
-		}
-		return typeAndValue.O, nil
-	case "psr":
-		typeAndValue := struct {
-			T string
-			O *PSR
-		}{}
-		if err := json.Unmarshal(data, &typeAndValue); err != nil {
-			return nil, fmt.Errorf("unmarshalling internal type: %w", err)
-		}
-		return typeAndValue.O, nil
-	case "trillian.Proof":
-		typeAndValue := struct {
-			T string
-			O *trillian.Proof
-		}{}
-		if err := json.Unmarshal(data, &typeAndValue); err != nil {
-			return nil, fmt.Errorf("unmarshalling internal type: %w", err)
-		}
-		return typeAndValue.O, nil
-	case "[]trillian.Proof":
-		typeAndValue := struct {
-			T string
-			O []*trillian.Proof
-		}{}
-		if err := json.Unmarshal(data, &typeAndValue); err != nil {
-			return nil, fmt.Errorf("unmarshalling internal type: %w", err)
-		}
-		return typeAndValue.O, nil
-	case "LogRootV1":
-		typeAndValue := struct {
-			T string
-			O *trilliantypes.LogRootV1
-		}{}
-		if err := json.Unmarshal(data, &typeAndValue); err != nil {
-			return nil, fmt.Errorf("unmarshalling internal type: %w", err)
-		}
-		return typeAndValue.O, nil
-	case "[]":
-		// This is a special case. We have received a list of "things" that should be
-		// deserializable again with FromJSON. Deserialize this object of type listOfMarshallable
-		// and return all its internal objects
-		typeAndValue := struct {
-			T string
-			O listOfMarshallable
-		}{}
-		if err := json.Unmarshal(data, &typeAndValue); err != nil {
-			return nil, fmt.Errorf("unmarshalling internal type: %w", err)
-		}
-		return typeAndValue.O.List, nil
-	default:
-		return nil, fmt.Errorf("unmarshalling internal type: bad type \"%s\"", typeOnly.T)
-	}
-}
-
 // ToJSONFile serializes any supported type to a file, using JSON.
-func ToJSONFile(s any, filePath string) error {
+func ToJSONFile(s PolicyObject, filePath string) error {
 	bytes, err := ToJSON(s)
 	if err != nil {
 		return fmt.Errorf("JsonStructToFile | ToJSON | %w", err)
@@ -289,69 +305,4 @@ func FromJSONFile(filePath string) (any, error) {
 	}
 
 	return FromJSON(data)
-}
-
-// marshallableObject is used only on deserialization. A list of these objects is read from the
-// JSON and should be parsed using FromJSON(). See listOfMarshallable.UnmarshalJSON.
-type marshallableObject struct {
-	O any
-}
-
-func (o marshallableObject) MarshalJSON() ([]byte, error) {
-	return ToJSON(o.O)
-}
-
-func (o *marshallableObject) UnmarshalJSON(b []byte) error {
-	obj, err := FromJSON(b)
-	o.O = obj
-	return err
-}
-
-// listOfMarshallable is used to allow (de)serialization (from)to JSON. When a list of our
-// types is to be serialized, a list of these objects is created instead (see ToJSON).
-type listOfMarshallable struct {
-	List []any
-}
-
-// MarshalJSON serializes to JSON a list of objects than can be convertible to JSON via
-// the method ToJSON.
-func (l listOfMarshallable) MarshalJSON() ([]byte, error) {
-	payloads := make([][]byte, len(l.List))
-	for i, e := range l.List {
-		b, err := ToJSON(e)
-		if err != nil {
-			return nil, fmt.Errorf("cannot marshal list to JSON, elem at %d failed with error: %s",
-				i, err)
-		}
-		payloads[i] = b
-	}
-	// this list in JSON consists in the type and then the ToJSON elements.
-	payload := []byte(`{"List":[`)
-	for _, p := range payloads {
-		payload = append(payload, p...)
-		payload = append(payload, []byte(`,`)...)
-	}
-	// Remove last ","
-	payload = payload[:len(payload)-1]
-	// Close list and close object itself.
-	payload = append(payload, []byte(`]}`)...)
-
-	return payload, nil
-}
-
-func (l *listOfMarshallable) UnmarshalJSON(b []byte) error {
-	// Deserialize an object with a "List" field that will use FromJSON for its elements.
-	tempObject := struct {
-		List []marshallableObject
-	}{}
-	err := json.Unmarshal(b, &tempObject)
-	if err != nil {
-		return err
-	}
-	// Take the list with wrapped objects and unwrap them to this list.
-	l.List = make([]any, len(tempObject.List))
-	for i, o := range tempObject.List {
-		l.List[i] = o.O
-	}
-	return nil
 }
