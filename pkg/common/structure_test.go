@@ -4,7 +4,6 @@ import (
 	"math/rand"
 	"os"
 	"path"
-	"reflect"
 	"testing"
 	"time"
 
@@ -147,99 +146,34 @@ func TestJsonReadWrite(t *testing.T) {
 	assert.True(t, rpc.Equal(rpc1), "Json error")
 }
 
-// TestSingleObject checks that the structure types in the test cases can be converted to JSON and
-// back, using the functions ToJSON and FromJSON.
-// It checks after deserialization if the objects are equal.
-func TestSingleObject(t *testing.T) {
-	cases := map[string]struct {
-		data any
-	}{
-		"rcsr": {
-			data: &RCSR{
-				Subject:            "bandqhvdbdlwnd",
-				Version:            6789,
-				TimeStamp:          time.Unix(111222323, 0),
-				PublicKeyAlgorithm: RSA,
-				PublicKey:          generateRandomBytes(),
-				SignatureAlgorithm: SHA256,
-				PRCSignature:       generateRandomBytes(),
-				Signature:          generateRandomBytes(),
-			},
-		},
-		"rpc": {
-			data: randomRPC(),
-		},
-		"spt": {
-			data: randomSPT(),
-		},
-		"sprt": {
-			data: &SPRT{
-				SPT: SPT{
-					Version:         12314,
-					Subject:         "bad domain",
-					CAName:          "I'm malicious CA, nice to meet you",
-					LogID:           1729381,
-					CertType:        0x21,
-					AddedTS:         nowWithoutMonotonic(),
-					STH:             generateRandomBytes(),
-					PoI:             generateRandomBytes(),
-					STHSerialNumber: 1729381,
-					Signature:       generateRandomBytes(),
-				},
-				Reason: 1729381,
-			},
-		},
-		"sp": {
-			data: randomSP(),
-		},
-		"psr": {
-			data: &PSR{
-				Policies: Policy{
-					TrustedCA:         []string{"one CA", "another CA"},
-					AllowedSubdomains: []string{"sub1.com", "sub2.com"},
-				},
-				TimeStamp:         nowWithoutMonotonic(),
-				DomainName:        "domain_name.com",
-				RootCertSignature: generateRandomBytes(),
-			},
-		},
-	}
-
-	for name, tc := range cases {
-		name, tc := name, tc
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			expectedType := reflect.TypeOf(tc.data) // type will be a pointer to RPC, etc.
-			d, err := ToJSON(tc.data)
-			t.Logf("JSON: %s", string(d))
-			require.NoError(t, err)
-
-			o, err := FromJSON(d)
-			require.NoError(t, err)
-			require.NotNil(t, o)
-			require.Equal(t, tc.data, o)
-
-			gotType := reflect.TypeOf(o)
-			require.Equal(t, expectedType, gotType)
-		})
-	}
-}
-
 func randomRPC() *RPC {
 	return &RPC{
 		SerialNumber:       1729381,
-		Subject:            "bad domain",
+		Subject:            "RPC CA",
 		Version:            1729381,
 		PublicKeyAlgorithm: RSA,
 		PublicKey:          generateRandomBytes(),
 		NotBefore:          nowWithoutMonotonic(),
 		NotAfter:           nowWithoutMonotonic(),
-		CAName:             "bad domain",
+		CAName:             "RPC CA",
 		SignatureAlgorithm: SHA256,
 		TimeStamp:          nowWithoutMonotonic(),
 		PRCSignature:       generateRandomBytes(),
 		CASignature:        generateRandomBytes(),
 		SPTs:               []SPT{*randomSPT(), *randomSPT()},
+	}
+}
+
+func randomRCSR() *RCSR {
+	return &RCSR{
+		Subject:            "subject",
+		Version:            6789,
+		TimeStamp:          nowWithoutMonotonic(),
+		PublicKeyAlgorithm: RSA,
+		PublicKey:          generateRandomBytes(),
+		SignatureAlgorithm: SHA256,
+		PRCSignature:       generateRandomBytes(),
+		Signature:          generateRandomBytes(),
 	}
 }
 
@@ -274,6 +208,25 @@ func randomSPT() *SPT {
 		PoI:             generateRandomBytes(),
 		STHSerialNumber: 114378,
 		Signature:       generateRandomBytes(),
+	}
+}
+
+func randomSPRT() *SPRT {
+	return &SPRT{
+		SPT:    *randomSPT(),
+		Reason: 1729381,
+	}
+}
+
+func randomPSR() *PSR {
+	return &PSR{
+		Policies: Policy{
+			TrustedCA:         []string{"one CA", "another CA"},
+			AllowedSubdomains: []string{"sub1.com", "sub2.com"},
+		},
+		TimeStamp:         nowWithoutMonotonic(),
+		DomainName:        "domain_name.com",
+		RootCertSignature: generateRandomBytes(),
 	}
 }
 

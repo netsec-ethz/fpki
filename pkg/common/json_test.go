@@ -1,9 +1,9 @@
 package common
 
 import (
+	"fmt"
 	"os"
 	"path"
-	"reflect"
 	"testing"
 	"time"
 
@@ -143,72 +143,79 @@ func TestEncodeAndDecodeOfPC(t *testing.T) {
 	assert.True(t, deserializedPC.Equal(pc), "PC serialized and deserialized error")
 }
 
-func TestToFromJSON(t *testing.T) {
-	cases := map[string]struct {
+// TestPolicyObjects checks that the structure types in the test cases can be converted to JSON and
+// back, using the functions ToJSON and FromJSON.
+// It checks after deserialization that the objects are equal.
+func TestPolicyObjects(t *testing.T) {
+	cases := []struct {
 		data any
 	}{
-		"trillian.Proof": {
-			data: &trillian.Proof{
-				LeafIndex: 1,
-				Hashes:    generateRandomBytesArray(),
-			},
+		{
+			data: randomRPC(),
 		},
-		"slice_of_trillian.Proof": {
-			data: []*trillian.Proof{
-				{
-					LeafIndex: 1,
-					Hashes:    generateRandomBytesArray(),
-				},
-				{
-					LeafIndex: 2,
-					Hashes:    generateRandomBytesArray(),
-				},
-				{
-					LeafIndex: 3,
-					Hashes:    generateRandomBytesArray(),
-				},
-			},
+		{
+			data: *randomRPC(),
 		},
-		"trilliantypes.LogRootV1": {
-			data: &trilliantypes.LogRootV1{
-				TreeSize:       1,
-				RootHash:       generateRandomBytes(),
-				TimestampNanos: 11,
-				Revision:       3,
-				Metadata:       generateRandomBytes(),
-			},
+		{
+			data: randomRCSR(),
 		},
-		"slice_of_SP": {
+		{
+			data: randomSP(),
+		},
+		{
 			data: []any{
-				randomSPT(),
-				randomSPT(),
-			},
-		},
-		"slice_of_many_things": {
-			data: []any{
-				randomSPT(),
 				randomRPC(),
+				randomRCSR(),
 				randomSP(),
+				randomSPRT(),
+				randomPSR(),
+				randomTrillianProof(),
+				randomLogRootV1(),
+			},
+		},
+		{
+			data: []any{
+				randomRPC(),
+				[]any{
+					randomSP(),
+					randomSPT(),
+				},
+				[]any{
+					randomTrillianProof(),
+					randomTrillianProof(),
+				},
 			},
 		},
 	}
-
-	for name, tc := range cases {
-		name, tc := name, tc
-		t.Run(name, func(t *testing.T) {
+	for i, tc := range cases {
+		i, tc := i, tc
+		t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
 			t.Parallel()
-			expectedType := reflect.TypeOf(tc.data) // type will be a pointer to RPC, etc.
-			d, err := ToJSON(tc.data)
-			t.Logf("JSON: %s", string(d))
+			// Serialize.
+			data, err := ToJSON(tc.data)
 			require.NoError(t, err)
-
-			o, err := FromJSON(d)
+			// Deserialize.
+			deserialized, err := FromJSON(data)
 			require.NoError(t, err)
-			require.NotNil(t, o)
-			require.Equal(t, tc.data, o)
-
-			gotType := reflect.TypeOf(o)
-			require.Equal(t, expectedType, gotType)
+			// Compare.
+			require.Equal(t, tc.data, deserialized)
 		})
+	}
+}
+
+func randomTrillianProof() *trillian.Proof {
+	return &trillian.Proof{
+		LeafIndex: 1,
+		Hashes:    generateRandomBytesArray(),
+	}
+}
+
+func randomLogRootV1() *trilliantypes.LogRootV1 {
+	return &trilliantypes.LogRootV1{
+		TreeSize:       1,
+		RootHash:       generateRandomBytes(),
+		TimestampNanos: 11,
+		Revision:       3,
+		Metadata:       generateRandomBytes(),
 	}
 }

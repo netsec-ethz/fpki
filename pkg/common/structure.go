@@ -5,6 +5,18 @@ import (
 	"time"
 )
 
+// PolicyObject is an interface that is implemented by all objects that are part of the set
+// of "policy objects". A policy object is that one that represents functionality of policies
+// for a domain, such as RPC, RCSR, SPT, SPRT, SP, PSR or Policy.
+type PolicyObject interface {
+	__PolicyObjectMarkerMethod()
+}
+
+// PolicyObjectList is a list of PolicyObject's, which is a PolicyObject in and of itself.
+type PolicyObjectList []PolicyObject
+
+func (PolicyObjectList) __PolicyObjectMarkerMethod() {}
+
 // root certificate signing request
 type RCSR struct {
 	Subject            string             `json:",omitempty"`
@@ -16,6 +28,8 @@ type RCSR struct {
 	PRCSignature       []byte             `json:",omitempty"`
 	Signature          []byte             `json:",omitempty"`
 }
+
+func (RCSR) __PolicyObjectMarkerMethod() {}
 
 // root policy certificate
 type RPC struct {
@@ -34,10 +48,14 @@ type RPC struct {
 	SPTs               []SPT              `json:",omitempty"`
 }
 
+func (RPC) __PolicyObjectMarkerMethod() {}
+
 // PCRevocation is for now empty.
 type PCRevocation struct {
 	// TODO(juagargi) define the revocation.
 }
+
+func (PCRevocation) __PolicyObjectMarkerMethod() {}
 
 // signed policy timestamp
 type SPT struct {
@@ -53,11 +71,15 @@ type SPT struct {
 	Signature       []byte    `json:",omitempty"`
 }
 
+func (SPT) __PolicyObjectMarkerMethod() {}
+
 // signed policy revocation timestamp
 type SPRT struct {
 	SPT
 	Reason int `json:",omitempty"`
 }
+
+func (SPRT) __PolicyObjectMarkerMethod() {}
 
 // Signed Policy
 type SP struct {
@@ -71,6 +93,8 @@ type SP struct {
 	SPTs              []SPT     `json:",omitempty"`
 }
 
+func (SP) __PolicyObjectMarkerMethod() {}
+
 // Policy Signing Request
 type PSR struct {
 	Policies          Policy    `json:",omitempty"`
@@ -78,6 +102,8 @@ type PSR struct {
 	DomainName        string    `json:",omitempty"`
 	RootCertSignature []byte    `json:",omitempty"`
 }
+
+func (PSR) __PolicyObjectMarkerMethod() {}
 
 // Domain policy
 type Policy struct {

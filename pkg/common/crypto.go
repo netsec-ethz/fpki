@@ -26,7 +26,7 @@ const (
 )
 
 // SignStructRSASHA256: generate a signature using SHA256 and RSA
-func SignStructRSASHA256(s interface{}, privKey *rsa.PrivateKey) ([]byte, error) {
+func SignStructRSASHA256(s any, privKey *rsa.PrivateKey) ([]byte, error) {
 	bytes, err := ToJSON(s)
 	if err != nil {
 		return nil, fmt.Errorf("SignStructRSASHA256 | ToJSON | %w", err)
