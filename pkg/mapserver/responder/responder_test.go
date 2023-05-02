@@ -16,7 +16,7 @@ import (
 	mapcommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/prover"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
-	"github.com/netsec-ethz/fpki/pkg/tests"
+	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
@@ -29,12 +29,12 @@ func TestProofWithPoP(t *testing.T) {
 	config := db.NewConfig(mysql.WithDefaults(), db.WithDB(dbName))
 
 	// Create a new DB with that name. On exiting the function, it will be removed.
-	err := tests.CreateTestDB(ctx, dbName)
+	err := testdb.CreateTestDB(ctx, dbName)
 	require.NoError(t, err)
-	// defer func() {
-	// 	err = tests.RemoveTestDB(ctx, config)
-	// 	require.NoError(t, err)
-	// }()
+	defer func() {
+		err = testdb.RemoveTestDB(ctx, config)
+		require.NoError(t, err)
+	}()
 
 	// Connect to the DB.
 	conn, err := mysql.Connect(config)

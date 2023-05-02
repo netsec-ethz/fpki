@@ -15,7 +15,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/mapserver/prover"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
-	"github.com/netsec-ethz/fpki/pkg/tests"
+	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
 	"github.com/stretchr/testify/require"
 )
 
@@ -59,10 +59,10 @@ func TestOldResponderWithPoP(t *testing.T) {
 	dbName := t.Name()
 	config := db.NewConfig(mysql.WithDefaults(), db.WithDB(dbName))
 
-	err := tests.CreateTestDB(ctx, dbName)
+	err := testdb.CreateTestDB(ctx, dbName)
 	require.NoError(t, err)
 	defer func() {
-		err = tests.RemoveTestDB(ctx, config)
+		err = testdb.RemoveTestDB(ctx, config)
 		require.NoError(t, err)
 	}()
 
@@ -170,7 +170,7 @@ func getUpdatedUpdater(t require.TestingT, certs []*ctx509.Certificate) (db.Conn
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	conn := tests.NewMockDB()
+	conn := testdb.NewMockDB()
 	smt, err := trie.NewTrie(nil, common.SHA256Hash, conn)
 	require.NoError(t, err)
 	smt.CacheHeightLimit = 233
