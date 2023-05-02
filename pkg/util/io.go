@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"encoding/base64"
 	"encoding/csv"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -113,6 +114,21 @@ func LoadCertsAndChainsFromCSV(
 	// Unfold the received certificates.
 	payloads, IDs, parentIDs, names = UnfoldCerts(leafs, chains)
 	return
+}
+
+// LoadPoliciesFromRaw can load RPCs, SPs, RCSRs, PCRevocations, SPRTs, and PSRs from their
+// serialized form.
+func LoadPoliciesFromRaw(b []byte) ([]any, error) {
+	obj, err := common.FromJSON(b)
+	if err != nil {
+		return nil, err
+	}
+	// The returned object should be of type list.
+	if list, ok := obj.([]any); ok {
+		return list, nil
+	}
+
+	return nil, fmt.Errorf("the content is of type %T instead of []any", obj)
 }
 
 // parseCertFromCSVField takes a row from a CSV encoding certs and chains in base64 and returns

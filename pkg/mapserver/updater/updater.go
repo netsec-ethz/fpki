@@ -281,6 +281,17 @@ func UpdateCertsWithKeepExisting(ctx context.Context, conn db.Conn, names [][]st
 	return insertCerts(ctx, conn, names, ids, parentIDs, expirations, payloads)
 }
 
+// UpdatePolicies takes a sequence of policies, the aliases associated with each one, and the
+// expiration times, and updates the DB with them.
+func UpdatePolicies(ctx context.Context, conn db.Conn, names [][]string,
+	expirations []*time.Time, pols [][]byte) error {
+
+	// deleteme
+	// TODO
+	// TODO(juagargi) do it
+	return nil
+}
+
 func CoalescePayloadsForDirtyDomains(ctx context.Context, conn db.Conn) error {
 	// How many domains to update?
 	dirtyCount, err := conn.DirtyDomainsCount(ctx)
