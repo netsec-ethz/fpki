@@ -2,6 +2,7 @@ package responder
 
 import (
 	"context"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
 	"github.com/netsec-ethz/fpki/pkg/domain"
@@ -51,6 +53,16 @@ func TestProofWithPoP(t *testing.T) {
 	require.NoError(t, err)
 
 	// Ingest two policies.
+	data, err := os.ReadFile("../../../tests/testdata/2-SPs.json")
+	require.NoError(t, err)
+	objs, err := util.LoadPoliciesFromRaw(data)
+	require.NoError(t, err)
+	sps, err := util.ToTypedSlice[*common.SP](objs)
+	require.NoError(t, err)
+	var expirations []*time.Time
+	require.Equal(t, len(objs), len(sps))
+	err = updater.UpdatePolicies(ctx, conn, names, expirations, [][]byte{})
+	require.NoError(t, err)
 
 	// Coalescing of payloads.
 	err = updater.CoalescePayloadsForDirtyDomains(ctx, conn)
