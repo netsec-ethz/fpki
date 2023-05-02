@@ -7,9 +7,21 @@ import (
 	"testing"
 	"time"
 
+	"github.com/netsec-ethz/fpki/pkg/tests"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+var update = tests.UpdateGoldenFiles()
+
+func TestGenerateGoldenFiles(t *testing.T) {
+	// Update the JSON files in tests/testdata
+	if *update {
+		obj := []any{randomSP(), randomSP()}
+		err := ToJSONFile(obj, "../../tests/testdata/2-SPs.json")
+		require.NoError(t, err)
+	}
+}
 
 // TestEqual: Equal funcs for every structure
 func TestEqual(t *testing.T) {

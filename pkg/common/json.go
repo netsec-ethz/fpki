@@ -285,7 +285,7 @@ func JsonFileToSP(filePath string) (*SP, error) {
 }
 
 // ToJSONFile serializes any supported type to a file, using JSON.
-func ToJSONFile(s PolicyObject, filePath string) error {
+func ToJSONFile(s any, filePath string) error {
 	bytes, err := ToJSON(s)
 	if err != nil {
 		return fmt.Errorf("JsonStructToFile | ToJSON | %w", err)
