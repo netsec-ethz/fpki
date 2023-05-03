@@ -128,7 +128,9 @@ func RCSRVerifyRPCSignature(rcsr *RCSR, rpc *RPC) error {
 // RCSRGenerateRPC: called by PCA. Sign the RCSR and generate RPC; SPT field is (should be) empty
 func RCSRGenerateRPC(rcsr *RCSR, notBefore time.Time, serialNumber int, caPrivKey *rsa.PrivateKey, caName string) (*RPC, error) {
 	rpc := &RPC{
-		Subject:            rcsr.Subject,
+		PolicyObjectBase: PolicyObjectBase{
+			Subject: rcsr.Subject,
+		},
 		Version:            rcsr.Version,
 		PublicKeyAlgorithm: rcsr.PublicKeyAlgorithm,
 		PublicKey:          rcsr.PublicKey,
@@ -219,8 +221,10 @@ func VerifyPSRUsingRPC(psr *PSR, rpc *RPC) error {
 // CAVerifySPAndSign: verify the signature and sign the signature
 func CASignSP(psr *PSR, caPrivKey *rsa.PrivateKey, caName string, serialNum int) (*SP, error) {
 	sp := &SP{
+		PolicyObjectBase: PolicyObjectBase{
+			Subject: psr.DomainName,
+		},
 		Policies:          psr.Policies,
-		Subject:           psr.DomainName,
 		RootCertSignature: psr.RootCertSignature,
 		TimeStamp:         time.Now(),
 		CAName:            caName,

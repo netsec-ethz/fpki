@@ -246,13 +246,17 @@ func GetPCAndRPC(ctURL string, startIndex int64, endIndex int64, numOfWorker int
 			continue
 		}
 		resultPC = append(resultPC, &common.SP{
-			Subject:     domainName,
+			PolicyObjectBase: common.PolicyObjectBase{
+				Subject: domainName,
+			},
 			TimeStamp:   time.Now(),
 			CASignature: generateRandomBytes(),
 		})
 
 		resultRPC = append(resultRPC, &common.RPC{
-			Subject:   domainName,
+			PolicyObjectBase: common.PolicyObjectBase{
+				Subject: domainName,
+			},
 			NotBefore: time.Now(),
 		})
 	}

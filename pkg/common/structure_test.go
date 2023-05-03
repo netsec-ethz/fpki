@@ -26,7 +26,9 @@ func TestGenerateGoldenFiles(t *testing.T) {
 // TestEqual: Equal funcs for every structure
 func TestEqual(t *testing.T) {
 	rcsr := &RCSR{
-		Subject:            "bandqhvdbdlwnd",
+		PolicyObjectBase: PolicyObjectBase{
+			Subject: "bandqhvdbdlwnd",
+		},
 		Version:            6789,
 		TimeStamp:          time.Now(),
 		PublicKeyAlgorithm: RSA,
@@ -39,8 +41,10 @@ func TestEqual(t *testing.T) {
 	assert.True(t, rcsr.Equal(rcsr), "RCSR Equal() error")
 
 	spt1 := SPT{
-		Version:         12313,
-		Subject:         "hihihihihhi",
+		Version: 12313,
+		PolicyObjectBase: PolicyObjectBase{
+			Subject: "hihihihihhi",
+		},
 		CAName:          "I'm honest CA, nice to meet you",
 		LogID:           1231323,
 		CertType:        0x11,
@@ -52,8 +56,10 @@ func TestEqual(t *testing.T) {
 	}
 
 	spt2 := SPT{
-		Version:         12368713,
-		Subject:         "hohohoho",
+		Version: 12368713,
+		PolicyObjectBase: PolicyObjectBase{
+			Subject: "hohohoho",
+		},
 		CAName:          "I'm malicious CA, nice to meet you",
 		LogID:           1324123,
 		CertType:        0x21,
@@ -68,8 +74,10 @@ func TestEqual(t *testing.T) {
 
 	sprt := &SPRT{
 		SPT: SPT{
-			Version:         12314,
-			Subject:         "bad domain",
+			Version: 12314,
+			PolicyObjectBase: PolicyObjectBase{
+				Subject: "bad domain",
+			},
 			CAName:          "I'm malicious CA, nice to meet you",
 			LogID:           1729381,
 			CertType:        0x21,
@@ -85,8 +93,10 @@ func TestEqual(t *testing.T) {
 	assert.True(t, sprt.Equal(sprt), "SPRT Equal() error")
 
 	rpc := &RPC{
-		SerialNumber:       1729381,
-		Subject:            "bad domain",
+		SerialNumber: 1729381,
+		PolicyObjectBase: PolicyObjectBase{
+			Subject: "bad domain",
+		},
 		Version:            1729381,
 		PublicKeyAlgorithm: RSA,
 		PublicKey:          generateRandomBytes(),
@@ -106,8 +116,10 @@ func TestEqual(t *testing.T) {
 // TestJsonReadWrite: RPC -> file -> RPC, then RPC.Equal(RPC)
 func TestJsonReadWrite(t *testing.T) {
 	spt1 := &SPT{
-		Version:         12313,
-		Subject:         "hihihihihhi",
+		Version: 12313,
+		PolicyObjectBase: PolicyObjectBase{
+			Subject: "hihihihihhi",
+		},
 		CAName:          "I'm honest CA, nice to meet you",
 		LogID:           1231323,
 		CertType:        0x11,
@@ -119,8 +131,10 @@ func TestJsonReadWrite(t *testing.T) {
 	}
 
 	spt2 := &SPT{
-		Version:         12368713,
-		Subject:         "hohohoho",
+		Version: 12368713,
+		PolicyObjectBase: PolicyObjectBase{
+			Subject: "hohohoho",
+		},
 		CAName:          "I'm malicious CA, nice to meet you",
 		LogID:           1324123,
 		CertType:        0x21,
@@ -132,8 +146,10 @@ func TestJsonReadWrite(t *testing.T) {
 	}
 
 	rpc := &RPC{
-		SerialNumber:       1729381,
-		Subject:            "bad domain",
+		SerialNumber: 1729381,
+		PolicyObjectBase: PolicyObjectBase{
+			Subject: "bad domain",
+		},
 		Version:            1729381,
 		PublicKeyAlgorithm: RSA,
 		PublicKey:          generateRandomBytes(),
@@ -160,8 +176,10 @@ func TestJsonReadWrite(t *testing.T) {
 
 func randomRPC() *RPC {
 	return &RPC{
-		SerialNumber:       1729381,
-		Subject:            "RPC CA",
+		SerialNumber: 1729381,
+		PolicyObjectBase: PolicyObjectBase{
+			Subject: "RPC CA",
+		},
 		Version:            1729381,
 		PublicKeyAlgorithm: RSA,
 		PublicKey:          generateRandomBytes(),
@@ -178,7 +196,9 @@ func randomRPC() *RPC {
 
 func randomRCSR() *RCSR {
 	return &RCSR{
-		Subject:            "subject",
+		PolicyObjectBase: PolicyObjectBase{
+			Subject: "subject",
+		},
 		Version:            6789,
 		TimeStamp:          nowWithoutMonotonic(),
 		PublicKeyAlgorithm: RSA,
@@ -194,8 +214,10 @@ func randomSP() *SP {
 		Policies: Policy{
 			TrustedCA: []string{"ca1", "ca2"},
 		},
-		TimeStamp:         nowWithoutMonotonic(),
-		Subject:           "domainname.com",
+		TimeStamp: nowWithoutMonotonic(),
+		PolicyObjectBase: PolicyObjectBase{
+			Subject: "domainname.com",
+		},
 		CAName:            "ca1",
 		SerialNumber:      rand.Int(),
 		CASignature:       generateRandomBytes(),
@@ -210,8 +232,10 @@ func randomSP() *SP {
 
 func randomSPT() *SPT {
 	return &SPT{
+		PolicyObjectBase: PolicyObjectBase{
+			Subject: "hohohoho",
+		},
 		Version:         12368713,
-		Subject:         "hohohoho",
 		CAName:          "I'm malicious CA, nice to meet you",
 		LogID:           1324123,
 		CertType:        0x21,
