@@ -307,12 +307,12 @@ func (c *mysqlDB) RetrieveDomainCertificatesPayload(ctx context.Context, domainI
 ) (*common.SHA256Output, []byte, error) {
 
 	str := "SELECT cert_ids_id, cert_ids FROM domain_payloads WHERE domain_id = ?"
-	var payloadID, payload []byte
-	err := c.db.QueryRowContext(ctx, str, domainID[:]).Scan(&payloadID, &payload)
+	var certIDsID, certIDs []byte
+	err := c.db.QueryRowContext(ctx, str, domainID[:]).Scan(&certIDsID, &certIDs)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, nil, fmt.Errorf("RetrieveDomainCertificatesPayload | %w", err)
 	}
-	return (*common.SHA256Output)(payloadID), payload, nil
+	return (*common.SHA256Output)(certIDsID), certIDs, nil
 }
 
 func (c *mysqlDB) RetrieveDomainPoliciesPayload(ctx context.Context, domainID common.SHA256Output,
