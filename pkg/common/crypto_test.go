@@ -15,7 +15,9 @@ func TestSignatureOfRCSR(t *testing.T) {
 	require.NoError(t, err, "load RSA key error")
 
 	test := &RCSR{
-		Subject:            "this is a test",
+		PolicyObjectBase: PolicyObjectBase{
+			Subject: "this is a test",
+		},
 		Version:            44,
 		TimeStamp:          time.Now(),
 		PublicKeyAlgorithm: RSA,
@@ -45,7 +47,9 @@ func TestIssuanceOfRPC(t *testing.T) {
 	require.NoError(t, err, "Load RSA Key Pair From File error")
 
 	rcsr := &RCSR{
-		Subject:            "this is a test",
+		PolicyObjectBase: PolicyObjectBase{
+			Subject: "this is a test",
+		},
 		Version:            44,
 		TimeStamp:          time.Now(),
 		PublicKeyAlgorithm: RSA,
@@ -97,7 +101,9 @@ func TestIssuanceOfSP(t *testing.T) {
 	require.NoError(t, err, "Load RSA Key Pair From File error")
 
 	rcsr := &RCSR{
-		Subject:            "this is a test",
+		PolicyObjectBase: PolicyObjectBase{
+			Subject: "this is a test",
+		},
 		Version:            44,
 		TimeStamp:          time.Now(),
 		PublicKeyAlgorithm: RSA,
@@ -158,9 +164,11 @@ func TestIssuanceOfSP(t *testing.T) {
 	require.NoError(t, err, "VerifyCASigInSP error")
 }
 
-//-------------------------------------------------------------
-//                    funcs for testing
-//-------------------------------------------------------------
+// -------------------------------------------------------------
+//
+//	funcs for testing
+//
+// -------------------------------------------------------------
 func generateRandomBytes() []byte {
 	token := make([]byte, 40)
 	rand.Read(token)

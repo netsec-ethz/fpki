@@ -15,6 +15,7 @@ type PolicyObject interface {
 
 type PolicyObjectBase struct {
 	RawJSON []byte `json:"-"` // omit from JSON (un)marshaling
+	Subject string `json:",omitempty"`
 }
 
 func (PolicyObjectBase) __PolicyObjectMarkerMethod() {}
@@ -23,7 +24,6 @@ func (o PolicyObjectBase) Raw() []byte               { return o.RawJSON }
 // root certificate signing request
 type RCSR struct {
 	PolicyObjectBase
-	Subject            string             `json:",omitempty"`
 	Version            int                `json:",omitempty"`
 	TimeStamp          time.Time          `json:",omitempty"`
 	PublicKeyAlgorithm PublicKeyAlgorithm `json:",omitempty"`
@@ -37,7 +37,6 @@ type RCSR struct {
 type RPC struct {
 	PolicyObjectBase
 	SerialNumber       int                `json:",omitempty"`
-	Subject            string             `json:",omitempty"`
 	Version            int                `json:",omitempty"`
 	PublicKeyAlgorithm PublicKeyAlgorithm `json:",omitempty"`
 	PublicKey          []byte             `json:",omitempty"`
@@ -61,7 +60,6 @@ type PCRevocation struct {
 type SPT struct {
 	PolicyObjectBase
 	Version         int       `json:",omitempty"`
-	Subject         string    `json:",omitempty"`
 	CAName          string    `json:",omitempty"`
 	LogID           int       `json:",omitempty"`
 	CertType        uint8     `json:",omitempty"`
@@ -83,7 +81,6 @@ type SP struct {
 	PolicyObjectBase
 	Policies          Policy    `json:",omitempty"`
 	TimeStamp         time.Time `json:",omitempty"`
-	Subject           string    `json:",omitempty"`
 	CAName            string    `json:",omitempty"`
 	SerialNumber      int       `json:",omitempty"`
 	CASignature       []byte    `json:",omitempty"`
@@ -93,7 +90,6 @@ type SP struct {
 
 // Policy Signing Request
 type PSR struct {
-	PolicyObjectBase
 	Policies          Policy    `json:",omitempty"`
 	TimeStamp         time.Time `json:",omitempty"`
 	DomainName        string    `json:",omitempty"`
