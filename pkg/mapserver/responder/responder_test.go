@@ -61,7 +61,7 @@ func TestProofWithPoP(t *testing.T) {
 	require.NoError(t, err)
 	var expirations []*time.Time
 	require.Equal(t, len(objs), len(sps))
-	err = updater.UpdatePolicies(ctx, conn, names, expirations, [][]byte{})
+	err = updater.UpdatePoliciesWithKeepExisting(ctx, conn, names, expirations, [][]byte{})
 	require.NoError(t, err)
 
 	// Coalescing of payloads.

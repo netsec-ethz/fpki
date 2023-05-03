@@ -25,6 +25,27 @@ func CreateTestDB(ctx context.Context, dbName string) error {
 		return err
 	}
 
+	// Collect the output in case of error.
+	var output string
+	{
+		stderr, err := cmd.StderrPipe()
+		if err != nil {
+			return err
+		}
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			return err
+		}
+		go func() {
+			multi := io.MultiReader(stderr, stdout)
+			b, err := io.ReadAll(multi)
+			output = string(b)
+			if err != nil {
+				output += "\nError reading stderr and stdout"
+			}
+		}()
+	}
+
 	// Start the command.
 	err = cmd.Start()
 	if err != nil {
@@ -50,6 +71,9 @@ func CreateTestDB(ctx context.Context, dbName string) error {
 	// Get the exit code.
 	err = cmd.Wait()
 	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return fmt.Errorf("exit error: %w. STDERR+STDOUT: %s", exitErr, output)
+		}
 		return err
 	}
 
