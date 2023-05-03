@@ -66,8 +66,9 @@ CMD=$(cat <<EOF
 USE $DBNAME;
 CREATE TABLE domain_payloads (
   domain_id VARBINARY(32) NOT NULL,
-  cert_payload LONGBLOB,
-  cert_payload_id VARBINARY(32) DEFAULT NULL,
+  cert_ids LONGBLOB,                            -- IDs of each certificate for this domain,
+                                                -- alphabetically sorted, one after another.
+  cert_ids_id VARBINARY(32) DEFAULT NULL,       -- ID of cert_ids (above).
 
   PRIMARY KEY (domain_id)
 ) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
@@ -276,38 +277,43 @@ BEGIN
 
 	SET group_concat_max_len = 1073741824; -- so that GROUP_CONCAT doesn't truncate results
 	-- Replace the domain ID, its payload, and its SHA256 for a limitted subset of dirty domains.
-  SET numRows = lastRow - firstRow +1;
-	REPLACE INTO domain_payloads(domain_id, cert_payload_id, cert_payload) -- Values from subquery.
-	SELECT domain_id, UNHEX(SHA2(cert_payload, 256)), cert_payload FROM ( -- Subquery to compute the SHA256 in place.
+	SET numRows = lastRow - firstRow +1;
+	REPLACE INTO domain_payloads(domain_id, cert_ids, cert_ids_id) -- Values from subquery.
+	SELECT domain_id, cert_ids, UNHEX(SHA2(cert_ids, 256)) FROM ( -- Subquery to compute the SHA256 in place.
 
-    SELECT domain_id, GROUP_CONCAT(cert_payload SEPARATOR '') AS cert_payload FROM (
-        -- Recursive Common Table Expression that retrieves cert IDs, parent IDs, expiration and payloads.
-      WITH RECURSIVE cte AS (
-        SELECT cert_id, parent_id, payload, expiration FROM certs
-          UNION ALL
-        SELECT c.cert_id, t.parent_id, t.payload, t.expiration
-        FROM cte c
-        INNER JOIN certs t ON t.cert_id = c.parent_id
-      )
-      SELECT domain_certs.domain_id, payload AS cert_payload
-      FROM cte
-      INNER JOIN domain_certs ON cte.cert_id = domain_certs.cert_id
-      INNER JOIN dirty ON domain_certs.domain_id = dirty.domain_id
-        WHERE dirty.domain_id IN (
-          -- Forced to use an extra subquery due to mysql not being able
-          -- to use LIMITs directly in a subquery. Wrapping in an extra
-          -- subquery solves this.
-          SELECT * FROM (
-            SELECT domain_id FROM dirty
-            ORDER BY domain_id
-                      LIMIT firstRow, numRows -- Beware that mysql can only use SP variables here.
-                                              -- https://bugs.mysql.com/bug.php?id=11918
-          ) AS limitter_query
-        )
-      ORDER BY expiration,payload
-    ) AS sortedpayload_query
+		-- Select the concatenation of all cert IDs (sorted) or a domain.
+		SELECT domain_id, GROUP_CONCAT(cert_id SEPARATOR '') AS cert_ids FROM(
+		-- SELECT HEX(domain_id), HEX(cert_id) AS cert_ids FROM(
+		-- The CTE lists all certs that are reachable by the domain_id
+		WITH RECURSIVE cte AS (
+			-- Base case: specify which leaf certs we choose: those that
+			-- have a link with a domain that is part of the dirty domains.
+			SELECT dirty.domain_id, certs.cert_id, parent_id
+			FROM certs
+			INNER JOIN domain_certs ON certs.cert_id = domain_certs.cert_id
+			INNER JOIN dirty ON domain_certs.domain_id = dirty.domain_id
+				WHERE dirty.domain_id IN (
+					-- Forced to use an extra subquery due to mysql not being able
+					-- to use LIMITs directly in a subquery. Wrapping in an extra
+					-- subquery solves this.
+					SELECT * FROM (
+						SELECT domain_id FROM dirty
+						ORDER BY domain_id
+						LIMIT firstRow, numRows		-- Beware that mysql can only use SP variables here.
+													-- https://bugs.mysql.com/bug.php?id=11918
+					) AS limitter_query
+				)
 
-  GROUP BY domain_id
+			UNION ALL
+			-- Recursive case: any certificate that has its ID as
+			-- parent ID of the previous set, recursively.
+			SELECT cte.domain_id, certs.cert_id, certs.parent_id
+			FROM certs
+			JOIN cte ON certs.cert_id = cte.parent_id
+		)
+		SELECT DISTINCT domain_id, cert_id FROM cte ORDER BY cert_id
+		) AS collate_cert_ids_query GROUP BY domain_id
+
 	) AS hasher_query;
 END$$
 DELIMITER ;

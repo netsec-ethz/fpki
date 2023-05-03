@@ -23,7 +23,7 @@ import (
 )
 
 func TestProofWithPoP(t *testing.T) {
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Hour)
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
 	defer cancelF()
 
 	// DB will have the same name as the test function.

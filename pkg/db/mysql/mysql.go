@@ -306,7 +306,7 @@ func (c *mysqlDB) ReplaceDirtyDomainPayloads(ctx context.Context, firstRow, last
 func (c *mysqlDB) RetrieveDomainCertificatesPayload(ctx context.Context, domainID common.SHA256Output,
 ) (*common.SHA256Output, []byte, error) {
 
-	str := "SELECT cert_payload_id, cert_payload FROM domain_payloads WHERE domain_id = ?"
+	str := "SELECT cert_ids_id, cert_ids FROM domain_payloads WHERE domain_id = ?"
 	var payloadID, payload []byte
 	err := c.db.QueryRowContext(ctx, str, domainID[:]).Scan(&payloadID, &payload)
 	if err != nil && err != sql.ErrNoRows {
@@ -319,7 +319,7 @@ func (c *mysqlDB) RetrieveDomainPoliciesPayload(ctx context.Context, domainID co
 ) (*common.SHA256Output, []byte, error) {
 
 	// deleteme use the other field, not the certificates one!
-	str := "SELECT cert_payload_id, cert_payload FROM domain_payloads WHERE domain_id = ?"
+	str := "SELECT cert_ids_id, cert_ids FROM domain_payloads WHERE domain_id = ?"
 	var payloadID, payload []byte
 	err := c.db.QueryRowContext(ctx, str, domainID[:]).Scan(&payloadID, &payload)
 	if err != nil && err != sql.ErrNoRows {
@@ -336,7 +336,7 @@ func (c *mysqlDB) RetrieveDomainEntries(ctx context.Context, domainIDs []*common
 	if len(domainIDs) == 0 {
 		return nil, nil
 	}
-	str := "SELECT domain_id,cert_payload FROM domain_payloads WHERE domain_id IN " +
+	str := "SELECT domain_id,cert_ids FROM domain_payloads WHERE domain_id IN " +
 		repeatStmt(1, len(domainIDs))
 	params := make([]interface{}, len(domainIDs))
 	for i, id := range domainIDs {
