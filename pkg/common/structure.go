@@ -12,13 +12,15 @@ type PolicyObject interface {
 	__PolicyObjectMarkerMethod()
 }
 
-// PolicyObjectList is a list of PolicyObject's, which is a PolicyObject in and of itself.
-type PolicyObjectList []PolicyObject
+type PolicyObjectBase struct {
+	RawJSON []byte `json:"-"` // omit from JSON (un)marshaling
+}
 
-func (PolicyObjectList) __PolicyObjectMarkerMethod() {}
+func (PolicyObjectBase) __PolicyObjectMarkerMethod() {}
 
 // root certificate signing request
 type RCSR struct {
+	PolicyObjectBase
 	Subject            string             `json:",omitempty"`
 	Version            int                `json:",omitempty"`
 	TimeStamp          time.Time          `json:",omitempty"`
@@ -29,10 +31,9 @@ type RCSR struct {
 	Signature          []byte             `json:",omitempty"`
 }
 
-func (RCSR) __PolicyObjectMarkerMethod() {}
-
 // root policy certificate
 type RPC struct {
+	PolicyObjectBase
 	SerialNumber       int                `json:",omitempty"`
 	Subject            string             `json:",omitempty"`
 	Version            int                `json:",omitempty"`
@@ -48,17 +49,15 @@ type RPC struct {
 	SPTs               []SPT              `json:",omitempty"`
 }
 
-func (RPC) __PolicyObjectMarkerMethod() {}
-
 // PCRevocation is for now empty.
 type PCRevocation struct {
+	PolicyObjectBase
 	// TODO(juagargi) define the revocation.
 }
 
-func (PCRevocation) __PolicyObjectMarkerMethod() {}
-
 // signed policy timestamp
 type SPT struct {
+	PolicyObjectBase
 	Version         int       `json:",omitempty"`
 	Subject         string    `json:",omitempty"`
 	CAName          string    `json:",omitempty"`
@@ -71,18 +70,15 @@ type SPT struct {
 	Signature       []byte    `json:",omitempty"`
 }
 
-func (SPT) __PolicyObjectMarkerMethod() {}
-
 // signed policy revocation timestamp
 type SPRT struct {
 	SPT
 	Reason int `json:",omitempty"`
 }
 
-func (SPRT) __PolicyObjectMarkerMethod() {}
-
 // Signed Policy
 type SP struct {
+	PolicyObjectBase
 	Policies          Policy    `json:",omitempty"`
 	TimeStamp         time.Time `json:",omitempty"`
 	Subject           string    `json:",omitempty"`
@@ -93,17 +89,14 @@ type SP struct {
 	SPTs              []SPT     `json:",omitempty"`
 }
 
-func (SP) __PolicyObjectMarkerMethod() {}
-
 // Policy Signing Request
 type PSR struct {
+	PolicyObjectBase
 	Policies          Policy    `json:",omitempty"`
 	TimeStamp         time.Time `json:",omitempty"`
 	DomainName        string    `json:",omitempty"`
 	RootCertSignature []byte    `json:",omitempty"`
 }
-
-func (PSR) __PolicyObjectMarkerMethod() {}
 
 // Domain policy
 type Policy struct {
