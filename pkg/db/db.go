@@ -37,7 +37,7 @@ type Conn interface {
 	// RetrieveDomainCertificatesPayload retrieves the domain's certificate payload ID and the payload
 	// itself, given the domain ID.
 	RetrieveDomainCertificatesPayload(ctx context.Context, id common.SHA256Output) (
-		certPayloadID *common.SHA256Output, certPayload []byte, err error)
+		certIDsID *common.SHA256Output, certIDs []byte, err error)
 
 	// RetrieveDomainPoliciesPayload returns the policy related payload for a given domain.
 	// This includes the RPCs, SPs, etc.
