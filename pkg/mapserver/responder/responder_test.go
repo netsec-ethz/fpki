@@ -11,7 +11,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
 	"github.com/netsec-ethz/fpki/pkg/domain"
@@ -55,13 +54,10 @@ func TestProofWithPoP(t *testing.T) {
 	// Ingest two policies.
 	data, err := os.ReadFile("../../../tests/testdata/2-SPs.json")
 	require.NoError(t, err)
-	objs, err := util.LoadPoliciesFromRaw(data)
-	require.NoError(t, err)
-	sps, err := util.ToTypedSlice[*common.SP](objs)
+	pols, polIDs, err := util.LoadPoliciesFromRaw(data)
 	require.NoError(t, err)
 	var expirations []*time.Time
-	require.Equal(t, len(objs), len(sps))
-	err = updater.UpdatePoliciesWithKeepExisting(ctx, conn, names, expirations, [][]byte{})
+	err = updater.UpdatePoliciesWithKeepExisting(ctx, conn, names, expirations, pols, polIDs)
 	require.NoError(t, err)
 
 	// Coalescing of payloads.
