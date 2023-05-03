@@ -58,7 +58,7 @@ func TestCoalesceForDirtyDomains(t *testing.T) {
 	require.NoError(t, err)
 	var expirations []*time.Time
 	require.Equal(t, len(objs), len(sps))
-	err = updater.UpdatePolicies(ctx, conn, certNames, expirations, [][]byte{})
+	err = updater.UpdatePoliciesWithKeepExisting(ctx, conn, certNames, expirations, [][]byte{}, nil)
 	require.NoError(t, err)
 
 	// Coalescing of payloads.
