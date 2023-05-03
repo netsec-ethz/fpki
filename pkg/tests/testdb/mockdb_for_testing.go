@@ -45,6 +45,10 @@ func (d *MockDB) CheckCertsExist(ctx context.Context, ids []*common.SHA256Output
 	return make([]bool, len(ids)), nil
 }
 
+func (d *MockDB) CheckPoliciesExist(ctx context.Context, ids []*common.SHA256Output) ([]bool, error) {
+	return make([]bool, len(ids)), nil
+}
+
 func (d *MockDB) InsertCerts(ctx context.Context, ids, parents []*common.SHA256Output,
 	expirations []*time.Time, payloads [][]byte) error {
 

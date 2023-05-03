@@ -44,13 +44,17 @@ type Conn interface {
 	RetrieveDomainPoliciesPayload(ctx context.Context, id common.SHA256Output) (
 		payloadID *common.SHA256Output, payload []byte, err error)
 
-	//////////////////////////////////////////////////////////////////
-	// check if the functions below are needed after the new design //
-	//////////////////////////////////////////////////////////////////
-
 	// CheckCertsExist returns a slice of true/false values. Each value indicates if
 	// the corresponding certificate identified by its ID is already present in the DB.
 	CheckCertsExist(ctx context.Context, ids []*common.SHA256Output) ([]bool, error)
+
+	// CheckPoliciesExist returns a slice of true/false values. Each value indicates if
+	// the corresponding policy identified by its ID is already present in the DB.
+	CheckPoliciesExist(ctx context.Context, ids []*common.SHA256Output) ([]bool, error)
+
+	//////////////////////////////////////////////////////////////////
+	// check if the functions below are needed after the new design //
+	//////////////////////////////////////////////////////////////////
 
 	InsertCerts(ctx context.Context, ids, parents []*common.SHA256Output, expirations []*time.Time,
 		payloads [][]byte) error

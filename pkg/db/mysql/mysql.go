@@ -186,8 +186,54 @@ func (c *mysqlDB) CheckCertsExist(ctx context.Context, ids []*common.SHA256Outpu
 	str := "SELECT GROUP_CONCAT(presence SEPARATOR '') FROM (" +
 		"SELECT (CASE WHEN certs.cert_id IS NOT NULL THEN 1 ELSE 0 END) AS presence FROM (" +
 		strings.Join(elems, " UNION ALL ") +
-		") AS request left JOIN ( SELECT cert_id FROM certs ) AS certs ON certs.cert_id = request.cert_id" +
-		") AS t"
+		") AS request LEFT JOIN ( SELECT cert_id FROM certs ) AS certs ON " +
+		"certs.cert_id = request.cert_id) AS t"
+
+	// Return slice of booleans:
+	present := make([]bool, len(ids))
+
+	var value string
+	if err := c.db.QueryRowContext(ctx, str, data...).Scan(&value); err != nil {
+		return nil, err
+	}
+	for i, c := range value {
+		if c == '1' {
+			present[i] = true
+		}
+	}
+
+	return present, nil
+}
+
+// CheckPoliciesExist returns a slice of true/false values. Each value indicates if
+// the corresponding certificate identified by its ID is already present in the DB.
+func (c *mysqlDB) CheckPoliciesExist(ctx context.Context, ids []*common.SHA256Output) (
+	[]bool, error) {
+
+	if len(ids) == 0 {
+		// If empty, return empty.
+		return nil, nil
+	}
+	// Slice to be used in the SQL query:
+	data := make([]interface{}, len(ids))
+	for i, id := range ids {
+		data[i] = id[:]
+	}
+
+	// Prepare a query that returns a vector of bits, 1 means ID is present, 0 means is not.
+	elems := make([]string, len(data))
+	for i := range elems {
+		elems[i] = "SELECT ? AS policy_id"
+	}
+
+	// The query means: join two tables, one with the values I am passing as arguments (those
+	// are the ids) and the policies table, and for those that exist write a 1, otherwise a 0.
+	// Finally, group_concat all rows into just one field of type string.
+	str := "SELECT GROUP_CONCAT(presence SEPARATOR '') FROM (" +
+		"SELECT (CASE WHEN policies.policy_id IS NOT NULL THEN 1 ELSE 0 END) AS presence FROM (" +
+		strings.Join(elems, " UNION ALL ") +
+		") AS request LEFT JOIN ( SELECT policy_id FROM policies ) AS policies ON " +
+		"policies.policy_id = request.policy_id) AS t"
 
 	// Return slice of booleans:
 	present := make([]bool, len(ids))

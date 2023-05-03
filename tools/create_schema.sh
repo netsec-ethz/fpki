@@ -47,7 +47,6 @@ EOF
   echo "$CMD" | $MYSQLCMD
 
 
-
 CMD=$(cat <<EOF
 USE $DBNAME;
 CREATE TABLE domain_certs (
@@ -64,11 +63,43 @@ EOF
 
 CMD=$(cat <<EOF
 USE $DBNAME;
+CREATE TABLE policies (
+  policy_id VARBINARY(32) NOT NULL,
+  parent_id VARBINARY(32) DEFAULT NULL,
+  expiration DATETIME NOT NULL,
+  payload LONGBLOB,
+
+  PRIMARY KEY(policy_id)
+) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
+EOF
+  )
+  echo "$CMD" | $MYSQLCMD
+
+
+CMD=$(cat <<EOF
+USE $DBNAME;
+CREATE TABLE domain_policies (
+  domain_id VARBINARY(32) NOT NULL,
+  policy_id VARBINARY(32) NOT NULL,
+
+  PRIMARY KEY (domain_id,policy_id),
+  INDEX domain_id (domain_id)
+) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
+EOF
+  )
+  echo "$CMD" | $MYSQLCMD
+
+
+CMD=$(cat <<EOF
+USE $DBNAME;
 CREATE TABLE domain_payloads (
   domain_id VARBINARY(32) NOT NULL,
   cert_ids LONGBLOB,                            -- IDs of each certificate for this domain,
                                                 -- alphabetically sorted, one after another.
   cert_ids_id VARBINARY(32) DEFAULT NULL,       -- ID of cert_ids (above).
+  policy_ids LONGBLOB,                          -- IDs of each policy object for this domain,
+                                                -- alphabetically sorted, glued together.
+  policy_ids_id VARBINARY(32) DEFAULT NULL,     -- ID of cert_ids (above).
 
   PRIMARY KEY (domain_id)
 ) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
