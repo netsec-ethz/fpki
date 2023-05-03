@@ -52,10 +52,9 @@ func TestCoalesceForDirtyDomains(t *testing.T) {
 	// Ingest two mock policies.
 	data, err := os.ReadFile("../../../tests/testdata/2-SPs.json")
 	require.NoError(t, err)
-	pols, polIDs, err := util.LoadPoliciesFromRaw(data)
+	pols, err := util.LoadPoliciesFromRaw(data)
 	require.NoError(t, err)
-	var expirations []*time.Time
-	err = updater.UpdatePoliciesWithKeepExisting(ctx, conn, certNames, expirations, pols, polIDs)
+	err = updater.UpdatePoliciesWithKeepExisting(ctx, conn, pols)
 	require.NoError(t, err)
 
 	// Coalescing of payloads.

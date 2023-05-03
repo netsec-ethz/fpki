@@ -117,24 +117,18 @@ func LoadCertsAndChainsFromCSV(
 
 // LoadPoliciesFromRaw can load RPCs, SPs, RCSRs, PCRevocations, SPRTs, and PSRs from their
 // serialized form.
-func LoadPoliciesFromRaw(b []byte) ([]common.PolicyObject, []*common.SHA256Output, error) {
+func LoadPoliciesFromRaw(b []byte) ([]common.PolicyObject, error) {
 	obj, err := common.FromJSON(b)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	// The returned object should be of type list.
 	pols, err := ToTypedSlice[common.PolicyObject](obj)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	ids := make([]*common.SHA256Output, len(pols))
-	for i, pol := range pols {
-		id := common.SHA256Hash32Bytes(pol.Raw())
-		ids[i] = &id
-	}
-
-	return pols, ids, nil
+	return pols, nil
 
 }
 

@@ -283,17 +283,33 @@ func UpdateCertsWithKeepExisting(ctx context.Context, conn db.Conn, names [][]st
 
 // UpdatePoliciesWithKeepExisting takes a sequence of policies, the aliases associated with each one, and the
 // expiration times, and updates the DB with them.
-func UpdatePoliciesWithKeepExisting(ctx context.Context, conn db.Conn, names [][]string,
-	expirations []*time.Time, policies []common.PolicyObject, policyIDs []*common.SHA256Output) error {
+func UpdatePoliciesWithKeepExisting(ctx context.Context, conn db.Conn,
+	policies []common.PolicyObject) error {
 
 	payloads := make([][]byte, len(policies))
+	IDs := make([]*common.SHA256Output, len(policies))
+	names := make([]string, len(policies))
 	for i, pol := range policies {
 		payloads[i] = pol.Raw()
+		id := common.SHA256Hash32Bytes(pol.Raw())
+		IDs[i] = &id
+		names[i] = pol.Domain()
 	}
-	// deleteme
-	// TODO
-	// TODO(juagargi) do it
-	return nil
+
+	// Check which policies are already present in the DB.
+	mask, err := conn.CheckPoliciesExist(ctx, IDs)
+	if err != nil {
+		return err
+	}
+	n := runWhenFalse(mask, func(to, from int) {
+		IDs[to] = IDs[from]
+		payloads[to] = payloads[from]
+		names[to] = names[from]
+	})
+	IDs = IDs[:n]
+	payloads = payloads[:n]
+	names = names[:n]
+	return insertPolicies(ctx, conn, names, IDs, payloads)
 }
 
 func CoalescePayloadsForDirtyDomains(ctx context.Context, conn db.Conn) error {
@@ -408,7 +424,15 @@ func insertCerts(ctx context.Context, conn db.Conn, names [][]string,
 	return nil
 }
 
-func runWhenFalse(mask []bool, fcn func(to, from int)) {
+func insertPolicies(ctx context.Context, conn db.Conn, names []string, ids []*common.SHA256Output,
+	payloads [][]byte) error {
+
+	return nil
+}
+
+// runWhenFalse serves as a function to "move" content when the element in mask is true.
+// Returns the number of false entries.
+func runWhenFalse(mask []bool, fcn func(to, from int)) int {
 	to := 0
 	for from, condition := range mask {
 		if !condition {
@@ -416,4 +440,5 @@ func runWhenFalse(mask []bool, fcn func(to, from int)) {
 			to++
 		}
 	}
+	return to
 }

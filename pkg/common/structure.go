@@ -11,6 +11,7 @@ import (
 type PolicyObject interface {
 	__PolicyObjectMarkerMethod()
 	Raw() []byte
+	Domain() string
 }
 
 type PolicyObjectBase struct {
@@ -20,6 +21,7 @@ type PolicyObjectBase struct {
 
 func (PolicyObjectBase) __PolicyObjectMarkerMethod() {}
 func (o PolicyObjectBase) Raw() []byte               { return o.RawJSON }
+func (o PolicyObjectBase) Domain() string            { return o.Subject }
 
 // root certificate signing request
 type RCSR struct {
