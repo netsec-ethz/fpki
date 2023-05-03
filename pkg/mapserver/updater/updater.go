@@ -284,8 +284,12 @@ func UpdateCertsWithKeepExisting(ctx context.Context, conn db.Conn, names [][]st
 // UpdatePoliciesWithKeepExisting takes a sequence of policies, the aliases associated with each one, and the
 // expiration times, and updates the DB with them.
 func UpdatePoliciesWithKeepExisting(ctx context.Context, conn db.Conn, names [][]string,
-	expirations []*time.Time, policies [][]byte, policyIDs []*common.SHA256Output) error {
+	expirations []*time.Time, policies []common.PolicyObject, policyIDs []*common.SHA256Output) error {
 
+	payloads := make([][]byte, len(policies))
+	for i, pol := range policies {
+		payloads[i] = pol.Raw()
+	}
 	// deleteme
 	// TODO
 	// TODO(juagargi) do it

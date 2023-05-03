@@ -10,6 +10,7 @@ import (
 // for a domain, such as RPC, RCSR, SPT, SPRT, SP, PSR or Policy.
 type PolicyObject interface {
 	__PolicyObjectMarkerMethod()
+	Raw() []byte
 }
 
 type PolicyObjectBase struct {
@@ -17,6 +18,7 @@ type PolicyObjectBase struct {
 }
 
 func (PolicyObjectBase) __PolicyObjectMarkerMethod() {}
+func (o PolicyObjectBase) Raw() []byte               { return o.RawJSON }
 
 // root certificate signing request
 type RCSR struct {
