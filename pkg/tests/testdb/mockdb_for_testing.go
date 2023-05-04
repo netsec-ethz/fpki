@@ -61,8 +61,18 @@ func (d *MockDB) InsertPolicies(ctx context.Context, ids, parents []*common.SHA2
 	return nil
 }
 
-func (d *MockDB) UpdateDomainsWithCerts(ctx context.Context, certIDs, domainIDs []*common.SHA256Output,
-	domainNames []string) error {
+func (d *MockDB) UpdateDomains(context.Context, []*common.SHA256Output, []string) error {
+	return nil
+}
+
+func (d *MockDB) UpdateDomainCerts(ctx context.Context,
+	domainIDs, certIDs []*common.SHA256Output) error {
+
+	return nil
+}
+
+func (d *MockDB) UpdateDomainPolicies(ctx context.Context,
+	domainIDs, policyIDs []*common.SHA256Output) error {
 
 	return nil
 }

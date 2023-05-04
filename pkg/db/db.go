@@ -58,14 +58,18 @@ type Conn interface {
 	InsertPolicies(ctx context.Context, ids, parents []*common.SHA256Output,
 		expirations []*time.Time, payloads [][]byte) error
 
+	// UpdateDomains updates the domains and dirty tables.
+	UpdateDomains(ctx context.Context, domainIDs []*common.SHA256Output, domainNames []string) error
+
+	// UpdateDomainCerts updates the domain_certs table with new entries.
+	UpdateDomainCerts(ctx context.Context, domainIDs, certIDs []*common.SHA256Output) error
+
+	// UpdateDomainPolicies updates the domain_policies table with new entries.
+	UpdateDomainPolicies(ctx context.Context, domainIDs, policyIDs []*common.SHA256Output) error
+
 	//////////////////////////////////////////////////////////////////
 	// check if the functions below are needed after the new design //
 	//////////////////////////////////////////////////////////////////
-
-	// UpdateDomainsWithCerts updates the domains and dirty tables with entries that are
-	// _probably_ not present there.
-	UpdateDomainsWithCerts(ctx context.Context, certIDs, domainIDs []*common.SHA256Output,
-		domainNames []string) error
 
 	// ************************************************************
 	//              Function for Tree table

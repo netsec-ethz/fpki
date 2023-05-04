@@ -309,60 +309,84 @@ func (c *mysqlDB) InsertPolicies(ctx context.Context, ids, parents []*common.SHA
 	return nil
 }
 
-// UpdateDomainsWithCerts updates both the domains and the dirty tables.
-func (c *mysqlDB) UpdateDomainsWithCerts(ctx context.Context, certIDs,
-	domainIDs []*common.SHA256Output, domainNames []string) error {
+func (c *mysqlDB) UpdateDomains(ctx context.Context, domainIDs []*common.SHA256Output,
+	domainNames []string) error {
 
-	if len(certIDs) == 0 {
+	if len(domainIDs) == 0 {
 		return nil
 	}
 
-	// First insert into domains. Find out which domain IDs are unique, and attach the
-	// corresponding name to them.
-	{
-		uniqueDomainIDs := make(map[common.SHA256Output]string)
-		for i, id := range domainIDs {
-			uniqueDomainIDs[*id] = domainNames[i]
-		}
-
-		str := "INSERT IGNORE INTO domains (domain_id,domain_name) VALUES " +
-			repeatStmt(len(uniqueDomainIDs), 2)
-
-		data := make([]interface{}, 2*len(uniqueDomainIDs))
-		i := 0
-		for k, v := range uniqueDomainIDs {
-			data[2*i] = append([]byte{}, k[:]...)
-			data[2*i+1] = v
-			i++
-		}
-		_, err := c.db.ExecContext(ctx, str, data...)
-		if err != nil {
-			return err
-		}
-	}
-
-	// Now insert into the domain_certs:
-	{
-		str := "INSERT IGNORE INTO domain_certs (domain_id,cert_id) VALUES " +
-			repeatStmt(len(certIDs), 2)
-		data := make([]interface{}, 2*len(certIDs))
-		for i := range certIDs {
-			data[2*i] = domainIDs[i][:]
-			data[2*i+1] = certIDs[i][:]
-		}
-		_, err := c.db.Exec(str, data...)
-		if err != nil {
-			return err
-		}
-	}
-
-	// Now insert into dirty.
-	str := "REPLACE INTO dirty (domain_id) VALUES " + repeatStmt(len(domainIDs), 1)
-	data := make([]interface{}, len(domainIDs))
+	// Make the list of domains unique, attach the name to each unique ID.
+	domainIDsSet := make(map[common.SHA256Output]string)
 	for i, id := range domainIDs {
-		data[i] = id[:]
+		domainIDsSet[*id] = domainNames[i]
 	}
-	_, err := c.db.Exec(str, data...)
+
+	// Insert into dirty.
+	str := "REPLACE INTO dirty (domain_id) VALUES " + repeatStmt(len(domainIDsSet), 1)
+	data := make([]interface{}, len(domainIDsSet))
+	i := 0
+	for k := range domainIDsSet {
+		data[i] = k[:]
+		i++
+	}
+	_, err := c.db.ExecContext(ctx, str, data...)
+	if err != nil {
+		return err
+	}
+
+	// Insert into domains.
+	str = "INSERT IGNORE INTO domains (domain_id,domain_name) VALUES " +
+		repeatStmt(len(domainIDsSet), 2)
+	data = make([]interface{}, 2*len(domainIDsSet))
+	i = 0
+	for k, v := range domainIDsSet {
+		data[2*i] = append([]byte{}, k[:]...)
+		data[2*i+1] = v
+		i++
+	}
+	_, err = c.db.ExecContext(ctx, str, data...)
+
+	return err
+}
+
+// UpdateDomainCerts updates the domain_certs table.
+func (c *mysqlDB) UpdateDomainCerts(ctx context.Context,
+	domainIDs, certIDs []*common.SHA256Output) error {
+
+	if len(domainIDs) == 0 {
+		return nil
+	}
+	// Insert into domain_certs:
+	str := "INSERT IGNORE INTO domain_certs (domain_id,cert_id) VALUES " +
+		repeatStmt(len(certIDs), 2)
+	data := make([]interface{}, 2*len(certIDs))
+	for i := range certIDs {
+		data[2*i] = domainIDs[i][:]
+		data[2*i+1] = certIDs[i][:]
+	}
+	_, err := c.db.ExecContext(ctx, str, data...)
+
+	return err
+}
+
+// UpdateDomainPolicies updates the domain_certs table.
+func (c *mysqlDB) UpdateDomainPolicies(ctx context.Context,
+	domainIDs, policyIDs []*common.SHA256Output) error {
+
+	if len(domainIDs) == 0 {
+		return nil
+	}
+	// Insert into domain_certs:
+	str := "INSERT IGNORE INTO domain_policies (domain_id,policy_id) VALUES " +
+		repeatStmt(len(policyIDs), 2)
+	data := make([]interface{}, 2*len(policyIDs))
+	for i := range policyIDs {
+		data[2*i] = domainIDs[i][:]
+		data[2*i+1] = policyIDs[i][:]
+	}
+	_, err := c.db.ExecContext(ctx, str, data...)
+
 	return err
 }
 
