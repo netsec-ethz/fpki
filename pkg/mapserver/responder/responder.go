@@ -67,19 +67,24 @@ func (r *MapResponder) GetProof(ctx context.Context, domainName string,
 		proofType := mapCommon.PoA
 		if isPoP {
 			proofType = mapCommon.PoP
-			de.DomainCertsPayloadID, de.DomainCertsPayload, err =
+			de.CertIDsID, de.CertIDs, err =
 				r.conn.RetrieveDomainCertificatesPayload(ctx, domainPartID)
 			if err != nil {
 				return nil, fmt.Errorf("error obtaining x509 payload for %s: %w", domainPart, err)
 			}
-			de.DomainPoliciesPayloadID, de.DomainPoliciesPayload, err =
+			de.PolicyIDsID, de.PolicyIDs, err =
 				r.conn.RetrieveDomainPoliciesPayload(ctx, domainPartID)
 			if err != nil {
 				return nil, fmt.Errorf("error obtaining policies payload for %s: %w",
 					domainPart, err)
 			}
-			// deleteme change this to sha(certIDs || polIDs)
-			de.DomainValue = de.DomainCertsPayloadID
+			// Concat certIDs with polIDs, in alphabetically sorted order.
+			allIDs := append(common.BytesToIDs(de.CertIDs), common.BytesToIDs(de.PolicyIDs)...)
+			v := common.SortIDsAndGlue(allIDs)
+			vID := common.SHA256Hash32Bytes(v)
+			de.DomainValue = &vID
+
+			// TODO(juagargi) the sorting and concatenation should happen inside the DB.
 		}
 
 		proofList[i] = &mapCommon.MapServerResponse{

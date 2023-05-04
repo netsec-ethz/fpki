@@ -16,10 +16,12 @@ type DomainEntry struct {
 	DomainID    *common.SHA256Output // This is the SHA256 of the domain name
 	DomainValue *common.SHA256Output // = SHA256 ( certsPayloadID || polsPayloadID )
 
-	DomainCertsPayloadID    *common.SHA256Output
-	DomainCertsPayload      []byte // Includes x509 leafs and trust chains, raw ASN.1 DER.
-	DomainPoliciesPayloadID *common.SHA256Output
-	DomainPoliciesPayload   []byte // Includes RPCs, SPs, etc. JSON.
+	// TODO(juagargi) remove the CertsIDsID and PolicyIDsID from here and from the DB.
+
+	CertIDsID   *common.SHA256Output
+	CertIDs     []byte // Includes x509 leafs and trust chains, raw ASN.1 DER.
+	PolicyIDsID *common.SHA256Output
+	PolicyIDs   []byte // Includes RPCs, SPs, etc. JSON.
 }
 
 // DeletemeSerializeDomainEntry uses json to serialize.

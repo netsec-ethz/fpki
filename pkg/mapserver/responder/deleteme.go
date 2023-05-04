@@ -32,7 +32,7 @@ func (mapResponder *OldMapResponder) GetDomainProofsTest(ctx context.Context, do
 	end2 := time.Now()
 	for _, keyValuePair := range result {
 		// domainProofMap[keyValuePair.Key].DomainEntryBytes = keyValuePair.Value
-		domainProofMap[keyValuePair.Key].DomainEntry.DomainCertsPayload = keyValuePair.Value
+		domainProofMap[keyValuePair.Key].DomainEntry.CertIDs = keyValuePair.Value
 	}
 
 	fmt.Println(len(domainResultMap), end.Sub(start), " ", end1.Sub(start1), " ", end2.Sub(start2))
