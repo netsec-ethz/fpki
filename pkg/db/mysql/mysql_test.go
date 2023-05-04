@@ -89,6 +89,23 @@ func TestCoalesceForDirtyDomains(t *testing.T) {
 		require.Equal(t, expectedCertIDs, gotCertIDs)
 		require.Equal(t, expectedCertIDsID, gotCertIDsID)
 	}
+
+	// Check policy coalescing.
+	policiesPerName := make(map[string][]common.PolicyObject, len(pols))
+	for _, pol := range pols {
+		policiesPerName[pol.Domain()] = append(policiesPerName[pol.Domain()], pol)
+	}
+	for name, policies := range policiesPerName {
+		id := common.SHA256Hash32Bytes([]byte(name))
+		gotPolIDsID, gotPolIDs, err := conn.RetrieveDomainPoliciesPayload(ctx, id)
+		require.NoError(t, err)
+		// For each sequence of policies, compute the ID of their JSON.
+		polIDs := computeIDsOfPolicies(policies)
+		expectedPolIDs, expectedPolIDsID := glueSortedIDsAndComputeItsID(polIDs)
+		t.Logf("expectedPolIDs: %s\n", hex.EncodeToString(expectedPolIDs))
+		require.Equal(t, expectedPolIDs, gotPolIDs)
+		require.Equal(t, expectedPolIDsID, gotPolIDsID)
+	}
 }
 
 // buildTestCertHierarchy returns the certificates, chains, and names for two mock certificate
@@ -127,21 +144,30 @@ func buildTestCertHierarchy(t require.TestingT, domainName string) (
 	return
 }
 
-func glueSortedIDsAndComputeItsID(certIDs []*common.SHA256Output) ([]byte, *common.SHA256Output) {
+func glueSortedIDsAndComputeItsID(IDs []*common.SHA256Output) ([]byte, *common.SHA256Output) {
 	// Copy slice to avoid mutating of the original.
-	IDs := append(certIDs[:0:0], certIDs...)
+	ids := append(IDs[:0:0], IDs...)
 	// Sort the IDs.
-	sort.Slice(IDs, func(i, j int) bool {
-		return bytes.Compare(IDs[i][:], IDs[j][:]) == -1
+	sort.Slice(ids, func(i, j int) bool {
+		return bytes.Compare(ids[i][:], ids[j][:]) == -1
 	})
 	// Glue the sorted IDs.
-	gluedIDs := make([]byte, common.SHA256Size*len(IDs))
-	for i, id := range IDs {
+	gluedIDs := make([]byte, common.SHA256Size*len(ids))
+	for i, id := range ids {
 		copy(gluedIDs[i*common.SHA256Size:], id[:])
 	}
 	// Compute the hash of the glued IDs.
 	id := common.SHA256Hash32Bytes(gluedIDs)
 	return gluedIDs, &id
+}
+
+func computeIDsOfPolicies(policies []common.PolicyObject) []*common.SHA256Output {
+	IDs := make([]*common.SHA256Output, len(policies))
+	for i, pol := range policies {
+		id := common.SHA256Hash32Bytes(pol.Raw())
+		IDs[i] = &id
+	}
+	return IDs
 }
 
 func randomX509Cert(t require.TestingT, domain string) *ctx509.Certificate {
