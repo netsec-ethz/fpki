@@ -6,8 +6,7 @@ const SHA256Size = 32
 
 type SHA256Output [SHA256Size]byte
 
-// Hash exports default hash function for trie
-var SHA256Hash = func(data ...[]byte) []byte {
+func SHA256Hash(data ...[]byte) []byte {
 	hash := sha256.New()
 	for i := 0; i < len(data); i++ {
 		hash.Write(data[i])
@@ -15,16 +14,8 @@ var SHA256Hash = func(data ...[]byte) []byte {
 	return hash.Sum(nil)
 }
 
-// Hash exports default hash function for trie
-var SHA256Hash32Bytes = func(data ...[]byte) SHA256Output {
-	hash := sha256.New()
-	for i := 0; i < len(data); i++ {
-		hash.Write(data[i])
-	}
-	output := hash.Sum(nil)
-
-	var output32Bytes SHA256Output
-	copy(output32Bytes[:], output)
-
-	return output32Bytes
+func SHA256Hash32Bytes(data ...[]byte) SHA256Output {
+	output := SHA256Hash(data...) // will never be empty, will always be 32 bytes.
+	ptr := (*SHA256Output)(output)
+	return *ptr
 }
