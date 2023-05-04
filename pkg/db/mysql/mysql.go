@@ -417,29 +417,30 @@ func (c *mysqlDB) RetrieveDomainCertificatesPayload(ctx context.Context, domainI
 	str := "SELECT cert_ids_id, cert_ids FROM domain_payloads WHERE domain_id = ?"
 	var certIDsID, certIDs []byte
 	err := c.db.QueryRowContext(ctx, str, domainID[:]).Scan(&certIDsID, &certIDs)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil, nil
-		}
+	if err != nil && err != sql.ErrNoRows {
 		return nil, nil, fmt.Errorf("RetrieveDomainCertificatesPayload | %w", err)
 	}
-	return (*common.SHA256Output)(certIDsID), certIDs, nil
+	var IDptr *common.SHA256Output
+	if certIDsID != nil {
+		IDptr = (*common.SHA256Output)(certIDsID)
+	}
+	return IDptr, certIDs, nil
 }
 
 func (c *mysqlDB) RetrieveDomainPoliciesPayload(ctx context.Context, domainID common.SHA256Output,
 ) (*common.SHA256Output, []byte, error) {
 
-	// deleteme use the other field, not the certificates one!
 	str := "SELECT policy_ids_id, policy_ids FROM domain_payloads WHERE domain_id = ?"
-	var payloadID, payload []byte
-	err := c.db.QueryRowContext(ctx, str, domainID[:]).Scan(&payloadID, &payload)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil, nil
-		}
+	var policyIDsID, policyIDs []byte
+	err := c.db.QueryRowContext(ctx, str, domainID[:]).Scan(&policyIDsID, &policyIDs)
+	if err != nil && err != sql.ErrNoRows {
 		return nil, nil, fmt.Errorf("RetrieveDomainPoliciesPayload | %w", err)
 	}
-	return (*common.SHA256Output)(payloadID), payload, nil
+	var IDptr *common.SHA256Output
+	if policyIDsID != nil {
+		IDptr = (*common.SHA256Output)(policyIDsID)
+	}
+	return IDptr, policyIDs, nil
 }
 
 // RetrieveDomainEntries: Retrieve a list of key-value pairs from domain entries table
