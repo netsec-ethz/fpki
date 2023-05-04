@@ -394,7 +394,7 @@ func (c *mysqlDB) UpdateDomainPolicies(ctx context.Context,
 
 func (c *mysqlDB) ReplaceDirtyDomainPayloads(ctx context.Context, firstRow, lastRow int) error {
 	// Call the stored procedure with these parameters.
-	str := "CALL calc_some_dirty_domain_payloads(?,?)"
+	str := "CALL calc_dirty_domains_certs(?,?)"
 	_, err := c.db.ExecContext(ctx, str, firstRow, lastRow)
 	if err != nil {
 		return fmt.Errorf("aggregating payload for domains: %w", err)

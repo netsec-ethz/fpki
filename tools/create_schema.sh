@@ -297,24 +297,23 @@ EOF
 
   CMD=$(cat <<EOF
 USE $DBNAME;
-DROP PROCEDURE IF EXISTS calc_some_dirty_domain_payloads;
+DROP PROCEDURE IF EXISTS calc_dirty_domains_certs;
 DELIMITER $$
 -- firstRow and lastRow are parameters specifying which is the first row of dirty,
--- and the last one for which it will update the payloads.
+-- and the last one for which it will update the certificates.
 -- The SP needs ~ 5 seconds per 20K dirty domains.
-CREATE PROCEDURE calc_some_dirty_domain_payloads( IN firstRow INT, IN lastRow INT )
+CREATE PROCEDURE calc_dirty_domains_certs( IN firstRow INT, IN lastRow INT )
 BEGIN
 		DECLARE numRows INT;
 
 	SET group_concat_max_len = 1073741824; -- so that GROUP_CONCAT doesn't truncate results
-	-- Replace the domain ID, its payload, and its SHA256 for a limitted subset of dirty domains.
+	-- Replace the domain ID, its certificates, and its SHA256 for a limitted subset of dirty domains.
 	SET numRows = lastRow - firstRow +1;
 	REPLACE INTO domain_payloads(domain_id, cert_ids, cert_ids_id) -- Values from subquery.
 	SELECT domain_id, cert_ids, UNHEX(SHA2(cert_ids, 256)) FROM ( -- Subquery to compute the SHA256 in place.
 
-		-- Select the concatenation of all cert IDs (sorted) or a domain.
+		-- Select the concatenation of all cert IDs (sorted) of a domain.
 		SELECT domain_id, GROUP_CONCAT(cert_id SEPARATOR '') AS cert_ids FROM(
-		-- SELECT HEX(domain_id), HEX(cert_id) AS cert_ids FROM(
 		-- The CTE lists all certs that are reachable by the domain_id
 		WITH RECURSIVE cte AS (
 			-- Base case: specify which leaf certs we choose: those that
