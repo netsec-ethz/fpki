@@ -427,6 +427,21 @@ func insertCerts(ctx context.Context, conn db.Conn, names [][]string,
 func insertPolicies(ctx context.Context, conn db.Conn, names []string, ids []*common.SHA256Output,
 	payloads [][]byte) error {
 
+	// TODO(juagargi) use parent IDs for the policies
+
+	// Create a sequence of nil parent ids.
+	parents := make([]*common.SHA256Output, len(ids))
+
+	// Create a sequence of expiration times way in the future.
+	expirations := make([]*time.Time, len(ids))
+	for i := range expirations {
+		t := time.Date(3000, 1, 1, 0, 0, 0, 0, time.UTC) // TODO(juagargi) use real expirations.
+		expirations[i] = &t
+	}
+	if err := conn.InsertPolicies(ctx, ids, parents, expirations, payloads); err != nil {
+		return fmt.Errorf("inserting policies: %w", err)
+	}
+
 	return nil
 }
 

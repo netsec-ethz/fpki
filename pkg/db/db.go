@@ -52,12 +52,15 @@ type Conn interface {
 	// the corresponding policy identified by its ID is already present in the DB.
 	CheckPoliciesExist(ctx context.Context, ids []*common.SHA256Output) ([]bool, error)
 
+	InsertCerts(ctx context.Context, ids, parents []*common.SHA256Output, expirations []*time.Time,
+		payloads [][]byte) error
+
+	InsertPolicies(ctx context.Context, ids, parents []*common.SHA256Output,
+		expirations []*time.Time, payloads [][]byte) error
+
 	//////////////////////////////////////////////////////////////////
 	// check if the functions below are needed after the new design //
 	//////////////////////////////////////////////////////////////////
-
-	InsertCerts(ctx context.Context, ids, parents []*common.SHA256Output, expirations []*time.Time,
-		payloads [][]byte) error
 
 	// UpdateDomainsWithCerts updates the domains and dirty tables with entries that are
 	// _probably_ not present there.
