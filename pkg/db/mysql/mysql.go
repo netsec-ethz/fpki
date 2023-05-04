@@ -280,6 +280,35 @@ func (c *mysqlDB) InsertCerts(ctx context.Context, ids, parents []*common.SHA256
 	return nil
 }
 
+func (c *mysqlDB) InsertPolicies(ctx context.Context, ids, parents []*common.SHA256Output,
+	expirations []*time.Time, payloads [][]byte) error {
+
+	if len(ids) == 0 {
+		return nil
+	}
+	// TODO(juagargi) set a prepared statement in constructor
+	// Because the primary key is the SHA256 of the payload, if there is a clash, it must
+	// be that the certificates are identical. Thus always REPLACE or INSERT IGNORE.
+	const N = 4
+	str := "REPLACE INTO policies (policy_id, parent_id, expiration, payload) VALUES " +
+		repeatStmt(len(ids), N)
+	data := make([]interface{}, N*len(ids))
+	for i := range ids {
+		data[i*N] = ids[i][:]
+		if parents[i] != nil {
+			data[i*N+1] = parents[i][:]
+		}
+		data[i*N+2] = expirations[i]
+		data[i*N+3] = payloads[i]
+	}
+	_, err := c.db.Exec(str, data...)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // UpdateDomainsWithCerts updates both the domains and the dirty tables.
 func (c *mysqlDB) UpdateDomainsWithCerts(ctx context.Context, certIDs,
 	domainIDs []*common.SHA256Output, domainNames []string) error {
