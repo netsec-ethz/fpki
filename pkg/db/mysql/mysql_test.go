@@ -43,8 +43,21 @@ func TestCoalesceForDirtyDomains(t *testing.T) {
 	require.NoError(t, err)
 	defer conn.Close()
 
-	// Create two mock x509 chains:
-	certs, certIDs, parentCertIDs, certNames := buildTestCertHierarchy(t)
+	leafCerts := []string{
+		"leaf.com",
+		"example.com",
+	}
+	var certs []*ctx509.Certificate
+	var certIDs, parentCertIDs []*common.SHA256Output
+	var certNames [][]string
+	for _, leaf := range leafCerts {
+		// Create two mock x509 chains on top of leaf:
+		certs2, certIDs2, parentCertIDs2, certNames2 := buildTestCertHierarchy(t, leaf)
+		certs = append(certs, certs2...)
+		certIDs = append(certIDs, certIDs2...)
+		parentCertIDs = append(parentCertIDs, parentCertIDs2...)
+		certNames = append(certNames, certNames2...)
+	}
 
 	// Ingest two mock policies.
 	data, err := os.ReadFile("../../../tests/testdata/2-SPs.json")
@@ -61,29 +74,35 @@ func TestCoalesceForDirtyDomains(t *testing.T) {
 	err = updater.CoalescePayloadsForDirtyDomains(ctx, conn)
 	require.NoError(t, err)
 
-	// Check the certificate coalescing: under leaf.com there must be 4 IDs, for the certs.
-	domainID := common.SHA256Hash32Bytes([]byte("leaf.com"))
-	gotCertIDsID, gotCertIDs, err := conn.RetrieveDomainCertificatesPayload(ctx, domainID)
-	require.NoError(t, err)
-	require.Len(t, gotCertIDs, common.SHA256Size*len(certs))
-	expectedCertIDs, expectedCertIDsID := glueSortedIDsAndComputeItsID(certIDs)
-	t.Logf("expectedCertIDs: %s\n", hex.EncodeToString(expectedCertIDs))
-	require.Equal(t, expectedCertIDs, gotCertIDs)
-	require.Equal(t, expectedCertIDsID, gotCertIDsID)
+	// Check the certificate coalescing: under leaf there must be 4 IDs, for the certs.
+	for i, leaf := range leafCerts {
+		domainID := common.SHA256Hash32Bytes([]byte(leaf))
+		gotCertIDsID, gotCertIDs, err := conn.RetrieveDomainCertificatesPayload(ctx, domainID)
+		require.NoError(t, err)
+		expectedSize := common.SHA256Size * len(certs) / len(leafCerts)
+		require.Len(t, gotCertIDs, expectedSize, "bad length, should be %d but it's %d",
+			expectedSize, len(gotCertIDs))
+		// From the certificate IDs, grab the IDs corresponding to this leaf:
+		N := len(certIDs) / len(leafCerts) // IDs per leaf = total / leaf_count
+		expectedCertIDs, expectedCertIDsID := glueSortedIDsAndComputeItsID(certIDs[i*N : (i+1)*N])
+		t.Logf("expectedCertIDs: %s\n", hex.EncodeToString(expectedCertIDs))
+		require.Equal(t, expectedCertIDs, gotCertIDs)
+		require.Equal(t, expectedCertIDsID, gotCertIDsID)
+	}
 }
 
 // buildTestCertHierarchy returns the certificates, chains, and names for two mock certificate
-// chains: the first chain is leaf.com->c1.com->c0.com , and the second chain is
-// leaf.com->c0.com .
-func buildTestCertHierarchy(t require.TestingT) (
+// chains: the first chain is domainName->c1.com->c0.com , and the second chain is
+// domainName->c0.com .
+func buildTestCertHierarchy(t require.TestingT, domainName string) (
 	certs []*ctx509.Certificate, IDs, parentIDs []*common.SHA256Output, names [][]string) {
 
 	// Create all certificates.
 	certs = make([]*ctx509.Certificate, 4)
 	certs[0] = randomX509Cert(t, "c0.com")
 	certs[1] = randomX509Cert(t, "c1.com")
-	certs[2] = randomX509Cert(t, "leaf.com")
-	certs[3] = randomX509Cert(t, "leaf.com")
+	certs[2] = randomX509Cert(t, domainName)
+	certs[3] = randomX509Cert(t, domainName)
 
 	// IDs:
 	IDs = make([]*common.SHA256Output, len(certs))
