@@ -77,8 +77,9 @@ const (
 	CertificateUpdateKeepExisting CertificateUpdateStrategy = 1
 )
 
-type UpdateCertificateFunction func(context.Context, db.Conn, [][]string, []*time.Time,
-	[]*ctx509.Certificate, []*common.SHA256Output, []*common.SHA256Output) error
+type UpdateCertificateFunction func(context.Context, db.Conn, [][]string,
+	[]*common.SHA256Output, []*common.SHA256Output, []*ctx509.Certificate, []*time.Time,
+	[]common.PolicyObject) error
 
 func NewCertProcessor(conn db.Conn, incoming chan *CertificateNode,
 	strategy CertificateUpdateStrategy) *CertificateProcessor {
@@ -87,9 +88,9 @@ func NewCertProcessor(conn db.Conn, incoming chan *CertificateNode,
 	var updateFcn UpdateCertificateFunction
 	switch strategy {
 	case CertificateUpdateOverwrite:
-		updateFcn = updater.UpdateCertsWithOverwrite
+		updateFcn = updater.UpdateWithOverwrite
 	case CertificateUpdateKeepExisting:
-		updateFcn = updater.UpdateCertsWithKeepExisting
+		updateFcn = updater.UpdateWithKeepExisting
 	default:
 		panic(fmt.Errorf("invalid strategy %v", strategy))
 	}
@@ -237,8 +238,8 @@ func (p *CertificateProcessor) createBatches() {
 
 func (p *CertificateProcessor) processBatch(batch *CertBatch) {
 	// Store certificates in DB:
-	err := p.updateCertBatch(context.Background(), p.conn, batch.Names, batch.Expirations,
-		batch.Certs, batch.CertIDs, batch.ParentIDs)
+	err := p.updateCertBatch(context.Background(), p.conn, batch.Names,
+		batch.CertIDs, batch.ParentIDs, batch.Certs, batch.Expirations, nil)
 	if err != nil {
 		panic(err)
 	}

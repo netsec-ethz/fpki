@@ -42,21 +42,21 @@ func TestProofWithPoP(t *testing.T) {
 	require.NoError(t, err)
 	defer conn.Close()
 
-	// Ingest two certificates and their chains.
+	// Load two certificates and their chains.
 	raw, err := util.ReadAllGzippedFile("../../../tests/testdata/2-xenon2023.csv.gz")
 	require.NoError(t, err)
-	certs, IDs, parentIDs, names, err := util.LoadCertsAndChainsFromCSV(raw)
-	require.NoError(t, err)
-	err = updater.UpdateCertsWithKeepExisting(ctx, conn, names, util.ExtractExpirations(certs),
-		certs, IDs, parentIDs)
+	certs, certIDs, parentCertIDs, names, err := util.LoadCertsAndChainsFromCSV(raw)
 	require.NoError(t, err)
 
-	// Ingest two policies.
+	// Load two policies.
 	data, err := os.ReadFile("../../../tests/testdata/2-SPs.json")
 	require.NoError(t, err)
 	pols, err := util.LoadPoliciesFromRaw(data)
 	require.NoError(t, err)
-	err = updater.UpdatePoliciesWithKeepExisting(ctx, conn, pols)
+
+	// Ingest those two certificates and two policies.
+	err = updater.UpdateWithKeepExisting(ctx, conn, names, certIDs, parentCertIDs, certs,
+		util.ExtractExpirations(certs), pols)
 	require.NoError(t, err)
 
 	// Coalescing of payloads.

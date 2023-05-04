@@ -92,8 +92,7 @@ func (mapUpdater *MapUpdater) UpdateCertsLocally(ctx context.Context, certList [
 		certChains = append(certChains, chain)
 	}
 	certs, IDs, parentIDs, names := util.UnfoldCerts(certs, certChains)
-	return UpdateCertsWithKeepExisting(ctx, mapUpdater.dbConn, names, expirations, certs,
-		IDs, parentIDs)
+	return UpdateWithKeepExisting(ctx, mapUpdater.dbConn, names, IDs, parentIDs, certs, expirations, nil)
 }
 
 // updateCerts: update the tables and SMT (in memory) using certificates
@@ -238,24 +237,46 @@ func (mapUpdater *MapUpdater) Close() error {
 	return mapUpdater.smt.Close()
 }
 
-func UpdateCertsWithOverwrite(ctx context.Context, conn db.Conn, names [][]string,
-	expirations []*time.Time, certs []*ctx509.Certificate, ids []*common.SHA256Output,
-	parentIDs []*common.SHA256Output) error {
+func UpdateWithOverwrite(ctx context.Context, conn db.Conn, domainNames [][]string,
+	certIDs, parentCertIDs []*common.SHA256Output,
+	certs []*ctx509.Certificate, certExpirations []*time.Time,
+	policies []common.PolicyObject,
+) error {
 
+	// Insert all specified certificates.
 	payloads := make([][]byte, len(certs))
 	for i, c := range certs {
 		payloads[i] = c.Raw
 
 	}
-	return insertCerts(ctx, conn, names, ids, parentIDs, expirations, payloads)
+	err := insertCerts(ctx, conn, domainNames, certIDs, parentCertIDs, certExpirations, payloads)
+	if err != nil {
+		return err
+	}
+
+	// Insert all specified policies.
+	payloads = make([][]byte, len(policies))
+	policyIDs := make([]*common.SHA256Output, len(policies))
+	policySubjects := make([]string, len(policies))
+	for i, pol := range policies {
+		payloads[i] = pol.Raw()
+		id := common.SHA256Hash32Bytes(pol.Raw())
+		policyIDs[i] = &id
+		policySubjects[i] = pol.Domain()
+	}
+	err = insertPolicies(ctx, conn, policySubjects, policyIDs, payloads)
+
+	return err
 }
 
-func UpdateCertsWithKeepExisting(ctx context.Context, conn db.Conn, names [][]string,
-	expirations []*time.Time, certs []*ctx509.Certificate, ids []*common.SHA256Output,
-	parentIDs []*common.SHA256Output) error {
+func UpdateWithKeepExisting(ctx context.Context, conn db.Conn, domainNames [][]string,
+	certIDs, parentCertIDs []*common.SHA256Output,
+	certs []*ctx509.Certificate, certExpirations []*time.Time,
+	policies []common.PolicyObject,
+) error {
 
 	// First check which certificates are already present in the DB.
-	mask, err := conn.CheckCertsExist(ctx, ids)
+	maskCerts, err := conn.CheckCertsExist(ctx, certIDs)
 	if err != nil {
 		return err
 	}
@@ -263,53 +284,50 @@ func UpdateCertsWithKeepExisting(ctx context.Context, conn db.Conn, names [][]st
 	// For all those certificates not already present in the DB, prepare three slices: IDs,
 	// names, payloads, and parentIDs.
 	payloads := make([][]byte, 0, len(certs))
-
-	// Prepare new parents, IDs and payloads skipping those certificates already in the DB.
-	runWhenFalse(mask, func(to, from int) {
-		ids[to] = ids[from]
-		names[to] = names[from]
-		parentIDs[to] = parentIDs[from]
+	runWhenFalse(maskCerts, func(to, from int) {
+		certIDs[to] = certIDs[from]
+		domainNames[to] = domainNames[from]
+		parentCertIDs[to] = parentCertIDs[from]
 		payloads = append(payloads, certs[from].Raw)
 	})
-
 	// Trim the end of the original ID slice, as it contains values from the unmasked certificates.
-	ids = ids[:len(payloads)]
-	names = names[:len(payloads)]
-	parentIDs = parentIDs[:len(payloads)]
+	certIDs = certIDs[:len(payloads)]
+	domainNames = domainNames[:len(payloads)]
+	parentCertIDs = parentCertIDs[:len(payloads)]
 
-	// Only update those certificates that are not in the mask.
-	return insertCerts(ctx, conn, names, ids, parentIDs, expirations, payloads)
-}
-
-// UpdatePoliciesWithKeepExisting takes a sequence of policies, the aliases associated with each one, and the
-// expiration times, and updates the DB with them.
-func UpdatePoliciesWithKeepExisting(ctx context.Context, conn db.Conn,
-	policies []common.PolicyObject) error {
-
-	payloads := make([][]byte, len(policies))
-	IDs := make([]*common.SHA256Output, len(policies))
-	names := make([]string, len(policies))
-	for i, pol := range policies {
-		payloads[i] = pol.Raw()
-		id := common.SHA256Hash32Bytes(pol.Raw())
-		IDs[i] = &id
-		names[i] = pol.Domain()
-	}
-
-	// Check which policies are already present in the DB.
-	mask, err := conn.CheckPoliciesExist(ctx, IDs)
+	// Update those certificates that were not in the mask.
+	err = insertCerts(ctx, conn, domainNames, certIDs, parentCertIDs, certExpirations, payloads)
 	if err != nil {
 		return err
 	}
-	n := runWhenFalse(mask, func(to, from int) {
-		IDs[to] = IDs[from]
+
+	// Prepare data structures for the policies.
+	payloads = make([][]byte, len(policies))
+	policyIDs := make([]*common.SHA256Output, len(policies))
+	policySubjects := make([]string, len(policies))
+	for i, pol := range policies {
+		payloads[i] = pol.Raw()
+		id := common.SHA256Hash32Bytes(pol.Raw())
+		policyIDs[i] = &id
+		policySubjects[i] = pol.Domain()
+	}
+	// Check which policies are already present in the DB.
+	maskPols, err := conn.CheckPoliciesExist(ctx, policyIDs)
+	if err != nil {
+		return err
+	}
+	n := runWhenFalse(maskPols, func(to, from int) {
+		policyIDs[to] = policyIDs[from]
 		payloads[to] = payloads[from]
-		names[to] = names[from]
+		policySubjects[to] = policySubjects[from]
 	})
-	IDs = IDs[:n]
+	policyIDs = policyIDs[:n]
 	payloads = payloads[:n]
-	names = names[:n]
-	return insertPolicies(ctx, conn, names, IDs, payloads)
+	policySubjects = policySubjects[:n]
+	// Update those policies that were not in the mask.
+	err = insertPolicies(ctx, conn, policySubjects, policyIDs, payloads)
+
+	return err
 }
 
 func CoalescePayloadsForDirtyDomains(ctx context.Context, conn db.Conn) error {
@@ -417,8 +435,11 @@ func insertCerts(ctx context.Context, conn db.Conn, names [][]string,
 		}
 	}
 	// Push the changes of the domains to the DB.
-	if err := conn.UpdateDomainsWithCerts(ctx, newIDs, domainIDs, newNames); err != nil {
+	if err := conn.UpdateDomains(ctx, domainIDs, newNames); err != nil {
 		return fmt.Errorf("updating domains: %w", err)
+	}
+	if err := conn.UpdateDomainCerts(ctx, domainIDs, newIDs); err != nil {
+		return fmt.Errorf("updating domain_certs: %w", err)
 	}
 
 	return nil
@@ -429,17 +450,32 @@ func insertPolicies(ctx context.Context, conn db.Conn, names []string, ids []*co
 
 	// TODO(juagargi) use parent IDs for the policies
 
-	// Create a sequence of nil parent ids.
-	parents := make([]*common.SHA256Output, len(ids))
+	// Push the changes of the domains to the DB.
+	domainIDs := make([]*common.SHA256Output, len(names))
+	for i, name := range names {
+		domainID := common.SHA256Hash32Bytes([]byte(name))
+		domainIDs[i] = &domainID
+	}
+	if err := conn.UpdateDomains(ctx, domainIDs, names); err != nil {
+		return fmt.Errorf("updating domains: %w", err)
+	}
 
-	// Create a sequence of expiration times way in the future.
+	// Update the policies in the DB, with nil parents and mock expirations.
+	// Sequence of nil parent ids:
+	parents := make([]*common.SHA256Output, len(ids))
+	// Sequence of expiration times way in the future:
 	expirations := make([]*time.Time, len(ids))
 	for i := range expirations {
 		t := time.Date(3000, 1, 1, 0, 0, 0, 0, time.UTC) // TODO(juagargi) use real expirations.
 		expirations[i] = &t
 	}
+	// Update policies:
 	if err := conn.InsertPolicies(ctx, ids, parents, expirations, payloads); err != nil {
 		return fmt.Errorf("inserting policies: %w", err)
+	}
+
+	if err := conn.UpdateDomainPolicies(ctx, domainIDs, ids); err != nil {
+		return fmt.Errorf("updating domain_certs: %w", err)
 	}
 
 	return nil

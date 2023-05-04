@@ -43,18 +43,18 @@ func TestCoalesceForDirtyDomains(t *testing.T) {
 	require.NoError(t, err)
 	defer conn.Close()
 
-	// Use two mock x509 chains:
+	// Create two mock x509 chains:
 	certs, certIDs, parentCertIDs, certNames := buildTestCertHierarchy(t)
-	err = updater.UpdateCertsWithKeepExisting(ctx, conn, certNames, util.ExtractExpirations(certs),
-		certs, certIDs, parentCertIDs)
-	require.NoError(t, err)
 
 	// Ingest two mock policies.
 	data, err := os.ReadFile("../../../tests/testdata/2-SPs.json")
 	require.NoError(t, err)
 	pols, err := util.LoadPoliciesFromRaw(data)
 	require.NoError(t, err)
-	err = updater.UpdatePoliciesWithKeepExisting(ctx, conn, pols)
+
+	// Update with certificates and policies.
+	err = updater.UpdateWithKeepExisting(ctx, conn, certNames, certIDs, parentCertIDs,
+		certs, util.ExtractExpirations(certs), pols)
 	require.NoError(t, err)
 
 	// Coalescing of payloads.
