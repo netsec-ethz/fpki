@@ -426,7 +426,10 @@ func (c *mysqlDB) RetrieveDomainPoliciesPayload(ctx context.Context, domainID co
 	str := "SELECT cert_ids_id, cert_ids FROM domain_payloads WHERE domain_id = ?"
 	var payloadID, payload []byte
 	err := c.db.QueryRowContext(ctx, str, domainID[:]).Scan(&payloadID, &payload)
-	if err != nil && err != sql.ErrNoRows {
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil, nil
+		}
 		return nil, nil, fmt.Errorf("RetrieveDomainPoliciesPayload | %w", err)
 	}
 	return (*common.SHA256Output)(payloadID), payload, nil
