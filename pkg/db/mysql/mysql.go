@@ -272,7 +272,7 @@ func (c *mysqlDB) InsertCerts(ctx context.Context, ids, parents []*common.SHA256
 		data[i*N+2] = expirations[i]
 		data[i*N+3] = payloads[i]
 	}
-	_, err := c.db.Exec(str, data...)
+	_, err := c.db.ExecContext(ctx, str, data...)
 	if err != nil {
 		return err
 	}
@@ -301,7 +301,7 @@ func (c *mysqlDB) InsertPolicies(ctx context.Context, ids, parents []*common.SHA
 		data[i*N+2] = expirations[i]
 		data[i*N+3] = payloads[i]
 	}
-	_, err := c.db.Exec(str, data...)
+	_, err := c.db.ExecContext(ctx, str, data...)
 	if err != nil {
 		return err
 	}
@@ -327,6 +327,7 @@ func (c *mysqlDB) UpdateDomains(ctx context.Context, domainIDs []*common.SHA256O
 	data := make([]interface{}, len(domainIDsSet))
 	i := 0
 	for k := range domainIDsSet {
+		k := k // Because k changes during the loop, we need a local copy that doesn't.
 		data[i] = k[:]
 		i++
 	}
@@ -341,7 +342,8 @@ func (c *mysqlDB) UpdateDomains(ctx context.Context, domainIDs []*common.SHA256O
 	data = make([]interface{}, 2*len(domainIDsSet))
 	i = 0
 	for k, v := range domainIDsSet {
-		data[2*i] = append([]byte{}, k[:]...)
+		k := k
+		data[2*i] = k[:]
 		data[2*i+1] = v
 		i++
 	}
@@ -393,7 +395,7 @@ func (c *mysqlDB) UpdateDomainPolicies(ctx context.Context,
 func (c *mysqlDB) ReplaceDirtyDomainPayloads(ctx context.Context, firstRow, lastRow int) error {
 	// Call the stored procedure with these parameters.
 	str := "CALL calc_some_dirty_domain_payloads(?,?)"
-	_, err := c.db.Exec(str, firstRow, lastRow)
+	_, err := c.db.ExecContext(ctx, str, firstRow, lastRow)
 	if err != nil {
 		return fmt.Errorf("aggregating payload for domains: %w", err)
 	}
@@ -408,7 +410,10 @@ func (c *mysqlDB) RetrieveDomainCertificatesPayload(ctx context.Context, domainI
 	str := "SELECT cert_ids_id, cert_ids FROM domain_payloads WHERE domain_id = ?"
 	var certIDsID, certIDs []byte
 	err := c.db.QueryRowContext(ctx, str, domainID[:]).Scan(&certIDsID, &certIDs)
-	if err != nil && err != sql.ErrNoRows {
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil, nil
+		}
 		return nil, nil, fmt.Errorf("RetrieveDomainCertificatesPayload | %w", err)
 	}
 	return (*common.SHA256Output)(certIDsID), certIDs, nil
@@ -439,7 +444,7 @@ func (c *mysqlDB) RetrieveDomainEntries(ctx context.Context, domainIDs []*common
 		repeatStmt(1, len(domainIDs))
 	params := make([]interface{}, len(domainIDs))
 	for i, id := range domainIDs {
-		params[i] = (*id)[:]
+		params[i] = id[:]
 	}
 	rows, err := c.db.QueryContext(ctx, str, params...)
 	if err != nil {
