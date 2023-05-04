@@ -353,6 +353,63 @@ EOF
   )
   echo "$CMD" | $MYSQLCMD
 
+
+  CMD=$(cat <<EOF
+USE $DBNAME;
+DROP PROCEDURE IF EXISTS calc_dirty_domains_policies;
+DELIMITER $$
+-- firstRow and lastRow are parameters specifying which is the first row of dirty,
+-- and the last one for which it will update the policies.
+-- The SP needs ~ 5 seconds per 20K dirty domains.
+CREATE PROCEDURE calc_dirty_domains_policies( IN firstRow INT, IN lastRow INT )
+BEGIN
+		DECLARE numRows INT;
+
+	SET group_concat_max_len = 1073741824; -- so that GROUP_CONCAT doesn't truncate results
+	-- Replace the domain ID, its policies, and its SHA256 for a limitted subset of dirty domains.
+	SET numRows = lastRow - firstRow +1;
+	REPLACE INTO domain_payloads(domain_id, policy_ids, policy_ids_id) -- Values from subquery.
+	SELECT domain_id, policy_ids, UNHEX(SHA2(policy_ids, 256)) FROM ( -- Subquery to compute the SHA256 in place.
+
+		-- Select the concatenation of all policy IDs (sorted) of a domain.
+		SELECT domain_id, GROUP_CONCAT(policy_id SEPARATOR '') AS policy_ids FROM(
+		-- The CTE lists all policies that are reachable by the domain_id
+		WITH RECURSIVE cte AS (
+			-- Base case: specify which leaf policies we choose: those that
+			-- have a link with a domain that is part of the dirty domains.
+			SELECT dirty.domain_id, policies.policy_id, parent_id
+			FROM policies
+			INNER JOIN domain_policies ON policies.policy_id = domain_policies.policy_id
+			INNER JOIN dirty ON domain_policies.domain_id = dirty.domain_id
+				WHERE dirty.domain_id IN (
+					-- Forced to use an extra subquery due to mysql not being able
+					-- to use LIMITs directly in a subquery. Wrapping in an extra
+					-- subquery solves this.
+					SELECT * FROM (
+						SELECT domain_id FROM dirty
+						ORDER BY domain_id
+						LIMIT firstRow, numRows		-- Beware that mysql can only use SP variables here.
+													-- https://bugs.mysql.com/bug.php?id=11918
+					) AS limitter_query
+				)
+
+			UNION ALL
+			-- Recursive case: any poilicy that has its ID as
+			-- parent ID of the previous set, recursively.
+			SELECT cte.domain_id, policies.policy_id, policies.parent_id
+			FROM policies
+			JOIN cte ON policies.policy_id = cte.parent_id
+		)
+		SELECT DISTINCT domain_id, policy_id FROM cte ORDER BY policy_id
+		) AS collate_policy_ids_query GROUP BY domain_id
+
+	) AS hasher_query;
+END$$
+DELIMITER ;
+EOF
+  )
+  echo "$CMD" | $MYSQLCMD
+
 } # end of `create_new_db` function
 
 

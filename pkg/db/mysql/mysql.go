@@ -393,11 +393,18 @@ func (c *mysqlDB) UpdateDomainPolicies(ctx context.Context,
 }
 
 func (c *mysqlDB) ReplaceDirtyDomainPayloads(ctx context.Context, firstRow, lastRow int) error {
-	// Call the stored procedure with these parameters.
+	// Call the certificate coalescing stored procedure with these parameters.
 	str := "CALL calc_dirty_domains_certs(?,?)"
 	_, err := c.db.ExecContext(ctx, str, firstRow, lastRow)
 	if err != nil {
-		return fmt.Errorf("aggregating payload for domains: %w", err)
+		return fmt.Errorf("coalescing certificates for domains: %w", err)
+	}
+
+	// Call the policy coalescing stored procedure with these parameters.
+	str = "CALL calc_dirty_domains_policies(?,?)"
+	_, err = c.db.ExecContext(ctx, str, firstRow, lastRow)
+	if err != nil {
+		return fmt.Errorf("coalescing policies for domains: %w", err)
 	}
 	return nil
 }
@@ -423,7 +430,7 @@ func (c *mysqlDB) RetrieveDomainPoliciesPayload(ctx context.Context, domainID co
 ) (*common.SHA256Output, []byte, error) {
 
 	// deleteme use the other field, not the certificates one!
-	str := "SELECT cert_ids_id, cert_ids FROM domain_payloads WHERE domain_id = ?"
+	str := "SELECT policy_ids_id, policy_ids FROM domain_payloads WHERE domain_id = ?"
 	var payloadID, payload []byte
 	err := c.db.QueryRowContext(ctx, str, domainID[:]).Scan(&payloadID, &payload)
 	if err != nil {
