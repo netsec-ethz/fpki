@@ -451,7 +451,9 @@ func (c *mysqlDB) RetrieveDomainEntries(ctx context.Context, domainIDs []*common
 	if len(domainIDs) == 0 {
 		return nil, nil
 	}
-	str := "SELECT domain_id,cert_ids FROM domain_payloads WHERE domain_id IN " +
+
+	// Retrieve the certificate and policy IDs for each domain ID.
+	str := "SELECT domain_id,cert_ids,policy_ids FROM domain_payloads WHERE domain_id IN " +
 		repeatStmt(1, len(domainIDs))
 	params := make([]interface{}, len(domainIDs))
 	for i, id := range domainIDs {
@@ -459,19 +461,20 @@ func (c *mysqlDB) RetrieveDomainEntries(ctx context.Context, domainIDs []*common
 	}
 	rows, err := c.db.QueryContext(ctx, str, params...)
 	if err != nil {
-		fmt.Printf("Query is: '%s'\n", str)
 		return nil, fmt.Errorf("error obtaining payloads for domains: %w", err)
 	}
 	pairs := make([]*db.KeyValuePair, 0, len(domainIDs))
 	for rows.Next() {
-		var id, payload []byte
-		err := rows.Scan(&id, &payload)
+		var id, certIDs, policyIDs []byte
+		err := rows.Scan(&id, &certIDs, &policyIDs)
 		if err != nil {
-			return nil, fmt.Errorf("error scanning domain ID and its payload")
+			return nil, fmt.Errorf("error scanning domain ID and its certs/policies")
 		}
+		// Unfold the byte streams into IDs, sort them, and fold again.
+		allIDs := append(common.BytesToIDs(certIDs), common.BytesToIDs(policyIDs)...)
 		pairs = append(pairs, &db.KeyValuePair{
 			Key:   *(*common.SHA256Output)(id),
-			Value: payload,
+			Value: common.SortIDsAndGlue(allIDs),
 		})
 	}
 	return pairs, nil

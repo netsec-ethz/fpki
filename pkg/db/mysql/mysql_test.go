@@ -1,17 +1,14 @@
 package mysql_test
 
 import (
-	"bytes"
 	"context"
 	"encoding/hex"
 	"math/rand"
 	"os"
-	"sort"
 	"testing"
 	"time"
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
-	"github.com/google/certificate-transparency-go/x509/pkix"
 	"github.com/stretchr/testify/require"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
@@ -52,7 +49,7 @@ func TestCoalesceForDirtyDomains(t *testing.T) {
 	var certNames [][]string
 	for _, leaf := range leafCerts {
 		// Create two mock x509 chains on top of leaf:
-		certs2, certIDs2, parentCertIDs2, certNames2 := buildTestCertHierarchy(t, leaf)
+		certs2, certIDs2, parentCertIDs2, certNames2 := testdb.BuildTestCertHierarchy(t, leaf)
 		certs = append(certs, certs2...)
 		certIDs = append(certIDs, certIDs2...)
 		parentCertIDs = append(parentCertIDs, parentCertIDs2...)
@@ -108,54 +105,8 @@ func TestCoalesceForDirtyDomains(t *testing.T) {
 	}
 }
 
-// buildTestCertHierarchy returns the certificates, chains, and names for two mock certificate
-// chains: the first chain is domainName->c1.com->c0.com , and the second chain is
-// domainName->c0.com .
-func buildTestCertHierarchy(t require.TestingT, domainName string) (
-	certs []*ctx509.Certificate, IDs, parentIDs []*common.SHA256Output, names [][]string) {
-
-	// Create all certificates.
-	certs = make([]*ctx509.Certificate, 4)
-	certs[0] = randomX509Cert(t, "c0.com")
-	certs[1] = randomX509Cert(t, "c1.com")
-	certs[2] = randomX509Cert(t, domainName)
-	certs[3] = randomX509Cert(t, domainName)
-
-	// IDs:
-	IDs = make([]*common.SHA256Output, len(certs))
-	for i, c := range certs {
-		id := common.SHA256Hash32Bytes(c.Raw)
-		IDs[i] = &id
-	}
-
-	// Names: only c2 and c3 are leaves, the rest should be nil.
-	names = make([][]string, len(certs))
-	names[2] = certs[2].DNSNames
-	names[3] = certs[3].DNSNames
-
-	// Parent IDs.
-	parentIDs = make([]*common.SHA256Output, len(certs))
-	// First chain:
-	parentIDs[1] = IDs[0]
-	parentIDs[2] = IDs[1]
-	// Second chain:
-	parentIDs[3] = IDs[0]
-
-	return
-}
-
 func glueSortedIDsAndComputeItsID(IDs []*common.SHA256Output) ([]byte, *common.SHA256Output) {
-	// Copy slice to avoid mutating of the original.
-	ids := append(IDs[:0:0], IDs...)
-	// Sort the IDs.
-	sort.Slice(ids, func(i, j int) bool {
-		return bytes.Compare(ids[i][:], ids[j][:]) == -1
-	})
-	// Glue the sorted IDs.
-	gluedIDs := make([]byte, common.SHA256Size*len(ids))
-	for i, id := range ids {
-		copy(gluedIDs[i*common.SHA256Size:], id[:])
-	}
+	gluedIDs := common.SortIDsAndGlue(IDs)
 	// Compute the hash of the glued IDs.
 	id := common.SHA256Hash32Bytes(gluedIDs)
 	return gluedIDs, &id
@@ -168,18 +119,6 @@ func computeIDsOfPolicies(policies []common.PolicyObject) []*common.SHA256Output
 		IDs[i] = &id
 	}
 	return IDs
-}
-
-func randomX509Cert(t require.TestingT, domain string) *ctx509.Certificate {
-	return &ctx509.Certificate{
-		DNSNames: []string{domain},
-		Subject: pkix.Name{
-			CommonName: domain,
-		},
-		NotBefore: util.TimeFromSecs(0),
-		NotAfter:  time.Date(3000, 1, 1, 0, 0, 0, 0, time.UTC),
-		Raw:       randomBytes(t, 10),
-	}
 }
 
 func randomBytes(t require.TestingT, size int) []byte {

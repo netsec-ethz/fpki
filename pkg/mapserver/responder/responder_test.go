@@ -2,18 +2,15 @@ package responder
 
 import (
 	"context"
-	"os"
-	"strings"
 	"testing"
 	"time"
 
-	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
-	"github.com/netsec-ethz/fpki/pkg/domain"
 	mapcommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/prover"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
@@ -21,6 +18,9 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
+// TestProofWithPoP checks for 3 domains: a.com (certs), b.com (policies), c.com (both),
+// that the proofs of presence work correctly, by ingesting all the material, updating the DB,
+// creating a responder, and checking those domains.
 func TestProofWithPoP(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
 	defer cancelF()
@@ -42,22 +42,26 @@ func TestProofWithPoP(t *testing.T) {
 	require.NoError(t, err)
 	defer conn.Close()
 
-	// Load two certificates and their chains.
-	raw, err := util.ReadAllGzippedFile("../../../tests/testdata/2-xenon2023.csv.gz")
-	require.NoError(t, err)
-	certs, certIDs, parentCertIDs, names, err := util.LoadCertsAndChainsFromCSV(raw)
-	require.NoError(t, err)
-
-	// Load two policies.
-	data, err := os.ReadFile("../../../tests/testdata/2-SPs.json")
-	require.NoError(t, err)
-	pols, err := util.LoadPoliciesFromRaw(data)
-	require.NoError(t, err)
-
-	// Ingest those two certificates and two policies.
+	// a.com
+	certs, certIDs, parentCertIDs, names := testdb.BuildTestCertHierarchy(t, "a.com")
 	err = updater.UpdateWithKeepExisting(ctx, conn, names, certIDs, parentCertIDs, certs,
-		util.ExtractExpirations(certs), pols)
+		util.ExtractExpirations(certs), nil)
 	require.NoError(t, err)
+	certsA := certs
+
+	// b.com
+	policies := testdb.BuildTestPolicyHierarchy(t, "b.com")
+	err = updater.UpdateWithKeepExisting(ctx, conn, nil, nil, nil, nil, nil, policies)
+	require.NoError(t, err)
+	policiesB := policies
+
+	// c.com
+	certs, certIDs, parentCertIDs, names = testdb.BuildTestCertHierarchy(t, "c.com")
+	policies = testdb.BuildTestPolicyHierarchy(t, "c.com")
+	err = updater.UpdateWithKeepExisting(ctx, conn, names, certIDs, parentCertIDs, certs,
+		util.ExtractExpirations(certs), policies)
+	require.NoError(t, err)
+	certsC := certs
 
 	// Coalescing of payloads.
 	err = updater.CoalescePayloadsForDirtyDomains(ctx, conn)
@@ -71,88 +75,47 @@ func TestProofWithPoP(t *testing.T) {
 	err = conn.CleanupDirty(ctx)
 	require.NoError(t, err)
 
-	// Now to the test.
-
 	// Create a responder.
 	responder, err := NewMapResponder(ctx, "./testdata/mapserver_config.json", conn)
 	require.NoError(t, err)
 
-	// Log the names of the certs.
-	for i, names := range names {
-		t.Logf("cert %d for the following names:\n", i)
-		for j, name := range names {
-			t.Logf("\t[%3d]: \"%s\"\n", j, name)
-		}
-		if len(names) == 0 {
-			t.Log("\t[no names]")
-		}
-	}
+	// Check a.com:
+	proofChain, err := responder.GetProof(ctx, "a.com")
+	assert.NoError(t, err)
+	id := common.SHA256Hash32Bytes(certsA[0].Raw)
+	checkProof(t, &id, proofChain)
 
-	// Check proofs for the previously ingested certificates.
-	foundValidDomainNames := false
-	for i, c := range certs {
-		t.Logf("Certificate subject is: \"%s\"", domain.CertSubjectName(c))
-		if names[i] == nil {
-			// This is a non leaf certificate, skip.
-			continue
-		}
+	// Check b.com:
+	proofChain, err = responder.GetProof(ctx, "b.com")
+	assert.NoError(t, err)
+	id = common.SHA256Hash32Bytes(policiesB[0].Raw())
+	checkProof(t, &id, proofChain)
 
-		for _, name := range names[i] {
-			t.Logf("Proving \"%s\"", name)
-			if !domain.IsValidDomain(name) {
-				t.Logf("Invalid domain name: \"%s\", skipping", name)
-				continue
-			}
-			foundValidDomainNames = true
-			proofChain, err := responder.GetProof(ctx, name)
-			assert.NoError(t, err)
-			if err == nil {
-				checkProof(t, c, proofChain)
-			}
-		}
-	}
-	require.True(t, foundValidDomainNames, "bad test: not one valid checkable domain name")
+	// Check b.com:
+	proofChain, err = responder.GetProof(ctx, "c.com")
+	assert.NoError(t, err)
+	id = common.SHA256Hash32Bytes(certsC[0].Raw)
+	checkProof(t, &id, proofChain)
 }
 
 // checkProof checks the proof to be correct.
-func checkProof(t *testing.T, cert *ctx509.Certificate, proofs []*mapcommon.MapServerResponse) {
+func checkProof(t *testing.T, payloadID *common.SHA256Output, proofs []*mapcommon.MapServerResponse) {
 	t.Helper()
-	require.Equal(t, mapcommon.PoP, proofs[len(proofs)-1].PoI.ProofType,
-		"PoP not found for \"%s\"", domain.CertSubjectName(cert))
+	require.Equal(t, mapcommon.PoP, proofs[len(proofs)-1].PoI.ProofType, "PoP not found")
 	for _, proof := range proofs {
-		includesDomainName(t, proof.DomainEntry.DomainName, cert)
 		proofType, isCorrect, err := prover.VerifyProofByDomain(proof)
 		require.NoError(t, err)
 		require.True(t, isCorrect)
 
 		if proofType == mapcommon.PoA {
-			require.Empty(t, proof.DomainEntry.DomainCertsPayload)
-			require.Empty(t, proof.DomainEntry.DomainPoliciesPayload)
+			require.Empty(t, proof.DomainEntry.CertIDs)
+			require.Empty(t, proof.DomainEntry.PolicyIDs)
 		}
 		if proofType == mapcommon.PoP {
-			certs, err := util.DeserializeCertificates(proof.DomainEntry.DomainCertsPayload)
-			require.NoError(t, err)
-			// The certificate must be present.
-			for _, c := range certs {
-				if cert.Equal(c) {
-					return
-				}
-			}
+			// The ID passed as argument must be one of the IDs present in the domain entry.
+			allIDs := append(common.BytesToIDs(proof.DomainEntry.CertIDs),
+				common.BytesToIDs(proof.DomainEntry.PolicyIDs)...)
+			require.Contains(t, allIDs, payloadID)
 		}
 	}
-	// require.Fail(t, "cert/CA not found")
-}
-
-// includesDomainName checks that the subDomain appears as a substring of at least one of the
-// names in the certificate.
-func includesDomainName(t *testing.T, subDomain string, cert *ctx509.Certificate) {
-	names := util.ExtractCertDomains(cert)
-
-	for _, s := range names {
-		if strings.Contains(s, subDomain) {
-			return
-		}
-	}
-	require.FailNow(t, "the subdomain \"%s\" is not present as a preffix in any of the contained "+
-		"names of the certtificate: [%s]", subDomain, strings.Join(names, ", "))
 }
