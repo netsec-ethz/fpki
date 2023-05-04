@@ -44,8 +44,8 @@ func TestCoalesceForDirtyDomains(t *testing.T) {
 	defer conn.Close()
 
 	leafCerts := []string{
-		"leaf.com",
-		"example.com",
+		"leaf.certs.com",
+		"example.certs.com",
 	}
 	var certs []*ctx509.Certificate
 	var certIDs, parentCertIDs []*common.SHA256Output
