@@ -21,7 +21,7 @@ import (
 // TestProofWithPoP checks for 3 domains: a.com (certs), b.com (policies), c.com (both),
 // that the proofs of presence work correctly, by ingesting all the material, updating the DB,
 // creating a responder, and checking those domains.
-func TestProofWithPoP(t *testing.T) {
+func TestProof(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
 	defer cancelF()
 
@@ -96,12 +96,24 @@ func TestProofWithPoP(t *testing.T) {
 	assert.NoError(t, err)
 	id = common.SHA256Hash32Bytes(certsC[0].Raw)
 	checkProof(t, &id, proofChain)
+
+	// Now check an absent domain.
+	proofChain, err = responder.GetProof(ctx, "absentdomain.domain")
+	assert.NoError(t, err)
+	checkProof(t, nil, proofChain)
 }
 
 // checkProof checks the proof to be correct.
 func checkProof(t *testing.T, payloadID *common.SHA256Output, proofs []*mapcommon.MapServerResponse) {
 	t.Helper()
-	require.Equal(t, mapcommon.PoP, proofs[len(proofs)-1].PoI.ProofType, "PoP not found")
+	// Determine if we are checking an absence or presence.
+	if payloadID == nil {
+		// Absence.
+		require.Equal(t, mapcommon.PoA, proofs[len(proofs)-1].PoI.ProofType, "PoA not found")
+	} else {
+		// Check the last component is present.
+		require.Equal(t, mapcommon.PoP, proofs[len(proofs)-1].PoI.ProofType, "PoP not found")
+	}
 	for _, proof := range proofs {
 		proofType, isCorrect, err := prover.VerifyProofByDomain(proof)
 		require.NoError(t, err)
