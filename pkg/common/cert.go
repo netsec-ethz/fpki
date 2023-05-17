@@ -70,18 +70,18 @@ func X509CertFromFile(fileName string) (*x509.Certificate, error) {
 	return cert, nil
 }
 
-// LoadRSAKeyPairFromFile: load rsa key pair from file
-func LoadRSAKeyPairFromFile(keyPath string) (*rsa.PrivateKey, error) {
+// LoadRSAPrivateKeyFromFile loads a RSA private key from file
+func LoadRSAPrivateKeyFromFile(keyPath string) (*rsa.PrivateKey, error) {
 	bytes, err := ioutil.ReadFile(keyPath)
 	if err != nil {
-		return nil, fmt.Errorf("LoadRSAKeyPairFromFile | read file | %w", err)
+		return nil, fmt.Errorf("LoadRSAPrivateKeyFromFile | read file | %w", err)
 	}
 
 	block, _ := pem.Decode(bytes)
 
 	keyPair, err := x509.ParsePKCS1PrivateKey(block.Bytes)
 	if err != nil {
-		return nil, fmt.Errorf("LoadRSAKeyPairFromFile | ParsePKCS1PrivateKey | %w", err)
+		return nil, fmt.Errorf("LoadRSAPrivateKeyFromFile | ParsePKCS1PrivateKey | %w", err)
 	}
 	return keyPair, nil
 }

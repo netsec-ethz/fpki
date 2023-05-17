@@ -66,14 +66,14 @@ func (r *OldMapResponder) loadPrivKeyAndSignTreeHead(mapServerConfigPath string)
 		return fmt.Errorf("ReadConfigFromFile | %w", err)
 	}
 
-	keyPair, err := common.LoadRSAKeyPairFromFile(config.KeyPath)
+	keyPair, err := common.LoadRSAPrivateKeyFromFile(config.KeyPath)
 	if err != nil {
 		return fmt.Errorf("LoadRSAKeyPairFromFile | %w", err)
 	}
 
 	r.rsaKeyPair = keyPair
 
-	signature, err := common.SignStructRSASHA256(r.smt.Root, keyPair)
+	signature, err := common.SignBytes(r.smt.Root, keyPair)
 	if err != nil {
 		return fmt.Errorf("SignStructRSASHA256 | %w", err)
 	}

@@ -11,7 +11,7 @@ import (
 
 // TestSignatureOfRCSR: Generate RCSR -> generate signature for RCSR -> verify signature
 func TestSignatureOfRCSR(t *testing.T) {
-	privKey, err := LoadRSAKeyPairFromFile("./testdata/clientkey.pem")
+	privKey, err := LoadRSAPrivateKeyFromFile("./testdata/clientkey.pem")
 	require.NoError(t, err, "load RSA key error")
 
 	test := &RCSR{
@@ -43,7 +43,7 @@ func TestIssuanceOfRPC(t *testing.T) {
 	// -------------------------------------
 	//  phase 1: domain owner generate rcsr
 	// -------------------------------------
-	privKey, err := LoadRSAKeyPairFromFile("./testdata/clientkey.pem")
+	privKey, err := LoadRSAPrivateKeyFromFile("./testdata/clientkey.pem")
 	require.NoError(t, err, "Load RSA Key Pair From File error")
 
 	rcsr := &RCSR{
@@ -75,7 +75,7 @@ func TestIssuanceOfRPC(t *testing.T) {
 	err = RCSRVerifySignature(rcsr)
 	require.NoError(t, err, "RCSR Verify Signature error")
 
-	pcaPrivKey, err := LoadRSAKeyPairFromFile("./testdata/serverkey.pem")
+	pcaPrivKey, err := LoadRSAPrivateKeyFromFile("./testdata/serverkey.pem")
 	rpc, err := RCSRGenerateRPC(rcsr, time.Now(), 1, pcaPrivKey, "fpki")
 	require.NoError(t, err, "RCSR Generate RPC error")
 
@@ -97,7 +97,7 @@ func TestIssuanceOfSP(t *testing.T) {
 	// -------------------------------------
 	//  phase 1: domain owner generate rcsr
 	// -------------------------------------
-	privKey, err := LoadRSAKeyPairFromFile("./testdata/clientkey.pem")
+	privKey, err := LoadRSAPrivateKeyFromFile("./testdata/clientkey.pem")
 	require.NoError(t, err, "Load RSA Key Pair From File error")
 
 	rcsr := &RCSR{
@@ -128,7 +128,7 @@ func TestIssuanceOfSP(t *testing.T) {
 	err = RCSRVerifySignature(rcsr)
 	require.NoError(t, err, "RCSR Verify Signature error")
 
-	pcaPrivKey, err := LoadRSAKeyPairFromFile("./testdata/serverkey.pem")
+	pcaPrivKey, err := LoadRSAPrivateKeyFromFile("./testdata/serverkey.pem")
 	rpc, err := RCSRGenerateRPC(rcsr, time.Now(), 1, pcaPrivKey, "fpki")
 	require.NoError(t, err, "RCSR Generate RPC error")
 

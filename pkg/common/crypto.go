@@ -25,18 +25,11 @@ const (
 	RSA PublicKeyAlgorithm = iota
 )
 
-// SignStructRSASHA256: generate a signature using SHA256 and RSA
-func SignStructRSASHA256(s any, privKey *rsa.PrivateKey) ([]byte, error) {
-	bytes, err := ToJSON(s)
+func SignBytes(b []byte, key *rsa.PrivateKey) ([]byte, error) {
+	hashOutput := sha256.Sum256(b)
+	signature, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, hashOutput[:])
 	if err != nil {
-		return nil, fmt.Errorf("SignStructRSASHA256 | ToJSON | %w", err)
-	}
-
-	hashOutput := sha256.Sum256(bytes)
-
-	signature, err := rsa.SignPKCS1v15(rand.Reader, privKey, crypto.SHA256, hashOutput[:])
-	if err != nil {
-		return nil, fmt.Errorf("SignStructRSASHA256 | SignPKCS1v15 | %w", err)
+		return nil, fmt.Errorf("SignBytes | SignPKCS1v15 | %w", err)
 	}
 	return signature, nil
 }
@@ -50,7 +43,7 @@ func RCSRCreateSignature(domainOwnerPrivKey *rsa.PrivateKey, rcsr *RCSR) error {
 	// clear signature; normally should be empty
 	rcsr.Signature = []byte{}
 
-	signature, err := SignStructRSASHA256(rcsr, domainOwnerPrivKey)
+	signature, err := signStructRSASHA256(rcsr, domainOwnerPrivKey)
 	if err != nil {
 		return fmt.Errorf("RCSRCreateSignature | SignStructRSASHA256 | %w", err)
 	}
@@ -67,7 +60,7 @@ func RCSRGenerateRPCSignature(rcsr *RCSR, prevPrivKeyOfPRC *rsa.PrivateKey) erro
 	rcsr.Signature = []byte{}
 	rcsr.PRCSignature = []byte{}
 
-	rpcSignature, err := SignStructRSASHA256(rcsr, prevPrivKeyOfPRC)
+	rpcSignature, err := signStructRSASHA256(rcsr, prevPrivKeyOfPRC)
 	if err != nil {
 		return fmt.Errorf("RCSRGenerateRPCSignature | SignStructRSASHA256 | %w", err)
 	}
@@ -145,7 +138,7 @@ func RCSRGenerateRPC(rcsr *RCSR, notBefore time.Time, serialNumber int, caPrivKe
 		SPTs:               []SPT{},
 	}
 
-	signature, err := SignStructRSASHA256(rpc, caPrivKey)
+	signature, err := signStructRSASHA256(rpc, caPrivKey)
 	if err != nil {
 		return nil, fmt.Errorf("RCSRGenerateRPC | SignStructRSASHA256 | %w", err)
 	}
@@ -185,7 +178,7 @@ func RPCVerifyCASignature(caCert *x509.Certificate, rpc *RPC) error {
 
 // DomainOwnerSignSP: Used by domain owner to sign the PC
 func DomainOwnerSignPSR(domainOwnerPrivKey *rsa.PrivateKey, psr *PSR) error {
-	signature, err := SignStructRSASHA256(psr, domainOwnerPrivKey)
+	signature, err := signStructRSASHA256(psr, domainOwnerPrivKey)
 	if err != nil {
 		return fmt.Errorf("DomainOwnerSignPC | SignStructRSASHA256 | %w", err)
 	}
@@ -231,7 +224,7 @@ func CASignSP(psr *PSR, caPrivKey *rsa.PrivateKey, caName string, serialNum int)
 		SerialNumber:      serialNum,
 	}
 
-	caSignature, err := SignStructRSASHA256(sp, caPrivKey)
+	caSignature, err := signStructRSASHA256(sp, caPrivKey)
 	if err != nil {
 		return &SP{}, fmt.Errorf("CASignSP | SignStructRSASHA256 | %w", err)
 	}
@@ -261,4 +254,13 @@ func VerifyCASigInSP(caCert *x509.Certificate, sp *SP) error {
 		return fmt.Errorf("VerifyCASigInPC | VerifyPKCS1v15 | %w", err)
 	}
 	return nil
+}
+
+// signStructRSASHA256: generate a signature using SHA256 and RSA
+func signStructRSASHA256(s any, key *rsa.PrivateKey) ([]byte, error) {
+	b, err := ToJSON(s)
+	if err != nil {
+		return nil, fmt.Errorf("SignStructRSASHA256 | ToJSON | %w", err)
+	}
+	return SignBytes(b, key)
 }
