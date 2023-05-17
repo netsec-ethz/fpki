@@ -2,10 +2,10 @@ package responder
 
 import (
 	"context"
+	"encoding/hex"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
@@ -17,6 +17,53 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
+
+func TestNewResponder(t *testing.T) {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	defer cancelF()
+
+	// DB will have the same name as the test function.
+	dbName := t.Name()
+	config := db.NewConfig(mysql.WithDefaults(), db.WithDB(dbName))
+
+	// Create a new DB with that name. On exiting the function, it will be removed.
+	err := testdb.CreateTestDB(ctx, dbName)
+	require.NoError(t, err)
+	defer func() {
+		err = testdb.RemoveTestDB(ctx, config)
+		require.NoError(t, err)
+	}()
+
+	// Connect to the DB.
+	conn, err := mysql.Connect(config)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	// Create a responder (root will be nil).
+	responder, err := NewMapResponder(ctx, "./testdata/mapserver_config.json", conn)
+	require.NoError(t, err)
+	// Check its tree head is nil.
+	require.Nil(t, responder.smt.Root)
+	// Check its STH is not nil.
+	sth := responder.SignedTreeHead()
+	require.Equal(t, 8*common.SHA256Size, len(sth),
+		"bad length of STH: %s", hex.EncodeToString(sth))
+
+	// Repeat test with a non nil root.
+	// Insert a mockup root.
+	root := common.SHA256Hash32Bytes([]byte{0})
+	err = conn.SaveRoot(ctx, &root)
+	require.NoError(t, err)
+	// Create a responder (root will NOT be nil).
+	responder, err = NewMapResponder(ctx, "./testdata/mapserver_config.json", conn)
+	require.NoError(t, err)
+	// Check its tree head is NOT nil.
+	require.NotNil(t, responder.smt.Root)
+	// Check its STH is not nil.
+	sth2 := responder.SignedTreeHead()
+	require.Equal(t, 8*common.SHA256Size, len(sth2),
+		"bad length of STH: %s", hex.EncodeToString(sth2))
+}
 
 // TestProofWithPoP checks for 3 domains: a.com (certs), b.com (policies), c.com (both),
 // that the proofs of presence work correctly, by ingesting all the material, updating the DB,
@@ -81,25 +128,25 @@ func TestProof(t *testing.T) {
 
 	// Check a.com:
 	proofChain, err := responder.GetProof(ctx, "a.com")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	id := common.SHA256Hash32Bytes(certsA[0].Raw)
 	checkProof(t, &id, proofChain)
 
 	// Check b.com:
 	proofChain, err = responder.GetProof(ctx, "b.com")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	id = common.SHA256Hash32Bytes(policiesB[0].Raw())
 	checkProof(t, &id, proofChain)
 
 	// Check b.com:
 	proofChain, err = responder.GetProof(ctx, "c.com")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	id = common.SHA256Hash32Bytes(certsC[0].Raw)
 	checkProof(t, &id, proofChain)
 
 	// Now check an absent domain.
 	proofChain, err = responder.GetProof(ctx, "absentdomain.domain")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	checkProof(t, nil, proofChain)
 }
 

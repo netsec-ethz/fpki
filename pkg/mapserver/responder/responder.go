@@ -36,8 +36,8 @@ func NewMapResponder(ctx context.Context, configFile string, conn db.Conn) (*Map
 		conn: conn,
 		smt:  smt,
 	}
-	r.signTreeHead(configFile)
-	return r, nil
+
+	return r, r.signTreeHead(configFile)
 }
 
 func (r *MapResponder) GetProof(ctx context.Context, domainName string,
@@ -96,10 +96,15 @@ func (r *MapResponder) GetProof(ctx context.Context, domainName string,
 				ProofKey:   proofKey,
 				ProofValue: proofValue,
 			},
-			// TreeHeadSig: , TODO(juagargi)
+			TreeHeadSig: r.SignedTreeHead(),
 		}
 	}
 	return proofList, nil
+}
+
+// SignedTreeHead returns a copy of the Signed Tree Head (STH).
+func (r *MapResponder) SignedTreeHead() []byte {
+	return append(r.signedTreeHead[:0:0], r.signedTreeHead...)
 }
 
 func (r *MapResponder) signTreeHead(configFile string) error {
@@ -111,13 +116,13 @@ func (r *MapResponder) signTreeHead(configFile string) error {
 	}
 
 	// Load private key from configuration.
-	keyPair, err := common.LoadRSAKeyPairFromFile(config.KeyPath)
+	privateKey, err := common.LoadRSAPrivateKeyFromFile(config.KeyPath)
 	if err != nil {
 		return fmt.Errorf("LoadRSAKeyPairFromFile | %w", err)
 	}
 
 	// Sign the tree head.
-	signature, err := common.SignStructRSASHA256(r.smt.Root, keyPair)
+	signature, err := common.SignBytes(r.smt.Root, privateKey)
 	if err != nil {
 		return fmt.Errorf("SignStructRSASHA256 | %w", err)
 	}
