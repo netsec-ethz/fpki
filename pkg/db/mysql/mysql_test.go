@@ -20,6 +20,9 @@ import (
 )
 
 func TestCoalesceForDirtyDomains(t *testing.T) {
+	// Because we are using "random" bytes deterministically here, set a fixed seed.
+	rand.Seed(1)
+
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
 	defer cancelF()
 
@@ -49,7 +52,7 @@ func TestCoalesceForDirtyDomains(t *testing.T) {
 	var certNames [][]string
 	for _, leaf := range leafCerts {
 		// Create two mock x509 chains on top of leaf:
-		certs2, certIDs2, parentCertIDs2, certNames2 := testdb.BuildTestCertHierarchy(t, leaf)
+		certs2, certIDs2, parentCertIDs2, certNames2 := testdb.BuildTestRandomCertHierarchy(t, leaf)
 		certs = append(certs, certs2...)
 		certIDs = append(certIDs, certIDs2...)
 		parentCertIDs = append(parentCertIDs, parentCertIDs2...)
