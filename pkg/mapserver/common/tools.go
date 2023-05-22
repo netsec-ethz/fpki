@@ -34,6 +34,7 @@ func getRootCertificateSubject(cert *x509.Certificate, certChain []*x509.Certifi
 
 // AddCert: add a x509 cert to one domain entry. Return whether the domain entry is updated.
 func (domainEntry *DomainEntry) AddCert(cert *x509.Certificate, certChain []*x509.Certificate) bool {
+	panic("deprecated: should never be called")
 	// caName := getRootCertificateSubject(cert, certChain)
 
 	// isFound := false
