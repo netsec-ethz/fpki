@@ -28,7 +28,7 @@ func (mapUpdater *MapUpdater) DeletemeUpdateDomainEntriesTableUsingCerts(
 	int,
 	error,
 ) {
-
+	panic("deprecated: should never be called")
 	if len(certs) == 0 {
 		return nil, 0, nil
 	}
@@ -139,6 +139,7 @@ func UpdateDomainEntries(
 	certChainDomainMap map[string][][]*ctx509.Certificate,
 ) (uniqueSet, error) {
 
+	panic("deprecated: should never be called")
 	updatedDomainHash := make(uniqueSet)
 	// read from previous map
 	// the map records: domain - certs pair
@@ -175,6 +176,7 @@ func UpdateDomainEntries(
 // updateDomainEntry: insert certificate into correct CAEntry
 // return: if this domain entry is updated
 func updateDomainEntry(domainEntry *mcommon.DomainEntry, cert *ctx509.Certificate, certChain []*ctx509.Certificate) bool {
+	panic("deprecated: should never be called")
 	return domainEntry.AddCert(cert, certChain)
 }
 
@@ -197,6 +199,8 @@ func GetDomainEntriesToWrite(updatedDomain uniqueSet,
 // DeletemeSerializeUpdatedDomainEntries: serialize the updated domains
 func DeletemeSerializeUpdatedDomainEntries(domains map[common.SHA256Output]*mcommon.DomainEntry) (
 	[]*db.KeyValuePair, error) {
+
+	panic("this function is deprecated and should never be called")
 
 	result := make([]*db.KeyValuePair, 0, len(domains))
 
