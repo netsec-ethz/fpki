@@ -3,6 +3,7 @@ package responder
 import (
 	"context"
 	"encoding/hex"
+	"math/rand"
 	"testing"
 	"time"
 
@@ -69,6 +70,9 @@ func TestNewResponder(t *testing.T) {
 // that the proofs of presence work correctly, by ingesting all the material, updating the DB,
 // creating a responder, and checking those domains.
 func TestProof(t *testing.T) {
+	// Because we are using "random" bytes deterministically here, set a fixed seed.
+	rand.Seed(1)
+
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
 	defer cancelF()
 
@@ -90,21 +94,21 @@ func TestProof(t *testing.T) {
 	defer conn.Close()
 
 	// a.com
-	certs, certIDs, parentCertIDs, names := testdb.BuildTestCertHierarchy(t, "a.com")
+	certs, certIDs, parentCertIDs, names := testdb.BuildTestRandomCertHierarchy(t, "a.com")
 	err = updater.UpdateWithKeepExisting(ctx, conn, names, certIDs, parentCertIDs, certs,
 		util.ExtractExpirations(certs), nil)
 	require.NoError(t, err)
 	certsA := certs
 
 	// b.com
-	policies := testdb.BuildTestPolicyHierarchy(t, "b.com")
+	policies := testdb.BuildTestRandomPolicyHierarchy(t, "b.com")
 	err = updater.UpdateWithKeepExisting(ctx, conn, nil, nil, nil, nil, nil, policies)
 	require.NoError(t, err)
 	policiesB := policies
 
 	// c.com
-	certs, certIDs, parentCertIDs, names = testdb.BuildTestCertHierarchy(t, "c.com")
-	policies = testdb.BuildTestPolicyHierarchy(t, "c.com")
+	certs, certIDs, parentCertIDs, names = testdb.BuildTestRandomCertHierarchy(t, "c.com")
+	policies = testdb.BuildTestRandomPolicyHierarchy(t, "c.com")
 	err = updater.UpdateWithKeepExisting(ctx, conn, names, certIDs, parentCertIDs, certs,
 		util.ExtractExpirations(certs), policies)
 	require.NoError(t, err)

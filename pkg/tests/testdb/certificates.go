@@ -1,28 +1,25 @@
 package testdb
 
 import (
-	"time"
-
 	ctx509 "github.com/google/certificate-transparency-go/x509"
-	"github.com/google/certificate-transparency-go/x509/pkix"
 	"github.com/stretchr/testify/require"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
-	"github.com/netsec-ethz/fpki/pkg/util"
+	"github.com/netsec-ethz/fpki/pkg/tests"
 )
 
-// BuildTestCertHierarchy returns the certificates, chains, and names for two mock certificate
+// BuildTestRandomCertHierarchy returns the certificates, chains, and names for two mock certificate
 // chains: the first chain is domainName->c1.com->c0.com , and the second chain is
 // domainName->c0.com .
-func BuildTestCertHierarchy(t require.TestingT, domainName string) (
+func BuildTestRandomCertHierarchy(t require.TestingT, domainName string) (
 	certs []*ctx509.Certificate, IDs, parentIDs []*common.SHA256Output, names [][]string) {
 
 	// Create all certificates.
 	certs = make([]*ctx509.Certificate, 4)
-	certs[0] = RandomX509Cert(t, "c0.com")
-	certs[1] = RandomX509Cert(t, "c1.com")
-	certs[2] = RandomX509Cert(t, domainName)
-	certs[3] = RandomX509Cert(t, domainName)
+	certs[0] = tests.RandomX509Cert(t, "c0.com")
+	certs[1] = tests.RandomX509Cert(t, "c1.com")
+	certs[2] = tests.RandomX509Cert(t, domainName)
+	certs[3] = tests.RandomX509Cert(t, domainName)
 
 	// IDs:
 	IDs = make([]*common.SHA256Output, len(certs))
@@ -45,16 +42,4 @@ func BuildTestCertHierarchy(t require.TestingT, domainName string) (
 	parentIDs[3] = IDs[0]
 
 	return
-}
-
-func RandomX509Cert(t require.TestingT, domain string) *ctx509.Certificate {
-	return &ctx509.Certificate{
-		DNSNames: []string{domain},
-		Subject: pkix.Name{
-			CommonName: domain,
-		},
-		NotBefore: util.TimeFromSecs(0),
-		NotAfter:  time.Date(3000, 1, 1, 0, 0, 0, 0, time.UTC),
-		Raw:       util.RandomBytesForTest(t, 10),
-	}
 }
