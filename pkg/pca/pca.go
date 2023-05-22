@@ -6,8 +6,11 @@ import (
 	"log"
 	"os"
 
+	"github.com/google/trillian"
+	"github.com/google/trillian/types"
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/logverifier"
+	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
 // CRITICAL: The funcs are not thread-safe for now. DO NOT use them for multi-thread program.
@@ -79,8 +82,7 @@ func NewPCA(configPath string) (*PCA, error) {
 func (pca *PCA) ReceiveSPTFromPolicyLog() error {
 	for k, v := range pca.preRPCByDomains {
 		// read the corresponding spt
-		spt := &common.SPT{}
-		err := common.JsonFileToSPT(spt, pca.policyLogExgPath+"/spt/"+k)
+		spt, err := common.JsonFileToSPT(pca.policyLogExgPath + "/spt/" + k)
 		if err != nil {
 			return fmt.Errorf("ReceiveSPTFromPolicyLog | JsonFileToSPT | %w", err)
 		}
@@ -102,8 +104,7 @@ func (pca *PCA) ReceiveSPTFromPolicyLog() error {
 
 	for k, v := range pca.preSPByDomains {
 		// read the corresponding spt
-		spt := &common.SPT{}
-		err := common.JsonFileToSPT(spt, pca.policyLogExgPath+"/spt/"+k)
+		spt, err := common.JsonFileToSPT(pca.policyLogExgPath + "/spt/" + k)
 		if err != nil {
 			return fmt.Errorf("ReceiveSPTFromPolicyLog | JsonFileToSPT | %w", err)
 		}
@@ -145,11 +146,9 @@ func (pca *PCA) OutputRPCAndSP() error {
 
 // verify the SPT of the RPC.
 func (pca *PCA) verifySPTWithRPC(spt *common.SPT, rpc *common.RPC) error {
-	// construct proofs
-
-	proofs, err := common.JSONToPoI(spt.PoI)
+	proofs, logRoot, err := getProofsAndLogRoot(spt)
 	if err != nil {
-		return fmt.Errorf("verifySPT | JsonBytesToPoI | %w", err)
+		return fmt.Errorf("verifySPTWithRPC | parsePoIAndSTH | %w", err)
 	}
 
 	// get leaf hash
@@ -158,12 +157,6 @@ func (pca *PCA) verifySPTWithRPC(spt *common.SPT, rpc *common.RPC) error {
 		return fmt.Errorf("verifySPT | Json_StructToBytes | %w", err)
 	}
 	leafHash := pca.logVerifier.HashLeaf(rpcBytes)
-
-	// get LogRootV1
-	logRoot, err := common.JSONToLogRoot(spt.STH)
-	if err != nil {
-		return fmt.Errorf("verifySPT | JsonBytesToLogRoot | %w", err)
-	}
 
 	// verify the PoI
 	err = pca.logVerifier.VerifyInclusionByHash(logRoot, leafHash, proofs)
@@ -176,10 +169,9 @@ func (pca *PCA) verifySPTWithRPC(spt *common.SPT, rpc *common.RPC) error {
 
 // verify the SPT of the RPC.
 func (pca *PCA) verifySPTWithSP(spt *common.SPT, sp *common.SP) error {
-	// construct proofs
-	proofs, err := common.JSONToPoI(spt.PoI)
+	proofs, logRoot, err := getProofsAndLogRoot(spt)
 	if err != nil {
-		return fmt.Errorf("verifySPT | JsonBytesToPoI | %w", err)
+		return fmt.Errorf("verifySPTWithSP | parsePoIAndSTH | %w", err)
 	}
 
 	// get leaf hash
@@ -188,12 +180,6 @@ func (pca *PCA) verifySPTWithSP(spt *common.SPT, sp *common.SP) error {
 		return fmt.Errorf("verifySPT | Json_StructToBytes | %w", err)
 	}
 	leafHash := pca.logVerifier.HashLeaf(spBytes)
-
-	// get LogRootV1
-	logRoot, err := common.JSONToLogRoot(spt.STH)
-	if err != nil {
-		return fmt.Errorf("verifySPT | JsonBytesToLogRoot | %w", err)
-	}
 
 	// verify the PoI
 	err = pca.logVerifier.VerifyInclusionByHash(logRoot, leafHash, proofs)
@@ -211,6 +197,31 @@ func (pca *PCA) increaseSerialNumber() {
 
 func (pca *PCA) ReturnValidRPC() map[string]*common.RPC {
 	return pca.validRPCsByDomains
+}
+
+// getProofsAndLogRoot return the proofs and root parsed from the PoI and STH in JSON.
+func getProofsAndLogRoot(spt *common.SPT) ([]*trillian.Proof, *types.LogRootV1, error) {
+	// Parse the PoI into []*trillian.Proof.
+	serializedProofs, err := common.FromJSON(spt.PoI)
+	if err != nil {
+		return nil, nil, err
+	}
+	proofs, err := util.ToTypedSlice[*trillian.Proof](serializedProofs)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Parse the STH into a *types.LogRootV1.
+	serializedRoot, err := common.FromJSON(spt.STH)
+	if err != nil {
+		return nil, nil, err
+	}
+	root, err := util.ToType[*types.LogRootV1](serializedRoot)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return proofs, root, nil
 }
 
 /*
