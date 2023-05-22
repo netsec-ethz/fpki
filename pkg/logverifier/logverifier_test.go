@@ -1,71 +1,195 @@
 package logverifier
 
 import (
+	"math/rand"
 	"testing"
 
 	"github.com/google/trillian"
+	"github.com/google/trillian/types"
 	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/tests"
+	"github.com/netsec-ethz/fpki/pkg/util"
 
 	"github.com/stretchr/testify/require"
 )
 
-// TestVerification: Test logverifier.VerifyInclusionByHash()
-func TestVerification(t *testing.T) {
-	proof, err := common.JsonFileToProof("./testdata/POI.json")
-	require.NoError(t, err, "Json File To Proof Error")
+func TestVerifyInclusionByHash(t *testing.T) {
+	// Because we are using "random" bytes deterministically here, set a fixed seed.
+	rand.Seed(1)
 
-	sth, err := common.JSONToLogRoot([]byte("{\"TreeSize\":2,\"RootHash\":\"VsGAf6yfqGWcEno9aRBj3O1N9E8fY/XE9nJmYKjefPM=\",\"TimestampNanos\":1661986742112252000,\"Revision\":0,\"Metadata\":\"\"}"))
-	require.NoError(t, err, "Json bytes To STH Error")
+	// Create a mock proof.
+	proof := &trillian.Proof{
+		Hashes: [][]byte{
+			tests.MustDecodeBase64(t, "RCW7/AbelL3TNWgMot/jsSAUfvxIepMGEZNqvcZTJuw="),
+		},
+	}
 
-	logverifier := NewLogVerifier(nil)
+	// Create a mock STH with the correct root hash.
+	sth := &types.LogRootV1{
+		TreeSize:       2,
+		RootHash:       tests.MustDecodeBase64(t, "BSH/yAK1xdSSNMxzNbBD4pdAsqUin8L3st6w9su+nRk="),
+		TimestampNanos: 1661986742112252000,
+		Revision:       0,
+		Metadata:       []byte{},
+	}
 
-	rpc, err := common.JsonFileToRPC("./testdata/rpc.json")
-	require.NoError(t, err, "Json File To RPC Error")
+	// Mock up a RPC.
+	rpc := &common.RPC{
+		PolicyObjectBase: common.PolicyObjectBase{
+			Subject: "fpki.com",
+		},
+		SerialNumber: 2,
+		Version:      1,
+		PublicKey:    util.RandomBytesForTest(t, 32),
+		NotBefore:    util.TimeFromSecs(42),
+		NotAfter:     util.TimeFromSecs(142),
+		CAName:       "pca",
+		TimeStamp:    util.TimeFromSecs(100),
+		CASignature:  util.RandomBytesForTest(t, 32),
+	}
 
-	rpc.SPTs = []common.SPT{}
-
-	rpcBytes, err := common.ToJSON(rpc)
+	// Serialize it without SPTs.
+	serializedRPC, err := common.ToJSON(rpc)
 	require.NoError(t, err, "Json Struct To Bytes Error")
 
-	rpcHash := logverifier.HashLeaf(rpcBytes)
+	// New log verifier and hash the RPC.
+	logverifier := NewLogVerifier(nil)
+	rpcHash := logverifier.HashLeaf(serializedRPC)
 
+	// Check that VerifyInclusionByHash works:
 	err = logverifier.VerifyInclusionByHash(sth, rpcHash, []*trillian.Proof{proof})
 	require.NoError(t, err, "Verify Inclusion By Hash Error")
 }
 
-// TestConsistencyBetweenSTH: test logverifier.VerifyRoot()
+// TestConsistencyBetweenSTH checks that two STHs are consistently sequential by using VerifyRoot.
 func TestConsistencyBetweenSTH(t *testing.T) {
-	sth, err := common.JsonFileToSTH("./testdata/OldSTH.json")
-	require.NoError(t, err, "Json File To STH Error")
+	sth := &types.LogRootV1{
+		Revision:       0,
+		TreeSize:       2,
+		TimestampNanos: 1651518756445580000,
+		RootHash:       tests.MustDecodeBase64(t, "qVKbXMndXP7Pd+rJm9NuUsgENjgXeMgf9CsXtmNxtxM="),
+		Metadata:       []byte{},
+	}
 
-	newSTH, err := common.JsonFileToSTH("./testdata/NewSTH.json")
-	require.NoError(t, err, "Json File To STH Error")
+	newSTH := &types.LogRootV1{
+		Revision:       0,
+		TreeSize:       3,
+		TimestampNanos: 1651518756732994000,
+		RootHash:       tests.MustDecodeBase64(t, "ua6XccS1nESMgxBA3gh+pfAI9DgIrPD6o1Ib7gXS4fI="),
+		Metadata:       []byte{},
+	}
+
+	consistencyProof := [][]byte{
+		tests.MustDecodeBase64(t, "QGoGEyLcU/fXIKJr9u+xTak8KUbmAPFs8aALVsjdeng="),
+	}
 
 	logverifier := NewLogVerifier(nil)
-
-	consistencyProof := [][]byte{{64, 106, 6, 19, 34, 220, 83, 247, 215, 32, 162, 107, 246, 239, 177, 77, 169, 60, 41, 70, 230, 0, 241, 108,
-		241, 160, 11, 86, 200, 221, 122, 120}}
-
-	_, err = logverifier.VerifyRoot(sth, newSTH, consistencyProof)
+	_, err := logverifier.VerifyRoot(sth, newSTH, consistencyProof)
 	require.NoError(t, err, "Verify Root Error")
 }
 
 func TestCheckRPC(t *testing.T) {
-	rpc, err := common.JsonFileToRPC("./testdata/rpc.json")
-	require.NoError(t, err, "Json File To RPC Error")
+	// Because we are using "random" bytes deterministically here, set a fixed seed.
+	rand.Seed(1)
 
+	// Mock a STH with the right root hash.
+	sth := &types.LogRootV1{
+		TreeSize:       2,
+		RootHash:       tests.MustDecodeBase64(t, "qtkcR3q27tgl90D5Wl1yCRYPEcvXcDvqEi1HH1mnffg="),
+		TimestampNanos: 1661986742112252000,
+		Revision:       0,
+		Metadata:       []byte{},
+	}
+	serializedSTH, err := common.ToJSON(sth)
+	require.NoError(t, err)
+
+	// Mock a PoI.
+	poi := []*trillian.Proof{
+		{
+			LeafIndex: 1,
+			Hashes:    [][]byte{util.RandomBytesForTest(t, 32)},
+		},
+	}
+	serializedPoI, err := common.ToJSON(poi)
+	require.NoError(t, err)
+
+	// Mock a RPC.
+	rpc := &common.RPC{
+		PolicyObjectBase: common.PolicyObjectBase{
+			Subject: "fpki.com",
+		},
+		SerialNumber: 2,
+		Version:      1,
+		PublicKey:    util.RandomBytesForTest(t, 32),
+		NotBefore:    util.TimeFromSecs(42),
+		NotAfter:     util.TimeFromSecs(142),
+		CAName:       "pca",
+		TimeStamp:    util.TimeFromSecs(100),
+		CASignature:  util.RandomBytesForTest(t, 32),
+		SPTs: []common.SPT{
+			{
+				AddedTS: util.TimeFromSecs(99),
+				STH:     serializedSTH,
+				PoI:     serializedPoI,
+			},
+		},
+	}
+
+	// Check VerifyRPC.
 	logverifier := NewLogVerifier(nil)
-
 	err = logverifier.VerifyRPC(rpc)
 	require.NoError(t, err)
 }
 
 func TestCheckSP(t *testing.T) {
-	sp, err := common.JsonFileToSP("./testdata/sp.json")
-	require.NoError(t, err, "Json File To RPC Error")
+	// Because we are using "random" bytes deterministically here, set a fixed seed.
+	rand.Seed(3)
 
+	// Mock a STH with the right root hash.
+	sth := &types.LogRootV1{
+		TreeSize:       2,
+		RootHash:       tests.MustDecodeBase64(t, "8rAPQQeydFrBYHkreAlISGoGeHXFLlTqWM8Xb0wJNiY="),
+		TimestampNanos: 1661986742112252000,
+		Revision:       0,
+		Metadata:       []byte{},
+	}
+	serializedSTH, err := common.ToJSON(sth)
+	require.NoError(t, err)
+
+	// Mock a PoI.
+	poi := []*trillian.Proof{
+		{
+			LeafIndex: 1,
+			Hashes:    [][]byte{util.RandomBytesForTest(t, 32)},
+		},
+	}
+	serializedPoI, err := common.ToJSON(poi)
+	require.NoError(t, err)
+
+	// Mock an SP.
+	sp := &common.SP{
+		PolicyObjectBase: common.PolicyObjectBase{
+			Subject: "fpki.com",
+		},
+		Policies: common.Policy{
+			TrustedCA: []string{"US CA"},
+		},
+		TimeStamp:         util.TimeFromSecs(444),
+		CAName:            "pca",
+		SerialNumber:      4,
+		CASignature:       util.RandomBytesForTest(t, 32),
+		RootCertSignature: util.RandomBytesForTest(t, 32),
+		SPTs: []common.SPT{
+			{
+				AddedTS: util.TimeFromSecs(444),
+				STH:     serializedSTH,
+				PoI:     serializedPoI,
+			},
+		},
+	}
+
+	// Check VerifySP works.
 	logverifier := NewLogVerifier(nil)
-
 	err = logverifier.VerifySP(sp)
 	require.NoError(t, err)
 }

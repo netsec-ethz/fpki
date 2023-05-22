@@ -12,15 +12,16 @@ import (
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
-	"github.com/netsec-ethz/fpki/tests/pkg/db"
+	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
 )
 
 var wg sync.WaitGroup
 
 // benchmark for sparse merkle tree
 func main() {
-	db.TruncateAllTablesWithoutTestObject()
+	testdb.TruncateAllTablesWithoutTestObject()
 
 	conn, err := db.Connect(nil)
 	if err != nil {
