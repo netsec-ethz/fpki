@@ -8,6 +8,7 @@ import (
 	"github.com/google/trillian/types"
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/tests"
+	"github.com/netsec-ethz/fpki/pkg/tests/random"
 	"github.com/netsec-ethz/fpki/pkg/util"
 
 	"github.com/stretchr/testify/require"
@@ -40,12 +41,12 @@ func TestVerifyInclusionByHash(t *testing.T) {
 		},
 		SerialNumber: 2,
 		Version:      1,
-		PublicKey:    tests.RandomBytesForTest(t, 32),
+		PublicKey:    random.RandomBytesForTest(t, 32),
 		NotBefore:    util.TimeFromSecs(42),
 		NotAfter:     util.TimeFromSecs(142),
 		CAName:       "pca",
 		TimeStamp:    util.TimeFromSecs(100),
-		CASignature:  tests.RandomBytesForTest(t, 32),
+		CASignature:  random.RandomBytesForTest(t, 32),
 	}
 
 	// Serialize it without SPTs.
@@ -107,7 +108,7 @@ func TestCheckRPC(t *testing.T) {
 	poi := []*trillian.Proof{
 		{
 			LeafIndex: 1,
-			Hashes:    [][]byte{tests.RandomBytesForTest(t, 32)},
+			Hashes:    [][]byte{random.RandomBytesForTest(t, 32)},
 		},
 	}
 	serializedPoI, err := common.ToJSON(poi)
@@ -120,12 +121,12 @@ func TestCheckRPC(t *testing.T) {
 		},
 		SerialNumber: 2,
 		Version:      1,
-		PublicKey:    tests.RandomBytesForTest(t, 32),
+		PublicKey:    random.RandomBytesForTest(t, 32),
 		NotBefore:    util.TimeFromSecs(42),
 		NotAfter:     util.TimeFromSecs(142),
 		CAName:       "pca",
 		TimeStamp:    util.TimeFromSecs(100),
-		CASignature:  tests.RandomBytesForTest(t, 32),
+		CASignature:  random.RandomBytesForTest(t, 32),
 		SPTs: []common.SPT{
 			{
 				AddedTS: util.TimeFromSecs(99),
@@ -160,7 +161,7 @@ func TestCheckSP(t *testing.T) {
 	poi := []*trillian.Proof{
 		{
 			LeafIndex: 1,
-			Hashes:    [][]byte{tests.RandomBytesForTest(t, 32)},
+			Hashes:    [][]byte{random.RandomBytesForTest(t, 32)},
 		},
 	}
 	serializedPoI, err := common.ToJSON(poi)
@@ -177,8 +178,8 @@ func TestCheckSP(t *testing.T) {
 		TimeStamp:         util.TimeFromSecs(444),
 		CAName:            "pca",
 		SerialNumber:      4,
-		CASignature:       tests.RandomBytesForTest(t, 32),
-		RootCertSignature: tests.RandomBytesForTest(t, 32),
+		CASignature:       random.RandomBytesForTest(t, 32),
+		RootCertSignature: random.RandomBytesForTest(t, 32),
 		SPTs: []common.SPT{
 			{
 				AddedTS: util.TimeFromSecs(444),
