@@ -13,13 +13,13 @@ import (
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
-	"github.com/netsec-ethz/fpki/pkg/tests"
+	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
 	"github.com/stretchr/testify/require"
 )
 
 // TestTrieEmpty: test empty SMT
 func TestTrieEmpty(t *testing.T) {
-	db := tests.NewMockDB()
+	db := testdb.NewMockDB()
 	smt, err := NewTrie(nil, common.SHA256Hash, db)
 	require.NoError(t, err)
 
@@ -32,7 +32,7 @@ func TestTrieUpdateAndGet(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	db := tests.NewMockDB()
+	db := testdb.NewMockDB()
 	smt, err := NewTrie(nil, common.SHA256Hash, db)
 	require.NoError(t, err)
 
@@ -72,7 +72,7 @@ func TestTrieAtomicUpdate(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	db := tests.NewMockDB()
+	db := testdb.NewMockDB()
 	smt, err := NewTrie(nil, common.SHA256Hash, db)
 	require.NoError(t, err)
 
@@ -102,7 +102,7 @@ func TestTriePublicUpdateAndGet(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	db := tests.NewMockDB()
+	db := testdb.NewMockDB()
 	smt, err := NewTrie(nil, common.SHA256Hash, db)
 	require.NoError(t, err)
 
@@ -139,7 +139,7 @@ func TestTrieUpdateAndDelete(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	db := tests.NewMockDB()
+	db := testdb.NewMockDB()
 	smt, err := NewTrie(nil, common.SHA256Hash, db)
 	require.NoError(t, err)
 
@@ -177,7 +177,7 @@ func TestTrieMerkleProof(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
 	defer cancelF()
 
-	db := tests.NewMockDB()
+	db := testdb.NewMockDB()
 	smt, err := NewTrie(nil, common.SHA256Hash, db)
 	require.NoError(t, err)
 
@@ -209,7 +209,7 @@ func TestTrieMerkleProofCompressed(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	db := tests.NewMockDB()
+	db := testdb.NewMockDB()
 	smt, err := NewTrie(nil, common.SHA256Hash, db)
 	require.NoError(t, err)
 
@@ -239,7 +239,7 @@ func TestHeight0LeafShortcut(t *testing.T) {
 	defer cancelF()
 
 	keySize := 32
-	db := tests.NewMockDB()
+	db := testdb.NewMockDB()
 	smt, err := NewTrie(nil, common.SHA256Hash, db)
 	require.NoError(t, err)
 
