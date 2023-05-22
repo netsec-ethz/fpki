@@ -13,7 +13,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
-	dbtest "github.com/netsec-ethz/fpki/tests/pkg/db"
+	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
 )
 
 var domainCount int
@@ -22,7 +22,7 @@ var domainCount int
 func main() {
 
 	domainCount = 0
-	dbtest.TruncateAllTablesWithoutTestObject()
+	testdb.TruncateAllTablesWithoutTestObject()
 
 	csvFile, err := os.Create("result.csv")
 

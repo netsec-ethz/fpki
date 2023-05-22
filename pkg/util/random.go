@@ -1,7 +1,7 @@
 package util
 
 import (
-	"crypto/rand"
+	"math/rand"
 
 	"github.com/stretchr/testify/require"
 )

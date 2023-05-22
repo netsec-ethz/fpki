@@ -11,11 +11,11 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
-	dbtest "github.com/netsec-ethz/fpki/tests/pkg/db"
+	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
 )
 
 func main() {
-	dbtest.TruncateAllTablesWithoutTestObject()
+	testdb.TruncateAllTablesWithoutTestObject()
 	// *****************************************************************
 	//                     open a db connection
 	// *****************************************************************

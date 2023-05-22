@@ -6,6 +6,7 @@ import (
 	"github.com/google/trillian"
 	"github.com/google/trillian/types"
 	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/util"
 	"github.com/transparency-dev/merkle"
 	logProof "github.com/transparency-dev/merkle/proof"
 	"github.com/transparency-dev/merkle/rfc6962"
@@ -27,7 +28,7 @@ func NewLogVerifier(hasher merkle.LogHasher) *LogVerifier {
 	}
 }
 
-// HashLeaf: hash the input
+// HashLeaf hashes the input.
 func (logVerifier *LogVerifier) HashLeaf(input []byte) []byte {
 	return logVerifier.hasher.HashLeaf(input)
 }
@@ -82,60 +83,52 @@ func (c *LogVerifier) VerifyRoot(trusted *types.LogRootV1, newRoot *types.LogRoo
 
 // VerifyInclusionByHash verifies that the inclusion proof for the given Merkle leafHash
 // matches the given trusted root.
-func (c *LogVerifier) VerifyInclusionByHash(trusted *types.LogRootV1, leafHash []byte,
+func (c *LogVerifier) VerifyInclusionByHash(trustedRoot *types.LogRootV1, leafHash []byte,
 	proofs []*trillian.Proof) error {
-
-	switch {
-	case trusted == nil:
-		return fmt.Errorf("VerifyInclusionByHash() error: trusted == nil")
-	case proofs == nil:
-		return fmt.Errorf("VerifyInclusionByHash() error: proof == nil")
-	}
 
 	// As long as one proof is verified, the verification is successful.
 	// Proofs might contain multiple proofs for different leaves, while the content of each leaf
 	// is identical. Trillian will return all the proofs for one content.
 	// So one successful verification is enough.
+	var specialErr error
 	for _, proof := range proofs {
-		if err := logProof.VerifyInclusion(c.hasher, uint64(proof.LeafIndex), trusted.TreeSize,
-			leafHash, proof.Hashes, trusted.RootHash); err == nil {
+		err := logProof.VerifyInclusion(c.hasher, uint64(proof.LeafIndex), trustedRoot.TreeSize,
+			leafHash, proof.Hashes, trustedRoot.RootHash)
+
+		if err == nil {
 
 			return nil
 		}
+		if _, ok := err.(logProof.RootMismatchError); !ok {
+			specialErr = err
+		}
 	}
-	return fmt.Errorf("verification fails")
+	if specialErr != nil {
+		return fmt.Errorf("VerifyInclusionByHash | Unexpected error: %w", specialErr)
+	}
+	// This is a logProof.RootMismatchError, aka different hash values.
+	return fmt.Errorf("verification failed: different hashes")
 }
 
-func (c *LogVerifier) VerifySP(sp *common.SP) error {
+func (v *LogVerifier) VerifySP(sp *common.SP) error {
 	// Get the hash of the SP without SPTs:
 	SPTs := sp.SPTs
 	sp.SPTs = []common.SPT{}
-	serializedStruct, err := common.ToJSON(sp)
+	serializedSP, err := common.ToJSON(sp)
 	if err != nil {
-		return fmt.Errorf("VerifyRPC | ToJSON | %w", err)
+		return fmt.Errorf("VerifySP | ToJSON | %w", err)
 	}
-	bytesHash := c.HashLeaf([]byte(serializedStruct))
+	bytesHash := v.HashLeaf([]byte(serializedSP))
 	// Restore the SPTs to the SP:
 	sp.SPTs = SPTs
 
-	for _, p := range sp.SPTs {
-		sth, err := common.JSONToLogRoot(p.STH)
-		if err != nil {
-			return fmt.Errorf("VerifySP | JsonBytesToLogRoot | %w", err)
-		}
-		poi, err := common.JSONToPoI(p.PoI)
-		if err != nil {
-			return fmt.Errorf("VerifySP | JsonBytesToPoI | %w", err)
-		}
-
-		if err = c.VerifyInclusionByHash(sth, bytesHash, poi); err != nil {
-			return fmt.Errorf("VerifySP | VerifyInclusionByHash | %w", err)
-		}
+	if err := v.verifySPTs(sp.SPTs, bytesHash); err != nil {
+		return fmt.Errorf("VerifySP | %w", err)
 	}
 	return nil
 }
 
-func (c *LogVerifier) VerifyRPC(rpc *common.RPC) error {
+func (v *LogVerifier) VerifyRPC(rpc *common.RPC) error {
 	// Get the hash of the RPC without SPTs:
 	SPTs := rpc.SPTs
 	rpc.SPTs = []common.SPT{}
@@ -143,22 +136,46 @@ func (c *LogVerifier) VerifyRPC(rpc *common.RPC) error {
 	if err != nil {
 		return fmt.Errorf("VerifyRPC | ToJSON | %w", err)
 	}
-	bytesHash := c.HashLeaf([]byte(serializedStruct))
+	bytesHash := v.HashLeaf([]byte(serializedStruct))
 	// Restore the SPTs to the RPC:
 	rpc.SPTs = SPTs
 
-	for _, p := range rpc.SPTs {
-		sth, err := common.JSONToLogRoot(p.STH)
+	if err := v.verifySPTs(rpc.SPTs, bytesHash); err != nil {
+		return fmt.Errorf("VerifyRPC | %w", err)
+	}
+	return nil
+}
+
+func (v *LogVerifier) verifySPTs(SPTs []common.SPT, dataHash []byte) error {
+	for _, p := range SPTs {
+		// Load the STH from JSON.
+		sthRaw, err := common.FromJSON(p.STH)
 		if err != nil {
-			return fmt.Errorf("VerifyRPC | JsonBytesToLogRoot | %w", err)
+			return fmt.Errorf("verifySPTs | FromJSON(STH) | %w", err)
 		}
-		poi, err := common.JSONToPoI(p.PoI)
+		// Into its right type.
+		sth, err := util.ToType[*types.LogRootV1](sthRaw)
 		if err != nil {
-			return fmt.Errorf("VerifyRPC | JsonBytesToPoI | %w", err)
+			return fmt.Errorf("verifySPTs | ToType | %w", err)
 		}
 
-		if err = c.VerifyInclusionByHash(sth, bytesHash, poi); err != nil {
-			return fmt.Errorf("VerifyRPC | VerifyInclusionByHash | %w", err)
+		// Load the PoI from JSON.
+		poiRaw, err := common.FromJSON(p.PoI)
+		if err != nil {
+			return fmt.Errorf("verifySPTs | FromJSON(PoI) | %w", err)
+		}
+		// Into its right type.
+		poi, err := util.ToTypedSlice[*trillian.Proof](poiRaw)
+		if err != nil {
+			return fmt.Errorf("verifySPTs | ToTypedSlice | %w", err)
+		}
+
+		if err != nil {
+			return fmt.Errorf("verifySPTs | JsonBytesToPoI | %w", err)
+		}
+
+		if err = v.VerifyInclusionByHash(sth, dataHash, poi); err != nil {
+			return fmt.Errorf("verifySPTs | VerifyInclusionByHash | %w", err)
 		}
 	}
 	return nil
