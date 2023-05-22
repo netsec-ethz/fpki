@@ -15,6 +15,7 @@ import (
 	mapcommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/prover"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
+	"github.com/netsec-ethz/fpki/pkg/tests/random"
 	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
@@ -94,21 +95,21 @@ func TestProof(t *testing.T) {
 	defer conn.Close()
 
 	// a.com
-	certs, certIDs, parentCertIDs, names := testdb.BuildTestRandomCertHierarchy(t, "a.com")
+	certs, certIDs, parentCertIDs, names := random.BuildTestRandomCertHierarchy(t, "a.com")
 	err = updater.UpdateWithKeepExisting(ctx, conn, names, certIDs, parentCertIDs, certs,
 		util.ExtractExpirations(certs), nil)
 	require.NoError(t, err)
 	certsA := certs
 
 	// b.com
-	policies := testdb.BuildTestRandomPolicyHierarchy(t, "b.com")
+	policies := random.BuildTestRandomPolicyHierarchy(t, "b.com")
 	err = updater.UpdateWithKeepExisting(ctx, conn, nil, nil, nil, nil, nil, policies)
 	require.NoError(t, err)
 	policiesB := policies
 
 	// c.com
-	certs, certIDs, parentCertIDs, names = testdb.BuildTestRandomCertHierarchy(t, "c.com")
-	policies = testdb.BuildTestRandomPolicyHierarchy(t, "c.com")
+	certs, certIDs, parentCertIDs, names = random.BuildTestRandomCertHierarchy(t, "c.com")
+	policies = random.BuildTestRandomPolicyHierarchy(t, "c.com")
 	err = updater.UpdateWithKeepExisting(ctx, conn, names, certIDs, parentCertIDs, certs,
 		util.ExtractExpirations(certs), policies)
 	require.NoError(t, err)

@@ -15,6 +15,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
+	"github.com/netsec-ethz/fpki/pkg/tests/random"
 	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
@@ -52,7 +53,7 @@ func TestCoalesceForDirtyDomains(t *testing.T) {
 	var certNames [][]string
 	for _, leaf := range leafCerts {
 		// Create two mock x509 chains on top of leaf:
-		certs2, certIDs2, parentCertIDs2, certNames2 := testdb.BuildTestRandomCertHierarchy(t, leaf)
+		certs2, certIDs2, parentCertIDs2, certNames2 := random.BuildTestRandomCertHierarchy(t, leaf)
 		certs = append(certs, certs2...)
 		certIDs = append(certIDs, certIDs2...)
 		parentCertIDs = append(parentCertIDs, parentCertIDs2...)
