@@ -60,7 +60,7 @@ func NewPCA(configPath string) (*PCA, error) {
 		return nil, fmt.Errorf("NewPCA | ReadConfigFromFile | %w", err)
 	}
 	// load rsa key pair
-	keyPair, err := common.LoadRSAPrivateKeyFromFile(config.KeyPath)
+	keyPair, err := util.RSAKeyFromPEMFile(config.KeyPath)
 	if err != nil {
 		return nil, fmt.Errorf("NewPCA | LoadRSAKeyPairFromFile | %w", err)
 	}

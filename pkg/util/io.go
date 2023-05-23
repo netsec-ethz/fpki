@@ -3,8 +3,11 @@ package util
 import (
 	"bytes"
 	"compress/gzip"
+	"crypto/rsa"
 	"encoding/base64"
 	"encoding/csv"
+	"encoding/pem"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -77,6 +80,27 @@ func CertificateFromPEMFile(filename string) (*ctx509.Certificate, error) {
 	}
 	// If no certificate was found, certs[0] will be nil.
 	return certs[0], nil
+}
+
+// RSAKeyFromFile loads an RSA private key from file in PEM format.
+func RSAKeyFromPEMFile(keyPath string) (*rsa.PrivateKey, error) {
+	bytes, err := ioutil.ReadFile(keyPath)
+	if err != nil {
+		return nil, err
+	}
+
+	block, _ := pem.Decode(bytes)
+	if block.Type != "RSA PRIVATE KEY" {
+		// wrong type.
+		return nil, fmt.Errorf("wrong type. Got '%s' expected '%s'",
+			block.Type, "RSA PRIVATE KEY")
+	}
+
+	keyPair, err := ctx509.ParsePKCS1PrivateKey(block.Bytes)
+	if err != nil {
+		return nil, err
+	}
+	return keyPair, nil
 }
 
 // LoadCertsAndChainsFromCSV returns a ready to insert-in-DB collection of the leaf certificate
