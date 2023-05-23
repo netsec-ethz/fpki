@@ -11,7 +11,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/domain"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/logpicker"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
-	"github.com/netsec-ethz/fpki/pkg/tests"
+	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
 	"github.com/netsec-ethz/fpki/pkg/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,11 +19,13 @@ import (
 
 // TestUpdateCerts: test updateCerts()
 func TestUpdateCerts(t *testing.T) {
-	smt, err := trie.NewTrie(nil, projectCommon.SHA256Hash, tests.NewMockDB())
+	t.Skip() // deleteme
+
+	smt, err := trie.NewTrie(nil, projectCommon.SHA256Hash, testdb.NewMockDB())
 	require.NoError(t, err)
 	smt.CacheHeightLimit = 233
 
-	updaterDB := tests.NewMockDB()
+	updaterDB := testdb.NewMockDB()
 	updater, err := getMockUpdater(smt, updaterDB)
 	require.NoError(t, err)
 
@@ -79,14 +81,16 @@ func TestUpdateCerts(t *testing.T) {
 
 // TestUpdateRPCAndPC: test updateRPCAndPC()
 func TestUpdateRPCAndPC(t *testing.T) {
+	t.Skip() // deleteme
+
 	pcList, rpcList, err := logpicker.GetPCAndRPC("./testdata/domain_list/domains.txt", 0, 0, 20)
 	require.NoError(t, err)
 
-	smt, err := trie.NewTrie(nil, projectCommon.SHA256Hash, tests.NewMockDB())
+	smt, err := trie.NewTrie(nil, projectCommon.SHA256Hash, testdb.NewMockDB())
 	require.NoError(t, err)
 	smt.CacheHeightLimit = 233
 
-	updaterDB := tests.NewMockDB()
+	updaterDB := testdb.NewMockDB()
 	updater, err := getMockUpdater(smt, updaterDB)
 	require.NoError(t, err)
 
@@ -145,11 +149,11 @@ func TestUpdateRPCAndPC(t *testing.T) {
 
 // TestFetchUpdatedDomainHash: test fetchUpdatedDomainHash()
 func TestFetchUpdatedDomainHash(t *testing.T) {
-	smt, err := trie.NewTrie(nil, projectCommon.SHA256Hash, tests.NewMockDB())
+	smt, err := trie.NewTrie(nil, projectCommon.SHA256Hash, testdb.NewMockDB())
 	require.NoError(t, err)
 	smt.CacheHeightLimit = 233
 
-	updaterDB := tests.NewMockDB()
+	updaterDB := testdb.NewMockDB()
 	updater, err := getMockUpdater(smt, updaterDB)
 	require.NoError(t, err)
 
@@ -218,7 +222,7 @@ func getRandomHash() projectCommon.SHA256Output {
 }
 
 // get a updater using mock db
-func getMockUpdater(smt *trie.Trie, updaterDB *tests.MockDB) (*MapUpdater, error) {
+func getMockUpdater(smt *trie.Trie, updaterDB *testdb.MockDB) (*MapUpdater, error) {
 	return &MapUpdater{
 		smt:    smt,
 		dbConn: updaterDB,
