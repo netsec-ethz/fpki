@@ -61,6 +61,23 @@ func ReadAllGzippedFile(filename string) ([]byte, error) {
 	return buff, r.Close()
 }
 
+// CertificateFromFile uses a CertReader to read just one certificate. It returns nil if no
+// certificate was found. The file must encode the certificate in PEM format.
+func CertificateFromPEMFile(filename string) (*ctx509.Certificate, error) {
+	f, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	r := NewCertReader(f)
+	certs := make([]*ctx509.Certificate, 1)
+	_, err = r.Read(certs)
+	if err != nil {
+		return nil, err
+	}
+	// If no certificate was found, certs[0] will be nil.
+	return certs[0], nil
+}
+
 // LoadCertsAndChainsFromCSV returns a ready to insert-in-DB collection of the leaf certificate
 // payload, its ID, its parent ID, and its names, for each certificate and its ancestry chain.
 // The returned names contains nil unless the corresponding certificate is a leaf certificate.
