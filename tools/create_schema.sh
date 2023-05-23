@@ -313,7 +313,7 @@ BEGIN
 	SELECT domain_id, cert_ids, UNHEX(SHA2(cert_ids, 256)) FROM ( -- Subquery to compute the SHA256 in place.
 
 		-- Select the concatenation of all cert IDs (sorted) of a domain.
-		SELECT domain_id, GROUP_CONCAT(cert_id SEPARATOR '') AS cert_ids FROM(
+		SELECT domain_id, GROUP_CONCAT(cert_id ORDER BY cert_id SEPARATOR '') AS cert_ids FROM(
 		-- The CTE lists all certs that are reachable by the domain_id
 		WITH RECURSIVE cte AS (
 			-- Base case: specify which leaf certs we choose: those that
@@ -341,7 +341,7 @@ BEGIN
 			FROM certs
 			JOIN cte ON certs.cert_id = cte.parent_id
 		)
-		SELECT DISTINCT domain_id, cert_id FROM cte ORDER BY cert_id
+		SELECT DISTINCT domain_id, cert_id FROM cte
 		) AS collate_cert_ids_query GROUP BY domain_id
 
 	) AS hasher_query;
@@ -370,7 +370,7 @@ BEGIN
 	SELECT domain_id, policy_ids, UNHEX(SHA2(policy_ids, 256)) FROM ( -- Subquery to compute the SHA256 in place.
 
 		-- Select the concatenation of all policy IDs (sorted) of a domain.
-		SELECT domain_id, GROUP_CONCAT(policy_id SEPARATOR '') AS policy_ids FROM(
+		SELECT domain_id, GROUP_CONCAT(policy_id ORDER BY policy_id SEPARATOR '') AS policy_ids FROM(
 		-- The CTE lists all policies that are reachable by the domain_id
 		WITH RECURSIVE cte AS (
 			-- Base case: specify which leaf policies we choose: those that
@@ -398,7 +398,7 @@ BEGIN
 			FROM policies
 			JOIN cte ON policies.policy_id = cte.parent_id
 		)
-		SELECT DISTINCT domain_id, policy_id FROM cte ORDER BY policy_id
+		SELECT DISTINCT domain_id, policy_id FROM cte
 		) AS collate_policy_ids_query GROUP BY domain_id
 
 	) AS hasher_query;
