@@ -1,4 +1,4 @@
-package common
+package common_test
 
 import (
 	"math/rand"
@@ -7,9 +7,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/netsec-ethz/fpki/pkg/tests"
-	"github.com/stretchr/testify/assert"
+	"github.com/google/trillian"
+	trilliantypes "github.com/google/trillian/types"
 	"github.com/stretchr/testify/require"
+
+	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/tests"
+	"github.com/netsec-ethz/fpki/pkg/tests/random"
 )
 
 var update = tests.UpdateGoldenFiles()
@@ -17,222 +21,222 @@ var update = tests.UpdateGoldenFiles()
 func TestGenerateGoldenFiles(t *testing.T) {
 	// Update the JSON files in tests/testdata
 	if *update {
-		obj := []any{randomSP(), randomSP()}
-		err := ToJSONFile(obj, "../../tests/testdata/2-SPs.json")
+		obj := []any{randomSP(t), randomSP(t)}
+		err := common.ToJSONFile(obj, "../../tests/testdata/2-SPs.json")
 		require.NoError(t, err)
 	}
 }
 
 // TestEqual: Equal funcs for every structure
 func TestEqual(t *testing.T) {
-	rcsr := &RCSR{
-		PolicyObjectBase: PolicyObjectBase{
+	rcsr := &common.RCSR{
+		PolicyObjectBase: common.PolicyObjectBase{
 			Subject: "bandqhvdbdlwnd",
 		},
 		Version:            6789,
 		TimeStamp:          time.Now(),
-		PublicKeyAlgorithm: RSA,
-		PublicKey:          generateRandomBytes(),
-		SignatureAlgorithm: SHA256,
-		PRCSignature:       generateRandomBytes(),
-		Signature:          generateRandomBytes(),
+		PublicKeyAlgorithm: common.RSA,
+		PublicKey:          random.RandomBytesForTest(t, 32),
+		SignatureAlgorithm: common.SHA256,
+		PRCSignature:       random.RandomBytesForTest(t, 32),
+		Signature:          random.RandomBytesForTest(t, 32),
 	}
 
-	assert.True(t, rcsr.Equal(rcsr), "RCSR Equal() error")
+	require.True(t, rcsr.Equal(rcsr), "RCSR Equal() error")
 
-	spt1 := SPT{
+	spt1 := common.SPT{
 		Version: 12313,
-		PolicyObjectBase: PolicyObjectBase{
+		PolicyObjectBase: common.PolicyObjectBase{
 			Subject: "hihihihihhi",
 		},
 		CAName:          "I'm honest CA, nice to meet you",
 		LogID:           1231323,
 		CertType:        0x11,
 		AddedTS:         time.Now(),
-		STH:             generateRandomBytes(),
-		PoI:             generateRandomBytes(),
+		STH:             random.RandomBytesForTest(t, 32),
+		PoI:             random.RandomBytesForTest(t, 32),
 		STHSerialNumber: 131678,
-		Signature:       generateRandomBytes(),
+		Signature:       random.RandomBytesForTest(t, 32),
 	}
 
-	spt2 := SPT{
+	spt2 := common.SPT{
 		Version: 12368713,
-		PolicyObjectBase: PolicyObjectBase{
+		PolicyObjectBase: common.PolicyObjectBase{
 			Subject: "hohohoho",
 		},
 		CAName:          "I'm malicious CA, nice to meet you",
 		LogID:           1324123,
 		CertType:        0x21,
 		AddedTS:         time.Now(),
-		STH:             generateRandomBytes(),
-		PoI:             generateRandomBytes(),
+		STH:             random.RandomBytesForTest(t, 32),
+		PoI:             random.RandomBytesForTest(t, 32),
 		STHSerialNumber: 114378,
-		Signature:       generateRandomBytes(),
+		Signature:       random.RandomBytesForTest(t, 32),
 	}
 
-	assert.True(t, spt1.Equal(spt1) && spt2.Equal(spt2) && !spt1.Equal(spt2) && !spt2.Equal(spt1), "SPT Equal() error")
+	require.True(t, spt1.Equal(spt1) && spt2.Equal(spt2) && !spt1.Equal(spt2) && !spt2.Equal(spt1), "SPT Equal() error")
 
-	sprt := &SPRT{
-		SPT: SPT{
+	sprt := &common.SPRT{
+		SPT: common.SPT{
 			Version: 12314,
-			PolicyObjectBase: PolicyObjectBase{
+			PolicyObjectBase: common.PolicyObjectBase{
 				Subject: "bad domain",
 			},
 			CAName:          "I'm malicious CA, nice to meet you",
 			LogID:           1729381,
 			CertType:        0x21,
 			AddedTS:         time.Now(),
-			STH:             generateRandomBytes(),
-			PoI:             generateRandomBytes(),
+			STH:             random.RandomBytesForTest(t, 32),
+			PoI:             random.RandomBytesForTest(t, 32),
 			STHSerialNumber: 1729381,
-			Signature:       generateRandomBytes(),
+			Signature:       random.RandomBytesForTest(t, 32),
 		},
 		Reason: 1729381,
 	}
 
-	assert.True(t, sprt.Equal(sprt), "SPRT Equal() error")
+	require.True(t, sprt.Equal(sprt), "SPRT Equal() error")
 
-	rpc := &RPC{
+	rpc := &common.RPC{
 		SerialNumber: 1729381,
-		PolicyObjectBase: PolicyObjectBase{
+		PolicyObjectBase: common.PolicyObjectBase{
 			Subject: "bad domain",
 		},
 		Version:            1729381,
-		PublicKeyAlgorithm: RSA,
-		PublicKey:          generateRandomBytes(),
+		PublicKeyAlgorithm: common.RSA,
+		PublicKey:          random.RandomBytesForTest(t, 32),
 		NotBefore:          time.Now(),
 		NotAfter:           time.Now(),
 		CAName:             "bad domain",
-		SignatureAlgorithm: SHA256,
+		SignatureAlgorithm: common.SHA256,
 		TimeStamp:          time.Now(),
-		PRCSignature:       generateRandomBytes(),
-		CASignature:        generateRandomBytes(),
-		SPTs:               []SPT{spt1, spt2},
+		PRCSignature:       random.RandomBytesForTest(t, 32),
+		CASignature:        random.RandomBytesForTest(t, 32),
+		SPTs:               []common.SPT{spt1, spt2},
 	}
 
-	assert.True(t, rpc.Equal(rpc), "RPC Equal() error")
+	require.True(t, rpc.Equal(rpc), "RPC Equal() error")
 }
 
 // TestJsonReadWrite: RPC -> file -> RPC, then RPC.Equal(RPC)
 func TestJsonReadWrite(t *testing.T) {
-	spt1 := &SPT{
+	spt1 := &common.SPT{
 		Version: 12313,
-		PolicyObjectBase: PolicyObjectBase{
+		PolicyObjectBase: common.PolicyObjectBase{
 			Subject: "hihihihihhi",
 		},
 		CAName:          "I'm honest CA, nice to meet you",
 		LogID:           1231323,
 		CertType:        0x11,
 		AddedTS:         time.Now(),
-		STH:             generateRandomBytes(),
-		PoI:             generateRandomBytes(),
+		STH:             random.RandomBytesForTest(t, 32),
+		PoI:             random.RandomBytesForTest(t, 32),
 		STHSerialNumber: 131678,
-		Signature:       generateRandomBytes(),
+		Signature:       random.RandomBytesForTest(t, 32),
 	}
 
-	spt2 := &SPT{
+	spt2 := &common.SPT{
 		Version: 12368713,
-		PolicyObjectBase: PolicyObjectBase{
+		PolicyObjectBase: common.PolicyObjectBase{
 			Subject: "hohohoho",
 		},
 		CAName:          "I'm malicious CA, nice to meet you",
 		LogID:           1324123,
 		CertType:        0x21,
 		AddedTS:         time.Now(),
-		STH:             generateRandomBytes(),
-		PoI:             generateRandomBytes(),
+		STH:             random.RandomBytesForTest(t, 32),
+		PoI:             random.RandomBytesForTest(t, 32),
 		STHSerialNumber: 114378,
-		Signature:       generateRandomBytes(),
+		Signature:       random.RandomBytesForTest(t, 32),
 	}
 
-	rpc := &RPC{
+	rpc := &common.RPC{
 		SerialNumber: 1729381,
-		PolicyObjectBase: PolicyObjectBase{
+		PolicyObjectBase: common.PolicyObjectBase{
 			Subject: "bad domain",
 		},
 		Version:            1729381,
-		PublicKeyAlgorithm: RSA,
-		PublicKey:          generateRandomBytes(),
+		PublicKeyAlgorithm: common.RSA,
+		PublicKey:          random.RandomBytesForTest(t, 32),
 		NotBefore:          time.Now(),
 		NotAfter:           time.Now(),
 		CAName:             "bad domain",
-		SignatureAlgorithm: SHA256,
+		SignatureAlgorithm: common.SHA256,
 		TimeStamp:          time.Now(),
-		PRCSignature:       generateRandomBytes(),
-		CASignature:        generateRandomBytes(),
-		SPTs:               []SPT{*spt1, *spt2},
+		PRCSignature:       random.RandomBytesForTest(t, 32),
+		CASignature:        random.RandomBytesForTest(t, 32),
+		SPTs:               []common.SPT{*spt1, *spt2},
 	}
 
 	tempFile := path.Join(os.TempDir(), "rpctest.json")
 	defer os.Remove(tempFile)
-	err := ToJSONFile(rpc, tempFile)
+	err := common.ToJSONFile(rpc, tempFile)
 	require.NoError(t, err, "Json Struct To File error")
 
-	rpc1, err := JsonFileToRPC(tempFile)
+	rpc1, err := common.JsonFileToRPC(tempFile)
 	require.NoError(t, err, "Json File To RPC error")
 
-	assert.True(t, rpc.Equal(rpc1), "Json error")
+	require.True(t, rpc.Equal(rpc1), "Json error")
 }
 
-func randomRPC() *RPC {
-	return &RPC{
+func randomRPC(t tests.T) *common.RPC {
+	return &common.RPC{
 		SerialNumber: 1729381,
-		PolicyObjectBase: PolicyObjectBase{
+		PolicyObjectBase: common.PolicyObjectBase{
 			Subject: "RPC CA",
 		},
 		Version:            1729381,
-		PublicKeyAlgorithm: RSA,
-		PublicKey:          generateRandomBytes(),
+		PublicKeyAlgorithm: common.RSA,
+		PublicKey:          random.RandomBytesForTest(t, 32),
 		NotBefore:          nowWithoutMonotonic(),
 		NotAfter:           nowWithoutMonotonic(),
 		CAName:             "RPC CA",
-		SignatureAlgorithm: SHA256,
+		SignatureAlgorithm: common.SHA256,
 		TimeStamp:          nowWithoutMonotonic(),
-		PRCSignature:       generateRandomBytes(),
-		CASignature:        generateRandomBytes(),
-		SPTs:               []SPT{*randomSPT(), *randomSPT()},
+		PRCSignature:       random.RandomBytesForTest(t, 32),
+		CASignature:        random.RandomBytesForTest(t, 32),
+		SPTs:               []common.SPT{*randomSPT(t), *randomSPT(t)},
 	}
 }
 
-func randomRCSR() *RCSR {
-	return &RCSR{
-		PolicyObjectBase: PolicyObjectBase{
+func randomRCSR(t tests.T) *common.RCSR {
+	return &common.RCSR{
+		PolicyObjectBase: common.PolicyObjectBase{
 			Subject: "subject",
 		},
 		Version:            6789,
 		TimeStamp:          nowWithoutMonotonic(),
-		PublicKeyAlgorithm: RSA,
-		PublicKey:          generateRandomBytes(),
-		SignatureAlgorithm: SHA256,
-		PRCSignature:       generateRandomBytes(),
-		Signature:          generateRandomBytes(),
+		PublicKeyAlgorithm: common.RSA,
+		PublicKey:          random.RandomBytesForTest(t, 32),
+		SignatureAlgorithm: common.SHA256,
+		PRCSignature:       random.RandomBytesForTest(t, 32),
+		Signature:          random.RandomBytesForTest(t, 32),
 	}
 }
 
-func randomSP() *SP {
-	return &SP{
-		Policies: Policy{
+func randomSP(t tests.T) *common.SP {
+	return &common.SP{
+		Policies: common.Policy{
 			TrustedCA: []string{"ca1", "ca2"},
 		},
 		TimeStamp: nowWithoutMonotonic(),
-		PolicyObjectBase: PolicyObjectBase{
+		PolicyObjectBase: common.PolicyObjectBase{
 			Subject: "domainname.com",
 		},
 		CAName:            "ca1",
 		SerialNumber:      rand.Int(),
-		CASignature:       generateRandomBytes(),
-		RootCertSignature: generateRandomBytes(),
-		SPTs: []SPT{
-			*randomSPT(),
-			*randomSPT(),
-			*randomSPT(),
+		CASignature:       random.RandomBytesForTest(t, 32),
+		RootCertSignature: random.RandomBytesForTest(t, 32),
+		SPTs: []common.SPT{
+			*randomSPT(t),
+			*randomSPT(t),
+			*randomSPT(t),
 		},
 	}
 }
 
-func randomSPT() *SPT {
-	return &SPT{
-		PolicyObjectBase: PolicyObjectBase{
+func randomSPT(t tests.T) *common.SPT {
+	return &common.SPT{
+		PolicyObjectBase: common.PolicyObjectBase{
 			Subject: "hohohoho",
 		},
 		Version:         12368713,
@@ -240,29 +244,46 @@ func randomSPT() *SPT {
 		LogID:           1324123,
 		CertType:        0x21,
 		AddedTS:         nowWithoutMonotonic(),
-		STH:             generateRandomBytes(),
-		PoI:             generateRandomBytes(),
+		STH:             random.RandomBytesForTest(t, 32),
+		PoI:             random.RandomBytesForTest(t, 32),
 		STHSerialNumber: 114378,
-		Signature:       generateRandomBytes(),
+		Signature:       random.RandomBytesForTest(t, 32),
 	}
 }
 
-func randomSPRT() *SPRT {
-	return &SPRT{
-		SPT:    *randomSPT(),
+func randomSPRT(t tests.T) *common.SPRT {
+	return &common.SPRT{
+		SPT:    *randomSPT(t),
 		Reason: 1729381,
 	}
 }
 
-func randomPSR() *PSR {
-	return &PSR{
-		Policies: Policy{
+func randomPSR(t tests.T) *common.PSR {
+	return &common.PSR{
+		Policies: common.Policy{
 			TrustedCA:         []string{"one CA", "another CA"},
 			AllowedSubdomains: []string{"sub1.com", "sub2.com"},
 		},
 		TimeStamp:         nowWithoutMonotonic(),
 		DomainName:        "domain_name.com",
-		RootCertSignature: generateRandomBytes(),
+		RootCertSignature: random.RandomBytesForTest(t, 32),
+	}
+}
+
+func randomTrillianProof(t tests.T) *trillian.Proof {
+	return &trillian.Proof{
+		LeafIndex: 1,
+		Hashes:    [][]byte{random.RandomBytesForTest(t, 32)},
+	}
+}
+
+func randomLogRootV1(t tests.T) *trilliantypes.LogRootV1 {
+	return &trilliantypes.LogRootV1{
+		TreeSize:       1,
+		RootHash:       random.RandomBytesForTest(t, 32),
+		TimestampNanos: 11,
+		Revision:       3,
+		Metadata:       random.RandomBytesForTest(t, 40),
 	}
 }
 

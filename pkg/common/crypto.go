@@ -5,9 +5,10 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
-	"crypto/x509"
 	"fmt"
 	"time"
+
+	ctx509 "github.com/google/certificate-transparency-go/x509"
 )
 
 // SignatureAlgorithm: Enum of supported signature algorithm; Currently only SHA256
@@ -152,7 +153,7 @@ func RCSRGenerateRPC(rcsr *RCSR, notBefore time.Time, serialNumber int, caPrivKe
 // ----------------------------------------------------------------------------------
 
 // RPCVerifyCASignature: used by domain owner, check whether CA signature is correct
-func RPCVerifyCASignature(caCert *x509.Certificate, rpc *RPC) error {
+func RPCVerifyCASignature(caCert *ctx509.Certificate, rpc *RPC) error {
 	pubKey := caCert.PublicKey.(*rsa.PublicKey)
 
 	// Serialize without CA signature or SPTs:
@@ -234,7 +235,7 @@ func CASignSP(psr *PSR, caPrivKey *rsa.PrivateKey, caName string, serialNum int)
 }
 
 // VerifyCASigInSP: verify CA's signature
-func VerifyCASigInSP(caCert *x509.Certificate, sp *SP) error {
+func VerifyCASigInSP(caCert *ctx509.Certificate, sp *SP) error {
 	if len(sp.CASignature) == 0 {
 		return fmt.Errorf("VerifyCASigInPC | no valid CA signature")
 	}

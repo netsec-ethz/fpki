@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
+
 	"github.com/netsec-ethz/fpki/pkg/common"
 )
 

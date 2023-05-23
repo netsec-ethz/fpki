@@ -1,13 +1,13 @@
-package common
+package common_test
 
 import (
 	"bytes"
 	"strings"
 	"testing"
 
-	"github.com/google/trillian"
-	trilliantypes "github.com/google/trillian/types"
 	"github.com/stretchr/testify/require"
+
+	"github.com/netsec-ethz/fpki/pkg/common"
 )
 
 // TestPolicyObjects checks that the structure types in the test cases can be converted to JSON and
@@ -18,54 +18,54 @@ func TestPolicyObjects(t *testing.T) {
 		data any
 	}{
 		"rpcPtr": {
-			data: randomRPC(),
+			data: randomRPC(t),
 		},
 		"rpcValue": {
-			data: *randomRPC(),
+			data: *randomRPC(t),
 		},
 		"rcsr": {
-			data: randomRCSR(),
+			data: randomRCSR(t),
 		},
 		"sp": {
-			data: randomSP(),
+			data: randomSP(t),
 		},
 		"spt": {
-			data: *randomSPT(),
+			data: *randomSPT(t),
 		},
 		"list": {
 			data: []any{
-				randomRPC(),
-				randomRCSR(),
-				randomSP(),
-				randomSPRT(),
-				randomPSR(),
-				randomTrillianProof(),
-				randomLogRootV1(),
+				randomRPC(t),
+				randomRCSR(t),
+				randomSP(t),
+				randomSPRT(t),
+				randomPSR(t),
+				randomTrillianProof(t),
+				randomLogRootV1(t),
 			},
 		},
 		"list_embedded": {
 			data: []any{
-				randomRPC(),
+				randomRPC(t),
 				[]any{
-					randomSP(),
-					randomSPT(),
+					randomSP(t),
+					randomSPT(t),
 				},
 				[]any{
-					randomTrillianProof(),
-					randomTrillianProof(),
+					randomTrillianProof(t),
+					randomTrillianProof(t),
 				},
 			},
 		},
 		"multiListPtr": {
 			data: &[]any{
-				randomRPC(),
-				*randomRPC(),
+				randomRPC(t),
+				*randomRPC(t),
 				[]any{
-					randomSP(),
-					*randomSP(),
+					randomSP(t),
+					*randomSP(t),
 					&[]any{
-						randomSPT(),
-						*randomSPT(),
+						randomSPT(t),
+						*randomSPT(t),
 					},
 				},
 			},
@@ -76,10 +76,10 @@ func TestPolicyObjects(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			// Serialize.
-			data, err := ToJSON(tc.data)
+			data, err := common.ToJSON(tc.data)
 			require.NoError(t, err)
 			// Deserialize.
-			deserialized, err := FromJSON(data, WithSkipCopyJSONIntoPolicyObjects)
+			deserialized, err := common.FromJSON(data, common.WithSkipCopyJSONIntoPolicyObjects)
 			require.NoError(t, err)
 			// Compare.
 			require.Equal(t, tc.data, deserialized)
@@ -97,40 +97,40 @@ func TestPolicyObjectBaseRaw(t *testing.T) {
 		getRawElemsFcn func(obj any) [][]byte // Return the Raw components of this thing.
 	}{
 		"rpc": {
-			obj:           randomRPC(),
+			obj:           randomRPC(t),
 			rawElemsCount: 1,
 			getRawElemsFcn: func(obj any) [][]byte {
-				rpc := obj.(*RPC)
+				rpc := obj.(*common.RPC)
 				return [][]byte{rpc.RawJSON}
 			},
 		},
 		"spPtr": {
-			obj:           randomSP(),
+			obj:           randomSP(t),
 			rawElemsCount: 1,
 			getRawElemsFcn: func(obj any) [][]byte {
-				sp := obj.(*SP)
+				sp := obj.(*common.SP)
 				return [][]byte{sp.RawJSON}
 			},
 		},
 		"spValue": {
-			obj:           *randomSP(),
+			obj:           *randomSP(t),
 			rawElemsCount: 1,
 			getRawElemsFcn: func(obj any) [][]byte {
-				sp := obj.(SP)
+				sp := obj.(common.SP)
 				return [][]byte{sp.RawJSON}
 			},
 		},
 		"list": {
 			obj: []any{
-				randomSP(),
-				randomRPC(),
+				randomSP(t),
+				randomRPC(t),
 			},
 			rawElemsCount: 2,
 			getRawElemsFcn: func(obj any) [][]byte {
 				l := obj.([]any)
 				return [][]byte{
-					l[0].(*SP).RawJSON,
-					l[1].(*RPC).RawJSON,
+					l[0].(*common.SP).RawJSON,
+					l[1].(*common.RPC).RawJSON,
 				}
 			},
 		},
@@ -140,10 +140,10 @@ func TestPolicyObjectBaseRaw(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			// Serialize.
-			data, err := ToJSON(tc.obj)
+			data, err := common.ToJSON(tc.obj)
 			require.NoError(t, err)
 			// Deserialize.
-			obj, err := FromJSON(data)
+			obj, err := common.FromJSON(data)
 			require.NoError(t, err)
 			t.Logf("This object is of type %T", obj)
 			raws := tc.getRawElemsFcn(obj)
@@ -166,22 +166,5 @@ func TestPolicyObjectBaseRaw(t *testing.T) {
 			// We could check that the complete JSON is an aggregation of the elements' JSON plus
 			// maybe some "list" indicator (sometimes).
 		})
-	}
-}
-
-func randomTrillianProof() *trillian.Proof {
-	return &trillian.Proof{
-		LeafIndex: 1,
-		Hashes:    generateRandomBytesArray(),
-	}
-}
-
-func randomLogRootV1() *trilliantypes.LogRootV1 {
-	return &trilliantypes.LogRootV1{
-		TreeSize:       1,
-		RootHash:       generateRandomBytes(),
-		TimestampNanos: 11,
-		Revision:       3,
-		Metadata:       generateRandomBytes(),
 	}
 }
