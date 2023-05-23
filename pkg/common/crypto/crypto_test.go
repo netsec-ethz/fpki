@@ -1,14 +1,16 @@
-package common_test
+package crypto_test
 
 import (
 	"testing"
 	"time"
 
-	"github.com/netsec-ethz/fpki/pkg/common"
-	"github.com/netsec-ethz/fpki/pkg/tests/random"
-	"github.com/netsec-ethz/fpki/pkg/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/common/crypto"
+	"github.com/netsec-ethz/fpki/pkg/tests/random"
+	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
 // TestSignatureOfRCSR: Generate RCSR -> generate signature for RCSR -> verify signature
@@ -33,10 +35,10 @@ func TestSignatureOfRCSR(t *testing.T) {
 
 	test.PublicKey = pubKeyBytes
 
-	err = common.RCSRCreateSignature(privKey, test)
+	err = crypto.RCSRCreateSignature(privKey, test)
 	require.NoError(t, err, "RCSR sign signature error")
 
-	err = common.RCSRVerifySignature(test)
+	err = crypto.RCSRVerifySignature(test)
 	require.NoError(t, err, "RCSR verify signature error")
 }
 
@@ -67,18 +69,18 @@ func TestIssuanceOfRPC(t *testing.T) {
 	rcsr.PublicKey = pubKeyBytes
 
 	// generate signature for rcsr
-	err = common.RCSRCreateSignature(privKey, rcsr)
+	err = crypto.RCSRCreateSignature(privKey, rcsr)
 	require.NoError(t, err, "RCSR Create Signature error")
 
 	// -------------------------------------
 	//  phase 2: pca issue rpc
 	// -------------------------------------
 	// validate the signature in rcsr
-	err = common.RCSRVerifySignature(rcsr)
+	err = crypto.RCSRVerifySignature(rcsr)
 	require.NoError(t, err, "RCSR Verify Signature error")
 
 	pcaPrivKey, err := util.RSAKeyFromPEMFile("./testdata/serverkey.pem")
-	rpc, err := common.RCSRGenerateRPC(rcsr, time.Now(), 1, pcaPrivKey, "fpki")
+	rpc, err := crypto.RCSRGenerateRPC(rcsr, time.Now(), 1, pcaPrivKey, "fpki")
 	require.NoError(t, err, "RCSR Generate RPC error")
 
 	assert.Equal(t, len(rpc.SPTs), 0, "spt in the rpc should be empty")
@@ -90,7 +92,7 @@ func TestIssuanceOfRPC(t *testing.T) {
 	caCert, err := util.CertificateFromPEMFile("./testdata/servercert.pem")
 	require.NoError(t, err, "X509 Cert From File error")
 
-	err = common.RPCVerifyCASignature(caCert, rpc)
+	err = crypto.RPCVerifyCASignature(caCert, rpc)
 	require.NoError(t, err, "RPC Verify CA Signature error")
 }
 
@@ -120,19 +122,19 @@ func TestIssuanceOfSP(t *testing.T) {
 	rcsr.PublicKey = pubKeyBytes
 
 	// generate signature for rcsr
-	err = common.RCSRCreateSignature(privKey, rcsr)
+	err = crypto.RCSRCreateSignature(privKey, rcsr)
 	require.NoError(t, err, "RCSR Create Signature error")
 
 	// -------------------------------------
 	//  phase 2: pca issue rpc
 	// -------------------------------------
 	// validate the signature in rcsr
-	err = common.RCSRVerifySignature(rcsr)
+	err = crypto.RCSRVerifySignature(rcsr)
 	require.NoError(t, err, "RCSR Verify Signature error")
 
 	pcaPrivKey, err := util.RSAKeyFromPEMFile("./testdata/serverkey.pem")
 	require.NoError(t, err)
-	rpc, err := common.RCSRGenerateRPC(rcsr, time.Now(), 1, pcaPrivKey, "fpki")
+	rpc, err := crypto.RCSRGenerateRPC(rcsr, time.Now(), 1, pcaPrivKey, "fpki")
 	require.NoError(t, err, "RCSR Generate RPC error")
 
 	assert.Equal(t, len(rpc.SPTs), 0, "spt in the rpc should be empty")
@@ -145,16 +147,16 @@ func TestIssuanceOfSP(t *testing.T) {
 		DomainName: "test_SP",
 	}
 
-	err = common.DomainOwnerSignPSR(privKey, psr)
+	err = crypto.DomainOwnerSignPSR(privKey, psr)
 	require.NoError(t, err, "DomainOwnerSignPSR error")
 
 	// -------------------------------------
 	//  phase 4: pca check psr
 	// -------------------------------------
-	err = common.VerifyPSRUsingRPC(psr, rpc)
+	err = crypto.VerifyPSRUsingRPC(psr, rpc)
 	require.NoError(t, err, "VerifyPSRUsingRPC error")
 
-	sp, err := common.CASignSP(psr, pcaPrivKey, "test ca", 22)
+	sp, err := crypto.CASignSP(psr, pcaPrivKey, "test ca", 22)
 	require.NoError(t, err, "CASignSP error")
 
 	// -------------------------------------
@@ -163,6 +165,6 @@ func TestIssuanceOfSP(t *testing.T) {
 	caCert, err := util.CertificateFromPEMFile("./testdata/servercert.pem")
 	require.NoError(t, err, "X509CertFromFile error")
 
-	err = common.VerifyCASigInSP(caCert, sp)
+	err = crypto.VerifyCASigInSP(caCert, sp)
 	require.NoError(t, err, "VerifyCASigInSP error")
 }
