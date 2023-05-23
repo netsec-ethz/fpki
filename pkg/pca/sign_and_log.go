@@ -7,12 +7,13 @@ import (
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/common/crypto"
 )
 
 // SignAndLogRCSR: sign the rcsr and generate a rpc -> store the rpc to the "fileExchange" folder; policy log will fetch rpc from the folder
 func (pca *PCA) SignAndLogRCSR(rcsr *common.RCSR) error {
 	// verify the signature in the rcsr; check if the domain's pub key is correct
-	err := common.RCSRVerifySignature(rcsr)
+	err := crypto.RCSRVerifySignature(rcsr)
 	if err != nil {
 		return fmt.Errorf("SignAndLogRCSR | RCSRVerifySignature | %w", err)
 	}
@@ -20,7 +21,7 @@ func (pca *PCA) SignAndLogRCSR(rcsr *common.RCSR) error {
 	pca.increaseSerialNumber()
 
 	// generate pre-RPC (without SPT)
-	rpc, err := common.RCSRGenerateRPC(rcsr, time.Now(), pca.serialNumber, pca.rsaKeyPair, pca.caName)
+	rpc, err := crypto.RCSRGenerateRPC(rcsr, time.Now(), pca.serialNumber, pca.rsaKeyPair, pca.caName)
 	if err != nil {
 		return fmt.Errorf("SignAndLogRCSR | RCSRGenerateRPC | %w", err)
 	}
@@ -51,7 +52,7 @@ func (pca *PCA) SignAndLogSP(psr *common.PSR) error {
 
 	pca.increaseSerialNumber()
 
-	sp, err := common.CASignSP(psr, pca.rsaKeyPair, pca.caName, pca.serialNumber)
+	sp, err := crypto.CASignSP(psr, pca.rsaKeyPair, pca.caName, pca.serialNumber)
 	if err != nil {
 		return fmt.Errorf("SignAndLogPSR | CASignSP | %w", err)
 	}
@@ -77,7 +78,7 @@ func (pca *PCA) findRPCAndVerifyPSR(psr *common.PSR) error {
 		return fmt.Errorf("findRPCAndVerifyPSR | validRPCsByDomains | no valid rpc at this moment")
 	}
 
-	err := common.VerifyPSRUsingRPC(psr, rpc)
+	err := crypto.VerifyPSRUsingRPC(psr, rpc)
 	if err != nil {
 		return fmt.Errorf("findRPCAndVerifyPSR | VerifyPSRUsingRPC | %w", err)
 	}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/common/crypto"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/domain"
 	mapCommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
@@ -123,7 +124,7 @@ func (r *MapResponder) signTreeHead(configFile string) error {
 	}
 
 	// Sign the tree head.
-	signature, err := common.SignBytes(r.smt.Root, privateKey)
+	signature, err := crypto.SignBytes(r.smt.Root, privateKey)
 	if err != nil {
 		return fmt.Errorf("SignStructRSASHA256 | %w", err)
 	}
