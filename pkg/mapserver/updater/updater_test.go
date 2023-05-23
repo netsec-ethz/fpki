@@ -11,6 +11,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/domain"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/logpicker"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
+	"github.com/netsec-ethz/fpki/pkg/tests/random"
 	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
 	"github.com/netsec-ethz/fpki/pkg/util"
 	"github.com/stretchr/testify/assert"
@@ -35,8 +36,8 @@ func TestUpdateCerts(t *testing.T) {
 	require.NoError(t, err, "ioutil.ReadDir")
 
 	for _, file := range files {
-		cert, err := projectCommon.CTX509CertFromFile("./testdata/certs/" + file.Name())
-		require.NoError(t, err, "projectCommon.CTX509CertFromFile")
+		cert, err := util.CertificateFromPEMFile("./testdata/certs/" + file.Name())
+		require.NoError(t, err)
 		certs = append(certs, cert)
 	}
 
@@ -162,7 +163,7 @@ func TestFetchUpdatedDomainHash(t *testing.T) {
 
 	randomKeys := []projectCommon.SHA256Output{}
 	for i := 0; i < 15; i++ {
-		newRandomKey := getRandomHash()
+		newRandomKey := getRandomHash(t)
 		updaterDB.UpdatesTable[newRandomKey] = struct{}{}
 		randomKeys = append(randomKeys, newRandomKey)
 	}
@@ -217,8 +218,8 @@ func TestRunWhenFalse(t *testing.T) {
 	}
 }
 
-func getRandomHash() projectCommon.SHA256Output {
-	return projectCommon.SHA256Hash32Bytes(generateRandomBytes(50))
+func getRandomHash(t *testing.T) projectCommon.SHA256Output {
+	return projectCommon.SHA256Hash32Bytes(random.RandomBytesForTest(t, 50))
 }
 
 // get a updater using mock db

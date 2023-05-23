@@ -63,10 +63,14 @@ func (r *CertReader) Read(certs []*ctx509.Certificate) (int, error) {
 				// Wrong PEM block, try to find another one.
 				continue
 			}
-			// It must be a certificate. Complain if parsing fails.
+			// It must be a To Be Signed Certificate.
 			c, err := ctx509.ParseTBSCertificate(block.Bytes)
 			if err != nil {
-				return 0, err
+				// If it wasn't a TBS Cert, try with a regular one.
+				c, err = ctx509.ParseCertificate(block.Bytes)
+				if err != nil {
+					return 0, err
+				}
 			}
 			certPointers[0] = c
 			certPointers = certPointers[1:]

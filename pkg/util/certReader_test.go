@@ -111,3 +111,15 @@ func TestCertReaderReadAll(t *testing.T) {
 	require.NoError(t, err)
 	require.ElementsMatch(t, certs, threeCerts)
 }
+
+func TestCertReaderLoadsRegularCertificate(t *testing.T) {
+	// The file contains a regular (not TBS) x509 certificate.
+	f, err := os.Open("../../tests/testdata/1-regular-cert.pem")
+	require.NoError(t, err)
+
+	r := NewCertReader(f)
+	N := 1
+	certs, err := r.ReadAll()
+	require.NoError(t, err)
+	require.Len(t, certs, N)
+}

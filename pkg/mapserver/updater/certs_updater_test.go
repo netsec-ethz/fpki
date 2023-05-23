@@ -27,8 +27,8 @@ func TestUpdateDomainEntriesUsingCerts(t *testing.T) {
 	require.NoError(t, err, "ioutil.ReadDir")
 	certChains := make([][]*ctx509.Certificate, len(files))
 	for _, file := range files {
-		cert, err := common.CTX509CertFromFile("./testdata/certs/" + file.Name())
-		require.NoError(t, err, "projectCommon.CTX509CertFromFile")
+		cert, err := util.CertificateFromPEMFile("./testdata/certs/" + file.Name())
+		require.NoError(t, err)
 		certs = append(certs, cert)
 	}
 
@@ -139,8 +139,8 @@ func TestUpdateSameCertTwice(t *testing.T) {
 	require.NoError(t, err, "ioutil.ReadDir")
 	certChains := make([][]*ctx509.Certificate, len(files))
 	for _, file := range files {
-		cert, err := common.CTX509CertFromFile("./testdata/certs/" + file.Name())
-		require.NoError(t, err, "projectCommon.CTX509CertFromFile")
+		cert, err := util.CertificateFromPEMFile("./testdata/certs/" + file.Name())
+		require.NoError(t, err)
 		certs = append(certs, cert)
 	}
 
