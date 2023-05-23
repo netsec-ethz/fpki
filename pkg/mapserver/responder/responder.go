@@ -9,6 +9,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/domain"
 	mapCommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
+	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
 type MapResponder struct {
@@ -116,7 +117,7 @@ func (r *MapResponder) signTreeHead(configFile string) error {
 	}
 
 	// Load private key from configuration.
-	privateKey, err := common.LoadRSAPrivateKeyFromFile(config.KeyPath)
+	privateKey, err := util.RSAKeyFromPEMFile(config.KeyPath)
 	if err != nil {
 		return fmt.Errorf("LoadRSAKeyPairFromFile | %w", err)
 	}

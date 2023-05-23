@@ -6,23 +6,22 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io/ioutil"
 )
 
-// RsaPublicKeyToPemBytes: marshall public key to bytes
-func RsaPublicKeyToPemBytes(pubkey *rsa.PublicKey) ([]byte, error) {
-	pubkey_bytes, err := x509.MarshalPKIXPublicKey(pubkey)
-	if err != nil {
-		return nil, fmt.Errorf("RsaPublicKeyToPemBytes | MarshalPKIXPublicKey | %w", err)
-	}
+// // RsaPublicKeyToPemBytes: marshall public key to bytes
+// func RsaPublicKeyToPemBytes(pubkey *rsa.PublicKey) ([]byte, error) {
+// 	pubkey_bytes, err := x509.MarshalPKIXPublicKey(pubkey)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("RsaPublicKeyToPemBytes | MarshalPKIXPublicKey | %w", err)
+// 	}
 
-	return pem.EncodeToMemory(
-		&pem.Block{
-			Type:  "RSA PUBLIC KEY",
-			Bytes: pubkey_bytes,
-		},
-	), nil
-}
+// 	return pem.EncodeToMemory(
+// 		&pem.Block{
+// 			Type:  "RSA PUBLIC KEY",
+// 			Bytes: pubkey_bytes,
+// 		},
+// 	), nil
+// }
 
 // PemBytesToRsaPublicKey: unmarshal bytes to public key
 func PemBytesToRsaPublicKey(pubkey []byte) (*rsa.PublicKey, error) {
@@ -41,20 +40,4 @@ func PemBytesToRsaPublicKey(pubkey []byte) (*rsa.PublicKey, error) {
 		return pubKeyResult, nil
 	}
 	return nil, errors.New("PemBytesToRsaPublicKey | ParsePKIXPublicKey | Key type is not RSA")
-}
-
-// LoadRSAPrivateKeyFromFile loads a RSA private key from file
-func LoadRSAPrivateKeyFromFile(keyPath string) (*rsa.PrivateKey, error) {
-	bytes, err := ioutil.ReadFile(keyPath)
-	if err != nil {
-		return nil, fmt.Errorf("LoadRSAPrivateKeyFromFile | read file | %w", err)
-	}
-
-	block, _ := pem.Decode(bytes)
-
-	keyPair, err := x509.ParsePKCS1PrivateKey(block.Bytes)
-	if err != nil {
-		return nil, fmt.Errorf("LoadRSAPrivateKeyFromFile | ParsePKCS1PrivateKey | %w", err)
-	}
-	return keyPair, nil
 }

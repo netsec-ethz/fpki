@@ -13,7 +13,7 @@ import (
 
 // TestSignatureOfRCSR: Generate RCSR -> generate signature for RCSR -> verify signature
 func TestSignatureOfRCSR(t *testing.T) {
-	privKey, err := common.LoadRSAPrivateKeyFromFile("./testdata/clientkey.pem")
+	privKey, err := util.RSAKeyFromPEMFile("./testdata/clientkey.pem")
 	require.NoError(t, err, "load RSA key error")
 
 	test := &common.RCSR{
@@ -28,7 +28,7 @@ func TestSignatureOfRCSR(t *testing.T) {
 		Signature:          random.RandomBytesForTest(t, 32),
 	}
 
-	pubKeyBytes, err := common.RsaPublicKeyToPemBytes(&privKey.PublicKey)
+	pubKeyBytes, err := util.RSAPublicToPEM(&privKey.PublicKey)
 	require.NoError(t, err, "RSA key to bytes error")
 
 	test.PublicKey = pubKeyBytes
@@ -45,7 +45,7 @@ func TestIssuanceOfRPC(t *testing.T) {
 	// -------------------------------------
 	//  phase 1: domain owner generate rcsr
 	// -------------------------------------
-	privKey, err := common.LoadRSAPrivateKeyFromFile("./testdata/clientkey.pem")
+	privKey, err := util.RSAKeyFromPEMFile("./testdata/clientkey.pem")
 	require.NoError(t, err, "Load RSA Key Pair From File error")
 
 	rcsr := &common.RCSR{
@@ -61,7 +61,7 @@ func TestIssuanceOfRPC(t *testing.T) {
 	}
 
 	// add public key
-	pubKeyBytes, err := common.RsaPublicKeyToPemBytes(&privKey.PublicKey)
+	pubKeyBytes, err := util.RSAPublicToPEM(&privKey.PublicKey)
 	require.NoError(t, err, "Rsa PublicKey To Pem Bytes error")
 
 	rcsr.PublicKey = pubKeyBytes
@@ -77,7 +77,7 @@ func TestIssuanceOfRPC(t *testing.T) {
 	err = common.RCSRVerifySignature(rcsr)
 	require.NoError(t, err, "RCSR Verify Signature error")
 
-	pcaPrivKey, err := common.LoadRSAPrivateKeyFromFile("./testdata/serverkey.pem")
+	pcaPrivKey, err := util.RSAKeyFromPEMFile("./testdata/serverkey.pem")
 	rpc, err := common.RCSRGenerateRPC(rcsr, time.Now(), 1, pcaPrivKey, "fpki")
 	require.NoError(t, err, "RCSR Generate RPC error")
 
@@ -99,7 +99,7 @@ func TestIssuanceOfSP(t *testing.T) {
 	// -------------------------------------
 	//  phase 1: domain owner generate rcsr
 	// -------------------------------------
-	privKey, err := common.LoadRSAPrivateKeyFromFile("./testdata/clientkey.pem")
+	privKey, err := util.RSAKeyFromPEMFile("./testdata/clientkey.pem")
 	require.NoError(t, err, "Load RSA Key Pair From File error")
 
 	rcsr := &common.RCSR{
@@ -114,7 +114,7 @@ func TestIssuanceOfSP(t *testing.T) {
 	}
 
 	// add public key
-	pubKeyBytes, err := common.RsaPublicKeyToPemBytes(&privKey.PublicKey)
+	pubKeyBytes, err := util.RSAPublicToPEM(&privKey.PublicKey)
 	require.NoError(t, err, "Rsa PublicKey To Pem Bytes error")
 
 	rcsr.PublicKey = pubKeyBytes
@@ -130,7 +130,7 @@ func TestIssuanceOfSP(t *testing.T) {
 	err = common.RCSRVerifySignature(rcsr)
 	require.NoError(t, err, "RCSR Verify Signature error")
 
-	pcaPrivKey, err := common.LoadRSAPrivateKeyFromFile("./testdata/serverkey.pem")
+	pcaPrivKey, err := util.RSAKeyFromPEMFile("./testdata/serverkey.pem")
 	require.NoError(t, err)
 	rpc, err := common.RCSRGenerateRPC(rcsr, time.Now(), 1, pcaPrivKey, "fpki")
 	require.NoError(t, err, "RCSR Generate RPC error")
