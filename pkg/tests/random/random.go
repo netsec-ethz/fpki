@@ -8,11 +8,12 @@ import (
 	"github.com/google/certificate-transparency-go/x509/pkix"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/tests"
 	"github.com/netsec-ethz/fpki/pkg/util"
 	"github.com/stretchr/testify/require"
 )
 
-func RandomBytesForTest(t require.TestingT, size int) []byte {
+func RandomBytesForTest(t tests.T, size int) []byte {
 	buff := make([]byte, size)
 	n, err := rand.Read(buff)
 	require.NoError(t, err)
@@ -20,7 +21,7 @@ func RandomBytesForTest(t require.TestingT, size int) []byte {
 	return buff
 }
 
-func RandomX509Cert(t require.TestingT, domain string) *ctx509.Certificate {
+func RandomX509Cert(t tests.T, domain string) *ctx509.Certificate {
 	return &ctx509.Certificate{
 		DNSNames: []string{domain},
 		Subject: pkix.Name{
@@ -32,7 +33,7 @@ func RandomX509Cert(t require.TestingT, domain string) *ctx509.Certificate {
 	}
 }
 
-func BuildTestRandomPolicyHierarchy(t require.TestingT, domainName string) []common.PolicyObject {
+func BuildTestRandomPolicyHierarchy(t tests.T, domainName string) []common.PolicyObject {
 	// Create one RPC and one SP for that name.
 	rpc := &common.RPC{
 		PolicyObjectBase: common.PolicyObjectBase{
@@ -58,7 +59,7 @@ func BuildTestRandomPolicyHierarchy(t require.TestingT, domainName string) []com
 // BuildTestRandomCertHierarchy returns the certificates, chains, and names for two mock certificate
 // chains: the first chain is domainName->c1.com->c0.com , and the second chain is
 // domainName->c0.com .
-func BuildTestRandomCertHierarchy(t require.TestingT, domainName string) (
+func BuildTestRandomCertHierarchy(t tests.T, domainName string) (
 	certs []*ctx509.Certificate, IDs, parentIDs []*common.SHA256Output, names [][]string) {
 
 	// Create all certificates.
