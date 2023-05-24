@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/common/crypto"
+	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
 // Assume one domain owner only have one domain; Logic can be changed later
@@ -34,14 +36,16 @@ func (do *DomainOwner) GenerateRCSR(domainName string, version int) (*common.RCS
 	}
 
 	// marshall public key into bytes
-	pubKeyBytes, err := common.RsaPublicKeyToPemBytes(&newPrivKeyPair.PublicKey)
+	pubKeyBytes, err := util.RSAPublicToPEM(&newPrivKeyPair.PublicKey)
 	if err != nil {
 		return nil, fmt.Errorf("GenerateRCSR | RsaPublicKeyToPemBytes | %w", err)
 	}
 
 	// generate rcsr
 	rcsr := &common.RCSR{
-		Subject:            domainName,
+		PolicyObjectBase: common.PolicyObjectBase{
+			Subject: domainName,
+		},
 		Version:            version,
 		TimeStamp:          time.Now(),
 		PublicKeyAlgorithm: common.RSA,
@@ -51,14 +55,14 @@ func (do *DomainOwner) GenerateRCSR(domainName string, version int) (*common.RCS
 
 	// if domain owner still have the private key of the previous RPC -> can avoid cool-off period
 	if prevKey, ok := do.privKeyByDomainName[domainName]; ok {
-		err = common.RCSRGenerateRPCSignature(rcsr, prevKey)
+		err = crypto.RCSRGenerateRPCSignature(rcsr, prevKey)
 		if err != nil {
 			return nil, fmt.Errorf("GenerateRCSR | RCSRGenerateRPCSignature | %w", err)
 		}
 	}
 
 	// generate signature for RCSR, using the new pub key
-	err = common.RCSRCreateSignature(newPrivKeyPair, rcsr)
+	err = crypto.RCSRCreateSignature(newPrivKeyPair, rcsr)
 	if err != nil {
 		return nil, fmt.Errorf("GenerateRCSR | RCSRCreateSignature | %w", err)
 	}
@@ -81,7 +85,7 @@ func (do *DomainOwner) GeneratePSR(domainName string, policy common.Policy) (*co
 		DomainName: domainName,
 	}
 
-	err := common.DomainOwnerSignPSR(rpcKeyPair, psr)
+	err := crypto.DomainOwnerSignPSR(rpcKeyPair, psr)
 	if err != nil {
 		return nil, fmt.Errorf("GeneratePSR | DomainOwnerSignPSR | %w", err)
 	}
