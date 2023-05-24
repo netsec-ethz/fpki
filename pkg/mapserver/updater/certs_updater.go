@@ -1,7 +1,6 @@
 package updater
 
 import (
-	"context"
 	"fmt"
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
@@ -17,69 +16,6 @@ import (
 
 type uniqueSet map[common.SHA256Output]struct{}
 type uniqueStringSet map[string]struct{}
-
-// DeletemeUpdateDomainEntriesTableUsingCerts: Update the domain entries using the domain certificates
-func (mapUpdater *MapUpdater) DeletemeUpdateDomainEntriesTableUsingCerts(
-	ctx context.Context,
-	certs []*ctx509.Certificate,
-	certChains [][]*ctx509.Certificate,
-) (
-	[]*db.KeyValuePair,
-	int,
-	error,
-) {
-	panic("deprecated: should never be called")
-	if len(certs) == 0 {
-		return nil, 0, nil
-	}
-
-	// get the unique list of affected domains
-	affectedDomainsSet, domainCertMap, domainCertChainMap := GetAffectedDomainAndCertMap(
-		certs, certChains)
-
-	// if no domain to update
-	if len(affectedDomainsSet) == 0 {
-		return nil, 0, nil
-	}
-
-	// retrieve (possibly)affected domain entries from db
-	// It's possible that no records will be changed, because the certs are already recorded.
-	domainEntriesMap, err := mapUpdater.deletemeRetrieveAffectedDomainFromDB(ctx, affectedDomainsSet)
-	if err != nil {
-		return nil, 0, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | %w", err)
-	}
-
-	// update the domain entries
-	updatedDomains, err := UpdateDomainEntries(domainEntriesMap, domainCertMap, domainCertChainMap)
-	if err != nil {
-		return nil, 0, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | updateDomainEntries | %w", err)
-	}
-
-	// if during this updates, no cert is added, directly return
-	if len(updatedDomains) == 0 {
-		return nil, 0, nil
-	}
-
-	// get the domain entries only if they are updated, from DB
-	domainEntriesToWrite, err := GetDomainEntriesToWrite(updatedDomains, domainEntriesMap)
-	if err != nil {
-		return nil, 0, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | getDomainEntriesToWrite | %w", err)
-	}
-
-	// serialized the domainEntry -> key-value pair
-	keyValuePairs, err := DeletemeSerializeUpdatedDomainEntries(domainEntriesToWrite)
-	if err != nil {
-		return nil, 0, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | serializeUpdatedDomainEntries | %w", err)
-	}
-
-	// commit changes to db
-	num, err := mapUpdater.writeChangesToDB(ctx, keyValuePairs)
-	if err != nil {
-		return nil, 0, fmt.Errorf("UpdateDomainEntriesTableUsingCerts | writeChangesToDB | %w", err)
-	}
-
-	return keyValuePairs, num, nil
-}
 
 // return affected domains.
 // First return value: map of hashes of updated domain name. TODO(yongzhe): change this to a list maybe

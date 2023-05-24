@@ -1,11 +1,7 @@
 package updater
 
 import (
-	"context"
-	"fmt"
-
 	projectCommon "github.com/netsec-ethz/fpki/pkg/common"
-	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/domain"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
 )
@@ -14,53 +10,6 @@ import (
 type newUpdates struct {
 	rpc []*projectCommon.RPC
 	pc  []*projectCommon.SP
-}
-
-// DeletemeUpdateDomainEntriesTableUsingRPCAndPC: update the domain entries table, given RPC and PC
-func (mapUpdater *MapUpdater) DeletemeUpdateDomainEntriesTableUsingRPCAndPC(ctx context.Context,
-	rpc []*projectCommon.RPC, pc []*projectCommon.SP, readerNum int) (
-	[]*db.KeyValuePair, int, error) {
-
-	if len(rpc) == 0 && len(pc) == 0 {
-		return nil, 0, nil
-	}
-
-	affectedDomainsMap, domainCertMap := getAffectedDomainAndCertMapPCAndRPC(rpc, pc)
-	if len(affectedDomainsMap) == 0 {
-		return nil, 0, nil
-	}
-
-	// retrieve (possibly)affected domain entries from db
-	// It's possible that no records will be changed, because the certs are already recorded.
-	domainEntriesMap, err := mapUpdater.deletemeRetrieveAffectedDomainFromDB(ctx, affectedDomainsMap)
-	if err != nil {
-		return nil, 0, fmt.Errorf("UpdateDomainEntriesTableUsingRPCAndPC | retrieveAffectedDomainFromDB | %w", err)
-	}
-
-	// update the domain entries
-	updatedDomains, err := updateDomainEntriesWithRPCAndPC(domainEntriesMap, domainCertMap)
-	if err != nil {
-		return nil, 0, fmt.Errorf("UpdateDomainEntriesTableUsingRPCAndPC | updateDomainEntriesWithRPCAndPC | %w", err)
-	}
-
-	// get the domain entries only if they are updated
-	domainEntriesToWrite, err := GetDomainEntriesToWrite(updatedDomains, domainEntriesMap)
-	if err != nil {
-		return nil, 0, fmt.Errorf("UpdateDomainEntriesTableUsingRPCAndPC | getDomainEntriesToWrite | %w", err)
-	}
-
-	// serialize the domainEntry -> key-value pair
-	keyValuePairs, err := DeletemeSerializeUpdatedDomainEntries(domainEntriesToWrite)
-	if err != nil {
-		return nil, 0, fmt.Errorf("UpdateDomainEntriesTableUsingRPCAndPC | serializeUpdatedDomainEntries | %w", err)
-	}
-
-	// commit changes to db
-	numOfWrites, err := mapUpdater.writeChangesToDB(ctx, keyValuePairs)
-	if err != nil {
-		return nil, 0, fmt.Errorf("UpdateDomainEntriesTableUsingRPCAndPC | serializeUpdatedDomainEntries | %w", err)
-	}
-	return keyValuePairs, numOfWrites, nil
 }
 
 // getAffectedDomainAndCertMapPCAndRPC: return a map of affected domains, and cert map
