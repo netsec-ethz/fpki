@@ -326,7 +326,7 @@ func CoalescePayloadsForDirtyDomains(ctx context.Context, conn db.Conn) error {
 		return err
 	}
 	// Do all updates at once, in one thread/connection (faster than multiple routines).
-	if err := conn.ReplaceDirtyDomainPayloads(ctx, 0, dirtyCount-1); err != nil {
+	if err := conn.RecomputeDirtyDomainsCertAndPolicyIDs(ctx, 0, dirtyCount-1); err != nil {
 		return fmt.Errorf("coalescing payloads of dirty domains: %w", err)
 	}
 	return nil
@@ -404,7 +404,7 @@ func insertCerts(ctx context.Context, conn db.Conn, names [][]string,
 	ids, parentIDs []*common.SHA256Output, expirations []*time.Time, payloads [][]byte) error {
 
 	// Send hash, parent hash, expiration and payload to the certs table.
-	if err := conn.InsertCerts(ctx, ids, parentIDs, expirations, payloads); err != nil {
+	if err := conn.UpdateCerts(ctx, ids, parentIDs, expirations, payloads); err != nil {
 		return fmt.Errorf("inserting certificates: %w", err)
 	}
 
@@ -459,7 +459,7 @@ func insertPolicies(ctx context.Context, conn db.Conn, names []string, ids []*co
 		expirations[i] = &t
 	}
 	// Update policies:
-	if err := conn.InsertPolicies(ctx, ids, parents, expirations, payloads); err != nil {
+	if err := conn.UpdatePolicies(ctx, ids, parents, expirations, payloads); err != nil {
 		return fmt.Errorf("inserting policies: %w", err)
 	}
 

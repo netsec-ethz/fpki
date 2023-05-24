@@ -80,7 +80,7 @@ func TestUpdateWithKeepExisting(t *testing.T) {
 	for i, leaf := range leafCerts {
 		domainID := common.SHA256Hash32Bytes([]byte(leaf))
 		// t.Logf("%s: %s", leaf, hex.EncodeToString(domainID[:]))
-		gotCertIDsID, gotCertIDs, err := conn.RetrieveDomainCertificatesPayload(ctx, domainID)
+		gotCertIDsID, gotCertIDs, err := conn.RetrieveDomainCertificatesIDs(ctx, domainID)
 		require.NoError(t, err)
 		expectedSize := common.SHA256Size * len(certs) / len(leafCerts)
 		require.Len(t, gotCertIDs, expectedSize, "bad length, should be %d but it's %d",
@@ -101,7 +101,7 @@ func TestUpdateWithKeepExisting(t *testing.T) {
 	}
 	for name, policies := range policiesPerName {
 		id := common.SHA256Hash32Bytes([]byte(name))
-		gotPolIDsID, gotPolIDs, err := conn.RetrieveDomainPoliciesPayload(ctx, id)
+		gotPolIDsID, gotPolIDs, err := conn.RetrieveDomainPoliciesIDs(ctx, id)
 		require.NoError(t, err)
 		// For each sequence of policies, compute the ID of their JSON.
 		polIDs := computeIDsOfPolicies(policies)
