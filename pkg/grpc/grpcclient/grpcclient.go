@@ -24,7 +24,7 @@ var (
 	name = flag.String("name", domainName, "Domain name to query")
 )
 
-func GetProofs(name string, port int) ([]common.MapServerResponse, error) {
+func GetProofs(name string, port int) ([]*common.MapServerResponse, error) {
 	flag.Parse()
 	// Set up a connection to the server.
 	conn, err := grpc.Dial("localhost:"+strconv.Itoa(port), grpc.WithTransportCredentials(insecure.NewCredentials()))
