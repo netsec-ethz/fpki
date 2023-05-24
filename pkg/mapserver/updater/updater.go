@@ -98,26 +98,26 @@ func (mapUpdater *MapUpdater) UpdateCertsLocally(ctx context.Context, certList [
 // updateCerts: update the tables and SMT (in memory) using certificates
 func (mapUpdater *MapUpdater) updateCerts(ctx context.Context, certs []*ctx509.Certificate, certChains [][]*ctx509.Certificate) error {
 	panic("deprecated: should never be called")
-	keyValuePairs, numOfUpdates, err := mapUpdater.DeletemeUpdateDomainEntriesTableUsingCerts(ctx, certs, certChains)
-	if err != nil {
-		return fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingCerts | %w", err)
-	} else if numOfUpdates == 0 {
-		return nil
-	}
+	// keyValuePairs, numOfUpdates, err := mapUpdater.DeletemeUpdateDomainEntriesTableUsingCerts(ctx, certs, certChains)
+	// if err != nil {
+	// 	return fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingCerts | %w", err)
+	// } else if numOfUpdates == 0 {
+	// 	return nil
+	// }
 
-	if len(keyValuePairs) == 0 {
-		return nil
-	}
+	// if len(keyValuePairs) == 0 {
+	// 	return nil
+	// }
 
-	keyInput, valueInput, err := keyValuePairToSMTInput(keyValuePairs)
-	if err != nil {
-		return fmt.Errorf("CollectCerts | keyValuePairToSMTInput | %w", err)
-	}
+	// keyInput, valueInput, err := keyValuePairToSMTInput(keyValuePairs)
+	// if err != nil {
+	// 	return fmt.Errorf("CollectCerts | keyValuePairToSMTInput | %w", err)
+	// }
 
-	_, err = mapUpdater.smt.Update(ctx, keyInput, valueInput)
-	if err != nil {
-		return fmt.Errorf("CollectCerts | Update | %w", err)
-	}
+	// _, err = mapUpdater.smt.Update(ctx, keyInput, valueInput)
+	// if err != nil {
+	// 	return fmt.Errorf("CollectCerts | Update | %w", err)
+	// }
 
 	return nil
 }
@@ -139,26 +139,28 @@ func (mapUpdater *MapUpdater) UpdateRPCAndPCLocally(ctx context.Context, spList 
 
 // updateRPCAndPC: update the tables and SMT (in memory) using PC and RPC
 func (mapUpdater *MapUpdater) updateRPCAndPC(ctx context.Context, pcList []*common.SP, rpcList []*common.RPC) error {
-	// update the domain and
-	keyValuePairs, _, err := mapUpdater.DeletemeUpdateDomainEntriesTableUsingRPCAndPC(ctx, rpcList, pcList, 10)
-	if err != nil {
-		return fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingRPCAndPC | %w", err)
-	}
+	panic("deprecated: should never be called")
 
-	if len(keyValuePairs) == 0 {
-		return nil
-	}
+	// // update the domain and
+	// keyValuePairs, _, err := mapUpdater.DeletemeUpdateDomainEntriesTableUsingRPCAndPC(ctx, rpcList, pcList, 10)
+	// if err != nil {
+	// 	return fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingRPCAndPC | %w", err)
+	// }
 
-	keyInput, valueInput, err := keyValuePairToSMTInput(keyValuePairs)
-	if err != nil {
-		return fmt.Errorf("CollectCerts | keyValuePairToSMTInput | %w", err)
-	}
+	// if len(keyValuePairs) == 0 {
+	// 	return nil
+	// }
 
-	// update Sparse Merkle Tree
-	_, err = mapUpdater.smt.Update(ctx, keyInput, valueInput)
-	if err != nil {
-		return fmt.Errorf("CollectCerts | Update | %w", err)
-	}
+	// keyInput, valueInput, err := keyValuePairToSMTInput(keyValuePairs)
+	// if err != nil {
+	// 	return fmt.Errorf("CollectCerts | keyValuePairToSMTInput | %w", err)
+	// }
+
+	// // update Sparse Merkle Tree
+	// _, err = mapUpdater.smt.Update(ctx, keyInput, valueInput)
+	// if err != nil {
+	// 	return fmt.Errorf("CollectCerts | Update | %w", err)
+	// }
 	return nil
 }
 

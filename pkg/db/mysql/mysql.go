@@ -168,6 +168,32 @@ func (c *mysqlDB) CheckCertsExist(ctx context.Context, ids []*common.SHA256Outpu
 		// If empty, return empty.
 		return nil, nil
 	}
+	presence := make([]bool, len(ids))
+
+	// The query won't accept more than batchSize elements. Make batches.
+	for i := 0; i < len(ids)-batchSize; i += batchSize {
+		to := i + batchSize
+		if err := c.checkCertsExist(ctx, ids[i:to], presence[i:to]); err != nil {
+			return nil, err
+		}
+	}
+	// Do the last batch, if non empty.
+	from := len(ids) / batchSize * batchSize
+	to := from + len(ids)%batchSize
+	var err error
+	if to > from {
+		err = c.checkCertsExist(ctx, ids[from:to], presence[from:to])
+	}
+	return presence, err
+}
+
+// checkCertsExist should not be called with larger than ~1000 elements, the query being used
+// may fail with a message like:
+// Error 1436 (HY000): Thread stack overrun:  1028624 bytes used of a 1048576 byte stack,
+// and 20000 bytes needed.  Use 'mysqld --thread_stack=#' to specify a bigger stack.
+func (c *mysqlDB) checkCertsExist(ctx context.Context, ids []*common.SHA256Output,
+	present []bool) error {
+
 	// Slice to be used in the SQL query:
 	data := make([]interface{}, len(ids))
 	for i, id := range ids {
@@ -190,11 +216,9 @@ func (c *mysqlDB) CheckCertsExist(ctx context.Context, ids []*common.SHA256Outpu
 		"certs.cert_id = request.cert_id) AS t"
 
 	// Return slice of booleans:
-	present := make([]bool, len(ids))
-
 	var value string
 	if err := c.db.QueryRowContext(ctx, str, data...).Scan(&value); err != nil {
-		return nil, err
+		return err
 	}
 	for i, c := range value {
 		if c == '1' {
@@ -202,7 +226,7 @@ func (c *mysqlDB) CheckCertsExist(ctx context.Context, ids []*common.SHA256Outpu
 		}
 	}
 
-	return present, nil
+	return nil
 }
 
 // CheckPoliciesExist returns a slice of true/false values. Each value indicates if

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	mysqldriver "github.com/go-sql-driver/mysql"
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/stretchr/testify/require"
 
@@ -19,6 +20,62 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
+
+func TestCheckCertsExist(t *testing.T) {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	defer cancelF()
+
+	// DB will have the same name as the test function.
+	dbName := t.Name()
+	config := db.NewConfig(mysql.WithDefaults(), db.WithDB(dbName))
+
+	// Create a new DB with that name. On exiting the function, it will be removed.
+	err := testdb.CreateTestDB(ctx, dbName)
+	require.NoError(t, err)
+	defer func() {
+		err = testdb.RemoveTestDB(ctx, config)
+		require.NoError(t, err)
+	}()
+
+	// Connect to the DB.
+	conn, err := mysql.Connect(config)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	// Obtain a convenient MysqlDBForTests object (only in tests).
+	c := mysql.NewMysqlDBForTests(conn)
+	createIDs := func(n int) []*common.SHA256Output {
+		ids := make([]*common.SHA256Output, n)
+		for i := range ids {
+			id := common.SHA256Output{}
+			ids[i] = &id
+		}
+		return ids
+	}
+
+	// Check the function with 10 elements, it should work.
+	N := 10
+	ids := createIDs(N)
+	presence := make([]bool, N)
+	err = c.DebugCheckCertsExist(ctx, ids, presence)
+	require.NoError(t, err)
+
+	// Check now with 10000 elements, will fail.
+	N = 10000
+	ids = createIDs(N)
+	presence = make([]bool, N)
+	err = c.DebugCheckCertsExist(ctx, ids, presence)
+	require.Error(t, err)
+	t.Logf("error type is: %T, message: %s", err, err)
+	require.IsType(t, &mysqldriver.MySQLError{}, err)
+	myErr := err.(*mysqldriver.MySQLError)
+	require.Equal(t, myErr.Number, uint16(1436)) // Thread stack overrun.
+
+	// With 10000 elements but using the public function, it will work.
+	presence, err = c.CheckCertsExist(ctx, ids)
+	require.NoError(t, err)
+	require.Len(t, presence, len(ids))
+}
 
 func TestCoalesceForDirtyDomains(t *testing.T) {
 	// Because we are using "random" bytes deterministically here, set a fixed seed.

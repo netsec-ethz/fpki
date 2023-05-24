@@ -11,10 +11,10 @@ import (
 
 type UpdaterTestAdapter MapUpdater
 
-func NewMapTestUpdater(config *db.Configuration, root []byte, cacheHeight int) (*UpdaterTestAdapter, error) {
-	up, err := NewMapUpdater(config, root, cacheHeight)
-	return (*UpdaterTestAdapter)(up), err
-}
+// func NewMapTestUpdater(config *db.Configuration, root []byte, cacheHeight int) (*UpdaterTestAdapter, error) {
+// 	up, err := NewMapUpdater(config, root, cacheHeight)
+// 	return (*UpdaterTestAdapter)(up), err
+// }
 
 func (a *UpdaterTestAdapter) Conn() db.Conn {
 	return (*MapUpdater)(a).dbConn
@@ -22,12 +22,6 @@ func (a *UpdaterTestAdapter) Conn() db.Conn {
 
 func (u *UpdaterTestAdapter) UpdateCerts(ctx context.Context, certs []*ctx509.Certificate, certChains [][]*ctx509.Certificate) error {
 	return (*MapUpdater)(u).updateCerts(ctx, certs, certChains)
-}
-
-func (u *UpdaterTestAdapter) UpdateDomainEntriesUsingCerts(ctx context.Context,
-	certs []*ctx509.Certificate, certChains [][]*ctx509.Certificate, readerNum int) ([]*db.KeyValuePair, int, error) {
-
-	return (*MapUpdater)(u).DeletemeUpdateDomainEntriesTableUsingCerts(ctx, certs, certChains)
 }
 
 func (a *UpdaterTestAdapter) FetchUpdatedDomainHash(ctx context.Context) (
