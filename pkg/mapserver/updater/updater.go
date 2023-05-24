@@ -175,21 +175,6 @@ func (mapUpdater *MapUpdater) CommitSMTChanges(ctx context.Context) error {
 	return nil
 }
 
-// fetchUpdatedDomainHash: get hashes of updated domain from updates table, and truncate the table
-func (mapUpdater *MapUpdater) fetchUpdatedDomainHash(ctx context.Context) ([]common.SHA256Output, error) {
-	keys, err := mapUpdater.dbConn.RetrieveUpdatedDomains(ctx, readBatchSize)
-	if err != nil {
-		return nil, fmt.Errorf("fetchUpdatedDomainHash | %w", err)
-	}
-
-	err = mapUpdater.dbConn.RemoveAllUpdatedDomains(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("fetchUpdatedDomainHash | %w", err)
-	}
-
-	return keys, nil
-}
-
 // keyValuePairToSMTInput: key value pair -> SMT update input
 // deleteme: this function takes the payload and computes the hash of it. The hash is already
 // stored in the DB with the new design: change both the function RetrieveDomainEntries and
@@ -397,7 +382,7 @@ func UpdateSMT(ctx context.Context, conn db.Conn, cacheHeight int) error {
 	// smtTrie.CacheHeightLimit = cacheHeight
 
 	// Get the dirty domains.
-	domains, err := conn.UpdatedDomains(ctx)
+	domains, err := conn.RetrieveDirtyDomains(ctx)
 	if err != nil {
 		return err
 	}
