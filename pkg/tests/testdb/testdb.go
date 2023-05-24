@@ -5,14 +5,46 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
+	"github.com/netsec-ethz/fpki/pkg/tests"
 	"github.com/netsec-ethz/fpki/tools"
+	"github.com/stretchr/testify/require"
 )
 
-// CreateTestDB creates a new and ready test DB with the same structure as the F-PKI one.
-func CreateTestDB(ctx context.Context, dbName string) error {
+func Connect(config *db.Configuration) (db.Conn, error) {
+	return mysql.Connect(config)
+}
+
+// ConfigureTestDB creates a new configuration and database with the name of the test, and
+// returns the configuration and the DB removal function that should be called with defer.
+func ConfigureTestDB(t tests.T) (*db.Configuration, func()) {
+	dbName := t.Name()
+	config := db.NewConfig(mysql.WithDefaults(), db.WithDB(dbName))
+
+	// New context to create the DB.
+	ctx, cancelF := context.WithTimeout(context.Background(), 2*time.Second)
+
+	// Create a new DB with that name. On exiting the function, it will be removed.
+	err := createTestDB(ctx, dbName)
+	require.NoError(t, err)
+	cancelF() // DB was created.
+
+	// Return the configuration and removal function.
+	removeFunc := func() {
+		ctx, cancelF := context.WithTimeout(context.Background(), 2*time.Second)
+		err = removeTestDB(ctx, config)
+		require.NoError(t, err)
+		cancelF()
+	}
+
+	return config, removeFunc
+}
+
+// createTestDB creates a new and ready test DB with the same structure as the F-PKI one.
+func createTestDB(ctx context.Context, dbName string) error {
 	// The create_schema script is embedded. Send it to the stdin of bash, and right after
 	// send a line with the invocation of the create_new_db function.
 	script := tools.CreateSchemaScript()
@@ -80,7 +112,8 @@ func CreateTestDB(ctx context.Context, dbName string) error {
 	return nil
 }
 
-func RemoveTestDB(ctx context.Context, config *db.Configuration) error {
+// removeTestDB removes a test DB that was created with CreateTestDB.
+func removeTestDB(ctx context.Context, config *db.Configuration) error {
 	conn, err := Connect(config)
 	if err != nil {
 		return fmt.Errorf("connecting to test DB: %w", err)
@@ -91,8 +124,4 @@ func RemoveTestDB(ctx context.Context, config *db.Configuration) error {
 		return fmt.Errorf("removing the database: %w", err)
 	}
 	return nil
-}
-
-func Connect(config *db.Configuration) (db.Conn, error) {
-	return mysql.Connect(config)
 }

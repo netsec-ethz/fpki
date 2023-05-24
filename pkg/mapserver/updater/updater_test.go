@@ -11,8 +11,6 @@ import (
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/common"
-	"github.com/netsec-ethz/fpki/pkg/db"
-	"github.com/netsec-ethz/fpki/pkg/db/mysql"
 	"github.com/netsec-ethz/fpki/pkg/tests/random"
 	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
 	"github.com/netsec-ethz/fpki/pkg/util"
@@ -29,20 +27,12 @@ func TestUpdateWithKeepExisting(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
 
-	// DB will have the same name as the test function.
-	dbName := t.Name()
-	config := db.NewConfig(mysql.WithDefaults(), db.WithDB(dbName))
-
-	// Create a new DB with that name. On exiting the function, it will be removed.
-	err := testdb.CreateTestDB(ctx, dbName)
-	require.NoError(t, err)
-	defer func() {
-		err = testdb.RemoveTestDB(ctx, config)
-		require.NoError(t, err)
-	}()
+	// Configure a test DB.
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
 
 	// Connect to the DB.
-	conn, err := mysql.Connect(config)
+	conn, err := testdb.Connect(config)
 	require.NoError(t, err)
 	defer conn.Close()
 
