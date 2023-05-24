@@ -26,8 +26,7 @@ func TestUpdateWithKeepExisting(t *testing.T) {
 	// Because we are using "random" bytes deterministically here, set a fixed seed.
 	rand.Seed(111)
 
-	// ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Hour) //deleteme
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
 
 	// DB will have the same name as the test function.
