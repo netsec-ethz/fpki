@@ -17,6 +17,8 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
+const readBatchSize = 100000
+
 // MapUpdater: map updater. It is responsible for updating the tree, and writing to db
 type MapUpdater struct {
 	Fetcher logpicker.LogFetcher
