@@ -19,8 +19,13 @@ import (
 
 // TestTrieEmpty: test empty SMT
 func TestTrieEmpty(t *testing.T) {
-	db := testdb.NewMockDB()
-	smt, err := NewTrie(nil, common.SHA256Hash, db)
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	conn, err := testdb.Connect(config)
+	require.NoError(t, err)
+
+	smt, err := NewTrie(nil, common.SHA256Hash, conn)
 	require.NoError(t, err)
 
 	require.Empty(t, smt.Root)
@@ -32,8 +37,13 @@ func TestTrieUpdateAndGet(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	db := testdb.NewMockDB()
-	smt, err := NewTrie(nil, common.SHA256Hash, db)
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	conn, err := testdb.Connect(config)
+	require.NoError(t, err)
+
+	smt, err := NewTrie(nil, common.SHA256Hash, conn)
 	require.NoError(t, err)
 
 	smt.atomicUpdate = false
@@ -72,8 +82,13 @@ func TestTrieAtomicUpdate(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	db := testdb.NewMockDB()
-	smt, err := NewTrie(nil, common.SHA256Hash, db)
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	conn, err := testdb.Connect(config)
+	require.NoError(t, err)
+
+	smt, err := NewTrie(nil, common.SHA256Hash, conn)
 	require.NoError(t, err)
 
 	smt.CacheHeightLimit = 0
@@ -102,8 +117,13 @@ func TestTriePublicUpdateAndGet(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	db := testdb.NewMockDB()
-	smt, err := NewTrie(nil, common.SHA256Hash, db)
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	conn, err := testdb.Connect(config)
+	require.NoError(t, err)
+
+	smt, err := NewTrie(nil, common.SHA256Hash, conn)
 	require.NoError(t, err)
 
 	smt.CacheHeightLimit = 0
@@ -139,8 +159,13 @@ func TestTrieUpdateAndDelete(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	db := testdb.NewMockDB()
-	smt, err := NewTrie(nil, common.SHA256Hash, db)
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	conn, err := testdb.Connect(config)
+	require.NoError(t, err)
+
+	smt, err := NewTrie(nil, common.SHA256Hash, conn)
 	require.NoError(t, err)
 
 	smt.CacheHeightLimit = 0
@@ -177,8 +202,13 @@ func TestTrieMerkleProof(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
 	defer cancelF()
 
-	db := testdb.NewMockDB()
-	smt, err := NewTrie(nil, common.SHA256Hash, db)
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	conn, err := testdb.Connect(config)
+	require.NoError(t, err)
+
+	smt, err := NewTrie(nil, common.SHA256Hash, conn)
 	require.NoError(t, err)
 
 	// Add data to empty trie
@@ -209,8 +239,13 @@ func TestTrieMerkleProofCompressed(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	db := testdb.NewMockDB()
-	smt, err := NewTrie(nil, common.SHA256Hash, db)
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	conn, err := testdb.Connect(config)
+	require.NoError(t, err)
+
+	smt, err := NewTrie(nil, common.SHA256Hash, conn)
 	require.NoError(t, err)
 
 	// Add data to empty trie
@@ -238,14 +273,19 @@ func TestHeight0LeafShortcut(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
-	keySize := 32
-	db := testdb.NewMockDB()
-	smt, err := NewTrie(nil, common.SHA256Hash, db)
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	conn, err := testdb.Connect(config)
 	require.NoError(t, err)
 
+	smt, err := NewTrie(nil, common.SHA256Hash, conn)
+	require.NoError(t, err)
+
+	keySize := 32
 	// Add 2 sibling keys that will be stored at height 0
-	key0 := make([]byte, keySize, keySize)
-	key1 := make([]byte, keySize, keySize)
+	key0 := make([]byte, keySize)
+	key1 := make([]byte, keySize)
 	bitSet(key1, keySize*8-1)
 	keys := [][]byte{key0, key1}
 	values := getRandomData(t, 2)
