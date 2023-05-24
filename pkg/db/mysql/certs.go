@@ -36,7 +36,7 @@ func (c *mysqlDB) CheckCertsExist(ctx context.Context, ids []*common.SHA256Outpu
 	return presence, err
 }
 
-func (c *mysqlDB) InsertCerts(ctx context.Context, ids, parents []*common.SHA256Output,
+func (c *mysqlDB) UpdateCerts(ctx context.Context, ids, parents []*common.SHA256Output,
 	expirations []*time.Time, payloads [][]byte) error {
 
 	if len(ids) == 0 {
@@ -85,16 +85,16 @@ func (c *mysqlDB) UpdateDomainCerts(ctx context.Context,
 	return err
 }
 
-// RetrieveDomainCertificatesPayload retrieves the domain's certificate payload ID and the payload itself,
+// RetrieveDomainCertificatesIDs retrieves the domain's certificate payload ID and the payload itself,
 // given the domain ID.
-func (c *mysqlDB) RetrieveDomainCertificatesPayload(ctx context.Context, domainID common.SHA256Output,
+func (c *mysqlDB) RetrieveDomainCertificatesIDs(ctx context.Context, domainID common.SHA256Output,
 ) (*common.SHA256Output, []byte, error) {
 
 	str := "SELECT cert_ids_id, cert_ids FROM domain_payloads WHERE domain_id = ?"
 	var certIDsID, certIDs []byte
 	err := c.db.QueryRowContext(ctx, str, domainID[:]).Scan(&certIDsID, &certIDs)
 	if err != nil && err != sql.ErrNoRows {
-		return nil, nil, fmt.Errorf("RetrieveDomainCertificatesPayload | %w", err)
+		return nil, nil, fmt.Errorf("RetrieveDomainCertificatesIDs | %w", err)
 	}
 	var IDptr *common.SHA256Output
 	if certIDsID != nil {

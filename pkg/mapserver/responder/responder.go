@@ -70,12 +70,12 @@ func (r *MapResponder) GetProof(ctx context.Context, domainName string,
 		if isPoP {
 			proofType = mapCommon.PoP
 			de.CertIDsID, de.CertIDs, err =
-				r.conn.RetrieveDomainCertificatesPayload(ctx, domainPartID)
+				r.conn.RetrieveDomainCertificatesIDs(ctx, domainPartID)
 			if err != nil {
 				return nil, fmt.Errorf("error obtaining x509 payload for %s: %w", domainPart, err)
 			}
 			de.PolicyIDsID, de.PolicyIDs, err =
-				r.conn.RetrieveDomainPoliciesPayload(ctx, domainPartID)
+				r.conn.RetrieveDomainPoliciesIDs(ctx, domainPartID)
 			if err != nil {
 				return nil, fmt.Errorf("error obtaining policies payload for %s: %w",
 					domainPart, err)

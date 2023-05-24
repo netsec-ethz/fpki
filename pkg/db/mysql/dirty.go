@@ -47,7 +47,9 @@ func (c *mysqlDB) CleanupDirty(ctx context.Context) error {
 	return nil
 }
 
-func (c *mysqlDB) ReplaceDirtyDomainPayloads(ctx context.Context, firstRow, lastRow int) error {
+func (c *mysqlDB) RecomputeDirtyDomainsCertAndPolicyIDs(ctx context.Context,
+	firstRow, lastRow int) error {
+
 	// Call the certificate coalescing stored procedure with these parameters.
 	str := "CALL calc_dirty_domains_certs(?,?)"
 	_, err := c.db.ExecContext(ctx, str, firstRow, lastRow)

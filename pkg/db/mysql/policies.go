@@ -56,7 +56,7 @@ func (c *mysqlDB) CheckPoliciesExist(ctx context.Context, ids []*common.SHA256Ou
 	return present, nil
 }
 
-func (c *mysqlDB) InsertPolicies(ctx context.Context, ids, parents []*common.SHA256Output,
+func (c *mysqlDB) UpdatePolicies(ctx context.Context, ids, parents []*common.SHA256Output,
 	expirations []*time.Time, payloads [][]byte) error {
 
 	if len(ids) == 0 {
@@ -105,7 +105,7 @@ func (c *mysqlDB) UpdateDomainPolicies(ctx context.Context,
 	return err
 }
 
-func (c *mysqlDB) RetrieveDomainPoliciesPayload(ctx context.Context, domainID common.SHA256Output,
+func (c *mysqlDB) RetrieveDomainPoliciesIDs(ctx context.Context, domainID common.SHA256Output,
 ) (*common.SHA256Output, []byte, error) {
 
 	str := "SELECT policy_ids_id, policy_ids FROM domain_payloads WHERE domain_id = ?"

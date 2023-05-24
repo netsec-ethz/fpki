@@ -34,12 +34,12 @@ type dirty interface {
 	// present in the `updates` table.
 	RetrieveDirtyDomains(ctx context.Context) ([]*common.SHA256Output, error)
 
-	// ReplaceDirtyDomainPayloads retrieves dirty domains from the dirty list, starting
+	// RecomputeDirtyDomainsCertAndPolicyIDs retrieves dirty domains from the dirty list, starting
 	// at firstRow and finishing at lastRow (for a total of lastRow - firstRow + 1 domains),
 	// computes the aggregated payload for their certificates and policies, and stores it in the DB.
 	// The aggregated payload takes into account all policies and certificates needed for that
 	// domain, including e.g. the trust chain.
-	ReplaceDirtyDomainPayloads(ctx context.Context, firstRow, lastRow int) error
+	RecomputeDirtyDomainsCertAndPolicyIDs(ctx context.Context, firstRow, lastRow int) error
 
 	//DirtyDomainsCount returns the number of domains that are still to be updated.
 	DirtyDomainsCount(ctx context.Context) (int, error)
@@ -53,15 +53,15 @@ type certs interface {
 	// the corresponding certificate identified by its ID is already present in the DB.
 	CheckCertsExist(ctx context.Context, ids []*common.SHA256Output) ([]bool, error)
 
-	InsertCerts(ctx context.Context, ids, parents []*common.SHA256Output, expirations []*time.Time,
+	UpdateCerts(ctx context.Context, ids, parents []*common.SHA256Output, expirations []*time.Time,
 		payloads [][]byte) error
 
 	// UpdateDomainCerts updates the domain_certs table with new entries.
 	UpdateDomainCerts(ctx context.Context, domainIDs, certIDs []*common.SHA256Output) error
 
-	// RetrieveDomainCertificatesPayload retrieves the domain's certificate payload ID and the payload
+	// RetrieveDomainCertificatesIDs retrieves the domain's certificate payload ID and the payload
 	// itself, given the domain ID.
-	RetrieveDomainCertificatesPayload(ctx context.Context, id common.SHA256Output) (
+	RetrieveDomainCertificatesIDs(ctx context.Context, id common.SHA256Output) (
 		certIDsID *common.SHA256Output, certIDs []byte, err error)
 }
 
@@ -70,15 +70,15 @@ type policies interface {
 	// the corresponding policy identified by its ID is already present in the DB.
 	CheckPoliciesExist(ctx context.Context, ids []*common.SHA256Output) ([]bool, error)
 
-	InsertPolicies(ctx context.Context, ids, parents []*common.SHA256Output,
+	UpdatePolicies(ctx context.Context, ids, parents []*common.SHA256Output,
 		expirations []*time.Time, payloads [][]byte) error
 
 	// UpdateDomainPolicies updates the domain_policies table with new entries.
 	UpdateDomainPolicies(ctx context.Context, domainIDs, policyIDs []*common.SHA256Output) error
 
-	// RetrieveDomainPoliciesPayload returns the policy related payload for a given domain.
+	// RetrieveDomainPoliciesIDs returns the policy related payload for a given domain.
 	// This includes the RPCs, SPs, etc.
-	RetrieveDomainPoliciesPayload(ctx context.Context, id common.SHA256Output) (
+	RetrieveDomainPoliciesIDs(ctx context.Context, id common.SHA256Output) (
 		payloadID *common.SHA256Output, payload []byte, err error)
 }
 
