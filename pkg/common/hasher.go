@@ -49,6 +49,7 @@ func IDsToBytes(IDs []*SHA256Output) []byte {
 
 // SortIDsAndGlue takes a sequence of IDs, sorts them alphabetically, and glues every byte of
 // them together.
+// The IDs are expected to be unique.
 func SortIDsAndGlue(IDs []*SHA256Output) []byte {
 	// Copy slice to avoid mutating of the original.
 	ids := append(IDs[:0:0], IDs...)
