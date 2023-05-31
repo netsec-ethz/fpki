@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/hex"
 	"math/rand"
-	"os"
 	"testing"
 	"time"
 
@@ -84,6 +83,7 @@ func TestCoalesceForDirtyDomains(t *testing.T) {
 	require.NoError(t, err)
 	defer conn.Close()
 
+	// Prepare two mock leaf certificates, with their trust chains.
 	leafCerts := []string{
 		"leaf.certs.com",
 		"example.certs.com",
@@ -100,11 +100,7 @@ func TestCoalesceForDirtyDomains(t *testing.T) {
 		certNames = append(certNames, certNames2...)
 	}
 
-	// Ingest two mock policies.
-	data, err := os.ReadFile("../../../tests/testdata/2-SPs.json")
-	require.NoError(t, err)
-	pols, err := util.LoadPoliciesFromRaw(data)
-	require.NoError(t, err)
+	pols := random.BuildTestRandomPolicyHierarchy(t, "domain_with_policies.com")
 
 	// Update with certificates and policies.
 	err = updater.UpdateWithKeepExisting(ctx, conn, certNames, certIDs, parentCertIDs,
@@ -126,7 +122,8 @@ func TestCoalesceForDirtyDomains(t *testing.T) {
 		// From the certificate IDs, grab the IDs corresponding to this leaf:
 		N := len(certIDs) / len(leafCerts) // IDs per leaf = total / leaf_count
 		expectedCertIDs, expectedCertIDsID := glueSortedIDsAndComputeItsID(certIDs[i*N : (i+1)*N])
-		t.Logf("expectedCertIDs: %s\n", hex.EncodeToString(expectedCertIDs))
+		t.Logf("Certificate IDs for domain name \"%s\":\nexpected: %s\ngot:      %s",
+			leaf, hex.EncodeToString(expectedCertIDs), hex.EncodeToString(gotCertIDs))
 		require.Equal(t, expectedCertIDs, gotCertIDs)
 		require.Equal(t, expectedCertIDsID, gotCertIDsID)
 	}
@@ -143,7 +140,8 @@ func TestCoalesceForDirtyDomains(t *testing.T) {
 		// For each sequence of policies, compute the ID of their JSON.
 		polIDs := computeIDsOfPolicies(policies)
 		expectedPolIDs, expectedPolIDsID := glueSortedIDsAndComputeItsID(polIDs)
-		t.Logf("expectedPolIDs: %s\n", hex.EncodeToString(expectedPolIDs))
+		t.Logf("Policy IDs for domain name \"%s\":\nexpected: %s\ngot:      %s",
+			name, hex.EncodeToString(expectedPolIDs), hex.EncodeToString(gotPolIDs))
 		require.Equal(t, expectedPolIDs, gotPolIDs)
 		require.Equal(t, expectedPolIDsID, gotPolIDsID)
 	}
@@ -157,18 +155,16 @@ func glueSortedIDsAndComputeItsID(IDs []*common.SHA256Output) ([]byte, *common.S
 }
 
 func computeIDsOfPolicies(policies []common.PolicyObject) []*common.SHA256Output {
-	IDs := make([]*common.SHA256Output, len(policies))
-	for i, pol := range policies {
+	set := make(map[common.SHA256Output]struct{}, len(policies))
+	for _, pol := range policies {
 		id := common.SHA256Hash32Bytes(pol.Raw())
-		IDs[i] = &id
+		set[id] = struct{}{}
+	}
+
+	IDs := make([]*common.SHA256Output, 0, len(set))
+	for k := range set {
+		k := k
+		IDs = append(IDs, &k)
 	}
 	return IDs
-}
-
-func randomBytes(t require.TestingT, size int) []byte {
-	buff := make([]byte, size)
-	n, err := rand.Read(buff)
-	require.NoError(t, err)
-	require.Equal(t, size, n)
-	return buff
 }
