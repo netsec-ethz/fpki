@@ -410,6 +410,86 @@ EOF
   )
   echo "$CMD" | $MYSQLCMD
 
+  CMD=$(cat <<EOF
+USE $DBNAME;
+DROP PROCEDURE IF EXISTS calc_dirty_domains;
+DELIMITER $$
+-- firstRow and lastRow are parameters specifying which is the first row of dirty,
+-- and the last one for which it will update the policies.
+-- The SP needs ~ 5 seconds per 20K dirty domains.
+CREATE PROCEDURE calc_dirty_domains()
+BEGIN
+        DECLARE var_domain_id VARBINARY(32);
+        DECLARE dirty_done BOOLEAN DEFAULT FALSE;
+		DECLARE cur_dirty CURSOR FOR SELECT domain_id FROM dirty;
+		DECLARE CONTINUE HANDLER FOR NOT FOUND SET dirty_done := TRUE;
+
+	SET group_concat_max_len = 1073741824; -- so that GROUP_CONCAT doesn't truncate results
+
+    SET @var_cert_ids = '';
+    SET @var_policy_ids = '';
+	OPEN cur_dirty;
+    dirty_loop: WHILE dirty_done = FALSE DO
+		FETCH cur_dirty INTO var_domain_id;
+        IF dirty_done THEN
+			LEAVE dirty_loop;
+		END IF;
+        SELECT HEX(var_domain_id); -- deleteme
+
+        -- Select the concatenation of all cert IDs (sorted) of a domain.
+		SELECT GROUP_CONCAT(cert_id ORDER BY cert_id SEPARATOR '') AS cert_ids FROM(
+		-- The CTE lists all certs that are reachable by the domain_id
+		WITH RECURSIVE cte AS (
+			-- Base case: specify which leaf certs we choose: those that
+			-- have a link with a domain that is part of the dirty domains.
+			SELECT domain_certs.domain_id, certs.cert_id, parent_id
+			FROM certs
+			INNER JOIN domain_certs ON certs.cert_id = domain_certs.cert_id
+            WHERE domain_certs.domain_id = var_domain_id
+			UNION ALL
+			-- Recursive case: any poilicy that has its ID as
+			-- parent ID of the previous set, recursively.
+			SELECT cte.domain_id, certs.cert_id, certs.parent_id
+			FROM certs
+			JOIN cte ON certs.cert_id = cte.parent_id
+		)
+		SELECT DISTINCT domain_id, cert_id FROM cte
+		) AS collate_cert_ids_query
+        INTO @var_cert_ids;
+        SELECT HEX(@var_cert_ids); -- deleteme
+
+		-- Select the concatenation of all policy IDs (sorted) of a domain.
+		SELECT GROUP_CONCAT(policy_id ORDER BY policy_id SEPARATOR '') AS policy_ids FROM(
+		-- The CTE lists all policies that are reachable by the domain_id
+		WITH RECURSIVE cte AS (
+			-- Base case: specify which leaf policies we choose: those that
+			-- have a link with a domain that is part of the dirty domains.
+			SELECT dirty.domain_id, policies.policy_id, parent_id
+			FROM policies
+			INNER JOIN domain_policies ON policies.policy_id = domain_policies.policy_id
+			INNER JOIN dirty ON domain_policies.domain_id = dirty.domain_id
+            WHERE dirty.domain_id = var_domain_id
+			UNION ALL
+			-- Recursive case: any poilicy that has its ID as
+			-- parent ID of the previous set, recursively.
+			SELECT cte.domain_id, policies.policy_id, policies.parent_id
+			FROM policies
+			JOIN cte ON policies.policy_id = cte.parent_id
+		)
+		SELECT DISTINCT domain_id, policy_id FROM cte
+		) AS collate_policy_ids_query
+        INTO @var_policy_ids;
+
+        REPLACE INTO domain_payloads(domain_id, cert_ids, cert_ids_id, policy_ids, policy_ids_id)
+        VALUES(var_domain_id, @var_cert_ids, UNHEX(SHA2(@var_cert_ids, 256)), @var_policy_ids, UNHEX(SHA2(@var_policy_ids, 256)));
+
+	END WHILE;
+END$$
+DELIMITER ;
+EOF
+  )
+  echo "$CMD" | $MYSQLCMD
+
 } # end of `create_new_db` function
 
 

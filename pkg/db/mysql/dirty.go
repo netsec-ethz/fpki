@@ -48,20 +48,13 @@ func (c *mysqlDB) CleanupDirty(ctx context.Context) error {
 }
 
 func (c *mysqlDB) RecomputeDirtyDomainsCertAndPolicyIDs(ctx context.Context,
-	firstRow, lastRow int) error {
+	firstRow, lastRow int) error { // deleteme no need for parameters
 
-	// Call the certificate coalescing stored procedure with these parameters.
-	str := "CALL calc_dirty_domains_certs(?,?)"
-	_, err := c.db.ExecContext(ctx, str, firstRow, lastRow)
+	// Call the coalescing stored procedure without parameters.
+	str := "CALL calc_dirty_domains()"
+	_, err := c.db.ExecContext(ctx, str)
 	if err != nil {
-		return fmt.Errorf("coalescing certificates for domains: %w", err)
-	}
-
-	// Call the policy coalescing stored procedure with these parameters.
-	str = "CALL calc_dirty_domains_policies(?,?)"
-	_, err = c.db.ExecContext(ctx, str, firstRow, lastRow)
-	if err != nil {
-		return fmt.Errorf("coalescing policies for domains: %w", err)
+		return fmt.Errorf("coalescing for domains: %w", err)
 	}
 	return nil
 }
