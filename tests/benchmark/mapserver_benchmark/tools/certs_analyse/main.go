@@ -12,7 +12,7 @@ import (
 
 	"github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/domain"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/logpicker"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/logfetcher"
 )
 
 type uniqueStringSet map[string]struct{}
@@ -35,7 +35,7 @@ func main() {
 	const baseCTSize = 2*1000 + 1600000
 	const count = 500 * 1000
 
-	fetcher := logpicker.LogFetcher{
+	fetcher := logfetcher.LogFetcher{
 		URL:         "https://ct.googleapis.com/logs/argon2021",
 		Start:       baseCTSize,
 		End:         baseCTSize + count,
