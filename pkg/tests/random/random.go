@@ -45,6 +45,10 @@ func BuildTestRandomPolicyHierarchy(t tests.T, domainName string) []common.Polic
 		CAName:       "c0.com",
 		CASignature:  RandomBytesForTest(t, 100),
 	}
+	data, err := common.ToJSON(rpc)
+	require.NoError(t, err)
+	rpc.RawJSON = data
+
 	sp := &common.SP{
 		PolicyObjectBase: common.PolicyObjectBase{
 			Subject: domainName,
@@ -53,6 +57,10 @@ func BuildTestRandomPolicyHierarchy(t tests.T, domainName string) []common.Polic
 		CASignature:       RandomBytesForTest(t, 100),
 		RootCertSignature: RandomBytesForTest(t, 100),
 	}
+	data, err = common.ToJSON(sp)
+	require.NoError(t, err)
+	sp.RawJSON = data
+
 	return []common.PolicyObject{rpc, sp}
 }
 
