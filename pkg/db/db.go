@@ -63,6 +63,10 @@ type certs interface {
 	// itself, given the domain ID.
 	RetrieveDomainCertificatesIDs(ctx context.Context, id common.SHA256Output) (
 		certIDsID *common.SHA256Output, certIDs []byte, err error)
+
+	// RetrieveCertificatePayloads returns the payload for each of the certificates identified
+	// by the passed ID.
+	RetrieveCertificatePayloads(ctx context.Context, IDs []*common.SHA256Output) ([][]byte, error)
 }
 
 type policies interface {
@@ -80,6 +84,10 @@ type policies interface {
 	// This includes the RPCs, SPs, etc.
 	RetrieveDomainPoliciesIDs(ctx context.Context, id common.SHA256Output) (
 		payloadID *common.SHA256Output, payload []byte, err error)
+
+	// RetrievePolicyPayloads returns the payload for each of the policies identified
+	// by the passed ID.
+	RetrievePolicyPayloads(ctx context.Context, IDs []*common.SHA256Output) ([][]byte, error)
 }
 
 type Conn interface {

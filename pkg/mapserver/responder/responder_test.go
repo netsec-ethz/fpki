@@ -125,7 +125,7 @@ func TestProof(t *testing.T) {
 	id = common.SHA256Hash32Bytes(policiesB[0].Raw())
 	checkProof(t, &id, proofChain)
 
-	// Check b.com:
+	// Check c.com:
 	proofChain, err = responder.GetProof(ctx, "c.com")
 	require.NoError(t, err)
 	id = common.SHA256Hash32Bytes(certsC[0].Raw)
