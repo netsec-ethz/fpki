@@ -412,76 +412,109 @@ EOF
 USE $DBNAME;
 DROP PROCEDURE IF EXISTS calc_dirty_domains;
 DELIMITER $$
--- firstRow and lastRow are parameters specifying which is the first row of dirty,
--- and the last one for which it will update the policies.
--- The SP needs ~ 5 seconds per 20K dirty domains.
+-- Because MySQL doesn't support FULL OUTER JOIN, we have to emulate it with:
+-- SELECT * FROM t1
+-- LEFT JOIN t2 ON t1.id = t2.id
+-- UNION
+-- SELECT * FROM t1
+-- RIGHT JOIN t2 ON t1.id = t2.id
+-- https://stackoverflow.com/questions/4796872/how-can-i-do-a-full-outer-join-in-mysql
+--
+-- The table t1 is a CTE that retrieves the certificates.
+-- The table t2 is a CTE that retrieves the policies.
+-- This SP needs ~ 5 seconds per 20K dirty domains.
 CREATE PROCEDURE calc_dirty_domains()
 BEGIN
-        DECLARE var_domain_id VARBINARY(32);
-        DECLARE dirty_done BOOLEAN DEFAULT FALSE;
-		DECLARE cur_dirty CURSOR FOR SELECT domain_id FROM dirty;
-		DECLARE CONTINUE HANDLER FOR NOT FOUND SET dirty_done := TRUE;
 
 	SET group_concat_max_len = 1073741824; -- so that GROUP_CONCAT doesn't truncate results
+	-- Replace the domain ID, its certificates, policies, and their corresponding SHA256 for all dirty domains.
+	REPLACE INTO domain_payloads(domain_id, cert_ids, cert_ids_id, policy_ids, policy_ids_id) -- Values from subquery.
+	SELECT domain_id, cert_ids, UNHEX(SHA2(cert_ids, 256)) AS cert_ids_id, policy_ids, UNHEX(SHA2(policy_ids, 256)) AS policy_ids_id FROM -- Subquery to compute the SHA256 in place.
+	(
 
-    SET @var_cert_ids = '';
-    SET @var_policy_ids = '';
-	OPEN cur_dirty;
-    dirty_loop: WHILE dirty_done = FALSE DO
-		FETCH cur_dirty INTO var_domain_id;
-        IF dirty_done THEN
-			LEAVE dirty_loop;
-		END IF;
-        SELECT HEX(var_domain_id); -- deleteme
+	SELECT A.domain_id,GROUP_CONCAT(cert_id ORDER BY cert_id SEPARATOR '') AS cert_ids,GROUP_CONCAT(policy_id ORDER BY policy_id SEPARATOR '') AS policy_ids FROM
+		(
+			WITH RECURSIVE cte AS (
+				-- Base case: specify which leaf certs we choose: those that
+				-- have a link with a domain that is part of the dirty domains.
+				SELECT dirty.domain_id, certs.cert_id, parent_id
+				FROM certs
+				INNER JOIN domain_certs ON certs.cert_id = domain_certs.cert_id
+				INNER JOIN dirty ON domain_certs.domain_id = dirty.domain_id
+				UNION ALL
+				-- Recursive case: any certificate that has its ID as
+				-- parent ID of the previous set, recursively.
+				SELECT cte.domain_id, certs.cert_id, certs.parent_id
+				FROM certs
+				JOIN cte ON certs.cert_id = cte.parent_id
+			)
+			SELECT DISTINCT domain_id, cert_id FROM cte
+		) AS A
+	LEFT OUTER JOIN
+		(
+			WITH RECURSIVE cte AS (
+				-- Base case: specify which leaf policies we choose: those that
+				-- have a link with a domain that is part of the dirty domains.
+				SELECT dirty.domain_id, policies.policy_id, parent_id
+				FROM policies
+				INNER JOIN domain_policies ON policies.policy_id = domain_policies.policy_id
+				INNER JOIN dirty ON domain_policies.domain_id = dirty.domain_id
+				UNION ALL
+				-- Recursive case: any poilicy that has its ID as
+				-- parent ID of the previous set, recursively.
+				SELECT cte.domain_id, policies.policy_id, policies.parent_id
+				FROM policies
+				JOIN cte ON policies.policy_id = cte.parent_id
+			)
+			SELECT DISTINCT domain_id, policy_id FROM cte
+		) AS B
+	ON A.domain_id = B.domain_id
+	GROUP BY domain_id
 
-        -- Select the concatenation of all cert IDs (sorted) of a domain.
-		SELECT GROUP_CONCAT(cert_id ORDER BY cert_id SEPARATOR '') AS cert_ids FROM(
-		-- The CTE lists all certs that are reachable by the domain_id
-		WITH RECURSIVE cte AS (
-			-- Base case: specify which leaf certs we choose: those that
-			-- have a link with a domain that is part of the dirty domains.
-			SELECT domain_certs.domain_id, certs.cert_id, parent_id
-			FROM certs
-			INNER JOIN domain_certs ON certs.cert_id = domain_certs.cert_id
-            WHERE domain_certs.domain_id = var_domain_id
-			UNION ALL
-			-- Recursive case: any poilicy that has its ID as
-			-- parent ID of the previous set, recursively.
-			SELECT cte.domain_id, certs.cert_id, certs.parent_id
-			FROM certs
-			JOIN cte ON certs.cert_id = cte.parent_id
-		)
-		SELECT DISTINCT domain_id, cert_id FROM cte
-		) AS collate_cert_ids_query
-        INTO @var_cert_ids;
-        SELECT HEX(@var_cert_ids); -- deleteme
+	UNION
 
-		-- Select the concatenation of all policy IDs (sorted) of a domain.
-		SELECT GROUP_CONCAT(policy_id ORDER BY policy_id SEPARATOR '') AS policy_ids FROM(
-		-- The CTE lists all policies that are reachable by the domain_id
-		WITH RECURSIVE cte AS (
-			-- Base case: specify which leaf policies we choose: those that
-			-- have a link with a domain that is part of the dirty domains.
-			SELECT dirty.domain_id, policies.policy_id, parent_id
-			FROM policies
-			INNER JOIN domain_policies ON policies.policy_id = domain_policies.policy_id
-			INNER JOIN dirty ON domain_policies.domain_id = dirty.domain_id
-            WHERE dirty.domain_id = var_domain_id
-			UNION ALL
-			-- Recursive case: any poilicy that has its ID as
-			-- parent ID of the previous set, recursively.
-			SELECT cte.domain_id, policies.policy_id, policies.parent_id
-			FROM policies
-			JOIN cte ON policies.policy_id = cte.parent_id
-		)
-		SELECT DISTINCT domain_id, policy_id FROM cte
-		) AS collate_policy_ids_query
-        INTO @var_policy_ids;
+	SELECT B.domain_id,GROUP_CONCAT(cert_id ORDER BY cert_id SEPARATOR '') AS cert_ids,GROUP_CONCAT(policy_id ORDER BY policy_id SEPARATOR '') AS policy_ids FROM
+		(
+			WITH RECURSIVE cte AS (
+				-- Base case: specify which leaf certs we choose: those that
+				-- have a link with a domain that is part of the dirty domains.
+				SELECT dirty.domain_id, certs.cert_id, parent_id
+				FROM certs
+				INNER JOIN domain_certs ON certs.cert_id = domain_certs.cert_id
+				INNER JOIN dirty ON domain_certs.domain_id = dirty.domain_id
+				UNION ALL
+				-- Recursive case: any certificate that has its ID as
+				-- parent ID of the previous set, recursively.
+				SELECT cte.domain_id, certs.cert_id, certs.parent_id
+				FROM certs
+				JOIN cte ON certs.cert_id = cte.parent_id
+			)
+			SELECT DISTINCT domain_id, cert_id FROM cte
+		) AS A
+	RIGHT OUTER JOIN
+		(
+			WITH RECURSIVE cte AS (
+				-- Base case: specify which leaf policies we choose: those that
+				-- have a link with a domain that is part of the dirty domains.
+				SELECT dirty.domain_id, policies.policy_id, parent_id
+				FROM policies
+				INNER JOIN domain_policies ON policies.policy_id = domain_policies.policy_id
+				INNER JOIN dirty ON domain_policies.domain_id = dirty.domain_id
+				UNION ALL
+				-- Recursive case: any poilicy that has its ID as
+				-- parent ID of the previous set, recursively.
+				SELECT cte.domain_id, policies.policy_id, policies.parent_id
+				FROM policies
+				JOIN cte ON policies.policy_id = cte.parent_id
+			)
+			SELECT DISTINCT domain_id, policy_id FROM cte
+		) AS B
+	ON A.domain_id = B.domain_id
+	GROUP BY domain_id
 
-        REPLACE INTO domain_payloads(domain_id, cert_ids, cert_ids_id, policy_ids, policy_ids_id)
-        VALUES(var_domain_id, @var_cert_ids, UNHEX(SHA2(@var_cert_ids, 256)), @var_policy_ids, UNHEX(SHA2(@var_policy_ids, 256)));
+	) AS hasher_query;
 
-	END WHILE;
+
 END$$
 DELIMITER ;
 EOF
