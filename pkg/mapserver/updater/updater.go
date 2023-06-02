@@ -3,6 +3,7 @@ package updater
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"sort"
 	"time"
@@ -97,33 +98,6 @@ func (mapUpdater *MapUpdater) UpdateCertsLocally(ctx context.Context, certList [
 	return UpdateWithKeepExisting(ctx, mapUpdater.dbConn, names, IDs, parentIDs, certs, expirations, nil)
 }
 
-// updateCerts: update the tables and SMT (in memory) using certificates
-func (mapUpdater *MapUpdater) updateCerts(ctx context.Context, certs []*ctx509.Certificate, certChains [][]*ctx509.Certificate) error {
-	panic("deprecated: should never be called")
-	// keyValuePairs, numOfUpdates, err := mapUpdater.DeletemeUpdateDomainEntriesTableUsingCerts(ctx, certs, certChains)
-	// if err != nil {
-	// 	return fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingCerts | %w", err)
-	// } else if numOfUpdates == 0 {
-	// 	return nil
-	// }
-
-	// if len(keyValuePairs) == 0 {
-	// 	return nil
-	// }
-
-	// keyInput, valueInput, err := keyValuePairToSMTInput(keyValuePairs)
-	// if err != nil {
-	// 	return fmt.Errorf("CollectCerts | keyValuePairToSMTInput | %w", err)
-	// }
-
-	// _, err = mapUpdater.smt.Update(ctx, keyInput, valueInput)
-	// if err != nil {
-	// 	return fmt.Errorf("CollectCerts | Update | %w", err)
-	// }
-
-	return nil
-}
-
 // UpdateRPCAndPC: update RPC and PC from url. Currently just mock PC and RPC
 func (mapUpdater *MapUpdater) UpdateRPCAndPC(ctx context.Context, ctUrl string, startIdx, endIdx int64) error {
 	// get PC and RPC first
@@ -139,91 +113,24 @@ func (mapUpdater *MapUpdater) UpdateRPCAndPCLocally(ctx context.Context, spList 
 	return mapUpdater.updateRPCAndPC(ctx, spList, rpcList)
 }
 
-// updateRPCAndPC: update the tables and SMT (in memory) using PC and RPC
-func (mapUpdater *MapUpdater) updateRPCAndPC(ctx context.Context, pcList []*common.SP, rpcList []*common.RPC) error {
-	panic("deprecated: should never be called")
+func (mapUpdater *MapUpdater) updateCerts(
+	ctx context.Context,
+	certs []*ctx509.Certificate,
+	chains [][]*ctx509.Certificate,
+) error {
 
-	// // update the domain and
-	// keyValuePairs, _, err := mapUpdater.DeletemeUpdateDomainEntriesTableUsingRPCAndPC(ctx, rpcList, pcList, 10)
-	// if err != nil {
-	// 	return fmt.Errorf("CollectCerts | UpdateDomainEntriesUsingRPCAndPC | %w", err)
-	// }
-
-	// if len(keyValuePairs) == 0 {
-	// 	return nil
-	// }
-
-	// keyInput, valueInput, err := keyValuePairToSMTInput(keyValuePairs)
-	// if err != nil {
-	// 	return fmt.Errorf("CollectCerts | keyValuePairToSMTInput | %w", err)
-	// }
-
-	// // update Sparse Merkle Tree
-	// _, err = mapUpdater.smt.Update(ctx, keyInput, valueInput)
-	// if err != nil {
-	// 	return fmt.Errorf("CollectCerts | Update | %w", err)
-	// }
+	// TODO(juagargi)
 	return nil
 }
 
-// CommitSMTChanges: commit SMT changes to DB
-func (mapUpdater *MapUpdater) CommitSMTChanges(ctx context.Context) error {
-	err := mapUpdater.smt.Commit(ctx)
-	if err != nil {
-		return fmt.Errorf("CommitChanges | Commit | %w", err)
-	}
+func (mapUpdater *MapUpdater) updateRPCAndPC(
+	ctx context.Context,
+	sps []*common.SP,
+	rpcs []*common.RPC,
+) error {
+
+	// TODO(juagargi)
 	return nil
-}
-
-// keyValuePairToSMTInput: key value pair -> SMT update input
-// deleteme: this function takes the payload and computes the hash of it. The hash is already
-// stored in the DB with the new design: change both the function RetrieveDomainEntries and
-// remove the hashing from this keyValuePairToSMTInput function.
-func keyValuePairToSMTInput(keyValuePair []*db.KeyValuePair) ([][]byte, [][]byte, error) {
-	type inputPair struct {
-		Key   [32]byte
-		Value []byte
-	}
-	updateInput := make([]inputPair, 0, len(keyValuePair))
-	for _, pair := range keyValuePair {
-		updateInput = append(updateInput, inputPair{
-			Key:   pair.Key,
-			Value: common.SHA256Hash(pair.Value), // Compute SHA256 of the payload.
-		})
-	}
-
-	// Sorting is important, as the Trie.Update function expects the keys in sorted order.
-	sort.Slice(updateInput, func(i, j int) bool {
-		return bytes.Compare(updateInput[i].Key[:], updateInput[j].Key[:]) == -1
-	})
-
-	keyResult := make([][]byte, 0, len(updateInput))
-	valueResult := make([][]byte, 0, len(updateInput))
-
-	for _, pair := range updateInput {
-		// TODO(yongzhe): strange error
-		// if I do : append(keyResult, pair.Key[:]), the other elements in the slice will be affected
-		// Looks like the slice is storing the pointer of the value.
-		// However, append(valueResult, pair.Value) also works. I will have a look later
-		var newKey [32]byte
-		copy(newKey[:], pair.Key[:])
-		keyResult = append(keyResult, newKey[:])
-
-		valueResult = append(valueResult, pair.Value)
-
-	}
-
-	return keyResult, valueResult, nil
-}
-
-// GetRoot: get current root
-func (mapUpdater *MapUpdater) GetRoot() []byte {
-	return mapUpdater.smt.Root
-}
-
-// Close: close connection
-func (mapUpdater *MapUpdater) Close() error {
-	return mapUpdater.smt.Close()
 }
 
 func UpdateWithOverwrite(ctx context.Context, conn db.Conn, domainNames [][]string,
@@ -372,9 +279,9 @@ func UpdateSMT(ctx context.Context, conn db.Conn, cacheHeight int) error {
 	// Load SMT.
 	smtTrie, err := trie.NewTrie(root, common.SHA256Hash, conn)
 	if err != nil {
+		err = fmt.Errorf("with root \"%s\", creating NewTrie: %w", hex.EncodeToString(root), err)
 		panic(err)
 	}
-	// smtTrie.CacheHeightLimit = cacheHeight
 
 	// Get the dirty domains.
 	domains, err := conn.RetrieveDirtyDomains(ctx)
@@ -476,4 +383,45 @@ func runWhenFalse(mask []bool, fcn func(to, from int)) int {
 		}
 	}
 	return to
+}
+
+// keyValuePairToSMTInput: key value pair -> SMT update input
+// deleteme: this function takes the payload and computes the hash of it. The hash is already
+// stored in the DB with the new design: change both the function RetrieveDomainEntries and
+// remove the hashing from this keyValuePairToSMTInput function.
+func keyValuePairToSMTInput(keyValuePair []*db.KeyValuePair) ([][]byte, [][]byte, error) {
+	type inputPair struct {
+		Key   [32]byte
+		Value []byte
+	}
+	updateInput := make([]inputPair, 0, len(keyValuePair))
+	for _, pair := range keyValuePair {
+		updateInput = append(updateInput, inputPair{
+			Key:   pair.Key,
+			Value: common.SHA256Hash(pair.Value), // Compute SHA256 of the payload.
+		})
+	}
+
+	// Sorting is important, as the Trie.Update function expects the keys in sorted order.
+	sort.Slice(updateInput, func(i, j int) bool {
+		return bytes.Compare(updateInput[i].Key[:], updateInput[j].Key[:]) == -1
+	})
+
+	keyResult := make([][]byte, 0, len(updateInput))
+	valueResult := make([][]byte, 0, len(updateInput))
+
+	for _, pair := range updateInput {
+		// TODO(yongzhe): strange error
+		// if I do : append(keyResult, pair.Key[:]), the other elements in the slice will be affected
+		// Looks like the slice is storing the pointer of the value.
+		// However, append(valueResult, pair.Value) also works. I will have a look later
+		var newKey [32]byte
+		copy(newKey[:], pair.Key[:])
+		keyResult = append(keyResult, newKey[:])
+
+		valueResult = append(valueResult, pair.Value)
+
+	}
+
+	return keyResult, valueResult, nil
 }
