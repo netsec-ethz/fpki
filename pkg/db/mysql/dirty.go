@@ -7,15 +7,6 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/common"
 )
 
-func (c *mysqlDB) DirtyDomainsCount(ctx context.Context) (int, error) {
-	str := "SELECT COUNT(*) FROM dirty"
-	var count int
-	if err := c.db.QueryRowContext(ctx, str).Scan(&count); err != nil {
-		return 0, fmt.Errorf("querying number of dirty domains: %w", err)
-	}
-	return count, nil
-}
-
 // RetrieveDirtyDomains returns the domain IDs that are still dirty, i.e. modified certificates for
 // that domain, but not yet coalesced and ingested by the SMT.
 func (c *mysqlDB) RetrieveDirtyDomains(ctx context.Context) ([]*common.SHA256Output, error) {
@@ -47,8 +38,7 @@ func (c *mysqlDB) CleanupDirty(ctx context.Context) error {
 	return nil
 }
 
-func (c *mysqlDB) RecomputeDirtyDomainsCertAndPolicyIDs(ctx context.Context,
-	firstRow, lastRow int) error { // deleteme no need for parameters
+func (c *mysqlDB) RecomputeDirtyDomainsCertAndPolicyIDs(ctx context.Context) error {
 
 	// Call the coalescing stored procedure without parameters.
 	str := "CALL calc_dirty_domains()"

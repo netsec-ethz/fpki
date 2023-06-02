@@ -39,10 +39,7 @@ type dirty interface {
 	// computes the aggregated payload for their certificates and policies, and stores it in the DB.
 	// The aggregated payload takes into account all policies and certificates needed for that
 	// domain, including e.g. the trust chain.
-	RecomputeDirtyDomainsCertAndPolicyIDs(ctx context.Context, firstRow, lastRow int) error
-
-	//DirtyDomainsCount returns the number of domains that are still to be updated.
-	DirtyDomainsCount(ctx context.Context) (int, error)
+	RecomputeDirtyDomainsCertAndPolicyIDs(ctx context.Context) error
 
 	CleanupDirty(ctx context.Context) error
 }

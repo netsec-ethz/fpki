@@ -320,13 +320,8 @@ func UpdateWithKeepExisting(ctx context.Context, conn db.Conn, domainNames [][]s
 }
 
 func CoalescePayloadsForDirtyDomains(ctx context.Context, conn db.Conn) error {
-	// How many domains to update?
-	dirtyCount, err := conn.DirtyDomainsCount(ctx)
-	if err != nil {
-		return err
-	}
 	// Do all updates at once, in one thread/connection (faster than multiple routines).
-	if err := conn.RecomputeDirtyDomainsCertAndPolicyIDs(ctx, 0, dirtyCount-1); err != nil { // deleteme count not needed anymore
+	if err := conn.RecomputeDirtyDomainsCertAndPolicyIDs(ctx); err != nil {
 		return fmt.Errorf("coalescing payloads of dirty domains: %w", err)
 	}
 	return nil
