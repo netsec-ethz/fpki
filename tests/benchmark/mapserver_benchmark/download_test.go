@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/domain"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/logpicker"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/logfetcher"
 	"github.com/stretchr/testify/require"
 )
 
@@ -31,7 +31,7 @@ func benchmarkDownload(b *testing.B, count int) {
 	baseSize := 2 * 1000 * 1000
 	// exec only once, assume perfect measuring. Because b.N is the number of iterations,
 	// just mimic b.N executions.
-	fetcher := logpicker.LogFetcher{
+	fetcher := logfetcher.LogFetcher{
 		URL:         ctURL,
 		Start:       baseSize,
 		End:         baseSize + count,
@@ -54,7 +54,7 @@ func TestCreateCerts(t *testing.T) {
 	defer cancelF()
 	baseSize := 2 * 1000
 	count := 100 * 1000
-	fetcher := logpicker.LogFetcher{
+	fetcher := logfetcher.LogFetcher{
 		URL:         ctURL,
 		Start:       baseSize,
 		End:         baseSize + count - 1,

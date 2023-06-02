@@ -13,7 +13,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/logpicker"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/logfetcher"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
@@ -22,7 +22,7 @@ const readBatchSize = 100000
 
 // MapUpdater: map updater. It is responsible for updating the tree, and writing to db
 type MapUpdater struct {
-	Fetcher logpicker.LogFetcher
+	Fetcher logfetcher.LogFetcher
 	smt     *trie.Trie
 	dbConn  db.Conn
 }
@@ -43,7 +43,7 @@ func NewMapUpdater(config *db.Configuration, root []byte, cacheHeight int) (*Map
 	smt.CacheHeightLimit = cacheHeight
 
 	return &MapUpdater{
-		Fetcher: logpicker.LogFetcher{
+		Fetcher: logfetcher.LogFetcher{
 			WorkerCount: 16,
 		},
 		smt:    smt,
@@ -101,7 +101,7 @@ func (mapUpdater *MapUpdater) UpdateCertsLocally(ctx context.Context, certList [
 // UpdateRPCAndPC: update RPC and PC from url. Currently just mock PC and RPC
 func (mapUpdater *MapUpdater) UpdateRPCAndPC(ctx context.Context, ctUrl string, startIdx, endIdx int64) error {
 	// get PC and RPC first
-	pcList, rpcList, err := logpicker.GetPCAndRPC(ctUrl, startIdx, endIdx, 20)
+	pcList, rpcList, err := logfetcher.GetPCAndRPC(ctUrl, startIdx, endIdx, 20)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | GetPCAndRPC | %w", err)
 	}

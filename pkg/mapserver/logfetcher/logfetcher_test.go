@@ -1,4 +1,4 @@
-package logpicker
+package logfetcher
 
 import (
 	"context"
