@@ -240,18 +240,3 @@ func glueSortedIDsAndComputeItsID(IDs []*common.SHA256Output) ([]byte, *common.S
 	id := common.SHA256Hash32Bytes(gluedIDs)
 	return gluedIDs, &id
 }
-
-func computeIDsOfPolicies(policies []common.PolicyObject) []*common.SHA256Output {
-	set := make(map[common.SHA256Output]struct{}, len(policies))
-	for _, pol := range policies {
-		id := common.SHA256Hash32Bytes(pol.Raw())
-		set[id] = struct{}{}
-	}
-
-	IDs := make([]*common.SHA256Output, 0, len(set))
-	for k := range set {
-		k := k
-		IDs = append(IDs, &k)
-	}
-	return IDs
-}
