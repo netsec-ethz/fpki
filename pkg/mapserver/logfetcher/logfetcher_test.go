@@ -2,6 +2,7 @@ package logfetcher
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -207,7 +208,6 @@ func TestTimeoutLogFetcher(t *testing.T) {
 	defer cancelF()
 	f, err := NewLogFetcher(ctURL)
 	require.NoError(t, err)
-	f.StartFetching(2000, 2000*2000)
 
 	// Attempt to fetch something really big that would need more than 1 nanosec.
 	certs, chains, err := f.FetchAllCertificates(ctx, 2000, 2000*2000)
@@ -215,4 +215,20 @@ func TestTimeoutLogFetcher(t *testing.T) {
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.Len(t, certs, 0)
 	require.Len(t, chains, 0)
+}
+
+func TestSpeed(t *testing.T) {
+	ctx, cancelF := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancelF()
+	f, err := NewLogFetcher(ctURL)
+	require.NoError(t, err)
+	t0 := time.Now()
+	start := int64(8000)
+	end := start + 10000 - 1
+	_, _, err = f.FetchAllCertificates(ctx, start, end)
+	t1 := time.Now()
+	elapsed := t1.Sub(t0)
+	fmt.Printf("Elapsed: %s, %f certs / minute\n",
+		elapsed, float64(end-start+1)/elapsed.Minutes())
+	require.NoError(t, err)
 }
