@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	ct "github.com/google/certificate-transparency-go"
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/stretchr/testify/require"
 )
@@ -13,137 +14,190 @@ import (
 
 const ctURL = "https://ct.googleapis.com/logs/argon2021"
 
-func TestGetCerts(t *testing.T) {
-	stopChan := make(chan struct{})
-	start := 1 * 1000 * 1000
-	count := 100
-	certs, err := getCerts(ctURL, start, start+count-1, stopChan)
-	require.NoError(t, err)
-	require.Len(t, certs, 100, "got %d", len(certs))
-}
-
-func TestDownloadCertSize(t *testing.T) {
+func TestGetRawEntries(t *testing.T) {
 	cases := map[string]struct {
-		start      int
-		end        int
-		numWorkers int
+		start int64
+		end   int64
 	}{
-		"0": {
-			start:      2000,
-			end:        2000 - 1,
-			numWorkers: 1,
+		"simple": {
+			start: 0,
+			end:   0,
 		},
-		"1": {
-			start:      2000,
-			end:        2000,
-			numWorkers: 1,
+		"long": {
+			start: 0,
+			end:   511,
 		},
-		"2": {
-			start:      2000,
-			end:        2001,
-			numWorkers: 1,
+		"non_aligned": {
+			start: 0,
+			end:   1,
 		},
-		"100_1": {
-			start:      2000,
-			end:        2100 - 1,
-			numWorkers: 1,
+		"middle": {
+			start: 2000,
+			end:   2001,
 		},
-		"100_3": {
-			start:      2000,
-			end:        2100 - 1,
-			numWorkers: 3,
+		"longer": {
+			start: 2000,
+			end:   2201,
 		},
 	}
 	for name, tc := range cases {
 		name, tc := name, tc
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			stopChan := make(chan struct{})
-			certs, err := getCertificates(ctURL, tc.start, tc.end, tc.numWorkers, stopChan)
+
+			f, err := NewLogFetcher(ctURL)
 			require.NoError(t, err)
-			require.Len(t, certs, tc.end-tc.start+1,
-				"got %d instead of %d", len(certs), tc.end-tc.start+1)
+			rawEntries := make([]*ct.LeafEntry, tc.end-tc.start+1)
+			n, err := f.getRawEntries(rawEntries, tc.start, tc.end)
+			require.NoError(t, err)
+			require.Equal(t, n, tc.end-tc.start+1)
+		})
+	}
+}
+
+func TestGetRawEntriesInBatches(t *testing.T) {
+	cases := map[string]struct {
+		start     int64
+		end       int64
+		batchSize int64
+	}{
+
+		"1": {
+			start: 2000,
+			end:   2000,
+		},
+		"2": {
+			start: 2000,
+			end:   2001,
+		},
+		"2_2": {
+			start:     2000,
+			end:       2001,
+			batchSize: 2,
+		},
+		"3_2": {
+			start:     2000,
+			end:       2002,
+			batchSize: 2,
+		},
+		"100": {
+			start: 2000,
+			end:   2100 - 1,
+		},
+		"100_2": {
+			start:     2000,
+			end:       2100 - 1,
+			batchSize: 2,
+		},
+		"100_13": {
+			start:     2000,
+			end:       2100 - 1,
+			batchSize: 13,
+		},
+		"long": {
+			start:     0,
+			end:       128,
+			batchSize: 1,
+		},
+	}
+	for name, tc := range cases {
+		name, tc := name, tc
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			f, err := NewLogFetcher(ctURL)
+			require.NoError(t, err)
+			if tc.batchSize != 0 {
+				f.serverBatchSize = tc.batchSize
+				f.processBatchSize = f.serverBatchSize * 128
+			}
+
+			entries := make([]*ct.LeafEntry, tc.end-tc.start+1)
+			n, err := f.getRawEntriesInBatches(entries, tc.start, tc.end)
+			require.NoError(t, err)
+			expected := tc.end - tc.start + 1
+			require.Equal(t, expected, n)
 		})
 	}
 }
 
 func TestLogFetcher(t *testing.T) {
 	cases := map[string]struct {
-		start      int
-		end        int
-		numWorkers int
-		batchSize  int
+		start     int
+		end       int
+		batchSize int
 	}{
 		"0": {
-			start:      2000,
-			end:        2000 - 1,
-			numWorkers: 1,
+			start: 2000,
+			end:   2000 - 1,
 		},
 		"1": {
-			start:      2000,
-			end:        2000,
-			numWorkers: 1,
+			start: 2000,
+			end:   2000,
 		},
 		"2": {
-			start:      2000,
-			end:        2001,
-			numWorkers: 1,
+			start: 2000,
+			end:   2001,
 		},
-		"100_1_0": {
-			start:      2000,
-			end:        2100 - 1,
-			numWorkers: 1,
+		"6_1": {
+			start:     2000,
+			end:       2005,
+			batchSize: 1,
 		},
-		"100_1_2": {
-			start:      2000,
-			end:        2100 - 1,
-			numWorkers: 1,
-			batchSize:  2,
+		"100": {
+			start: 2000,
+			end:   2100 - 1,
 		},
-		"100_3_0": {
-			start:      2000,
-			end:        2100 - 1,
-			numWorkers: 3,
+		"100_2": {
+			start:     2000,
+			end:       2100 - 1,
+			batchSize: 2,
 		},
-		"100_7_13": {
-			start:      2000,
-			end:        2100 - 1,
-			numWorkers: 7,
-			batchSize:  13,
+		"100_13": {
+			start:     2000,
+			end:       2100 - 1,
+			batchSize: 13,
 		},
 	}
 	for name, tc := range cases {
 		name, tc := name, tc
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+
 			ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancelF()
-			f := &LogFetcher{
-				URL:         ctURL,
-				Start:       tc.start,
-				End:         tc.end,
-				WorkerCount: tc.numWorkers,
-				BatchSize:   tc.batchSize,
+			f, err := NewLogFetcher(ctURL)
+			require.NoError(t, err)
+			if tc.batchSize > 0 {
+				f.serverBatchSize = int64(tc.batchSize)
+				f.processBatchSize = 128 * f.serverBatchSize
 			}
-			f.StartFetching()
+			f.StartFetching(int64(tc.start), int64(tc.end))
 
 			allCerts := make([]*ctx509.Certificate, 0)
+			allChains := make([][]*ctx509.Certificate, 0)
 			for {
-				certs, err := f.NextBatch(ctx)
+				certs, chains, err := f.NextBatch(ctx)
+				t.Logf("batch with %d elems", len(certs))
 				require.NoError(t, err)
-				require.LessOrEqual(t, len(certs), f.BatchSize,
-					"got %d instead of %d", len(certs), tc.batchSize)
+				require.LessOrEqual(t, len(certs), int(f.processBatchSize),
+					"%d is not <= than %d", len(certs), f.processBatchSize)
 				allCerts = append(allCerts, certs...)
+				allChains = append(allChains, chains...)
 				if certs == nil && err == nil {
 					break
 				}
 			}
-
 			require.Len(t, allCerts, tc.end-tc.start+1,
 				"got %d instead of %d", len(allCerts), tc.end-tc.start+1)
-			certs, err := f.NextBatch(ctx)
+			require.Len(t, allChains, tc.end-tc.start+1,
+				"got %d instead of %d", len(allChains), tc.end-tc.start+1)
+
+			// Again. It should return empty.
+			certs, chains, err := f.NextBatch(ctx)
 			require.NoError(t, err)
 			require.Nil(t, certs)
+			require.Nil(t, chains)
 		})
 	}
 }
@@ -151,15 +205,14 @@ func TestLogFetcher(t *testing.T) {
 func TestTimeoutLogFetcher(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Nanosecond)
 	defer cancelF()
-	f := &LogFetcher{
-		URL:         ctURL,
-		Start:       2000,
-		End:         2000 * 2000,
-		BatchSize:   1,
-		WorkerCount: 1,
-	}
-	certs, err := f.FetchAllCertificates(ctx)
+	f, err := NewLogFetcher(ctURL)
+	require.NoError(t, err)
+	f.StartFetching(2000, 2000*2000)
+
+	// Attempt to fetch something really big that would need more than 1 nanosec.
+	certs, chains, err := f.FetchAllCertificates(ctx, 2000, 2000*2000)
 	require.Error(t, err)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.Len(t, certs, 0)
+	require.Len(t, chains, 0)
 }

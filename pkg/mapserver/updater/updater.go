@@ -28,48 +28,47 @@ type MapUpdater struct {
 }
 
 // NewMapUpdater: return a new map updater.
-func NewMapUpdater(config *db.Configuration, root []byte, cacheHeight int) (*MapUpdater, error) {
+func NewMapUpdater(config *db.Configuration, url string) (*MapUpdater, error) {
 	// db conn for map updater
 	dbConn, err := mysql.Connect(config)
 	if err != nil {
 		return nil, fmt.Errorf("NewMapUpdater | db.Connect | %w", err)
 	}
 
+	// deleteme
 	// SMT
-	smt, err := trie.NewTrie(root, common.SHA256Hash, dbConn)
+	smt, err := trie.NewTrie(nil, common.SHA256Hash, dbConn)
 	if err != nil {
 		return nil, fmt.Errorf("NewMapServer | NewTrie | %w", err)
 	}
-	smt.CacheHeightLimit = cacheHeight
+	smt.CacheHeightLimit = 32
+
+	fetcher, err := logfetcher.NewLogFetcher(url)
+	if err != nil {
+		return nil, err
+	}
 
 	return &MapUpdater{
-		Fetcher: logfetcher.LogFetcher{
-			WorkerCount: 16,
-		},
-		smt:    smt,
-		dbConn: dbConn,
+		Fetcher: *fetcher,
+		smt:     smt,
+		dbConn:  dbConn,
 	}, nil
 }
 
 // StartFetching will initiate the CT logs fetching process in the background, trying to
 // obtain the next batch of certificates and have it ready for the next update.
-func (u *MapUpdater) StartFetching(ctURL string, startIndex, endIndex int) {
-	u.Fetcher.URL = ctURL
-	u.Fetcher.Start = startIndex
-	u.Fetcher.End = endIndex
-	u.Fetcher.StartFetching()
+func (u *MapUpdater) StartFetching(startIndex, endIndex int64) {
+	u.Fetcher.StartFetching(startIndex, endIndex)
 }
 
 // UpdateNextBatch downloads the next batch from the CT log server and updates the domain and
 // Updates tables. Also the SMT.
 func (u *MapUpdater) UpdateNextBatch(ctx context.Context) (int, error) {
-	certs, err := u.Fetcher.NextBatch(ctx)
+	certs, chains, err := u.Fetcher.NextBatch(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("CollectCerts | GetCertMultiThread | %w", err)
 	}
-	// TODO(cyrill): parse and add certificate chains from CT log server
-	emptyCertChains := make([][]*ctx509.Certificate, len(certs))
-	return len(certs), u.updateCerts(ctx, certs, emptyCertChains)
+	return len(certs), u.updateCerts(ctx, certs, chains)
 }
 
 // UpdateCertsLocally: add certs (in the form of asn.1 encoded byte arrays) directly without querying log
