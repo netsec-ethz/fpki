@@ -136,8 +136,8 @@ func (f *LogFetcher) FetchAllCertificates(
 ) {
 
 	f.StartFetching(start, end)
-	certs = make([]*ctx509.Certificate, 0, f.end-f.start+1)
-	chains = make([][]*ctx509.Certificate, 0, f.end-f.start+1)
+	certs = make([]*ctx509.Certificate, 0, end-start+1)
+	chains = make([][]*ctx509.Certificate, 0, end-start+1)
 	for {
 		bCerts, bChains, bErr := f.NextBatch(ctx)
 		if bErr != nil {
@@ -175,11 +175,15 @@ func (f *LogFetcher) fetch() {
 			}
 			return // Don't continue processing when errors.
 		}
+		if f.stopping {
+			f.stopping = false // We are handling the stop now.
+			return
+		}
 		certEntries := make([]*ctx509.Certificate, n)
 		chainEntries := make([][]*ctx509.Certificate, n)
 		// Parse each entry to certificates and chains.
 		for i, leaf := range leafEntries[:n] {
-			index := f.start + int64(i)
+			index := start + int64(i)
 			raw, err := ct.RawLogEntryFromLeaf(index, leaf)
 			if err != nil {
 				f.chanResults <- &result{
@@ -230,8 +234,11 @@ func (f *LogFetcher) getRawEntriesInBatches(leafEntries []*ct.LeafEntry, start, 
 	// TODO(juagargi) should we align the calls to serverBatchSize
 	batchCount := (end - start + 1) / f.serverBatchSize
 
+	if f.stopping {
+		return 0, nil
+	}
 	// Do batches.
-	for i := int64(0); !f.stopping && i < batchCount; i++ {
+	for i := int64(0); i < batchCount; i++ {
 		bStart := start + i*f.serverBatchSize
 		bEnd := bStart + f.serverBatchSize - 1
 		entries := leafEntries[i*f.serverBatchSize : (i+1)*f.serverBatchSize]
@@ -241,7 +248,7 @@ func (f *LogFetcher) getRawEntriesInBatches(leafEntries []*ct.LeafEntry, start, 
 			return i * f.serverBatchSize, err
 		}
 		if f.stopping {
-			return bEnd - start + 1, nil
+			return i*f.serverBatchSize + n, nil
 		}
 		assert(n == f.serverBatchSize, "bad size in getRawEntriesInBatches")
 	}
