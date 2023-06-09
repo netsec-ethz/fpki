@@ -51,9 +51,27 @@ func TestGetRawEntries(t *testing.T) {
 			rawEntries := make([]*ct.LeafEntry, tc.end-tc.start+1)
 			n, err := f.getRawEntries(rawEntries, tc.start, tc.end)
 			require.NoError(t, err)
-			require.Equal(t, n, tc.end-tc.start+1)
+			require.Equal(t, tc.end-tc.start+1, n)
 		})
 	}
+}
+
+func TestStoppingGetRawEntries(t *testing.T) {
+	f, err := NewLogFetcher(ctURL)
+	require.NoError(t, err)
+	f.start = 3000
+	f.end = f.start + 10000
+
+	// In 1 second, trigger a stop signal.
+	go func() {
+		time.Sleep(time.Second)
+		f.StopFetching()
+	}()
+	// Manually call getRawEntries as if called from the parent.
+	leafEntries := make([]*ct.LeafEntry, f.end-f.start+1)
+	n, err := f.getRawEntries(leafEntries, f.start, f.end)
+	require.NoError(t, err)
+	require.Equal(t, int64(0), n)
 }
 
 func TestGetRawEntriesInBatches(t *testing.T) {
@@ -122,6 +140,41 @@ func TestGetRawEntriesInBatches(t *testing.T) {
 	}
 }
 
+func TestStoppingGetRawEntriesInBatches(t *testing.T) {
+	// Prepare a test case for getRawEntriesInBatches, where the server responds in batches of 1
+	// element, and we process in batches of 100K.
+	// This means that getRawEntriesInBatches will have to make 100K calls to getRawEntries,
+	// and in the middle of them, we will request to stop the fetcher.
+	f, err := NewLogFetcher(ctURL)
+	require.NoError(t, err)
+	f.serverBatchSize = 1
+	f.processBatchSize = 100000
+	f.start = 3000
+	f.end = f.start + 3000*3000 // Whatever but larger than processBatchSize
+
+	// Trigger a stop signal after 1 sec. Fast enough for getRawEntriesInBatches to not be done yet
+	go func() {
+		time.Sleep(1 * time.Second)
+		f.StopFetching()
+	}()
+
+	// Manually call getRawEntriesInBatches as if called from "fetch()".
+	leafEntries := make([]*ct.LeafEntry, f.processBatchSize)
+	start := f.start
+	end := f.start + f.processBatchSize - 1
+	n, err := f.getRawEntriesInBatches(leafEntries, start, end)
+	require.NoError(t, err)
+	// Some leaves where downloaded.
+	require.Greater(t, n, int64(0))
+	// But not all.
+	require.Less(t, n, f.processBatchSize)
+
+	// Check that all leaves returned are non nil.
+	for i := range leafEntries[:n] {
+		require.NotNil(t, leafEntries[i], "nil leaf at %d", i)
+	}
+}
+
 func TestLogFetcher(t *testing.T) {
 	cases := map[string]struct {
 		start     int
@@ -179,7 +232,6 @@ func TestLogFetcher(t *testing.T) {
 			allChains := make([][]*ctx509.Certificate, 0)
 			for {
 				certs, chains, err := f.NextBatch(ctx)
-				t.Logf("batch with %d elems", len(certs))
 				require.NoError(t, err)
 				require.LessOrEqual(t, len(certs), int(f.processBatchSize),
 					"%d is not <= than %d", len(certs), f.processBatchSize)
@@ -204,13 +256,13 @@ func TestLogFetcher(t *testing.T) {
 }
 
 func TestTimeoutLogFetcher(t *testing.T) {
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Nanosecond)
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
 	defer cancelF()
 	f, err := NewLogFetcher(ctURL)
 	require.NoError(t, err)
 
-	// Attempt to fetch something really big that would need more than 1 nanosec.
-	certs, chains, err := f.FetchAllCertificates(ctx, 2000, 2000*2000)
+	// Attempt to fetch something really big that would need more than 1 sec.
+	certs, chains, err := f.FetchAllCertificates(ctx, 2000, 666000000)
 	require.Error(t, err)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.Len(t, certs, 0)
@@ -223,7 +275,7 @@ func TestSpeed(t *testing.T) {
 	f, err := NewLogFetcher(ctURL)
 	require.NoError(t, err)
 	t0 := time.Now()
-	start := int64(8000)
+	start := int64(18000)
 	end := start + 10000 - 1
 	_, _, err = f.FetchAllCertificates(ctx, start, end)
 	t1 := time.Now()
