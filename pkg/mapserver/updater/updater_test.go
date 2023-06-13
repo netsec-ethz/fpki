@@ -97,7 +97,7 @@ func TestUpdateWithKeepExisting(t *testing.T) {
 	// Check policy coalescing.
 	policiesPerName := make(map[string][]common.PolicyObject, len(pols))
 	for _, pol := range pols {
-		policiesPerName[pol.Domain()] = append(policiesPerName[pol.Domain()], pol)
+		policiesPerName[pol.Subject()] = append(policiesPerName[pol.Subject()], pol)
 	}
 	for name, policies := range policiesPerName {
 		id := common.SHA256Hash32Bytes([]byte(name))

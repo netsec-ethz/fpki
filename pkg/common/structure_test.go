@@ -31,7 +31,7 @@ func TestGenerateGoldenFiles(t *testing.T) {
 func TestEqual(t *testing.T) {
 	rcsr := &common.RCSR{
 		PolicyObjectBase: common.PolicyObjectBase{
-			Subject: "bandqhvdbdlwnd",
+			RawSubject: "bandqhvdbdlwnd",
 		},
 		Version:            6789,
 		TimeStamp:          time.Now(),
@@ -47,7 +47,7 @@ func TestEqual(t *testing.T) {
 	spt1 := common.SPT{
 		Version: 12313,
 		PolicyObjectBase: common.PolicyObjectBase{
-			Subject: "hihihihihhi",
+			RawSubject: "hihihihihhi",
 		},
 		CAName:          "I'm honest CA, nice to meet you",
 		LogID:           1231323,
@@ -62,7 +62,7 @@ func TestEqual(t *testing.T) {
 	spt2 := common.SPT{
 		Version: 12368713,
 		PolicyObjectBase: common.PolicyObjectBase{
-			Subject: "hohohoho",
+			RawSubject: "hohohoho",
 		},
 		CAName:          "I'm malicious CA, nice to meet you",
 		LogID:           1324123,
@@ -80,7 +80,7 @@ func TestEqual(t *testing.T) {
 		SPT: common.SPT{
 			Version: 12314,
 			PolicyObjectBase: common.PolicyObjectBase{
-				Subject: "bad domain",
+				RawSubject: "bad domain",
 			},
 			CAName:          "I'm malicious CA, nice to meet you",
 			LogID:           1729381,
@@ -99,7 +99,7 @@ func TestEqual(t *testing.T) {
 	rpc := &common.RPC{
 		SerialNumber: 1729381,
 		PolicyObjectBase: common.PolicyObjectBase{
-			Subject: "bad domain",
+			RawSubject: "bad domain",
 		},
 		Version:            1729381,
 		PublicKeyAlgorithm: common.RSA,
@@ -122,7 +122,7 @@ func TestJsonReadWrite(t *testing.T) {
 	spt1 := &common.SPT{
 		Version: 12313,
 		PolicyObjectBase: common.PolicyObjectBase{
-			Subject: "hihihihihhi",
+			RawSubject: "hihihihihhi",
 		},
 		CAName:          "I'm honest CA, nice to meet you",
 		LogID:           1231323,
@@ -137,7 +137,7 @@ func TestJsonReadWrite(t *testing.T) {
 	spt2 := &common.SPT{
 		Version: 12368713,
 		PolicyObjectBase: common.PolicyObjectBase{
-			Subject: "hohohoho",
+			RawSubject: "hohohoho",
 		},
 		CAName:          "I'm malicious CA, nice to meet you",
 		LogID:           1324123,
@@ -152,7 +152,7 @@ func TestJsonReadWrite(t *testing.T) {
 	rpc := &common.RPC{
 		SerialNumber: 1729381,
 		PolicyObjectBase: common.PolicyObjectBase{
-			Subject: "bad domain",
+			RawSubject: "bad domain",
 		},
 		Version:            1729381,
 		PublicKeyAlgorithm: common.RSA,
@@ -182,7 +182,7 @@ func randomRPC(t tests.T) *common.RPC {
 	return &common.RPC{
 		SerialNumber: 1729381,
 		PolicyObjectBase: common.PolicyObjectBase{
-			Subject: "RPC CA",
+			RawSubject: "RPC CA",
 		},
 		Version:            1729381,
 		PublicKeyAlgorithm: common.RSA,
@@ -201,7 +201,7 @@ func randomRPC(t tests.T) *common.RPC {
 func randomRCSR(t tests.T) *common.RCSR {
 	return &common.RCSR{
 		PolicyObjectBase: common.PolicyObjectBase{
-			Subject: "subject",
+			RawSubject: "subject",
 		},
 		Version:            6789,
 		TimeStamp:          nowWithoutMonotonic(),
@@ -220,7 +220,7 @@ func randomSP(t tests.T) *common.SP {
 		},
 		TimeStamp: nowWithoutMonotonic(),
 		PolicyObjectBase: common.PolicyObjectBase{
-			Subject: "domainname.com",
+			RawSubject: "domainname.com",
 		},
 		CAName:            "ca1",
 		SerialNumber:      rand.Int(),
@@ -237,7 +237,7 @@ func randomSP(t tests.T) *common.SP {
 func randomSPT(t tests.T) *common.SPT {
 	return &common.SPT{
 		PolicyObjectBase: common.PolicyObjectBase{
-			Subject: "hohohoho",
+			RawSubject: "hohohoho",
 		},
 		Version:         12368713,
 		CAName:          "I'm malicious CA, nice to meet you",

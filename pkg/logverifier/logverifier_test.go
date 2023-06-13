@@ -37,7 +37,7 @@ func TestVerifyInclusionByHash(t *testing.T) {
 	// Mock up a RPC.
 	rpc := &common.RPC{
 		PolicyObjectBase: common.PolicyObjectBase{
-			Subject: "fpki.com",
+			RawSubject: "fpki.com",
 		},
 		SerialNumber: 2,
 		Version:      1,
@@ -117,7 +117,7 @@ func TestCheckRPC(t *testing.T) {
 	// Mock a RPC.
 	rpc := &common.RPC{
 		PolicyObjectBase: common.PolicyObjectBase{
-			Subject: "fpki.com",
+			RawSubject: "fpki.com",
 		},
 		SerialNumber: 2,
 		Version:      1,
@@ -170,7 +170,7 @@ func TestCheckSP(t *testing.T) {
 	// Mock an SP.
 	sp := &common.SP{
 		PolicyObjectBase: common.PolicyObjectBase{
-			Subject: "fpki.com",
+			RawSubject: "fpki.com",
 		},
 		Policies: common.Policy{
 			TrustedCA: []string{"US CA"},

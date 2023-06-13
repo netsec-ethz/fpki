@@ -113,7 +113,7 @@ func RCSRGenerateRPC(rcsr *common.RCSR, notBefore time.Time, serialNumber int,
 
 	rpc := &common.RPC{
 		PolicyObjectBase: common.PolicyObjectBase{
-			Subject: rcsr.Subject,
+			RawSubject: rcsr.RawSubject,
 		},
 		Version:            rcsr.Version,
 		PublicKeyAlgorithm: rcsr.PublicKeyAlgorithm,
@@ -208,7 +208,7 @@ func CASignSP(psr *common.PSR, caPrivKey *rsa.PrivateKey, caName string, serialN
 
 	sp := &common.SP{
 		PolicyObjectBase: common.PolicyObjectBase{
-			Subject: psr.DomainName,
+			RawSubject: psr.DomainName,
 		},
 		Policies:          psr.Policies,
 		RootCertSignature: psr.RootCertSignature,

@@ -44,7 +44,7 @@ func (do *DomainOwner) GenerateRCSR(domainName string, version int) (*common.RCS
 	// generate rcsr
 	rcsr := &common.RCSR{
 		PolicyObjectBase: common.PolicyObjectBase{
-			Subject: domainName,
+			RawSubject: domainName,
 		},
 		Version:            version,
 		TimeStamp:          time.Now(),

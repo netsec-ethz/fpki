@@ -37,7 +37,7 @@ func BuildTestRandomPolicyHierarchy(t tests.T, domainName string) []common.Polic
 	// Create one RPC and one SP for that name.
 	rpc := &common.RPC{
 		PolicyObjectBase: common.PolicyObjectBase{
-			Subject: domainName,
+			RawSubject: domainName,
 		},
 		SerialNumber: 1,
 		Version:      1,
@@ -51,7 +51,7 @@ func BuildTestRandomPolicyHierarchy(t tests.T, domainName string) []common.Polic
 
 	sp := &common.SP{
 		PolicyObjectBase: common.PolicyObjectBase{
-			Subject: domainName,
+			RawSubject: domainName,
 		},
 		CAName:            "c0.com",
 		CASignature:       RandomBytesForTest(t, 100),
