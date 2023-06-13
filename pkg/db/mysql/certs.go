@@ -151,9 +151,13 @@ func (c *mysqlDB) checkCertsExist(ctx context.Context, ids []*common.SHA256Outpu
 	}
 
 	// Prepare a query that returns a vector of bits, 1 means ID is present, 0 means is not.
-	elems := make([]string, len(data))
-	for i := range elems {
-		elems[i] = "SELECT ? AS cert_id"
+
+	// The id_placeholders list contains strings that allow an ID to be placed with a sequential
+	// number, so that the IDs are returned in the same order in the DB engine as they are present
+	// in the list parameter here.
+	id_placeholders := make([]string, len(data))
+	for i := range id_placeholders {
+		id_placeholders[i] = fmt.Sprintf("SELECT ? AS cert_id, %d AS list_seq", i)
 	}
 
 	// The query means: join two tables, one with the values I am passing as arguments (those
@@ -161,7 +165,9 @@ func (c *mysqlDB) checkCertsExist(ctx context.Context, ids []*common.SHA256Outpu
 	// Finally, group_concat all rows into just one field of type string.
 	str := "SELECT GROUP_CONCAT(presence SEPARATOR '') FROM (" +
 		"SELECT (CASE WHEN certs.cert_id IS NOT NULL THEN 1 ELSE 0 END) AS presence FROM (" +
-		strings.Join(elems, " UNION ALL ") +
+		"SELECT cert_id FROM(" +
+		strings.Join(id_placeholders, " UNION ALL ") +
+		") AS sorted_by_list_seq ORDER BY list_seq" +
 		") AS request LEFT JOIN ( SELECT cert_id FROM certs ) AS certs ON " +
 		"certs.cert_id = request.cert_id) AS t"
 

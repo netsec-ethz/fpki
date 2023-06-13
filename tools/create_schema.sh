@@ -151,7 +151,13 @@ EOF
 USE $DBNAME;
 DROP PROCEDURE IF EXISTS calc_dirty_domains;
 DELIMITER $$
--- Because MySQL doesn't support FULL OUTER JOIN, we have to emulate it with:
+-- Because MySQL doesn't support FULL OUTER JOIN, we have to emulate it.
+-- We want:
+-- SELECT * FROM t1
+-- FULL OUTER JOIN
+-- SELECT * FROM t2
+-- ------------------------------------
+-- We emulate is with:
 -- SELECT * FROM t1
 -- LEFT JOIN t2 ON t1.id = t2.id
 -- UNION
@@ -161,6 +167,7 @@ DELIMITER $$
 --
 -- The table t1 is a CTE that retrieves the certificates.
 -- The table t2 is a CTE that retrieves the policies.
+-- ------------------------------------
 -- This SP needs ~ 5 seconds per 20K dirty domains.
 CREATE PROCEDURE calc_dirty_domains()
 BEGIN
