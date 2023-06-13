@@ -9,7 +9,6 @@ import (
 // of "policy objects". A policy object is that one that represents functionality of policies
 // for a domain, such as RPC, RCSR, SPT, SPRT, SP, PSR or Policy.
 type PolicyObject interface {
-	__PolicyObjectMarkerMethod()
 	Raw() []byte
 	Domain() string
 }
@@ -19,9 +18,8 @@ type PolicyObjectBase struct {
 	Subject string `json:",omitempty"`
 }
 
-func (PolicyObjectBase) __PolicyObjectMarkerMethod() {}
-func (o PolicyObjectBase) Raw() []byte               { return o.RawJSON }
-func (o PolicyObjectBase) Domain() string            { return o.Subject }
+func (o PolicyObjectBase) Raw() []byte    { return o.RawJSON }
+func (o PolicyObjectBase) Domain() string { return o.Subject }
 
 // root certificate signing request
 type RCSR struct {
@@ -177,8 +175,7 @@ func (rpc *RPC) Equal(rpc_ *RPC) bool {
 }
 
 func (sprt *SPRT) Equal(sprt_ *SPRT) bool {
-	return true &&
-		sprt.SPT.Equal(sprt_.SPT) &&
+	return sprt.SPT.Equal(sprt_.SPT) &&
 		sprt.Reason == sprt_.Reason
 }
 
