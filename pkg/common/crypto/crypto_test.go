@@ -20,7 +20,7 @@ func TestSignatureOfRCSR(t *testing.T) {
 
 	test := &common.RCSR{
 		PolicyObjectBase: common.PolicyObjectBase{
-			Subject: "this is a test",
+			RawSubject: "this is a test",
 		},
 		Version:            44,
 		TimeStamp:          time.Now(),
@@ -52,7 +52,7 @@ func TestIssuanceOfRPC(t *testing.T) {
 
 	rcsr := &common.RCSR{
 		PolicyObjectBase: common.PolicyObjectBase{
-			Subject: "this is a test",
+			RawSubject: "this is a test",
 		},
 		Version:            44,
 		TimeStamp:          time.Now(),
@@ -106,7 +106,7 @@ func TestIssuanceOfSP(t *testing.T) {
 
 	rcsr := &common.RCSR{
 		PolicyObjectBase: common.PolicyObjectBase{
-			Subject: "this is a test",
+			RawSubject: "this is a test",
 		},
 		Version:            44,
 		TimeStamp:          time.Now(),

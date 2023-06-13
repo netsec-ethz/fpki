@@ -10,16 +10,16 @@ import (
 // for a domain, such as RPC, RCSR, SPT, SPRT, SP, PSR or Policy.
 type PolicyObject interface {
 	Raw() []byte
-	Domain() string
+	Subject() string
 }
 
 type PolicyObjectBase struct {
-	RawJSON []byte `json:"-"` // omit from JSON (un)marshaling
-	Subject string `json:",omitempty"`
+	RawJSON    []byte `json:"-"` // omit from JSON (un)marshaling
+	RawSubject string `json:"Subject,omitempty"`
 }
 
-func (o PolicyObjectBase) Raw() []byte    { return o.RawJSON }
-func (o PolicyObjectBase) Domain() string { return o.Subject }
+func (o PolicyObjectBase) Raw() []byte     { return o.RawJSON }
+func (o PolicyObjectBase) Subject() string { return o.RawSubject }
 
 // root certificate signing request
 type RCSR struct {
@@ -109,7 +109,7 @@ type Policy struct {
 // listed funcs are Equal() func for each structure
 func (rcsr *RCSR) Equal(rcsr_ *RCSR) bool {
 	return true &&
-		rcsr.Subject == rcsr_.Subject &&
+		rcsr.RawSubject == rcsr_.RawSubject &&
 		rcsr.Version == rcsr_.Version &&
 		rcsr.TimeStamp.Equal(rcsr_.TimeStamp) &&
 		rcsr.PublicKeyAlgorithm == rcsr_.PublicKeyAlgorithm &&
@@ -122,7 +122,7 @@ func (rcsr *RCSR) Equal(rcsr_ *RCSR) bool {
 func (s SPT) Equal(o SPT) bool {
 	return true &&
 		s.Version == o.Version &&
-		s.Subject == o.Subject &&
+		s.RawSubject == o.RawSubject &&
 		s.CAName == o.CAName &&
 		s.LogID == o.LogID &&
 		s.CertType == o.CertType &&
@@ -148,7 +148,7 @@ func (s Policy) Equal(o Policy) bool {
 func (s SP) Equal(o SP) bool {
 	return true &&
 		s.TimeStamp.Equal(o.TimeStamp) &&
-		s.Subject == o.Subject &&
+		s.RawSubject == o.RawSubject &&
 		s.CAName == o.CAName &&
 		s.SerialNumber == o.SerialNumber &&
 		bytes.Equal(s.CASignature, o.CASignature) &&
@@ -160,7 +160,7 @@ func (s SP) Equal(o SP) bool {
 func (rpc *RPC) Equal(rpc_ *RPC) bool {
 	return true &&
 		rpc.SerialNumber == rpc_.SerialNumber &&
-		rpc.Subject == rpc_.Subject &&
+		rpc.RawSubject == rpc_.RawSubject &&
 		rpc.Version == rpc_.Version &&
 		rpc.PublicKeyAlgorithm == rpc_.PublicKeyAlgorithm &&
 		bytes.Equal(rpc.PublicKey, rpc_.PublicKey) &&

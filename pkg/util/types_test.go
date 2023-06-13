@@ -21,13 +21,13 @@ func TestToTypedSlice(t *testing.T) {
 		orig := []*common.RPC{
 			{
 				PolicyObjectBase: common.PolicyObjectBase{
-					Subject: "a.com",
+					RawSubject: "a.com",
 				},
 				Version: 1,
 			},
 			{
 				PolicyObjectBase: common.PolicyObjectBase{
-					Subject: "b.com",
+					RawSubject: "b.com",
 				},
 				Version: 1,
 			},
@@ -47,7 +47,7 @@ func TestToType(t *testing.T) {
 	{
 		orig := &common.RPC{
 			PolicyObjectBase: common.PolicyObjectBase{
-				Subject: "a.com",
+				RawSubject: "a.com",
 			},
 			Version: 1,
 		}

@@ -95,7 +95,7 @@ func (pca *PCA) ReceiveSPTFromPolicyLog() error {
 
 			// move the rpc from pre-rpc to valid-rpc
 			delete(pca.preRPCByDomains, k)
-			pca.validRPCsByDomains[v.Subject] = v
+			pca.validRPCsByDomains[v.RawSubject] = v
 		} else {
 			return fmt.Errorf("Fail to verify one SPT RPC")
 		}
@@ -117,7 +117,7 @@ func (pca *PCA) ReceiveSPTFromPolicyLog() error {
 
 			// move the rpc from pre-rpc to valid-rpc
 			delete(pca.preRPCByDomains, k)
-			pca.validSPsByDomains[v.Subject] = v
+			pca.validSPsByDomains[v.RawSubject] = v
 		} else {
 			return fmt.Errorf("Fail to verify one SPT SP")
 		}
