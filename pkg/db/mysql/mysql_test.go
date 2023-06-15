@@ -218,7 +218,7 @@ func testCertHierarchyForLeafs(t tests.T, leaves []string) (certs []*ctx509.Cert
 
 // testPolicyHierarchyForLeafs returns simply a policy hierarchy per leaf name, created using
 // the function BuildTestRandomPolicyHierarchy.
-func testPolicyHierarchyForLeafs(t tests.T, leaves []string) (pols []common.PolicyObject,
+func testPolicyHierarchyForLeafs(t tests.T, leaves []string) (pols []common.PolicyDocument,
 	polIDs []*common.SHA256Output) {
 
 	for _, name := range leaves {

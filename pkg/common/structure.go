@@ -5,11 +5,16 @@ import (
 	"time"
 )
 
-// PolicyObject is an interface that is implemented by all objects that are part of the set
+// MarshallableObject is an object that can be marshalled and unmarshalled to and from JSON.
+type MarshallableObject interface {
+	Raw() []byte // Returns the Raw JSON this object was unmarshaled from (nil if none).
+}
+
+// PolicyDocument is an interface that is implemented by all objects that are part of the set
 // of "policy objects". A policy object is that one that represents functionality of policies
 // for a domain, such as RPC, RCSR, SPT, SPRT, SP, PSR or Policy.
-type PolicyObject interface {
-	Raw() []byte
+type PolicyDocument interface {
+	MarshallableObject
 	Subject() string
 }
 
