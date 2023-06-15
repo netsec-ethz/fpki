@@ -270,6 +270,8 @@ func TestTimeoutLogFetcher(t *testing.T) {
 }
 
 func TestSpeed(t *testing.T) {
+	t.Skip("Enable to measure speed of the log fetcher")
+
 	ctx, cancelF := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancelF()
 	f, err := NewLogFetcher(ctURL)

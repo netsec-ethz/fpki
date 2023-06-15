@@ -19,18 +19,8 @@ func TestToTypedSlice(t *testing.T) {
 	// slice of *common.RPC
 	{
 		orig := []*common.RPC{
-			{
-				PolicyObjectBase: common.PolicyObjectBase{
-					RawSubject: "a.com",
-				},
-				Version: 1,
-			},
-			{
-				PolicyObjectBase: common.PolicyObjectBase{
-					RawSubject: "b.com",
-				},
-				Version: 1,
-			},
+			{Version: 1},
+			{Version: 2},
 		}
 		s := make([]any, len(orig))
 		for i, e := range orig {
@@ -45,12 +35,9 @@ func TestToTypedSlice(t *testing.T) {
 func TestToType(t *testing.T) {
 	// *common.RPC
 	{
-		orig := &common.RPC{
-			PolicyObjectBase: common.PolicyObjectBase{
-				RawSubject: "a.com",
-			},
-			Version: 1,
-		}
+		orig := &common.RPC{}
+		orig.RawSubject = "a.com"
+		orig.Version = 1
 		e := any(orig)
 		r, err := ToType[*common.RPC](e)
 		require.NoError(t, err)

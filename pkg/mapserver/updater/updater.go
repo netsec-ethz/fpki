@@ -98,7 +98,7 @@ func (mapUpdater *MapUpdater) UpdateCertsLocally(ctx context.Context, certList [
 // UpdateRPCAndPC: update RPC and PC from url. Currently just mock PC and RPC
 func (mapUpdater *MapUpdater) UpdateRPCAndPC(ctx context.Context, ctUrl string, startIdx, endIdx int64) error {
 	// get PC and RPC first
-	pcList, rpcList, err := logfetcher.GetPCAndRPC(ctUrl, startIdx, endIdx, 20)
+	pcList, rpcList, err := logfetcher.GetPCAndRPCs(ctUrl, startIdx, endIdx, 20)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | GetPCAndRPC | %w", err)
 	}
