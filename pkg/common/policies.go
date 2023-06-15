@@ -27,41 +27,6 @@ func (o PolicyObjectBase) Raw() []byte     { return o.RawJSON }
 func (o PolicyObjectBase) Subject() string { return o.RawSubject }
 
 // root certificate signing request
-type RCSR struct {
-	PolicyObjectBase
-	Version            int                `json:",omitempty"`
-	TimeStamp          time.Time          `json:",omitempty"`
-	PublicKeyAlgorithm PublicKeyAlgorithm `json:",omitempty"`
-	PublicKey          []byte             `json:",omitempty"`
-	SignatureAlgorithm SignatureAlgorithm `json:",omitempty"`
-	PRCSignature       []byte             `json:",omitempty"`
-	Signature          []byte             `json:",omitempty"`
-}
-
-func NewRCSR(
-	Subject string,
-	Version int,
-	TimeStamp time.Time,
-	PublicKeyAlgo PublicKeyAlgorithm,
-	PublicKey []byte,
-	SignatureAlgo SignatureAlgorithm,
-	PRCSignature []byte,
-	Signature []byte,
-) *RCSR {
-
-	return &RCSR{
-		PolicyObjectBase: PolicyObjectBase{
-			RawSubject: Subject,
-		},
-		Version:            Version,
-		TimeStamp:          TimeStamp,
-		PublicKeyAlgorithm: PublicKeyAlgo,
-		PublicKey:          PublicKey,
-		SignatureAlgorithm: SignatureAlgo,
-		PRCSignature:       PRCSignature,
-		Signature:          Signature,
-	}
-}
 
 // root policy certificate
 type RPC struct {
@@ -129,62 +94,6 @@ func NewPCRevocation(subject string) *PCRevocation {
 	}
 }
 
-// signed policy timestamp
-type SPT struct {
-	PolicyObjectBase
-	Version         int       `json:",omitempty"`
-	CAName          string    `json:",omitempty"`
-	LogID           int       `json:",omitempty"`
-	CertType        uint8     `json:",omitempty"`
-	AddedTS         time.Time `json:",omitempty"`
-	STH             []byte    `json:",omitempty"`
-	PoI             []byte    `json:",omitempty"`
-	STHSerialNumber int       `json:",omitempty"`
-	Signature       []byte    `json:",omitempty"`
-}
-
-func NewSPT(
-	Subject string,
-	Version int,
-	CAName string,
-	LogID int,
-	CertType uint8,
-	AddedTS time.Time,
-	STH []byte,
-	PoI []byte,
-	STHSerialNumber int,
-	Signature []byte,
-) *SPT {
-
-	return &SPT{
-		PolicyObjectBase: PolicyObjectBase{
-			RawSubject: Subject,
-		},
-		Version:         Version,
-		CAName:          CAName,
-		LogID:           LogID,
-		CertType:        CertType,
-		AddedTS:         AddedTS,
-		STH:             STH,
-		PoI:             PoI,
-		STHSerialNumber: STHSerialNumber,
-		Signature:       Signature,
-	}
-}
-
-// signed policy revocation timestamp
-type SPRT struct {
-	SPT
-	Reason int `json:",omitempty"`
-}
-
-func NewSPRT(SPT *SPT, Reason int) *SPRT {
-	return &SPRT{
-		SPT:    *SPT,
-		Reason: Reason,
-	}
-}
-
 // Signed Policy
 type SP struct {
 	PolicyObjectBase
@@ -222,76 +131,10 @@ func NewSP(
 	}
 }
 
-// Policy Signing Request
-type PSR struct {
-	SubjectRaw        string    `json:",omitempty"`
-	Policy            Policy    `json:",omitempty"`
-	TimeStamp         time.Time `json:",omitempty"`
-	RootCertSignature []byte    `json:",omitempty"`
-}
-
-func NewPSR(
-	Subject string,
-	Policy Policy,
-	TimeStamp time.Time,
-	RootCertSignature []byte,
-) *PSR {
-
-	return &PSR{
-		SubjectRaw:        Subject,
-		Policy:            Policy,
-		TimeStamp:         TimeStamp,
-		RootCertSignature: RootCertSignature,
-	}
-}
-
-// Domain policy
+// Policy is a domain policy.
 type Policy struct {
 	TrustedCA         []string `json:",omitempty"`
 	AllowedSubdomains []string `json:",omitempty"`
-}
-
-//----------------------------------------------------------------
-//                       Equal function
-//----------------------------------------------------------------
-
-// listed funcs are Equal() func for each structure
-func (rcsr *RCSR) Equal(rcsr_ *RCSR) bool {
-	return true &&
-		rcsr.RawSubject == rcsr_.RawSubject &&
-		rcsr.Version == rcsr_.Version &&
-		rcsr.TimeStamp.Equal(rcsr_.TimeStamp) &&
-		rcsr.PublicKeyAlgorithm == rcsr_.PublicKeyAlgorithm &&
-		bytes.Equal(rcsr.PublicKey, rcsr_.PublicKey) &&
-		rcsr.SignatureAlgorithm == rcsr_.SignatureAlgorithm &&
-		bytes.Equal(rcsr.PRCSignature, rcsr_.PRCSignature) &&
-		bytes.Equal(rcsr.Signature, rcsr_.Signature)
-}
-
-func (s SPT) Equal(o SPT) bool {
-	return true &&
-		s.Version == o.Version &&
-		s.RawSubject == o.RawSubject &&
-		s.CAName == o.CAName &&
-		s.LogID == o.LogID &&
-		s.CertType == o.CertType &&
-		s.AddedTS.Equal(o.AddedTS) &&
-		bytes.Equal(s.STH, o.STH) &&
-		bytes.Equal(s.PoI, o.PoI) &&
-		s.STHSerialNumber == o.STHSerialNumber &&
-		bytes.Equal(s.Signature, o.Signature)
-}
-
-func (s Policy) Equal(o Policy) bool {
-	if len(s.TrustedCA) != len(o.TrustedCA) {
-		return false
-	}
-	for i, v := range s.TrustedCA {
-		if v != o.TrustedCA[i] {
-			return false
-		}
-	}
-	return true
 }
 
 func (s SP) Equal(o SP) bool {
@@ -323,9 +166,16 @@ func (rpc *RPC) Equal(rpc_ *RPC) bool {
 		equalSPTs(rpc.SPTs, rpc_.SPTs)
 }
 
-func (sprt *SPRT) Equal(sprt_ *SPRT) bool {
-	return sprt.SPT.Equal(sprt_.SPT) &&
-		sprt.Reason == sprt_.Reason
+func (s Policy) Equal(o Policy) bool {
+	if len(s.TrustedCA) != len(o.TrustedCA) {
+		return false
+	}
+	for i, v := range s.TrustedCA {
+		if v != o.TrustedCA[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func equalSPTs(a, b []SPT) bool {
