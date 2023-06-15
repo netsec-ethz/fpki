@@ -33,6 +33,31 @@ type RCSR struct {
 	Signature          []byte             `json:",omitempty"`
 }
 
+func NewRCSR(
+	Subject string,
+	Version int,
+	TimeStamp time.Time,
+	PublicKeyAlgo PublicKeyAlgorithm,
+	PublicKey []byte,
+	SignatureAlgo SignatureAlgorithm,
+	PRCSignature []byte,
+	Signature []byte,
+) *RCSR {
+
+	return &RCSR{
+		PolicyObjectBase: PolicyObjectBase{
+			RawSubject: Subject,
+		},
+		Version:            Version,
+		TimeStamp:          TimeStamp,
+		PublicKeyAlgorithm: PublicKeyAlgo,
+		PublicKey:          PublicKey,
+		SignatureAlgorithm: SignatureAlgo,
+		PRCSignature:       PRCSignature,
+		Signature:          Signature,
+	}
+}
+
 // root policy certificate
 type RPC struct {
 	PolicyObjectBase
@@ -50,10 +75,53 @@ type RPC struct {
 	SPTs               []SPT              `json:",omitempty"`
 }
 
+func NewRPC(
+	Subject string,
+	SerialNumber int,
+	Version int,
+	PublicKeyAlgorithm PublicKeyAlgorithm,
+	PublicKey []byte,
+	NotBefore time.Time,
+	NotAfter time.Time,
+	CAName string,
+	SignatureAlgorithm SignatureAlgorithm,
+	TimeStamp time.Time,
+	PRCSignature []byte,
+	CASignature []byte,
+	SPTs []SPT,
+) *RPC {
+
+	return &RPC{
+		PolicyObjectBase: PolicyObjectBase{
+			RawSubject: Subject,
+		},
+		SerialNumber:       SerialNumber,
+		Version:            Version,
+		PublicKeyAlgorithm: PublicKeyAlgorithm,
+		PublicKey:          PublicKey,
+		NotBefore:          NotBefore,
+		NotAfter:           NotAfter,
+		CAName:             CAName,
+		SignatureAlgorithm: SignatureAlgorithm,
+		TimeStamp:          TimeStamp,
+		PRCSignature:       PRCSignature,
+		CASignature:        CASignature,
+		SPTs:               SPTs,
+	}
+}
+
 // PCRevocation is for now empty.
 type PCRevocation struct {
 	PolicyObjectBase
 	// TODO(juagargi) define the revocation.
+}
+
+func NewPCRevocation(subject string) *PCRevocation {
+	return &PCRevocation{
+		PolicyObjectBase{
+			RawSubject: subject,
+		},
+	}
 }
 
 // signed policy timestamp
@@ -70,10 +138,46 @@ type SPT struct {
 	Signature       []byte    `json:",omitempty"`
 }
 
+func NewSPT(
+	Subject string,
+	Version int,
+	CAName string,
+	LogID int,
+	CertType uint8,
+	AddedTS time.Time,
+	STH []byte,
+	PoI []byte,
+	STHSerialNumber int,
+	Signature []byte,
+) *SPT {
+
+	return &SPT{
+		PolicyObjectBase: PolicyObjectBase{
+			RawSubject: Subject,
+		},
+		Version:         Version,
+		CAName:          CAName,
+		LogID:           LogID,
+		CertType:        CertType,
+		AddedTS:         AddedTS,
+		STH:             STH,
+		PoI:             PoI,
+		STHSerialNumber: STHSerialNumber,
+		Signature:       Signature,
+	}
+}
+
 // signed policy revocation timestamp
 type SPRT struct {
 	SPT
 	Reason int `json:",omitempty"`
+}
+
+func NewSPRT(SPT *SPT, Reason int) *SPRT {
+	return &SPRT{
+		SPT:    *SPT,
+		Reason: Reason,
+	}
 }
 
 // Signed Policy
@@ -88,12 +192,52 @@ type SP struct {
 	SPTs              []SPT     `json:",omitempty"`
 }
 
+func NewSP(
+	Subject string,
+	Policies Policy,
+	TimeStamp time.Time,
+	CAName string,
+	SerialNumber int,
+	CASignature []byte,
+	RootCertSignature []byte,
+	SPTs []SPT,
+) *SP {
+
+	return &SP{
+		PolicyObjectBase: PolicyObjectBase{
+			RawSubject: Subject,
+		},
+		Policies:          Policies,
+		TimeStamp:         TimeStamp,
+		CAName:            CAName,
+		SerialNumber:      SerialNumber,
+		CASignature:       CASignature,
+		RootCertSignature: RootCertSignature,
+		SPTs:              SPTs,
+	}
+}
+
 // Policy Signing Request
 type PSR struct {
-	Policies          Policy    `json:",omitempty"`
+	SubjectRaw        string    `json:",omitempty"`
+	Policy            Policy    `json:",omitempty"`
 	TimeStamp         time.Time `json:",omitempty"`
-	DomainName        string    `json:",omitempty"`
 	RootCertSignature []byte    `json:",omitempty"`
+}
+
+func NewPSR(
+	Subject string,
+	Policy Policy,
+	TimeStamp time.Time,
+	RootCertSignature []byte,
+) *PSR {
+
+	return &PSR{
+		SubjectRaw:        Subject,
+		Policy:            Policy,
+		TimeStamp:         TimeStamp,
+		RootCertSignature: RootCertSignature,
+	}
 }
 
 // Domain policy

@@ -25,29 +25,17 @@ func TestVerifyInclusionByHash(t *testing.T) {
 		},
 	}
 
-	// Create a mock STH with the correct root hash.
+	// Create a mock STH with the correct root hash to pass the test.
 	sth := &types.LogRootV1{
 		TreeSize:       2,
-		RootHash:       tests.MustDecodeBase64(t, "BSH/yAK1xdSSNMxzNbBD4pdAsqUin8L3st6w9su+nRk="),
+		RootHash:       tests.MustDecodeBase64(t, "/Pk2HUaMxp2JDmKrEw8H/vqhjs3xsUcU2JUDaDD+bDE="),
 		TimestampNanos: 1661986742112252000,
 		Revision:       0,
 		Metadata:       []byte{},
 	}
 
 	// Mock up a RPC.
-	rpc := &common.RPC{
-		PolicyObjectBase: common.PolicyObjectBase{
-			RawSubject: "fpki.com",
-		},
-		SerialNumber: 2,
-		Version:      1,
-		PublicKey:    random.RandomBytesForTest(t, 32),
-		NotBefore:    util.TimeFromSecs(42),
-		NotAfter:     util.TimeFromSecs(142),
-		CAName:       "pca",
-		TimeStamp:    util.TimeFromSecs(100),
-		CASignature:  random.RandomBytesForTest(t, 32),
-	}
+	rpc := random.RandomRPC(t)
 
 	// Serialize it without SPTs.
 	serializedRPC, err := common.ToJSON(rpc)
@@ -96,7 +84,7 @@ func TestCheckRPC(t *testing.T) {
 	// Mock a STH with the right root hash.
 	sth := &types.LogRootV1{
 		TreeSize:       2,
-		RootHash:       tests.MustDecodeBase64(t, "qtkcR3q27tgl90D5Wl1yCRYPEcvXcDvqEi1HH1mnffg="),
+		RootHash:       tests.MustDecodeBase64(t, "QxOQbyfff8Hi5UWqpLC0abhJzpQC3a+6kMgD5nepfCA="),
 		TimestampNanos: 1661986742112252000,
 		Revision:       0,
 		Metadata:       []byte{},
@@ -115,24 +103,12 @@ func TestCheckRPC(t *testing.T) {
 	require.NoError(t, err)
 
 	// Mock a RPC.
-	rpc := &common.RPC{
-		PolicyObjectBase: common.PolicyObjectBase{
-			RawSubject: "fpki.com",
-		},
-		SerialNumber: 2,
-		Version:      1,
-		PublicKey:    random.RandomBytesForTest(t, 32),
-		NotBefore:    util.TimeFromSecs(42),
-		NotAfter:     util.TimeFromSecs(142),
-		CAName:       "pca",
-		TimeStamp:    util.TimeFromSecs(100),
-		CASignature:  random.RandomBytesForTest(t, 32),
-		SPTs: []common.SPT{
-			{
-				AddedTS: util.TimeFromSecs(99),
-				STH:     serializedSTH,
-				PoI:     serializedPoI,
-			},
+	rpc := random.RandomRPC(t)
+	rpc.SPTs = []common.SPT{
+		{
+			AddedTS: util.TimeFromSecs(99),
+			STH:     serializedSTH,
+			PoI:     serializedPoI,
 		},
 	}
 
@@ -149,7 +125,7 @@ func TestCheckSP(t *testing.T) {
 	// Mock a STH with the right root hash.
 	sth := &types.LogRootV1{
 		TreeSize:       2,
-		RootHash:       tests.MustDecodeBase64(t, "8rAPQQeydFrBYHkreAlISGoGeHXFLlTqWM8Xb0wJNiY="),
+		RootHash:       tests.MustDecodeBase64(t, "p/zmpyI3xc064LO9NvXi99BqQoCQPO7GeMgzrBlAUKM="),
 		TimestampNanos: 1661986742112252000,
 		Revision:       0,
 		Metadata:       []byte{},
@@ -168,24 +144,12 @@ func TestCheckSP(t *testing.T) {
 	require.NoError(t, err)
 
 	// Mock an SP.
-	sp := &common.SP{
-		PolicyObjectBase: common.PolicyObjectBase{
-			RawSubject: "fpki.com",
-		},
-		Policies: common.Policy{
-			TrustedCA: []string{"US CA"},
-		},
-		TimeStamp:         util.TimeFromSecs(444),
-		CAName:            "pca",
-		SerialNumber:      4,
-		CASignature:       random.RandomBytesForTest(t, 32),
-		RootCertSignature: random.RandomBytesForTest(t, 32),
-		SPTs: []common.SPT{
-			{
-				AddedTS: util.TimeFromSecs(444),
-				STH:     serializedSTH,
-				PoI:     serializedPoI,
-			},
+	sp := random.RandomSP(t)
+	sp.SPTs = []common.SPT{
+		{
+			AddedTS: util.TimeFromSecs(444),
+			STH:     serializedSTH,
+			PoI:     serializedPoI,
 		},
 	}
 

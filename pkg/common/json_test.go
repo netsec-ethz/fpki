@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/tests/random"
 )
 
 // TestPolicyObjects checks that the structure types in the test cases can be converted to JSON and
@@ -18,37 +19,37 @@ func TestPolicyObjects(t *testing.T) {
 		data any
 	}{
 		"rpcPtr": {
-			data: randomRPC(t),
+			data: random.RandomRPC(t),
 		},
 		"rpcValue": {
-			data: *randomRPC(t),
+			data: *random.RandomRPC(t),
 		},
 		"rcsr": {
-			data: randomRCSR(t),
+			data: random.RandomRCSR(t),
 		},
 		"sp": {
-			data: randomSP(t),
+			data: random.RandomSP(t),
 		},
 		"spt": {
-			data: *randomSPT(t),
+			data: *random.RandomSPT(t),
 		},
 		"list": {
 			data: []any{
-				randomRPC(t),
-				randomRCSR(t),
-				randomSP(t),
-				randomSPRT(t),
-				randomPSR(t),
+				random.RandomRPC(t),
+				random.RandomRCSR(t),
+				random.RandomSP(t),
+				random.RandomSPRT(t),
+				random.RandomPSR(t),
 				randomTrillianProof(t),
 				randomLogRootV1(t),
 			},
 		},
 		"list_embedded": {
 			data: []any{
-				randomRPC(t),
+				random.RandomRPC(t),
 				[]any{
-					randomSP(t),
-					randomSPT(t),
+					random.RandomSP(t),
+					random.RandomSPT(t),
 				},
 				[]any{
 					randomTrillianProof(t),
@@ -58,14 +59,14 @@ func TestPolicyObjects(t *testing.T) {
 		},
 		"multiListPtr": {
 			data: &[]any{
-				randomRPC(t),
-				*randomRPC(t),
+				random.RandomRPC(t),
+				*random.RandomRPC(t),
 				[]any{
-					randomSP(t),
-					*randomSP(t),
+					random.RandomSP(t),
+					*random.RandomSP(t),
 					&[]any{
-						randomSPT(t),
-						*randomSPT(t),
+						random.RandomSPT(t),
+						*random.RandomSPT(t),
 					},
 				},
 			},
@@ -97,7 +98,7 @@ func TestPolicyObjectBaseRaw(t *testing.T) {
 		getRawElemsFcn func(obj any) [][]byte // Return the Raw components of this thing.
 	}{
 		"rpc": {
-			obj:           randomRPC(t),
+			obj:           random.RandomRPC(t),
 			rawElemsCount: 1,
 			getRawElemsFcn: func(obj any) [][]byte {
 				rpc := obj.(*common.RPC)
@@ -105,7 +106,7 @@ func TestPolicyObjectBaseRaw(t *testing.T) {
 			},
 		},
 		"spPtr": {
-			obj:           randomSP(t),
+			obj:           random.RandomSP(t),
 			rawElemsCount: 1,
 			getRawElemsFcn: func(obj any) [][]byte {
 				sp := obj.(*common.SP)
@@ -113,7 +114,7 @@ func TestPolicyObjectBaseRaw(t *testing.T) {
 			},
 		},
 		"spValue": {
-			obj:           *randomSP(t),
+			obj:           *random.RandomSP(t),
 			rawElemsCount: 1,
 			getRawElemsFcn: func(obj any) [][]byte {
 				sp := obj.(common.SP)
@@ -122,8 +123,8 @@ func TestPolicyObjectBaseRaw(t *testing.T) {
 		},
 		"list": {
 			obj: []any{
-				randomSP(t),
-				randomRPC(t),
+				random.RandomSP(t),
+				random.RandomRPC(t),
 			},
 			rawElemsCount: 2,
 			getRawElemsFcn: func(obj any) [][]byte {

@@ -18,22 +18,17 @@ func TestSignatureOfRCSR(t *testing.T) {
 	privKey, err := util.RSAKeyFromPEMFile("./testdata/clientkey.pem")
 	require.NoError(t, err, "load RSA key error")
 
-	test := &common.RCSR{
-		PolicyObjectBase: common.PolicyObjectBase{
-			RawSubject: "this is a test",
-		},
-		Version:            44,
-		TimeStamp:          time.Now(),
-		PublicKeyAlgorithm: common.RSA,
-		SignatureAlgorithm: common.SHA256,
-		PRCSignature:       random.RandomBytesForTest(t, 32),
-		Signature:          random.RandomBytesForTest(t, 32),
-	}
-
 	pubKeyBytes, err := util.RSAPublicToPEM(&privKey.PublicKey)
 	require.NoError(t, err, "RSA key to bytes error")
-
-	test.PublicKey = pubKeyBytes
+	test := common.NewRCSR("this is a test",
+		44,
+		time.Now(),
+		common.RSA,
+		pubKeyBytes,
+		common.SHA256,
+		random.RandomBytesForTest(t, 32),
+		random.RandomBytesForTest(t, 32),
+	)
 
 	err = crypto.RCSRCreateSignature(privKey, test)
 	require.NoError(t, err, "RCSR sign signature error")
@@ -50,23 +45,17 @@ func TestIssuanceOfRPC(t *testing.T) {
 	privKey, err := util.RSAKeyFromPEMFile("./testdata/clientkey.pem")
 	require.NoError(t, err, "Load RSA Key Pair From File error")
 
-	rcsr := &common.RCSR{
-		PolicyObjectBase: common.PolicyObjectBase{
-			RawSubject: "this is a test",
-		},
-		Version:            44,
-		TimeStamp:          time.Now(),
-		PublicKeyAlgorithm: common.RSA,
-		SignatureAlgorithm: common.SHA256,
-		PRCSignature:       random.RandomBytesForTest(t, 32),
-		Signature:          random.RandomBytesForTest(t, 32),
-	}
-
-	// add public key
 	pubKeyBytes, err := util.RSAPublicToPEM(&privKey.PublicKey)
 	require.NoError(t, err, "Rsa PublicKey To Pem Bytes error")
-
-	rcsr.PublicKey = pubKeyBytes
+	rcsr := common.NewRCSR("this is a test",
+		44,
+		time.Now(),
+		common.RSA,
+		pubKeyBytes,
+		common.SHA256,
+		random.RandomBytesForTest(t, 32),
+		random.RandomBytesForTest(t, 32),
+	)
 
 	// generate signature for rcsr
 	err = crypto.RCSRCreateSignature(privKey, rcsr)
@@ -80,6 +69,7 @@ func TestIssuanceOfRPC(t *testing.T) {
 	require.NoError(t, err, "RCSR Verify Signature error")
 
 	pcaPrivKey, err := util.RSAKeyFromPEMFile("./testdata/serverkey.pem")
+	require.NoError(t, err)
 	rpc, err := crypto.RCSRGenerateRPC(rcsr, time.Now(), 1, pcaPrivKey, "fpki")
 	require.NoError(t, err, "RCSR Generate RPC error")
 
@@ -104,22 +94,17 @@ func TestIssuanceOfSP(t *testing.T) {
 	privKey, err := util.RSAKeyFromPEMFile("./testdata/clientkey.pem")
 	require.NoError(t, err, "Load RSA Key Pair From File error")
 
-	rcsr := &common.RCSR{
-		PolicyObjectBase: common.PolicyObjectBase{
-			RawSubject: "this is a test",
-		},
-		Version:            44,
-		TimeStamp:          time.Now(),
-		PublicKeyAlgorithm: common.RSA,
-		SignatureAlgorithm: common.SHA256,
-		PRCSignature:       random.RandomBytesForTest(t, 32),
-	}
-
-	// add public key
 	pubKeyBytes, err := util.RSAPublicToPEM(&privKey.PublicKey)
 	require.NoError(t, err, "Rsa PublicKey To Pem Bytes error")
-
-	rcsr.PublicKey = pubKeyBytes
+	rcsr := common.NewRCSR("this is a test",
+		44,
+		time.Now(),
+		common.RSA,
+		pubKeyBytes,
+		common.SHA256,
+		random.RandomBytesForTest(t, 32),
+		random.RandomBytesForTest(t, 32),
+	)
 
 	// generate signature for rcsr
 	err = crypto.RCSRCreateSignature(privKey, rcsr)
@@ -142,10 +127,12 @@ func TestIssuanceOfSP(t *testing.T) {
 	// -------------------------------------
 	//  phase 3: domain owner generate SP
 	// -------------------------------------
-	psr := &common.PSR{
-		TimeStamp:  time.Now(),
-		DomainName: "test_SP",
-	}
+	psr := common.NewPSR(
+		"test_SP",
+		common.Policy{},
+		time.Now(),
+		nil,
+	)
 
 	err = crypto.DomainOwnerSignPSR(privKey, psr)
 	require.NoError(t, err, "DomainOwnerSignPSR error")

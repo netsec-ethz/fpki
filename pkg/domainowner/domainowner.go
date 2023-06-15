@@ -41,17 +41,16 @@ func (do *DomainOwner) GenerateRCSR(domainName string, version int) (*common.RCS
 		return nil, fmt.Errorf("GenerateRCSR | RsaPublicKeyToPemBytes | %w", err)
 	}
 
-	// generate rcsr
-	rcsr := &common.RCSR{
-		PolicyObjectBase: common.PolicyObjectBase{
-			RawSubject: domainName,
-		},
-		Version:            version,
-		TimeStamp:          time.Now(),
-		PublicKeyAlgorithm: common.RSA,
-		PublicKey:          pubKeyBytes,
-		SignatureAlgorithm: common.SHA256,
-	}
+	rcsr := common.NewRCSR(
+		domainName,
+		version,
+		time.Now(),
+		common.RSA,
+		pubKeyBytes,
+		common.SHA256,
+		nil,
+		nil,
+	)
 
 	// if domain owner still have the private key of the previous RPC -> can avoid cool-off period
 	if prevKey, ok := do.privKeyByDomainName[domainName]; ok {
@@ -80,9 +79,9 @@ func (do *DomainOwner) GeneratePSR(domainName string, policy common.Policy) (*co
 	}
 
 	psr := &common.PSR{
-		Policies:   policy,
+		SubjectRaw: domainName,
+		Policy:     policy,
 		TimeStamp:  time.Now(),
-		DomainName: domainName,
 	}
 
 	err := crypto.DomainOwnerSignPSR(rpcKeyPair, psr)

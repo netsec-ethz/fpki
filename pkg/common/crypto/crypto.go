@@ -111,23 +111,21 @@ func RCSRVerifyRPCSignature(rcsr *common.RCSR, rpc *common.RPC) error {
 func RCSRGenerateRPC(rcsr *common.RCSR, notBefore time.Time, serialNumber int,
 	caPrivKey *rsa.PrivateKey, caName string) (*common.RPC, error) {
 
-	rpc := &common.RPC{
-		PolicyObjectBase: common.PolicyObjectBase{
-			RawSubject: rcsr.RawSubject,
-		},
-		Version:            rcsr.Version,
-		PublicKeyAlgorithm: rcsr.PublicKeyAlgorithm,
-		PublicKey:          rcsr.PublicKey,
-		CAName:             caName,
-		SignatureAlgorithm: common.SHA256,
-		TimeStamp:          time.Now(),
-		PRCSignature:       rcsr.PRCSignature,
-		NotBefore:          notBefore,
-		NotAfter:           time.Now().AddDate(0, 0, 90),
-		SerialNumber:       serialNumber,
-		CASignature:        []byte{},
-		SPTs:               []common.SPT{},
-	}
+	rpc := common.NewRPC(
+		rcsr.RawSubject,
+		serialNumber,
+		rcsr.Version,
+		rcsr.PublicKeyAlgorithm,
+		rcsr.PublicKey,
+		notBefore,
+		time.Now().AddDate(0, 0, 90),
+		caName,
+		common.SHA256,
+		time.Now(),
+		rcsr.PRCSignature,
+		[]byte{},
+		nil,
+	)
 
 	signature, err := signStructRSASHA256(rpc, caPrivKey)
 	if err != nil {
@@ -206,20 +204,20 @@ func VerifyPSRUsingRPC(psr *common.PSR, rpc *common.RPC) error {
 func CASignSP(psr *common.PSR, caPrivKey *rsa.PrivateKey, caName string, serialNum int) (
 	*common.SP, error) {
 
-	sp := &common.SP{
-		PolicyObjectBase: common.PolicyObjectBase{
-			RawSubject: psr.DomainName,
-		},
-		Policies:          psr.Policies,
-		RootCertSignature: psr.RootCertSignature,
-		TimeStamp:         time.Now(),
-		CAName:            caName,
-		SerialNumber:      serialNum,
-	}
+	sp := common.NewSP(
+		psr.SubjectRaw,
+		psr.Policy,
+		time.Now(),
+		caName,
+		serialNum,
+		nil,
+		psr.RootCertSignature,
+		nil,
+	)
 
 	caSignature, err := signStructRSASHA256(sp, caPrivKey)
 	if err != nil {
-		return &common.SP{}, fmt.Errorf("CASignSP | SignStructRSASHA256 | %w", err)
+		return nil, fmt.Errorf("CASignSP | SignStructRSASHA256 | %w", err)
 	}
 
 	sp.CASignature = caSignature

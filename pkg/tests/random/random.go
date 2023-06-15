@@ -35,16 +35,10 @@ func RandomX509Cert(t tests.T, domain string) *ctx509.Certificate {
 
 func BuildTestRandomPolicyHierarchy(t tests.T, domainName string) []common.PolicyObject {
 	// Create one RPC and one SP for that name.
-	rpc := &common.RPC{
-		PolicyObjectBase: common.PolicyObjectBase{
-			RawSubject: domainName,
-		},
-		SerialNumber: 1,
-		Version:      1,
-		PublicKey:    RandomBytesForTest(t, 32),
-		CAName:       "c0.com",
-		CASignature:  RandomBytesForTest(t, 100),
-	}
+	rpc := RandomRPC(t)
+	rpc.RawSubject = domainName
+	rpc.CAName = "c0.com"
+
 	data, err := common.ToJSON(rpc)
 	require.NoError(t, err)
 	rpc.RawJSON = data
@@ -98,4 +92,98 @@ func BuildTestRandomCertHierarchy(t tests.T, domainName string) (
 	parentIDs[3] = IDs[0]
 
 	return
+}
+
+func RandomTimeWithoutMonotonic() time.Time {
+	return time.Date(
+		1900+rand.Intn(200),         // 1900-2100
+		time.Month(1+rand.Intn(12)), // 1-12
+		1+rand.Intn(31),             // 1-31
+		rand.Intn(24),               // 0-23
+		rand.Intn(60),               // 0-59
+		rand.Intn(60),               // 0-59
+		0,
+		time.UTC,
+	)
+}
+
+func RandomSPT(t tests.T) *common.SPT {
+	return common.NewSPT(
+		"spt subject",
+		rand.Intn(10),
+		"Issuer",
+		rand.Intn(100000), // 0-99,999
+		0x21,
+		RandomTimeWithoutMonotonic(),
+		RandomBytesForTest(t, 32),
+		RandomBytesForTest(t, 32),
+		rand.Intn(1000),
+		RandomBytesForTest(t, 32),
+	)
+}
+
+func RandomRPC(t tests.T) *common.RPC {
+	return common.NewRPC(
+		"RPC subject",
+		rand.Intn(10),
+		rand.Intn(10),
+		common.RSA,
+		RandomBytesForTest(t, 32),
+		RandomTimeWithoutMonotonic(),
+		RandomTimeWithoutMonotonic(),
+		"Issuer",
+		common.SHA256,
+		RandomTimeWithoutMonotonic(),
+		RandomBytesForTest(t, 32),
+		RandomBytesForTest(t, 32),
+		[]common.SPT{*RandomSPT(t), *RandomSPT(t)},
+	)
+}
+
+func RandomSPRT(t tests.T) *common.SPRT {
+	return common.NewSPRT(RandomSPT(t), rand.Intn(1000))
+}
+
+func RandomSP(t tests.T) *common.SP {
+	return common.NewSP(
+		"domainname.com",
+		common.Policy{
+			TrustedCA: []string{"ca1", "ca2"},
+		},
+		RandomTimeWithoutMonotonic(),
+		"ca1",
+		rand.Int(),
+		RandomBytesForTest(t, 32),
+		RandomBytesForTest(t, 32),
+		[]common.SPT{
+			*RandomSPT(t),
+			*RandomSPT(t),
+			*RandomSPT(t),
+		},
+	)
+}
+
+func RandomPSR(t tests.T) *common.PSR {
+	return common.NewPSR(
+		"domain_name.com",
+		common.Policy{
+			TrustedCA:         []string{"one CA", "another CA"},
+			AllowedSubdomains: []string{"sub1.com", "sub2.com"},
+		},
+		RandomTimeWithoutMonotonic(),
+		RandomBytesForTest(t, 32),
+	)
+}
+
+func RandomRCSR(t tests.T) *common.RCSR {
+	return common.NewRCSR(
+		"subject",
+		6789,
+		RandomTimeWithoutMonotonic(),
+		common.RSA,
+		RandomBytesForTest(t, 32),
+		common.SHA256,
+		RandomBytesForTest(t, 32),
+		RandomBytesForTest(t, 32),
+	)
 }

@@ -90,21 +90,23 @@ func (c *LogVerifier) VerifyInclusionByHash(trustedRoot *types.LogRootV1, leafHa
 	// Proofs might contain multiple proofs for different leaves, while the content of each leaf
 	// is identical. Trillian will return all the proofs for one content.
 	// So one successful verification is enough.
-	var specialErr error
 	for _, proof := range proofs {
 		err := logProof.VerifyInclusion(c.hasher, uint64(proof.LeafIndex), trustedRoot.TreeSize,
 			leafHash, proof.Hashes, trustedRoot.RootHash)
 
 		if err == nil {
-
 			return nil
 		}
 		if _, ok := err.(logProof.RootMismatchError); !ok {
-			specialErr = err
+			return fmt.Errorf("VerifyInclusionByHash | Unexpected error: %w", err)
 		}
-	}
-	if specialErr != nil {
-		return fmt.Errorf("VerifyInclusionByHash | Unexpected error: %w", specialErr)
+
+		// deleteme, err := logProof.RootFromInclusionProof(c.hasher, uint64(proof.LeafIndex), trustedRoot.TreeSize,
+		// 	leafHash, proof.Hashes)
+		// if err != nil {
+		// 	panic(err)
+		// }
+		// fmt.Printf("deleteme calcRoot = %s\n", base64.StdEncoding.EncodeToString(deleteme))
 	}
 	// This is a logProof.RootMismatchError, aka different hash values.
 	return fmt.Errorf("verification failed: different hashes")

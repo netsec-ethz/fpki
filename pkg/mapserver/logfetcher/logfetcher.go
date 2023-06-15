@@ -304,11 +304,11 @@ func (f *LogFetcher) getRawEntries(
 	return end - start + 1, nil
 }
 
-// GetPCAndRPC: get PC and RPC from url
+// GetPCAndRPCs: get PC and RPC from url
 // TODO(yongzhe): currently just generate random PC and RPC using top 1k domain names
-func GetPCAndRPC(ctURL string, startIndex int64, endIndex int64, numOfWorker int) ([]*common.SP, []*common.RPC, error) {
-	resultPC := []*common.SP{}
-	resultRPC := []*common.RPC{}
+func GetPCAndRPCs(ctURL string, startIndex int64, endIndex int64, numOfWorker int) ([]*common.SP, []*common.RPC, error) {
+	resultPCs := make([]*common.SP, 0)
+	resultRPCs := make([]*common.RPC, 0)
 
 	f, err := os.Open(ctURL)
 	if err != nil {
@@ -325,7 +325,7 @@ func GetPCAndRPC(ctURL string, startIndex int64, endIndex int64, numOfWorker int
 			//fmt.Println("invalid domain name: ", domainName)
 			continue
 		}
-		resultPC = append(resultPC, &common.SP{
+		resultPCs = append(resultPCs, &common.SP{
 			PolicyObjectBase: common.PolicyObjectBase{
 				RawSubject: domainName,
 			},
@@ -333,18 +333,16 @@ func GetPCAndRPC(ctURL string, startIndex int64, endIndex int64, numOfWorker int
 			CASignature: generateRandomBytes(),
 		})
 
-		resultRPC = append(resultRPC, &common.RPC{
-			PolicyObjectBase: common.PolicyObjectBase{
-				RawSubject: domainName,
-			},
-			NotBefore: time.Now(),
-		})
+		rpc := &common.RPC{}
+		rpc.RawSubject = domainName
+		rpc.NotBefore = time.Now()
+		resultRPCs = append(resultRPCs, rpc)
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, nil, fmt.Errorf("GetPCAndRPC | scanner.Err | %w", err)
 	}
 
-	return resultPC, resultRPC, nil
+	return resultPCs, resultRPCs, nil
 }
 
 func generateRandomBytes() []byte {
