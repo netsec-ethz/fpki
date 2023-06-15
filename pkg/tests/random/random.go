@@ -33,7 +33,7 @@ func RandomX509Cert(t tests.T, domain string) *ctx509.Certificate {
 	}
 }
 
-func BuildTestRandomPolicyHierarchy(t tests.T, domainName string) []common.PolicyObject {
+func BuildTestRandomPolicyHierarchy(t tests.T, domainName string) []common.PolicyDocument {
 	// Create one RPC and one SP for that name.
 	rpc := RandomRPC(t)
 	rpc.RawSubject = domainName
@@ -55,7 +55,7 @@ func BuildTestRandomPolicyHierarchy(t tests.T, domainName string) []common.Polic
 	require.NoError(t, err)
 	sp.RawJSON = data
 
-	return []common.PolicyObject{rpc, sp}
+	return []common.PolicyDocument{rpc, sp}
 }
 
 // BuildTestRandomCertHierarchy returns the certificates, chains, and names for two mock certificate

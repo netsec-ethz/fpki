@@ -159,13 +159,13 @@ func LoadCertsAndChainsFromCSV(
 
 // LoadPoliciesFromRaw can load RPCs, SPs, RCSRs, PCRevocations, SPRTs, and PSRs from their
 // serialized form.
-func LoadPoliciesFromRaw(b []byte) ([]common.PolicyObject, error) {
+func LoadPoliciesFromRaw(b []byte) ([]common.PolicyDocument, error) {
 	obj, err := common.FromJSON(b)
 	if err != nil {
 		return nil, err
 	}
 	// The returned object should be of type list.
-	pols, err := ToTypedSlice[common.PolicyObject](obj)
+	pols, err := ToTypedSlice[common.PolicyDocument](obj)
 	if err != nil {
 		return nil, err
 	}
