@@ -147,7 +147,7 @@ func RandomSPRT(t tests.T) *common.SPRT {
 func RandomSP(t tests.T) *common.SP {
 	return common.NewSP(
 		"domainname.com",
-		common.Policy{
+		common.DomainPolicy{
 			TrustedCA: []string{"ca1", "ca2"},
 		},
 		RandomTimeWithoutMonotonic(),
@@ -166,7 +166,7 @@ func RandomSP(t tests.T) *common.SP {
 func RandomPSR(t tests.T) *common.PSR {
 	return common.NewPSR(
 		"domain_name.com",
-		common.Policy{
+		common.DomainPolicy{
 			TrustedCA:         []string{"one CA", "another CA"},
 			AllowedSubdomains: []string{"sub1.com", "sub2.com"},
 		},

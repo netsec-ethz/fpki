@@ -127,11 +127,11 @@ func main() {
 		logErrAndQuit(fmt.Errorf("rpcs num error"))
 	}
 
-	policy1 := common.Policy{
+	policy1 := common.DomainPolicy{
 		TrustedCA: []string{"swiss CA"},
 	}
 
-	policy2 := common.Policy{
+	policy2 := common.DomainPolicy{
 		TrustedCA: []string{"US CA"},
 	}
 

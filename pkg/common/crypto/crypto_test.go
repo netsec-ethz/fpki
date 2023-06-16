@@ -129,7 +129,7 @@ func TestIssuanceOfSP(t *testing.T) {
 	// -------------------------------------
 	psr := common.NewPSR(
 		"test_SP",
-		common.Policy{},
+		common.DomainPolicy{},
 		time.Now(),
 		nil,
 	)
