@@ -5,6 +5,7 @@ import (
 	"time"
 )
 
+// RCSR is a root certificate signing request.
 type RCSR struct {
 	PolicyObjectBase
 	Version            int                `json:",omitempty"`
@@ -14,6 +15,14 @@ type RCSR struct {
 	SignatureAlgorithm SignatureAlgorithm `json:",omitempty"`
 	PRCSignature       []byte             `json:",omitempty"`
 	Signature          []byte             `json:",omitempty"`
+}
+
+// PSR is a Policy Signing Request.
+type PSR struct {
+	SubjectRaw        string       `json:",omitempty"`
+	Policy            DomainPolicy `json:",omitempty"`
+	TimeStamp         time.Time    `json:",omitempty"`
+	RootCertSignature []byte       `json:",omitempty"`
 }
 
 func NewRCSR(
@@ -41,12 +50,16 @@ func NewRCSR(
 	}
 }
 
-// PSR is a Policy Signing Request.
-type PSR struct {
-	SubjectRaw        string       `json:",omitempty"`
-	Policy            DomainPolicy `json:",omitempty"`
-	TimeStamp         time.Time    `json:",omitempty"`
-	RootCertSignature []byte       `json:",omitempty"`
+func (rcsr *RCSR) Equal(rcsr_ *RCSR) bool {
+	return true &&
+		rcsr.RawSubject == rcsr_.RawSubject &&
+		rcsr.Version == rcsr_.Version &&
+		rcsr.TimeStamp.Equal(rcsr_.TimeStamp) &&
+		rcsr.PublicKeyAlgorithm == rcsr_.PublicKeyAlgorithm &&
+		bytes.Equal(rcsr.PublicKey, rcsr_.PublicKey) &&
+		rcsr.SignatureAlgorithm == rcsr_.SignatureAlgorithm &&
+		bytes.Equal(rcsr.PRCSignature, rcsr_.PRCSignature) &&
+		bytes.Equal(rcsr.Signature, rcsr_.Signature)
 }
 
 func NewPSR(
@@ -62,16 +75,4 @@ func NewPSR(
 		TimeStamp:         TimeStamp,
 		RootCertSignature: RootCertSignature,
 	}
-}
-
-func (rcsr *RCSR) Equal(rcsr_ *RCSR) bool {
-	return true &&
-		rcsr.RawSubject == rcsr_.RawSubject &&
-		rcsr.Version == rcsr_.Version &&
-		rcsr.TimeStamp.Equal(rcsr_.TimeStamp) &&
-		rcsr.PublicKeyAlgorithm == rcsr_.PublicKeyAlgorithm &&
-		bytes.Equal(rcsr.PublicKey, rcsr_.PublicKey) &&
-		rcsr.SignatureAlgorithm == rcsr_.SignatureAlgorithm &&
-		bytes.Equal(rcsr.PRCSignature, rcsr_.PRCSignature) &&
-		bytes.Equal(rcsr.Signature, rcsr_.Signature)
 }
