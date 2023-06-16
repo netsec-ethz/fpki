@@ -19,6 +19,12 @@ type SPT struct {
 	Signature       []byte    `json:",omitempty"`
 }
 
+// SPRT is a signed policy revocation timestamp.
+type SPRT struct {
+	SPT
+	Reason int `json:",omitempty"`
+}
+
 func NewSPT(
 	Subject string,
 	Version int,
@@ -48,19 +54,6 @@ func NewSPT(
 	}
 }
 
-// SPRT is a signed policy revocation timestamp.
-type SPRT struct {
-	SPT
-	Reason int `json:",omitempty"`
-}
-
-func NewSPRT(SPT *SPT, Reason int) *SPRT {
-	return &SPRT{
-		SPT:    *SPT,
-		Reason: Reason,
-	}
-}
-
 func (s SPT) Equal(o SPT) bool {
 	return true &&
 		s.Version == o.Version &&
@@ -73,6 +66,13 @@ func (s SPT) Equal(o SPT) bool {
 		bytes.Equal(s.PoI, o.PoI) &&
 		s.STHSerialNumber == o.STHSerialNumber &&
 		bytes.Equal(s.Signature, o.Signature)
+}
+
+func NewSPRT(SPT *SPT, Reason int) *SPRT {
+	return &SPRT{
+		SPT:    *SPT,
+		Reason: Reason,
+	}
 }
 
 func (sprt *SPRT) Equal(sprt_ *SPRT) bool {
