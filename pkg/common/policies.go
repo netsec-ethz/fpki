@@ -97,18 +97,18 @@ func NewPCRevocation(subject string) *PCRevocation {
 // Signed Policy
 type SP struct {
 	PolicyObjectBase
-	Policies          Policy    `json:",omitempty"`
-	TimeStamp         time.Time `json:",omitempty"`
-	CAName            string    `json:",omitempty"`
-	SerialNumber      int       `json:",omitempty"`
-	CASignature       []byte    `json:",omitempty"`
-	RootCertSignature []byte    `json:",omitempty"`
-	SPTs              []SPT     `json:",omitempty"`
+	Policies          DomainPolicy `json:",omitempty"`
+	TimeStamp         time.Time    `json:",omitempty"`
+	CAName            string       `json:",omitempty"`
+	SerialNumber      int          `json:",omitempty"`
+	CASignature       []byte       `json:",omitempty"`
+	RootCertSignature []byte       `json:",omitempty"`
+	SPTs              []SPT        `json:",omitempty"`
 }
 
 func NewSP(
 	Subject string,
-	Policies Policy,
+	Policies DomainPolicy,
 	TimeStamp time.Time,
 	CAName string,
 	SerialNumber int,
@@ -131,8 +131,8 @@ func NewSP(
 	}
 }
 
-// Policy is a domain policy.
-type Policy struct {
+// DomainPolicy is a domain policy.
+type DomainPolicy struct {
 	TrustedCA         []string `json:",omitempty"`
 	AllowedSubdomains []string `json:",omitempty"`
 }
@@ -166,7 +166,7 @@ func (rpc *RPC) Equal(rpc_ *RPC) bool {
 		equalSPTs(rpc.SPTs, rpc_.SPTs)
 }
 
-func (s Policy) Equal(o Policy) bool {
+func (s DomainPolicy) Equal(o DomainPolicy) bool {
 	if len(s.TrustedCA) != len(o.TrustedCA) {
 		return false
 	}

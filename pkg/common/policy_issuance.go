@@ -43,15 +43,15 @@ func NewRCSR(
 
 // PSR is a Policy Signing Request.
 type PSR struct {
-	SubjectRaw        string    `json:",omitempty"`
-	Policy            Policy    `json:",omitempty"`
-	TimeStamp         time.Time `json:",omitempty"`
-	RootCertSignature []byte    `json:",omitempty"`
+	SubjectRaw        string       `json:",omitempty"`
+	Policy            DomainPolicy `json:",omitempty"`
+	TimeStamp         time.Time    `json:",omitempty"`
+	RootCertSignature []byte       `json:",omitempty"`
 }
 
 func NewPSR(
 	Subject string,
-	Policy Policy,
+	Policy DomainPolicy,
 	TimeStamp time.Time,
 	RootCertSignature []byte,
 ) *PSR {
