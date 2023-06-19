@@ -10,23 +10,19 @@ type MarshallableDocument interface {
 // for a domain, such as RPC, RCSR, SPT, SPRT, SP, PSR or Policy.
 type PolicyPart interface {
 	MarshallableDocument
-	Version() int
-	Issuer() string
 }
 
 // PolicyPartBase is the common type to all policy documents.
 type PolicyPartBase struct {
-	RawJSON    []byte `json:"-"` // omit from JSON (un)marshaling
-	RawVersion int    `json:"Version,omitempty"`
-	RawIssuer  string `json:"Issuer,omitempty"`
+	RawJSON []byte `json:"-"` // omit from JSON (un)marshaling
+	Version int    `json:",omitempty"`
+	Issuer  string `json:",omitempty"`
 }
 
-func (o PolicyPartBase) Raw() []byte    { return o.RawJSON }
-func (o PolicyPartBase) Version() int   { return o.RawVersion }
-func (o PolicyPartBase) Issuer() string { return o.RawIssuer }
+func (o PolicyPartBase) Raw() []byte { return o.RawJSON }
 
 func (o PolicyPartBase) Equal(x PolicyPartBase) bool {
 	// Ignore the RawJSON component, use just the regular fields.
-	return o.RawVersion == x.RawVersion &&
-		o.RawIssuer == x.RawIssuer
+	return o.Version == x.Version &&
+		o.Issuer == x.Issuer
 }

@@ -37,7 +37,7 @@ func BuildTestRandomPolicyHierarchy(t tests.T, domainName string) []common.Polic
 	// Create one RPC and one SP for that name.
 	rpc := RandomRPC(t)
 	rpc.RawSubject = domainName
-	rpc.RawIssuer = "c0.com"
+	rpc.Issuer = "c0.com"
 
 	data, err := common.ToJSON(rpc)
 	require.NoError(t, err)
