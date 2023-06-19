@@ -80,8 +80,8 @@ func NewRPC(
 	return &RPC{
 		PolicyCertificateBase: PolicyCertificateBase{
 			PolicyPartBase: PolicyPartBase{
-				RawVersion: Version,
-				RawIssuer:  issuer,
+				Version: Version,
+				Issuer:  issuer,
 			},
 			RawSubject: Subject,
 		},
@@ -126,7 +126,7 @@ func NewSP(
 	return &SP{
 		PolicyCertificateBase: PolicyCertificateBase{
 			PolicyPartBase: PolicyPartBase{
-				RawIssuer: issuer,
+				Issuer: issuer,
 			},
 			RawSubject: Subject,
 		},

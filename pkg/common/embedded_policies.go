@@ -47,8 +47,8 @@ func NewSPT(
 	return &SPT{
 		EmbeddedPolicyBase: EmbeddedPolicyBase{
 			PolicyPartBase: PolicyPartBase{
-				RawVersion: Version,
-				RawIssuer:  issuer,
+				Version: Version,
+				Issuer:  issuer,
 			},
 		},
 		LogID:           LogID,

@@ -54,7 +54,7 @@ func NewRCSR(
 	return &RCSR{
 		PolicyIssuerBase: PolicyIssuerBase{
 			PolicyPartBase: PolicyPartBase{
-				RawVersion: Version,
+				Version: Version,
 			},
 			RawSubject: Subject,
 		},

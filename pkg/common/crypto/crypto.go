@@ -114,7 +114,7 @@ func RCSRGenerateRPC(rcsr *common.RCSR, notBefore time.Time, serialNumber int,
 	rpc := common.NewRPC(
 		rcsr.RawSubject,
 		serialNumber,
-		rcsr.Version(),
+		rcsr.Version,
 		rcsr.PublicKeyAlgorithm,
 		rcsr.PublicKey,
 		notBefore,
