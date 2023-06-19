@@ -79,9 +79,11 @@ func (do *DomainOwner) GeneratePSR(domainName string, policy common.DomainPolicy
 	}
 
 	psr := &common.PSR{
-		SubjectRaw: domainName,
-		Policy:     policy,
-		TimeStamp:  time.Now(),
+		PolicyIssuerBase: common.PolicyIssuerBase{
+			RawSubject: domainName,
+		},
+		Policy:    policy,
+		TimeStamp: time.Now(),
 	}
 
 	err := crypto.DomainOwnerSignPSR(rpcKeyPair, psr)

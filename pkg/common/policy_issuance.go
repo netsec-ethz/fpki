@@ -5,10 +5,25 @@ import (
 	"time"
 )
 
+type PolicyIssuer interface {
+	PolicyPart
+	Subject() string
+}
+
+type PolicyIssuerBase struct {
+	PolicyPartBase
+	RawSubject string `json:"Subject,omitempty"`
+}
+
+func (c PolicyIssuerBase) Subject() string { return c.RawSubject }
+func (c PolicyIssuerBase) Equal(x PolicyIssuerBase) bool {
+	return c.PolicyPartBase.Equal(x.PolicyPartBase) &&
+		c.RawSubject == x.RawSubject
+}
+
 // RCSR is a root certificate signing request.
 type RCSR struct {
-	PolicyObjectBase
-	Version            int                `json:",omitempty"`
+	PolicyIssuerBase
 	TimeStamp          time.Time          `json:",omitempty"`
 	PublicKeyAlgorithm PublicKeyAlgorithm `json:",omitempty"`
 	PublicKey          []byte             `json:",omitempty"`
@@ -19,7 +34,7 @@ type RCSR struct {
 
 // PSR is a Policy Signing Request.
 type PSR struct {
-	SubjectRaw        string       `json:",omitempty"`
+	PolicyIssuerBase
 	Policy            DomainPolicy `json:",omitempty"`
 	TimeStamp         time.Time    `json:",omitempty"`
 	RootCertSignature []byte       `json:",omitempty"`
@@ -37,10 +52,12 @@ func NewRCSR(
 ) *RCSR {
 
 	return &RCSR{
-		PolicyObjectBase: PolicyObjectBase{
+		PolicyIssuerBase: PolicyIssuerBase{
+			PolicyPartBase: PolicyPartBase{
+				RawVersion: Version,
+			},
 			RawSubject: Subject,
 		},
-		Version:            Version,
 		TimeStamp:          TimeStamp,
 		PublicKeyAlgorithm: PublicKeyAlgo,
 		PublicKey:          PublicKey,
@@ -51,9 +68,7 @@ func NewRCSR(
 }
 
 func (rcsr *RCSR) Equal(rcsr_ *RCSR) bool {
-	return true &&
-		rcsr.RawSubject == rcsr_.RawSubject &&
-		rcsr.Version == rcsr_.Version &&
+	return rcsr.PolicyIssuerBase.Equal(rcsr.PolicyIssuerBase) &&
 		rcsr.TimeStamp.Equal(rcsr_.TimeStamp) &&
 		rcsr.PublicKeyAlgorithm == rcsr_.PublicKeyAlgorithm &&
 		bytes.Equal(rcsr.PublicKey, rcsr_.PublicKey) &&
@@ -70,7 +85,9 @@ func NewPSR(
 ) *PSR {
 
 	return &PSR{
-		SubjectRaw:        Subject,
+		PolicyIssuerBase: PolicyIssuerBase{
+			RawSubject: Subject,
+		},
 		Policy:            Policy,
 		TimeStamp:         TimeStamp,
 		RootCertSignature: RootCertSignature,

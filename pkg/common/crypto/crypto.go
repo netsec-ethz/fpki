@@ -114,7 +114,7 @@ func RCSRGenerateRPC(rcsr *common.RCSR, notBefore time.Time, serialNumber int,
 	rpc := common.NewRPC(
 		rcsr.RawSubject,
 		serialNumber,
-		rcsr.Version,
+		rcsr.Version(),
 		rcsr.PublicKeyAlgorithm,
 		rcsr.PublicKey,
 		notBefore,
@@ -205,7 +205,7 @@ func CASignSP(psr *common.PSR, caPrivKey *rsa.PrivateKey, caName string, serialN
 	*common.SP, error) {
 
 	sp := common.NewSP(
-		psr.SubjectRaw,
+		psr.RawSubject,
 		psr.Policy,
 		time.Now(),
 		caName,

@@ -325,13 +325,17 @@ func GetPCAndRPCs(ctURL string, startIndex int64, endIndex int64, numOfWorker in
 			//fmt.Println("invalid domain name: ", domainName)
 			continue
 		}
-		resultPCs = append(resultPCs, &common.SP{
-			PolicyObjectBase: common.PolicyObjectBase{
-				RawSubject: domainName,
-			},
-			TimeStamp:   time.Now(),
-			CASignature: generateRandomBytes(),
-		})
+
+		resultPCs = append(resultPCs, common.NewSP(
+			domainName,
+			common.DomainPolicy{},
+			time.Now(),
+			"", // CA name
+			0,  // serial number
+			generateRandomBytes(),
+			nil, // root cert signature
+			nil, // SPTs
+		))
 
 		rpc := &common.RPC{}
 		rpc.RawSubject = domainName

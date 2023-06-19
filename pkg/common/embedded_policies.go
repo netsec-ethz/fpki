@@ -5,10 +5,24 @@ import (
 	"time"
 )
 
+type EmbeddedPolicyBase struct {
+	PolicyPartBase
+}
+
+func (p EmbeddedPolicyBase) Equal(o EmbeddedPolicyBase) bool {
+	return p.PolicyPartBase.Equal(o.PolicyPartBase)
+}
+
+// DomainPolicy is a domain policy that specifies what is or not acceptable for a domain.
+type DomainPolicy struct {
+	EmbeddedPolicyBase
+	TrustedCA         []string `json:",omitempty"`
+	AllowedSubdomains []string `json:",omitempty"`
+}
+
 // SPT is a signed policy timestamp.
 type SPT struct {
-	PolicyObjectBase
-	Version         int       `json:",omitempty"`
+	EmbeddedPolicyBase
 	CAName          string    `json:",omitempty"`
 	LogID           int       `json:",omitempty"`
 	CertType        uint8     `json:",omitempty"`
@@ -25,6 +39,12 @@ type SPRT struct {
 	Reason int `json:",omitempty"`
 }
 
+func (s DomainPolicy) Equal(o DomainPolicy) bool {
+	return s.EmbeddedPolicyBase.Equal(o.EmbeddedPolicyBase) &&
+		equalStringSlices(s.TrustedCA, o.TrustedCA) &&
+		equalStringSlices(s.AllowedSubdomains, o.AllowedSubdomains)
+}
+
 func NewSPT(
 	Subject string,
 	Version int,
@@ -39,10 +59,11 @@ func NewSPT(
 ) *SPT {
 
 	return &SPT{
-		PolicyObjectBase: PolicyObjectBase{
-			RawSubject: Subject,
+		EmbeddedPolicyBase: EmbeddedPolicyBase{
+			PolicyPartBase: PolicyPartBase{
+				RawVersion: Version,
+			},
 		},
-		Version:         Version,
 		CAName:          CAName,
 		LogID:           LogID,
 		CertType:        CertType,
@@ -54,18 +75,16 @@ func NewSPT(
 	}
 }
 
-func (s SPT) Equal(o SPT) bool {
-	return true &&
-		s.Version == o.Version &&
-		s.RawSubject == o.RawSubject &&
-		s.CAName == o.CAName &&
-		s.LogID == o.LogID &&
-		s.CertType == o.CertType &&
-		s.AddedTS.Equal(o.AddedTS) &&
-		bytes.Equal(s.STH, o.STH) &&
-		bytes.Equal(s.PoI, o.PoI) &&
-		s.STHSerialNumber == o.STHSerialNumber &&
-		bytes.Equal(s.Signature, o.Signature)
+func (s SPT) Equal(x SPT) bool {
+	return s.EmbeddedPolicyBase.Equal(x.EmbeddedPolicyBase) &&
+		s.CAName == x.CAName &&
+		s.LogID == x.LogID &&
+		s.CertType == x.CertType &&
+		s.AddedTS.Equal(x.AddedTS) &&
+		bytes.Equal(s.STH, x.STH) &&
+		bytes.Equal(s.PoI, x.PoI) &&
+		s.STHSerialNumber == x.STHSerialNumber &&
+		bytes.Equal(s.Signature, x.Signature)
 }
 
 func NewSPRT(SPT *SPT, Reason int) *SPRT {
@@ -75,7 +94,19 @@ func NewSPRT(SPT *SPT, Reason int) *SPRT {
 	}
 }
 
-func (sprt *SPRT) Equal(sprt_ *SPRT) bool {
-	return sprt.SPT.Equal(sprt_.SPT) &&
-		sprt.Reason == sprt_.Reason
+func (sprt SPRT) Equal(x SPRT) bool {
+	return sprt.SPT.Equal(x.SPT) &&
+		sprt.Reason == x.Reason
+}
+
+func equalStringSlices(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

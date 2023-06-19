@@ -12,7 +12,7 @@ import (
 
 type serializableObjectBase struct {
 	O       any  // actual object to Marshal/Unmarshal
-	skipRaw bool // flag controlling JSON copying into PolicyObjectBase.Raw
+	skipRaw bool // flag controlling JSON copying into PolicyPartBase.Raw
 }
 
 func ToJSON(obj any) ([]byte, error) {
@@ -36,7 +36,7 @@ func FromJSON(data []byte, opts ...FromJSONModifier) (any, error) {
 type FromJSONModifier func(*serializableObjectBase)
 
 // WithSkipCopyJSONIntoPolicyObjects avoids copying the raw JSON into each one of the
-// objects that aggregate a PolicyObjectBase (RPC, SP, etc).
+// objects that aggregate a PolicyPartBase (RPC, SP, etc).
 func WithSkipCopyJSONIntoPolicyObjects(o *serializableObjectBase) {
 	o.skipRaw = true
 }
@@ -138,18 +138,18 @@ func (o *serializableObjectBase) UnmarshalJSON(data []byte) error {
 
 		// If we should copy JSON to Raw:
 		if shouldCopyJSON {
-			// Find out if the object is a pointer to a PolicyObjectBase like structure.
-			base := reflect.Indirect(reflect.ValueOf(obj)).FieldByName("PolicyObjectBase")
+			// Find out if the object is a pointer to a PolicyPartBase like structure.
+			base := reflect.Indirect(reflect.ValueOf(obj)).FieldByName("PolicyPartBase")
 			if base != (reflect.Value{}) {
-				// It is a PolicyObjectBase like object. Check the Raw field (should always be true).
+				// It is a PolicyPartBase like object. Check the Raw field (should always be true).
 				if raw := base.FieldByName("RawJSON"); raw != (reflect.Value{}) {
 					// Set its value to the JSON data.
 					raw.Set(reflect.ValueOf(data))
 				} else {
 					// This should never happen, and the next line should ensure it:
-					_ = PolicyObjectBase{}.RawJSON
+					_ = PolicyPartBase{}.RawJSON
 					// But terminate the control flow anyways with a panic.
-					panic("logic error: structure PolicyObjectBase has lost its Raw member")
+					panic("logic error: structure PolicyPartBase has lost its Raw member")
 				}
 			}
 		}
