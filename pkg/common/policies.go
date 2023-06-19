@@ -5,11 +5,28 @@ import (
 	"time"
 )
 
+// PolicyCertificate is any policy document that can be exchanged among mapservers, CT log servers,
+// and others.
+type PolicyCertificate interface {
+	PolicyPart
+	Subject() string
+}
+
+type PolicyCertificateBase struct {
+	PolicyPartBase
+	RawSubject string `json:"Subject,omitempty"`
+}
+
+func (o PolicyCertificateBase) Subject() string { return o.RawSubject }
+func (p PolicyCertificateBase) Equal(x PolicyCertificateBase) bool {
+	return p.PolicyPartBase.Equal(x.PolicyPartBase) &&
+		p.RawSubject == x.RawSubject
+}
+
 // RPC is a Root Policy Certificate.
 type RPC struct {
-	PolicyObjectBase
+	PolicyCertificateBase
 	SerialNumber       int                `json:",omitempty"`
-	Version            int                `json:",omitempty"`
 	PublicKeyAlgorithm PublicKeyAlgorithm `json:",omitempty"`
 	PublicKey          []byte             `json:",omitempty"`
 	NotBefore          time.Time          `json:",omitempty"`
@@ -24,7 +41,7 @@ type RPC struct {
 
 // SP is a Signed Policy.
 type SP struct {
-	PolicyObjectBase
+	PolicyCertificateBase
 	Policies          DomainPolicy `json:",omitempty"`
 	TimeStamp         time.Time    `json:",omitempty"`
 	CAName            string       `json:",omitempty"`
@@ -34,15 +51,9 @@ type SP struct {
 	SPTs              []SPT        `json:",omitempty"`
 }
 
-// DomainPolicy is a domain policy that specifies what is or not acceptable for a domain.
-type DomainPolicy struct {
-	TrustedCA         []string `json:",omitempty"`
-	AllowedSubdomains []string `json:",omitempty"`
-}
-
 // PCRevocation is for now empty.
 type PCRevocation struct {
-	PolicyObjectBase
+	PolicyCertificateBase
 	// TODO(juagargi) define the revocation.
 }
 
@@ -63,11 +74,13 @@ func NewRPC(
 ) *RPC {
 
 	return &RPC{
-		PolicyObjectBase: PolicyObjectBase{
+		PolicyCertificateBase: PolicyCertificateBase{
+			PolicyPartBase: PolicyPartBase{
+				RawVersion: Version,
+			},
 			RawSubject: Subject,
 		},
 		SerialNumber:       SerialNumber,
-		Version:            Version,
 		PublicKeyAlgorithm: PublicKeyAlgorithm,
 		PublicKey:          PublicKey,
 		NotBefore:          NotBefore,
@@ -81,26 +94,24 @@ func NewRPC(
 	}
 }
 
-func (rpc *RPC) Equal(rpc_ *RPC) bool {
-	return true &&
-		rpc.SerialNumber == rpc_.SerialNumber &&
-		rpc.RawSubject == rpc_.RawSubject &&
-		rpc.Version == rpc_.Version &&
-		rpc.PublicKeyAlgorithm == rpc_.PublicKeyAlgorithm &&
-		bytes.Equal(rpc.PublicKey, rpc_.PublicKey) &&
-		rpc.NotBefore.Equal(rpc_.NotBefore) &&
-		rpc.NotAfter.Equal(rpc_.NotAfter) &&
-		rpc.CAName == rpc_.CAName &&
-		rpc.SignatureAlgorithm == rpc_.SignatureAlgorithm &&
-		rpc.TimeStamp.Equal(rpc_.TimeStamp) &&
-		bytes.Equal(rpc.PRCSignature, rpc_.PRCSignature) &&
-		bytes.Equal(rpc.CASignature, rpc_.CASignature) &&
-		equalSPTs(rpc.SPTs, rpc_.SPTs)
+func (rpc RPC) Equal(x RPC) bool {
+	return rpc.PolicyCertificateBase.Equal(x.PolicyCertificateBase) &&
+		rpc.SerialNumber == x.SerialNumber &&
+		rpc.PublicKeyAlgorithm == x.PublicKeyAlgorithm &&
+		bytes.Equal(rpc.PublicKey, x.PublicKey) &&
+		rpc.NotBefore.Equal(x.NotBefore) &&
+		rpc.NotAfter.Equal(x.NotAfter) &&
+		rpc.CAName == x.CAName &&
+		rpc.SignatureAlgorithm == x.SignatureAlgorithm &&
+		rpc.TimeStamp.Equal(x.TimeStamp) &&
+		bytes.Equal(rpc.PRCSignature, x.PRCSignature) &&
+		bytes.Equal(rpc.CASignature, x.CASignature) &&
+		equalSPTs(rpc.SPTs, x.SPTs)
 }
 
 func NewSP(
 	Subject string,
-	Policies DomainPolicy,
+	Policy DomainPolicy,
 	TimeStamp time.Time,
 	CAName string,
 	SerialNumber int,
@@ -110,10 +121,11 @@ func NewSP(
 ) *SP {
 
 	return &SP{
-		PolicyObjectBase: PolicyObjectBase{
-			RawSubject: Subject,
+		PolicyCertificateBase: PolicyCertificateBase{
+			PolicyPartBase: PolicyPartBase{},
+			RawSubject:     Subject,
 		},
-		Policies:          Policies,
+		Policies:          Policy,
 		TimeStamp:         TimeStamp,
 		CAName:            CAName,
 		SerialNumber:      SerialNumber,
@@ -124,9 +136,8 @@ func NewSP(
 }
 
 func (s SP) Equal(o SP) bool {
-	return true &&
+	return s.PolicyCertificateBase.Equal(o.PolicyCertificateBase) &&
 		s.TimeStamp.Equal(o.TimeStamp) &&
-		s.RawSubject == o.RawSubject &&
 		s.CAName == o.CAName &&
 		s.SerialNumber == o.SerialNumber &&
 		bytes.Equal(s.CASignature, o.CASignature) &&
@@ -135,21 +146,9 @@ func (s SP) Equal(o SP) bool {
 		equalSPTs(s.SPTs, o.SPTs)
 }
 
-func (s DomainPolicy) Equal(o DomainPolicy) bool {
-	if len(s.TrustedCA) != len(o.TrustedCA) {
-		return false
-	}
-	for i, v := range s.TrustedCA {
-		if v != o.TrustedCA[i] {
-			return false
-		}
-	}
-	return true
-}
-
 func NewPCRevocation(subject string) *PCRevocation {
 	return &PCRevocation{
-		PolicyObjectBase{
+		PolicyCertificateBase: PolicyCertificateBase{
 			RawSubject: subject,
 		},
 	}

@@ -73,7 +73,7 @@ func (pca *PCA) SignAndLogSP(psr *common.PSR) error {
 }
 
 func (pca *PCA) findRPCAndVerifyPSR(psr *common.PSR) error {
-	rpc, ok := pca.validRPCsByDomains[psr.SubjectRaw]
+	rpc, ok := pca.validRPCsByDomains[psr.Subject()]
 	if !ok {
 		return fmt.Errorf("findRPCAndVerifyPSR | validRPCsByDomains | no valid rpc at this moment")
 	}

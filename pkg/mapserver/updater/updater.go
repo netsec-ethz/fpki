@@ -133,7 +133,7 @@ func (mapUpdater *MapUpdater) updateRPCAndPC(
 func UpdateWithOverwrite(ctx context.Context, conn db.Conn, domainNames [][]string,
 	certIDs, parentCertIDs []*common.SHA256Output,
 	certs []*ctx509.Certificate, certExpirations []*time.Time,
-	policies []common.PolicyDocument,
+	policies []common.PolicyCertificate,
 ) error {
 
 	// Insert all specified certificates.
@@ -165,7 +165,7 @@ func UpdateWithOverwrite(ctx context.Context, conn db.Conn, domainNames [][]stri
 func UpdateWithKeepExisting(ctx context.Context, conn db.Conn, domainNames [][]string,
 	certIDs, parentCertIDs []*common.SHA256Output,
 	certs []*ctx509.Certificate, certExpirations []*time.Time,
-	policies []common.PolicyDocument,
+	policies []common.PolicyCertificate,
 ) error {
 
 	// First check which certificates are already present in the DB.

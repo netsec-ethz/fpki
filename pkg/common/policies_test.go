@@ -38,10 +38,10 @@ func TestEqual(t *testing.T) {
 	require.False(t, spt2.Equal(spt1))
 
 	sprt := random.RandomSPRT(t)
-	require.True(t, sprt.Equal(sprt))
+	require.True(t, sprt.Equal(*sprt))
 
 	rpc := random.RandomRPC(t)
-	require.True(t, rpc.Equal(rpc))
+	require.True(t, rpc.Equal(*rpc))
 }
 
 // TestJsonReadWrite: RPC -> file -> RPC, then RPC.Equal(RPC)
@@ -60,7 +60,7 @@ func TestJsonReadWrite(t *testing.T) {
 	rpc1, err := common.JsonFileToRPC(tempFile)
 	require.NoError(t, err, "Json File To RPC error")
 
-	require.True(t, rpc.Equal(rpc1), "Json error")
+	require.True(t, rpc.Equal(*rpc1), "Json error")
 }
 
 func randomTrillianProof(t tests.T) *trillian.Proof {

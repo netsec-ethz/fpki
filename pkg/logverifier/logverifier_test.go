@@ -28,7 +28,7 @@ func TestVerifyInclusionByHash(t *testing.T) {
 	// Create a mock STH with the correct root hash to pass the test.
 	sth := &types.LogRootV1{
 		TreeSize:       2,
-		RootHash:       tests.MustDecodeBase64(t, "/Pk2HUaMxp2JDmKrEw8H/vqhjs3xsUcU2JUDaDD+bDE="),
+		RootHash:       tests.MustDecodeBase64(t, "Rv16YWSSJWdqqQTccjyPPBSjyJCxiTN8XU0APhbtqFE="),
 		TimestampNanos: 1661986742112252000,
 		Revision:       0,
 		Metadata:       []byte{},
@@ -84,7 +84,7 @@ func TestCheckRPC(t *testing.T) {
 	// Mock a STH with the right root hash.
 	sth := &types.LogRootV1{
 		TreeSize:       2,
-		RootHash:       tests.MustDecodeBase64(t, "QxOQbyfff8Hi5UWqpLC0abhJzpQC3a+6kMgD5nepfCA="),
+		RootHash:       tests.MustDecodeBase64(t, "OhHDUl3nXT2aBWQcY/ZDULXFXlZHNhLtt0qewB1pMao="),
 		TimestampNanos: 1661986742112252000,
 		Revision:       0,
 		Metadata:       []byte{},
