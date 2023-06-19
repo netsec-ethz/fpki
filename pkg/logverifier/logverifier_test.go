@@ -28,7 +28,7 @@ func TestVerifyInclusionByHash(t *testing.T) {
 	// Create a mock STH with the correct root hash to pass the test.
 	sth := &types.LogRootV1{
 		TreeSize:       2,
-		RootHash:       tests.MustDecodeBase64(t, "Rv16YWSSJWdqqQTccjyPPBSjyJCxiTN8XU0APhbtqFE="),
+		RootHash:       tests.MustDecodeBase64(t, "m5Lwb1nDco/+mrAdAQnue4WIne67qRACok/ESYmCsZ8="),
 		TimestampNanos: 1661986742112252000,
 		Revision:       0,
 		Metadata:       []byte{},
@@ -84,7 +84,7 @@ func TestCheckRPC(t *testing.T) {
 	// Mock a STH with the right root hash.
 	sth := &types.LogRootV1{
 		TreeSize:       2,
-		RootHash:       tests.MustDecodeBase64(t, "OhHDUl3nXT2aBWQcY/ZDULXFXlZHNhLtt0qewB1pMao="),
+		RootHash:       tests.MustDecodeBase64(t, "0ePUVBOu4WOgAo1pW+JMUCGUVUWaK/6C7JqLJt9XWk4="),
 		TimestampNanos: 1661986742112252000,
 		Revision:       0,
 		Metadata:       []byte{},
@@ -125,7 +125,7 @@ func TestCheckSP(t *testing.T) {
 	// Mock a STH with the right root hash.
 	sth := &types.LogRootV1{
 		TreeSize:       2,
-		RootHash:       tests.MustDecodeBase64(t, "p/zmpyI3xc064LO9NvXi99BqQoCQPO7GeMgzrBlAUKM="),
+		RootHash:       tests.MustDecodeBase64(t, "iQ+VNmSKh0lxvWHqQ/lqUB/17DkP/67rW9yAwhtMiwg="),
 		TimestampNanos: 1661986742112252000,
 		Revision:       0,
 		Metadata:       []byte{},

@@ -129,14 +129,14 @@ func (pca *PCA) ReceiveSPTFromPolicyLog() error {
 
 func (pca *PCA) OutputRPCAndSP() error {
 	for domain, rpc := range pca.validRPCsByDomains {
-		err := common.ToJSONFile(rpc, pca.outputPath+"/"+domain+"_"+rpc.CAName+"_"+"rpc")
+		err := common.ToJSONFile(rpc, pca.outputPath+"/"+domain+"_"+rpc.Issuer()+"_"+"rpc")
 		if err != nil {
 			return fmt.Errorf("OutputRPCAndSP | JsonStructToFile | %w", err)
 		}
 	}
 
 	for domain, rpc := range pca.validSPsByDomains {
-		err := common.ToJSONFile(rpc, pca.outputPath+"/"+domain+"_"+rpc.CAName+"_"+"sp")
+		err := common.ToJSONFile(rpc, pca.outputPath+"/"+domain+"_"+rpc.Issuer()+"_"+"sp")
 		if err != nil {
 			return fmt.Errorf("OutputRPCAndSP | JsonStructToFile | %w", err)
 		}

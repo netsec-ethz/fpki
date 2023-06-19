@@ -11,18 +11,22 @@ type MarshallableDocument interface {
 type PolicyPart interface {
 	MarshallableDocument
 	Version() int
+	Issuer() string
 }
 
 // PolicyPartBase is the common type to all policy documents.
 type PolicyPartBase struct {
 	RawJSON    []byte `json:"-"` // omit from JSON (un)marshaling
 	RawVersion int    `json:"Version,omitempty"`
+	RawIssuer  string `json:"Issuer,omitempty"`
 }
 
-func (o PolicyPartBase) Raw() []byte  { return o.RawJSON }
-func (o PolicyPartBase) Version() int { return o.RawVersion }
+func (o PolicyPartBase) Raw() []byte    { return o.RawJSON }
+func (o PolicyPartBase) Version() int   { return o.RawVersion }
+func (o PolicyPartBase) Issuer() string { return o.RawIssuer }
 
 func (o PolicyPartBase) Equal(x PolicyPartBase) bool {
 	// Ignore the RawJSON component, use just the regular fields.
-	return o.RawVersion == x.RawVersion
+	return o.RawVersion == x.RawVersion &&
+		o.RawIssuer == x.RawIssuer
 }

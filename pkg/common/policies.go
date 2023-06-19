@@ -31,7 +31,6 @@ type RPC struct {
 	PublicKey          []byte             `json:",omitempty"`
 	NotBefore          time.Time          `json:",omitempty"`
 	NotAfter           time.Time          `json:",omitempty"`
-	CAName             string             `json:",omitempty"`
 	SignatureAlgorithm SignatureAlgorithm `json:",omitempty"`
 	TimeStamp          time.Time          `json:",omitempty"`
 	PRCSignature       []byte             `json:",omitempty"`
@@ -44,11 +43,16 @@ type SP struct {
 	PolicyCertificateBase
 	Policies          DomainPolicy `json:",omitempty"`
 	TimeStamp         time.Time    `json:",omitempty"`
-	CAName            string       `json:",omitempty"`
 	SerialNumber      int          `json:",omitempty"`
 	CASignature       []byte       `json:",omitempty"`
 	RootCertSignature []byte       `json:",omitempty"`
 	SPTs              []SPT        `json:",omitempty"`
+}
+
+// DomainPolicy is a domain policy that specifies what is or not acceptable for a domain.
+type DomainPolicy struct {
+	TrustedCA         []string `json:",omitempty"`
+	AllowedSubdomains []string `json:",omitempty"`
 }
 
 // PCRevocation is for now empty.
@@ -65,7 +69,7 @@ func NewRPC(
 	PublicKey []byte,
 	NotBefore time.Time,
 	NotAfter time.Time,
-	CAName string,
+	issuer string,
 	SignatureAlgorithm SignatureAlgorithm,
 	TimeStamp time.Time,
 	PRCSignature []byte,
@@ -77,6 +81,7 @@ func NewRPC(
 		PolicyCertificateBase: PolicyCertificateBase{
 			PolicyPartBase: PolicyPartBase{
 				RawVersion: Version,
+				RawIssuer:  issuer,
 			},
 			RawSubject: Subject,
 		},
@@ -85,7 +90,6 @@ func NewRPC(
 		PublicKey:          PublicKey,
 		NotBefore:          NotBefore,
 		NotAfter:           NotAfter,
-		CAName:             CAName,
 		SignatureAlgorithm: SignatureAlgorithm,
 		TimeStamp:          TimeStamp,
 		PRCSignature:       PRCSignature,
@@ -101,7 +105,6 @@ func (rpc RPC) Equal(x RPC) bool {
 		bytes.Equal(rpc.PublicKey, x.PublicKey) &&
 		rpc.NotBefore.Equal(x.NotBefore) &&
 		rpc.NotAfter.Equal(x.NotAfter) &&
-		rpc.CAName == x.CAName &&
 		rpc.SignatureAlgorithm == x.SignatureAlgorithm &&
 		rpc.TimeStamp.Equal(x.TimeStamp) &&
 		bytes.Equal(rpc.PRCSignature, x.PRCSignature) &&
@@ -113,7 +116,7 @@ func NewSP(
 	Subject string,
 	Policy DomainPolicy,
 	TimeStamp time.Time,
-	CAName string,
+	issuer string,
 	SerialNumber int,
 	CASignature []byte,
 	RootCertSignature []byte,
@@ -122,12 +125,13 @@ func NewSP(
 
 	return &SP{
 		PolicyCertificateBase: PolicyCertificateBase{
-			PolicyPartBase: PolicyPartBase{},
-			RawSubject:     Subject,
+			PolicyPartBase: PolicyPartBase{
+				RawIssuer: issuer,
+			},
+			RawSubject: Subject,
 		},
 		Policies:          Policy,
 		TimeStamp:         TimeStamp,
-		CAName:            CAName,
 		SerialNumber:      SerialNumber,
 		CASignature:       CASignature,
 		RootCertSignature: RootCertSignature,
@@ -138,12 +142,17 @@ func NewSP(
 func (s SP) Equal(o SP) bool {
 	return s.PolicyCertificateBase.Equal(o.PolicyCertificateBase) &&
 		s.TimeStamp.Equal(o.TimeStamp) &&
-		s.CAName == o.CAName &&
 		s.SerialNumber == o.SerialNumber &&
 		bytes.Equal(s.CASignature, o.CASignature) &&
 		bytes.Equal(s.RootCertSignature, o.RootCertSignature) &&
 		s.Policies.Equal(o.Policies) &&
 		equalSPTs(s.SPTs, o.SPTs)
+}
+
+func (s DomainPolicy) Equal(o DomainPolicy) bool {
+	return true &&
+		equalStringSlices(s.TrustedCA, o.TrustedCA) &&
+		equalStringSlices(s.AllowedSubdomains, o.AllowedSubdomains)
 }
 
 func NewPCRevocation(subject string) *PCRevocation {
@@ -160,6 +169,18 @@ func equalSPTs(a, b []SPT) bool {
 	}
 	for i := range a {
 		if !a[i].Equal(b[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func equalStringSlices(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
 			return false
 		}
 	}
