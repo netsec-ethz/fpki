@@ -8,17 +8,20 @@ import (
 type PolicyIssuer interface {
 	PolicyPart
 	Subject() string
+	SerialNumber() int
 }
 
 type PolicyIssuerBase struct {
 	PolicyPartBase
-	RawSubject string `json:"Subject,omitempty"`
+	RawSubject      string `json:"Subject,omitempty"`
+	RawSerialNumber int    `json:"SerialNumber,omitempty"`
 }
 
-func (c PolicyIssuerBase) Subject() string { return c.RawSubject }
-func (c PolicyIssuerBase) Equal(x PolicyIssuerBase) bool {
-	return c.PolicyPartBase.Equal(x.PolicyPartBase) &&
-		c.RawSubject == x.RawSubject
+func (p PolicyIssuerBase) Subject() string { return p.RawSubject }
+func (p PolicyIssuerBase) Equal(x PolicyIssuerBase) bool {
+	return p.PolicyPartBase.Equal(x.PolicyPartBase) &&
+		p.RawSubject == x.RawSubject &&
+		p.RawSerialNumber == x.RawSerialNumber
 }
 
 // RCSR is a root certificate signing request.
