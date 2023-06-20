@@ -64,7 +64,7 @@ func (pca *PCA) SignAndLogSP(psr *common.PSR) error {
 
 	pca.preSPByDomains[spHash] = sp
 
-	err = pca.sendSPToPolicyLog(sp, strconv.Itoa(sp.SerialNumber))
+	err = pca.sendSPToPolicyLog(sp, strconv.Itoa(sp.SerialNumber()))
 	if err != nil {
 		return fmt.Errorf("SignAndLogPSR | sendSPToPolicyLog | %w", err)
 	}

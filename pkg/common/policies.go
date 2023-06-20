@@ -10,24 +10,27 @@ import (
 type PolicyCertificate interface {
 	PolicyPart
 	Subject() string
+	SerialNumber() int
 }
 
 type PolicyCertificateBase struct {
 	PolicyPartBase
-	RawSubject string `json:"Subject,omitempty"`
+	RawSubject      string `json:"Subject,omitempty"`
+	RawSerialNumber int    `json:"SerialNumber,omitempty"`
 }
 
-func (o PolicyCertificateBase) Subject() string { return o.RawSubject }
+func (o PolicyCertificateBase) Subject() string   { return o.RawSubject }
+func (o PolicyCertificateBase) SerialNumber() int { return o.RawSerialNumber }
 func (p PolicyCertificateBase) Equal(x PolicyCertificateBase) bool {
 	return p.PolicyPartBase.Equal(x.PolicyPartBase) &&
-		p.RawSubject == x.RawSubject
+		p.RawSubject == x.RawSubject &&
+		p.RawSerialNumber == x.RawSerialNumber
 }
 
 // RPC is a Root Policy Certificate.
 type RPC struct {
 	PolicyCertificateBase
 	IsCA               bool               `json:",omitempty"`
-	SerialNumber       int                `json:",omitempty"`
 	PublicKeyAlgorithm PublicKeyAlgorithm `json:",omitempty"`
 	PublicKey          []byte             `json:",omitempty"`
 	NotBefore          time.Time          `json:",omitempty"`
@@ -44,7 +47,6 @@ type SP struct {
 	PolicyCertificateBase
 	Policies          DomainPolicy `json:",omitempty"`
 	TimeStamp         time.Time    `json:",omitempty"`
-	SerialNumber      int          `json:",omitempty"`
 	CASignature       []byte       `json:",omitempty"`
 	RootCertSignature []byte       `json:",omitempty"`
 	SPTs              []SPT        `json:",omitempty"`
@@ -64,7 +66,7 @@ type PCRevocation struct {
 
 func NewRPC(
 	Subject string,
-	SerialNumber int,
+	serialNumber int,
 	Version int,
 	PublicKeyAlgorithm PublicKeyAlgorithm,
 	PublicKey []byte,
@@ -84,9 +86,9 @@ func NewRPC(
 				Version: Version,
 				Issuer:  issuer,
 			},
-			RawSubject: Subject,
+			RawSubject:      Subject,
+			RawSerialNumber: serialNumber,
 		},
-		SerialNumber:       SerialNumber,
 		PublicKeyAlgorithm: PublicKeyAlgorithm,
 		PublicKey:          PublicKey,
 		NotBefore:          NotBefore,
@@ -101,7 +103,6 @@ func NewRPC(
 
 func (rpc RPC) Equal(x RPC) bool {
 	return rpc.PolicyCertificateBase.Equal(x.PolicyCertificateBase) &&
-		rpc.SerialNumber == x.SerialNumber &&
 		rpc.PublicKeyAlgorithm == x.PublicKeyAlgorithm &&
 		bytes.Equal(rpc.PublicKey, x.PublicKey) &&
 		rpc.NotBefore.Equal(x.NotBefore) &&
@@ -118,7 +119,7 @@ func NewSP(
 	Policy DomainPolicy,
 	TimeStamp time.Time,
 	issuer string,
-	SerialNumber int,
+	serialNumber int,
 	CASignature []byte,
 	RootCertSignature []byte,
 	SPTs []SPT,
@@ -129,11 +130,11 @@ func NewSP(
 			PolicyPartBase: PolicyPartBase{
 				Issuer: issuer,
 			},
-			RawSubject: Subject,
+			RawSubject:      Subject,
+			RawSerialNumber: serialNumber,
 		},
 		Policies:          Policy,
 		TimeStamp:         TimeStamp,
-		SerialNumber:      SerialNumber,
 		CASignature:       CASignature,
 		RootCertSignature: RootCertSignature,
 		SPTs:              SPTs,
@@ -143,7 +144,6 @@ func NewSP(
 func (s SP) Equal(o SP) bool {
 	return s.PolicyCertificateBase.Equal(o.PolicyCertificateBase) &&
 		s.TimeStamp.Equal(o.TimeStamp) &&
-		s.SerialNumber == o.SerialNumber &&
 		bytes.Equal(s.CASignature, o.CASignature) &&
 		bytes.Equal(s.RootCertSignature, o.RootCertSignature) &&
 		s.Policies.Equal(o.Policies) &&

@@ -125,7 +125,7 @@ func TestCheckSP(t *testing.T) {
 	// Mock a STH with the right root hash.
 	sth := &types.LogRootV1{
 		TreeSize:       2,
-		RootHash:       tests.MustDecodeBase64(t, "iQ+VNmSKh0lxvWHqQ/lqUB/17DkP/67rW9yAwhtMiwg="),
+		RootHash:       tests.MustDecodeBase64(t, "SqfdrDwpR1nlUZ/MGvC0qKH48CYcAHRlBspg6l/G060="),
 		TimestampNanos: 1661986742112252000,
 		Revision:       0,
 		Metadata:       []byte{},
