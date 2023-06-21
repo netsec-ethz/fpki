@@ -5,9 +5,9 @@ import (
 	"time"
 )
 
-// PolicyCertificate is any policy document that can be exchanged among mapservers, CT log servers,
+// PolicyDocument is any policy document that can be exchanged among mapservers, CT log servers,
 // and others.
-type PolicyCertificate interface {
+type PolicyDocument interface {
 	PolicyPart
 	Subject() string
 	SerialNumber() int
@@ -27,8 +27,8 @@ func (p PolicyCertificateBase) Equal(x PolicyCertificateBase) bool {
 		p.RawSerialNumber == x.RawSerialNumber
 }
 
-// RPC is a Root Policy Certificate.
-type RPC struct {
+// PolicyCertificate is a Root Policy Certificate.
+type PolicyCertificate struct {
 	PolicyCertificateBase
 	IsIssuer           bool               `json:",omitempty"`
 	PublicKeyAlgorithm PublicKeyAlgorithm `json:",omitempty"`
@@ -39,21 +39,22 @@ type RPC struct {
 	TimeStamp          time.Time          `json:",omitempty"`
 	PRCSignature       []byte             `json:",omitempty"`
 	CASignature        []byte             `json:",omitempty"`
+	PolicyAttributes   []PolicyAttributes `json:",omitempty"`
 	SPTs               []SPT              `json:",omitempty"`
 }
 
 // SP is a Signed Policy.
 type SP struct {
 	PolicyCertificateBase
-	Policies          DomainPolicy `json:",omitempty"`
-	TimeStamp         time.Time    `json:",omitempty"`
-	CASignature       []byte       `json:",omitempty"`
-	RootCertSignature []byte       `json:",omitempty"`
-	SPTs              []SPT        `json:",omitempty"`
+	Policies          PolicyAttributes `json:",omitempty"`
+	TimeStamp         time.Time        `json:",omitempty"`
+	CASignature       []byte           `json:",omitempty"`
+	RootCertSignature []byte           `json:",omitempty"`
+	SPTs              []SPT            `json:",omitempty"`
 }
 
-// DomainPolicy is a domain policy that specifies what is or not acceptable for a domain.
-type DomainPolicy struct {
+// PolicyAttributes is a domain policy that specifies what is or not acceptable for a domain.
+type PolicyAttributes struct {
 	TrustedCA         []string `json:",omitempty"`
 	AllowedSubdomains []string `json:",omitempty"`
 }
@@ -64,8 +65,9 @@ type PCRevocation struct {
 	// TODO(juagargi) define the revocation.
 }
 
-func NewRPC(
+func NewPolicyCertificate(
 	Subject string,
+	policyAttributes []PolicyAttributes,
 	serialNumber int,
 	Version int,
 	PublicKeyAlgorithm PublicKeyAlgorithm,
@@ -78,9 +80,9 @@ func NewRPC(
 	PRCSignature []byte,
 	CASignature []byte,
 	SPTs []SPT,
-) *RPC {
+) *PolicyCertificate {
 
-	return &RPC{
+	return &PolicyCertificate{
 		PolicyCertificateBase: PolicyCertificateBase{
 			PolicyPartBase: PolicyPartBase{
 				Version: Version,
@@ -101,22 +103,9 @@ func NewRPC(
 	}
 }
 
-func (rpc RPC) Equal(x RPC) bool {
-	return rpc.PolicyCertificateBase.Equal(x.PolicyCertificateBase) &&
-		rpc.PublicKeyAlgorithm == x.PublicKeyAlgorithm &&
-		bytes.Equal(rpc.PublicKey, x.PublicKey) &&
-		rpc.NotBefore.Equal(x.NotBefore) &&
-		rpc.NotAfter.Equal(x.NotAfter) &&
-		rpc.SignatureAlgorithm == x.SignatureAlgorithm &&
-		rpc.TimeStamp.Equal(x.TimeStamp) &&
-		bytes.Equal(rpc.PRCSignature, x.PRCSignature) &&
-		bytes.Equal(rpc.CASignature, x.CASignature) &&
-		equalSPTs(rpc.SPTs, x.SPTs)
-}
-
 func NewSP(
 	Subject string,
-	Policy DomainPolicy,
+	Policy PolicyAttributes,
 	TimeStamp time.Time,
 	issuer string,
 	serialNumber int,
@@ -141,16 +130,30 @@ func NewSP(
 	}
 }
 
+func (c PolicyCertificate) Equal(x PolicyCertificate) bool {
+	return c.PolicyCertificateBase.Equal(x.PolicyCertificateBase) &&
+		c.PublicKeyAlgorithm == x.PublicKeyAlgorithm &&
+		bytes.Equal(c.PublicKey, x.PublicKey) &&
+		c.NotBefore.Equal(x.NotBefore) &&
+		c.NotAfter.Equal(x.NotAfter) &&
+		c.SignatureAlgorithm == x.SignatureAlgorithm &&
+		c.TimeStamp.Equal(x.TimeStamp) &&
+		bytes.Equal(c.PRCSignature, x.PRCSignature) &&
+		bytes.Equal(c.CASignature, x.CASignature) &&
+		equalSlices(c.SPTs, x.SPTs) &&
+		equalSlices(c.PolicyAttributes, x.PolicyAttributes)
+}
+
 func (s SP) Equal(o SP) bool {
 	return s.PolicyCertificateBase.Equal(o.PolicyCertificateBase) &&
 		s.TimeStamp.Equal(o.TimeStamp) &&
 		bytes.Equal(s.CASignature, o.CASignature) &&
 		bytes.Equal(s.RootCertSignature, o.RootCertSignature) &&
 		s.Policies.Equal(o.Policies) &&
-		equalSPTs(s.SPTs, o.SPTs)
+		equalSlices(s.SPTs, o.SPTs)
 }
 
-func (s DomainPolicy) Equal(o DomainPolicy) bool {
+func (s PolicyAttributes) Equal(o PolicyAttributes) bool {
 	return true &&
 		equalStringSlices(s.TrustedCA, o.TrustedCA) &&
 		equalStringSlices(s.AllowedSubdomains, o.AllowedSubdomains)
@@ -164,24 +167,30 @@ func NewPCRevocation(subject string) *PCRevocation {
 	}
 }
 
-func equalSPTs(a, b []SPT) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if !a[i].Equal(b[i]) {
-			return false
-		}
-	}
-	return true
-}
-
 func equalStringSlices(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
 	}
 	for i := range a {
 		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+type Equaler[T any] interface {
+	Equal(T) bool
+}
+
+// equalSlices (a,b) returns true iff the a and b slices contain exactly the same elements and in
+// the same order, using `Equal` on each element to compare them.
+func equalSlices[T Equaler[T]](a, b []T) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if !a[i].Equal(b[i]) {
 			return false
 		}
 	}

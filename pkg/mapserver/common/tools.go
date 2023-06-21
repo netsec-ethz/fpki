@@ -109,7 +109,7 @@ func (domainEntry *DomainEntry) AddPC(pc *common.SP) bool {
 }
 
 // AddRPC: add a Root Policy Certificate to a domain entry. Return whether the domain entry is updated.
-func (domainEntry *DomainEntry) AddRPC(rpc *common.RPC) bool {
+func (domainEntry *DomainEntry) AddRPC(rpc *common.PolicyCertificate) bool {
 	// caName := rpc.CAName
 	// isFound := false
 

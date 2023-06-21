@@ -87,7 +87,7 @@ func (pca *PCA) findRPCAndVerifyPSR(psr *common.PSR) error {
 }
 
 // save file to output dir
-func (pca *PCA) sendRPCToPolicyLog(rpc *common.RPC, fileName string) error {
+func (pca *PCA) sendRPCToPolicyLog(rpc *common.PolicyCertificate, fileName string) error {
 	return common.ToJSONFile(rpc, pca.policyLogExgPath+"/rpc/"+fileName)
 }
 

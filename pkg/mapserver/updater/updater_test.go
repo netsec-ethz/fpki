@@ -95,7 +95,7 @@ func TestUpdateWithKeepExisting(t *testing.T) {
 	}
 
 	// Check policy coalescing.
-	policiesPerName := make(map[string][]common.PolicyCertificate, len(pols))
+	policiesPerName := make(map[string][]common.PolicyDocument, len(pols))
 	for _, pol := range pols {
 		policiesPerName[pol.Subject()] = append(policiesPerName[pol.Subject()], pol)
 	}
@@ -161,7 +161,7 @@ func glueSortedIDsAndComputeItsID(IDs []*common.SHA256Output) ([]byte, *common.S
 	return gluedIDs, &id
 }
 
-func computeIDsOfPolicies(policies []common.PolicyCertificate) []*common.SHA256Output {
+func computeIDsOfPolicies(policies []common.PolicyDocument) []*common.SHA256Output {
 	set := make(map[common.SHA256Output]struct{}, len(policies))
 	for _, pol := range policies {
 		id := common.SHA256Hash32Bytes(pol.Raw())

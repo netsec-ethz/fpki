@@ -63,7 +63,7 @@ func (*serializableObjectBase) marshalJSON(obj any) (string, []byte, error) {
 	switch obj.(type) {
 	case RCSR:
 		T = "rcsr"
-	case RPC:
+	case PolicyCertificate:
 		T = "rpc"
 	case PCRevocation:
 		T = "rev"
@@ -196,7 +196,7 @@ func (o *serializableObjectBase) unmarshalTypeObject(T string, data []byte) (boo
 	case "rcsr":
 		obj, err = inflateObj[RCSR](data)
 	case "rpc":
-		obj, err = inflateObj[RPC](data)
+		obj, err = inflateObj[PolicyCertificate](data)
 	case "rev":
 		obj, err = inflateObj[PCRevocation](data)
 	case "sp":
@@ -249,13 +249,13 @@ func FromJSONFile(filePath string) (any, error) {
 }
 
 // JsonFileToRPC: read json files and unmarshal it to Root Policy Certificate
-func JsonFileToRPC(filePath string) (*RPC, error) {
+func JsonFileToRPC(filePath string) (*PolicyCertificate, error) {
 	po, err := FromJSONFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("JsonFileToRPC | Unmarshal | %w", err)
 	}
 
-	o, ok := po.(*RPC)
+	o, ok := po.(*PolicyCertificate)
 	if !ok {
 		return nil, fmt.Errorf("JsonFileToRPC | object is %T", po)
 	}

@@ -79,7 +79,7 @@ const (
 
 type UpdateCertificateFunction func(context.Context, db.Conn, [][]string,
 	[]*common.SHA256Output, []*common.SHA256Output, []*ctx509.Certificate, []*time.Time,
-	[]common.PolicyCertificate) error
+	[]common.PolicyDocument) error
 
 func NewCertProcessor(conn db.Conn, incoming chan *CertificateNode,
 	strategy CertificateUpdateStrategy) *CertificateProcessor {

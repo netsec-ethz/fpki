@@ -30,12 +30,12 @@ type PCA struct {
 	rsaKeyPair *rsa.PrivateKey
 
 	// store valid RPC (with SPT) in memory; Later replaced by data base
-	validRPCsByDomains map[string]*common.RPC
+	validRPCsByDomains map[string]*common.PolicyCertificate
 
 	validSPsByDomains map[string]*common.SP
 
 	// RPC without SPT; pre-certificate
-	preRPCByDomains map[string]*common.RPC
+	preRPCByDomains map[string]*common.PolicyCertificate
 
 	// RPC without SPT; pre-certificate
 	preSPByDomains map[string]*common.SP
@@ -65,9 +65,9 @@ func NewPCA(configPath string) (*PCA, error) {
 		return nil, fmt.Errorf("NewPCA | LoadRSAKeyPairFromFile | %w", err)
 	}
 	return &PCA{
-		validRPCsByDomains: make(map[string]*common.RPC),
+		validRPCsByDomains: make(map[string]*common.PolicyCertificate),
 		validSPsByDomains:  make(map[string]*common.SP),
-		preRPCByDomains:    make(map[string]*common.RPC),
+		preRPCByDomains:    make(map[string]*common.PolicyCertificate),
 		preSPByDomains:     make(map[string]*common.SP),
 		logVerifier:        logverifier.NewLogVerifier(nil),
 		caName:             config.CAName,
@@ -145,7 +145,7 @@ func (pca *PCA) OutputRPCAndSP() error {
 }
 
 // verify the SPT of the RPC.
-func (pca *PCA) verifySPTWithRPC(spt *common.SPT, rpc *common.RPC) error {
+func (pca *PCA) verifySPTWithRPC(spt *common.SPT, rpc *common.PolicyCertificate) error {
 	proofs, logRoot, err := getProofsAndLogRoot(spt)
 	if err != nil {
 		return fmt.Errorf("verifySPTWithRPC | parsePoIAndSTH | %w", err)
@@ -195,7 +195,7 @@ func (pca *PCA) increaseSerialNumber() {
 	pca.serialNumber = pca.serialNumber + 1
 }
 
-func (pca *PCA) ReturnValidRPC() map[string]*common.RPC {
+func (pca *PCA) ReturnValidRPC() map[string]*common.PolicyCertificate {
 	return pca.validRPCsByDomains
 }
 
