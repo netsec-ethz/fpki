@@ -18,7 +18,7 @@ func TestToTypedSlice(t *testing.T) {
 
 	// slice of *common.RPC
 	{
-		orig := []*common.RPC{
+		orig := []*common.PolicyCertificate{
 			{},
 			{},
 		}
@@ -28,7 +28,7 @@ func TestToTypedSlice(t *testing.T) {
 		for i, e := range orig {
 			s[i] = e
 		}
-		r, err := ToTypedSlice[*common.RPC](s)
+		r, err := ToTypedSlice[*common.PolicyCertificate](s)
 		require.NoError(t, err)
 		require.Equal(t, orig, r)
 	}
@@ -37,11 +37,11 @@ func TestToTypedSlice(t *testing.T) {
 func TestToType(t *testing.T) {
 	// *common.RPC
 	{
-		orig := &common.RPC{}
+		orig := &common.PolicyCertificate{}
 		orig.RawSubject = "a.com"
 		orig.Version = 1
 		e := any(orig)
-		r, err := ToType[*common.RPC](e)
+		r, err := ToType[*common.PolicyCertificate](e)
 		require.NoError(t, err)
 		require.Equal(t, orig, r)
 	}

@@ -101,7 +101,7 @@ func TestPolicyObjectBaseRaw(t *testing.T) {
 			obj:           random.RandomRPC(t),
 			rawElemsCount: 1,
 			getRawElemsFcn: func(obj any) [][]byte {
-				rpc := obj.(*common.RPC)
+				rpc := obj.(*common.PolicyCertificate)
 				return [][]byte{rpc.RawJSON}
 			},
 		},
@@ -131,7 +131,7 @@ func TestPolicyObjectBaseRaw(t *testing.T) {
 				l := obj.([]any)
 				return [][]byte{
 					l[0].(*common.SP).RawJSON,
-					l[1].(*common.RPC).RawJSON,
+					l[1].(*common.PolicyCertificate).RawJSON,
 				}
 			},
 		},

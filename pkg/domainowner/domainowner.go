@@ -72,7 +72,7 @@ func (do *DomainOwner) GenerateRCSR(domainName string, version int) (*common.RCS
 }
 
 // GeneratePSR: generate one psr for one specific domain.
-func (do *DomainOwner) GeneratePSR(domainName string, policy common.DomainPolicy) (*common.PSR, error) {
+func (do *DomainOwner) GeneratePSR(domainName string, policy common.PolicyAttributes) (*common.PSR, error) {
 	rpcKeyPair, ok := do.privKeyByDomainName[domainName]
 	if !ok {
 		return nil, fmt.Errorf("GeneratePSR | No valid RPC for domain %s", domainName)

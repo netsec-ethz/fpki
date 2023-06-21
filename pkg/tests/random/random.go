@@ -33,7 +33,7 @@ func RandomX509Cert(t tests.T, domain string) *ctx509.Certificate {
 	}
 }
 
-func BuildTestRandomPolicyHierarchy(t tests.T, domainName string) []common.PolicyCertificate {
+func BuildTestRandomPolicyHierarchy(t tests.T, domainName string) []common.PolicyDocument {
 	// Create one RPC and one SP for that name.
 	rpc := RandomRPC(t)
 	rpc.RawSubject = domainName
@@ -45,7 +45,7 @@ func BuildTestRandomPolicyHierarchy(t tests.T, domainName string) []common.Polic
 
 	sp := common.NewSP(
 		domainName,
-		common.DomainPolicy{},
+		common.PolicyAttributes{},
 		RandomTimeWithoutMonotonic(),
 		"c0.com",
 		0,                          // serial number
@@ -58,7 +58,7 @@ func BuildTestRandomPolicyHierarchy(t tests.T, domainName string) []common.Polic
 	require.NoError(t, err)
 	sp.RawJSON = data
 
-	return []common.PolicyCertificate{rpc, sp}
+	return []common.PolicyDocument{rpc, sp}
 }
 
 // BuildTestRandomCertHierarchy returns the certificates, chains, and names for two mock certificate
@@ -125,9 +125,10 @@ func RandomSPT(t tests.T) *common.SPT {
 	)
 }
 
-func RandomRPC(t tests.T) *common.RPC {
-	return common.NewRPC(
+func RandomRPC(t tests.T) *common.PolicyCertificate {
+	return common.NewPolicyCertificate(
 		"RPC subject",
+		nil, // policy attributes (empty for now)
 		rand.Intn(10),
 		rand.Intn(10),
 		common.RSA,
@@ -150,7 +151,7 @@ func RandomSPRT(t tests.T) *common.SPRT {
 func RandomSP(t tests.T) *common.SP {
 	return common.NewSP(
 		"domainname.com",
-		common.DomainPolicy{
+		common.PolicyAttributes{
 			TrustedCA: []string{"ca1", "ca2"},
 		},
 		RandomTimeWithoutMonotonic(),
@@ -169,7 +170,7 @@ func RandomSP(t tests.T) *common.SP {
 func RandomPSR(t tests.T) *common.PSR {
 	return common.NewPSR(
 		"domain_name.com",
-		common.DomainPolicy{
+		common.PolicyAttributes{
 			TrustedCA:         []string{"one CA", "another CA"},
 			AllowedSubdomains: []string{"sub1.com", "sub2.com"},
 		},

@@ -84,7 +84,7 @@ func RCSRVerifySignature(rcsr *common.RCSR) error {
 }
 
 // RCSRVerifyRPCSignature: verify the RCSR using RPC; verify the RPC signature
-func RCSRVerifyRPCSignature(rcsr *common.RCSR, rpc *common.RPC) error {
+func RCSRVerifyRPCSignature(rcsr *common.RCSR, rpc *common.PolicyCertificate) error {
 	// Serialize without signature:
 	sig := rcsr.Signature
 	rcsr.Signature = nil
@@ -109,10 +109,11 @@ func RCSRVerifyRPCSignature(rcsr *common.RCSR, rpc *common.RPC) error {
 
 // RCSRGenerateRPC: called by PCA. Sign the RCSR and generate RPC; SPT field is (should be) empty
 func RCSRGenerateRPC(rcsr *common.RCSR, notBefore time.Time, serialNumber int,
-	caPrivKey *rsa.PrivateKey, caName string) (*common.RPC, error) {
+	caPrivKey *rsa.PrivateKey, caName string) (*common.PolicyCertificate, error) {
 
-	rpc := common.NewRPC(
+	rpc := common.NewPolicyCertificate(
 		rcsr.RawSubject,
+		nil, // policy attributes
 		serialNumber,
 		rcsr.Version,
 		rcsr.PublicKeyAlgorithm,
@@ -141,7 +142,7 @@ func RCSRGenerateRPC(rcsr *common.RCSR, notBefore time.Time, serialNumber int,
 // ----------------------------------------------------------------------------------
 
 // RPCVerifyCASignature: used by domain owner, check whether CA signature is correct
-func RPCVerifyCASignature(caCert *ctx509.Certificate, rpc *common.RPC) error {
+func RPCVerifyCASignature(caCert *ctx509.Certificate, rpc *common.PolicyCertificate) error {
 	pubKey := caCert.PublicKey.(*rsa.PublicKey)
 
 	// Serialize without CA signature or SPTs:
@@ -176,7 +177,7 @@ func DomainOwnerSignPSR(domainOwnerPrivKey *rsa.PrivateKey, psr *common.PSR) err
 	return nil
 }
 
-func VerifyPSRUsingRPC(psr *common.PSR, rpc *common.RPC) error {
+func VerifyPSRUsingRPC(psr *common.PSR, rpc *common.PolicyCertificate) error {
 	// Serialize without signature:
 	sig := psr.RootCertSignature
 	psr.RootCertSignature = nil

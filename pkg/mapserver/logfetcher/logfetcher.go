@@ -306,9 +306,9 @@ func (f *LogFetcher) getRawEntries(
 
 // GetPCAndRPCs: get PC and RPC from url
 // TODO(yongzhe): currently just generate random PC and RPC using top 1k domain names
-func GetPCAndRPCs(ctURL string, startIndex int64, endIndex int64, numOfWorker int) ([]*common.SP, []*common.RPC, error) {
+func GetPCAndRPCs(ctURL string, startIndex int64, endIndex int64, numOfWorker int) ([]*common.SP, []*common.PolicyCertificate, error) {
 	resultPCs := make([]*common.SP, 0)
-	resultRPCs := make([]*common.RPC, 0)
+	resultRPCs := make([]*common.PolicyCertificate, 0)
 
 	f, err := os.Open(ctURL)
 	if err != nil {
@@ -328,7 +328,7 @@ func GetPCAndRPCs(ctURL string, startIndex int64, endIndex int64, numOfWorker in
 
 		resultPCs = append(resultPCs, common.NewSP(
 			domainName,
-			common.DomainPolicy{},
+			common.PolicyAttributes{},
 			time.Now(),
 			"", // CA name
 			0,  // serial number
@@ -337,7 +337,7 @@ func GetPCAndRPCs(ctURL string, startIndex int64, endIndex int64, numOfWorker in
 			nil, // SPTs
 		))
 
-		rpc := &common.RPC{}
+		rpc := &common.PolicyCertificate{}
 		rpc.RawSubject = domainName
 		rpc.NotBefore = time.Now()
 		resultRPCs = append(resultRPCs, rpc)

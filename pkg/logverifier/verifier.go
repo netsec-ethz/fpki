@@ -130,7 +130,7 @@ func (v *LogVerifier) VerifySP(sp *common.SP) error {
 	return nil
 }
 
-func (v *LogVerifier) VerifyRPC(rpc *common.RPC) error {
+func (v *LogVerifier) VerifyRPC(rpc *common.PolicyCertificate) error {
 	// Get the hash of the RPC without SPTs:
 	SPTs := rpc.SPTs
 	rpc.SPTs = []common.SPT{}

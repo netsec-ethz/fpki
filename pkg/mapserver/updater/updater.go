@@ -106,7 +106,7 @@ func (mapUpdater *MapUpdater) UpdateRPCAndPC(ctx context.Context, ctUrl string, 
 }
 
 // UpdateRPCAndPCLocally: update RPC and PC, given a rpc and sp. Currently just mock PC and RPC
-func (mapUpdater *MapUpdater) UpdateRPCAndPCLocally(ctx context.Context, spList []*common.SP, rpcList []*common.RPC) error {
+func (mapUpdater *MapUpdater) UpdateRPCAndPCLocally(ctx context.Context, spList []*common.SP, rpcList []*common.PolicyCertificate) error {
 	return mapUpdater.updateRPCAndPC(ctx, spList, rpcList)
 }
 
@@ -123,7 +123,7 @@ func (mapUpdater *MapUpdater) updateCerts(
 func (mapUpdater *MapUpdater) updateRPCAndPC(
 	ctx context.Context,
 	sps []*common.SP,
-	rpcs []*common.RPC,
+	rpcs []*common.PolicyCertificate,
 ) error {
 
 	// TODO(juagargi)
@@ -133,7 +133,7 @@ func (mapUpdater *MapUpdater) updateRPCAndPC(
 func UpdateWithOverwrite(ctx context.Context, conn db.Conn, domainNames [][]string,
 	certIDs, parentCertIDs []*common.SHA256Output,
 	certs []*ctx509.Certificate, certExpirations []*time.Time,
-	policies []common.PolicyCertificate,
+	policies []common.PolicyDocument,
 ) error {
 
 	// Insert all specified certificates.
@@ -165,7 +165,7 @@ func UpdateWithOverwrite(ctx context.Context, conn db.Conn, domainNames [][]stri
 func UpdateWithKeepExisting(ctx context.Context, conn db.Conn, domainNames [][]string,
 	certIDs, parentCertIDs []*common.SHA256Output,
 	certs []*ctx509.Certificate, certExpirations []*time.Time,
-	policies []common.PolicyCertificate,
+	policies []common.PolicyDocument,
 ) error {
 
 	// First check which certificates are already present in the DB.
