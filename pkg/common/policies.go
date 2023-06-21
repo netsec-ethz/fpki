@@ -30,7 +30,7 @@ func (p PolicyCertificateBase) Equal(x PolicyCertificateBase) bool {
 // RPC is a Root Policy Certificate.
 type RPC struct {
 	PolicyCertificateBase
-	IsCA               bool               `json:",omitempty"`
+	IsIssuer           bool               `json:",omitempty"`
 	PublicKeyAlgorithm PublicKeyAlgorithm `json:",omitempty"`
 	PublicKey          []byte             `json:",omitempty"`
 	NotBefore          time.Time          `json:",omitempty"`
