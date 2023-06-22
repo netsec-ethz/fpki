@@ -14,42 +14,28 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/tests/random"
 )
 
-var update = tests.UpdateGoldenFiles()
-
-func TestGenerateGoldenFiles(t *testing.T) {
-	// Update the JSON files in tests/testdata
-	if *update {
-		obj := []any{random.RandomSP(t), random.RandomSP(t)}
-		err := common.ToJSONFile(obj, "../../tests/testdata/2-SPs.json")
-		require.NoError(t, err)
-	}
-}
-
 // TestEqual: Equal funcs for every structure
 func TestEqual(t *testing.T) {
-	rcsr := random.RandomRCSR(t)
+	rcsr := random.RandomPolCertSignRequest(t)
 	require.True(t, rcsr.Equal(rcsr))
 
-	spt1 := *random.RandomSPT(t)
-	spt2 := *random.RandomSPT(t)
+	spt1 := *random.RandomSignedPolicyCertificateTimestamp(t)
+	spt2 := *random.RandomSignedPolicyCertificateTimestamp(t)
 	require.True(t, spt1.Equal(spt1))
 	require.True(t, spt2.Equal(spt2))
 	require.False(t, spt1.Equal(spt2))
 	require.False(t, spt2.Equal(spt1))
 
-	sprt := random.RandomSPRT(t)
-	require.True(t, sprt.Equal(*sprt))
-
-	rpc := random.RandomRPC(t)
+	rpc := random.RandomPolicyCertificate(t)
 	require.True(t, rpc.Equal(*rpc))
 }
 
 // TestJsonReadWrite: RPC -> file -> RPC, then RPC.Equal(RPC)
 func TestJsonReadWrite(t *testing.T) {
-	rpc := random.RandomRPC(t)
-	rpc.SPTs = []common.SPT{
-		*random.RandomSPT(t),
-		*random.RandomSPT(t),
+	rpc := random.RandomPolicyCertificate(t)
+	rpc.SPTs = []common.SignedPolicyCertificateTimestamp{
+		*random.RandomSignedPolicyCertificateTimestamp(t),
+		*random.RandomSignedPolicyCertificateTimestamp(t),
 	}
 
 	tempFile := path.Join(os.TempDir(), "rpctest.json")
@@ -57,7 +43,7 @@ func TestJsonReadWrite(t *testing.T) {
 	err := common.ToJSONFile(rpc, tempFile)
 	require.NoError(t, err, "Json Struct To File error")
 
-	rpc1, err := common.JsonFileToRPC(tempFile)
+	rpc1, err := common.JsonFileToPolicyCert(tempFile)
 	require.NoError(t, err, "Json File To RPC error")
 
 	require.True(t, rpc.Equal(*rpc1), "Json error")

@@ -29,16 +29,11 @@ type PCA struct {
 	// pca's signing rsa key pair; used to sign rcsr -> rpc
 	rsaKeyPair *rsa.PrivateKey
 
-	// store valid RPC (with SPT) in memory; Later replaced by data base
-	validRPCsByDomains map[string]*common.PolicyCertificate
+	// store valid Pol Cert (with server timestamps) in memory; Later replaced by data base
+	validPolCertsPerDomain map[string]*common.PolicyCertificate
 
-	validSPsByDomains map[string]*common.SP
-
-	// RPC without SPT; pre-certificate
-	preRPCByDomains map[string]*common.PolicyCertificate
-
-	// RPC without SPT; pre-certificate
-	preSPByDomains map[string]*common.SP
+	// Pol Cert without timestamps; pre-certificate
+	prePolCertsPerDomain map[string]*common.PolicyCertificate
 
 	policyLogExgPath string
 
@@ -65,24 +60,22 @@ func NewPCA(configPath string) (*PCA, error) {
 		return nil, fmt.Errorf("NewPCA | LoadRSAKeyPairFromFile | %w", err)
 	}
 	return &PCA{
-		validRPCsByDomains: make(map[string]*common.PolicyCertificate),
-		validSPsByDomains:  make(map[string]*common.SP),
-		preRPCByDomains:    make(map[string]*common.PolicyCertificate),
-		preSPByDomains:     make(map[string]*common.SP),
-		logVerifier:        logverifier.NewLogVerifier(nil),
-		caName:             config.CAName,
-		outputPath:         config.OutputPath,
-		policyLogExgPath:   config.PolicyLogExgPath,
-		rsaKeyPair:         keyPair,
+		validPolCertsPerDomain: make(map[string]*common.PolicyCertificate),
+		prePolCertsPerDomain:   make(map[string]*common.PolicyCertificate),
+		logVerifier:            logverifier.NewLogVerifier(nil),
+		caName:                 config.CAName,
+		outputPath:             config.OutputPath,
+		policyLogExgPath:       config.PolicyLogExgPath,
+		rsaKeyPair:             keyPair,
 	}, nil
 }
 
 // ReceiveSPTFromPolicyLog: When policy log returns SPT, this func will be called
 // this func will read the SPTs from the file, and process them
 func (pca *PCA) ReceiveSPTFromPolicyLog() error {
-	for k, v := range pca.preRPCByDomains {
+	for domainName, v := range pca.prePolCertsPerDomain {
 		// read the corresponding spt
-		spt, err := common.JsonFileToSPT(pca.policyLogExgPath + "/spt/" + k)
+		spt, err := common.JsonFileToSPT(pca.policyLogExgPath + "/spt/" + domainName)
 		if err != nil {
 			return fmt.Errorf("ReceiveSPTFromPolicyLog | JsonFileToSPT | %w", err)
 		}
@@ -90,62 +83,33 @@ func (pca *PCA) ReceiveSPTFromPolicyLog() error {
 		// verify the PoI, STH
 		err = pca.verifySPTWithRPC(spt, v)
 		if err == nil {
-			log.Printf("Get a new SPT for domain RPC: %s\n", k)
-			v.SPTs = []common.SPT{*spt}
+			log.Printf("Get a new SPT for domain RPC: %s\n", domainName)
+			v.SPTs = []common.SignedPolicyCertificateTimestamp{*spt}
 
 			// move the rpc from pre-rpc to valid-rpc
-			delete(pca.preRPCByDomains, k)
-			pca.validRPCsByDomains[v.RawSubject] = v
+			delete(pca.prePolCertsPerDomain, domainName)
+			pca.validPolCertsPerDomain[v.RawSubject] = v
 		} else {
 			return fmt.Errorf("Fail to verify one SPT RPC")
 		}
-		os.Remove(pca.policyLogExgPath + "/spt/" + k)
-	}
-
-	for k, v := range pca.preSPByDomains {
-		// read the corresponding spt
-		spt, err := common.JsonFileToSPT(pca.policyLogExgPath + "/spt/" + k)
-		if err != nil {
-			return fmt.Errorf("ReceiveSPTFromPolicyLog | JsonFileToSPT | %w", err)
-		}
-
-		// verify the PoI, STH
-		err = pca.verifySPTWithSP(spt, v)
-		if err == nil {
-			log.Printf("Get a new SPT for domain SP: %s\n", k)
-			v.SPTs = []common.SPT{*spt}
-
-			// move the rpc from pre-rpc to valid-rpc
-			delete(pca.preRPCByDomains, k)
-			pca.validSPsByDomains[v.RawSubject] = v
-		} else {
-			return fmt.Errorf("Fail to verify one SPT SP")
-		}
-		os.Remove(pca.policyLogExgPath + "/spt/" + k)
+		os.Remove(pca.policyLogExgPath + "/spt/" + domainName)
 	}
 
 	return nil
 }
 
-func (pca *PCA) OutputRPCAndSP() error {
-	for domain, rpc := range pca.validRPCsByDomains {
+func (pca *PCA) OutputPolicyCertificate() error {
+	for domain, rpc := range pca.validPolCertsPerDomain {
 		err := common.ToJSONFile(rpc, pca.outputPath+"/"+domain+"_"+rpc.Issuer+"_"+"rpc")
 		if err != nil {
-			return fmt.Errorf("OutputRPCAndSP | JsonStructToFile | %w", err)
-		}
-	}
-
-	for domain, rpc := range pca.validSPsByDomains {
-		err := common.ToJSONFile(rpc, pca.outputPath+"/"+domain+"_"+rpc.Issuer+"_"+"sp")
-		if err != nil {
-			return fmt.Errorf("OutputRPCAndSP | JsonStructToFile | %w", err)
+			return fmt.Errorf("OutputPolicyCertificate | JsonStructToFile | %w", err)
 		}
 	}
 	return nil
 }
 
 // verify the SPT of the RPC.
-func (pca *PCA) verifySPTWithRPC(spt *common.SPT, rpc *common.PolicyCertificate) error {
+func (pca *PCA) verifySPTWithRPC(spt *common.SignedPolicyCertificateTimestamp, rpc *common.PolicyCertificate) error {
 	proofs, logRoot, err := getProofsAndLogRoot(spt)
 	if err != nil {
 		return fmt.Errorf("verifySPTWithRPC | parsePoIAndSTH | %w", err)
@@ -167,40 +131,17 @@ func (pca *PCA) verifySPTWithRPC(spt *common.SPT, rpc *common.PolicyCertificate)
 	return nil
 }
 
-// verify the SPT of the RPC.
-func (pca *PCA) verifySPTWithSP(spt *common.SPT, sp *common.SP) error {
-	proofs, logRoot, err := getProofsAndLogRoot(spt)
-	if err != nil {
-		return fmt.Errorf("verifySPTWithSP | parsePoIAndSTH | %w", err)
-	}
-
-	// get leaf hash
-	spBytes, err := common.ToJSON(sp)
-	if err != nil {
-		return fmt.Errorf("verifySPT | Json_StructToBytes | %w", err)
-	}
-	leafHash := pca.logVerifier.HashLeaf(spBytes)
-
-	// verify the PoI
-	err = pca.logVerifier.VerifyInclusionByHash(logRoot, leafHash, proofs)
-	if err != nil {
-		return fmt.Errorf("verifySPT | VerifyInclusionByHash | %w", err)
-	}
-
-	return nil
-}
-
 // TODO(yongzhe): modify this to make sure unique SN
 func (pca *PCA) increaseSerialNumber() {
 	pca.serialNumber = pca.serialNumber + 1
 }
 
 func (pca *PCA) ReturnValidRPC() map[string]*common.PolicyCertificate {
-	return pca.validRPCsByDomains
+	return pca.validPolCertsPerDomain
 }
 
 // getProofsAndLogRoot return the proofs and root parsed from the PoI and STH in JSON.
-func getProofsAndLogRoot(spt *common.SPT) ([]*trillian.Proof, *types.LogRootV1, error) {
+func getProofsAndLogRoot(spt *common.SignedPolicyCertificateTimestamp) ([]*trillian.Proof, *types.LogRootV1, error) {
 	// Parse the PoI into []*trillian.Proof.
 	serializedProofs, err := common.FromJSON(spt.PoI)
 	if err != nil {

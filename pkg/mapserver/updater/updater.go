@@ -95,19 +95,14 @@ func (mapUpdater *MapUpdater) UpdateCertsLocally(ctx context.Context, certList [
 	return UpdateWithKeepExisting(ctx, mapUpdater.dbConn, names, IDs, parentIDs, certs, expirations, nil)
 }
 
-// UpdateRPCAndPC: update RPC and PC from url. Currently just mock PC and RPC
-func (mapUpdater *MapUpdater) UpdateRPCAndPC(ctx context.Context, ctUrl string, startIdx, endIdx int64) error {
+// UpdatePolicyCerts: update RPC and PC from url. Currently just mock PC and RPC
+func (mapUpdater *MapUpdater) UpdatePolicyCerts(ctx context.Context, ctUrl string, startIdx, endIdx int64) error {
 	// get PC and RPC first
-	pcList, rpcList, err := logfetcher.GetPCAndRPCs(ctUrl, startIdx, endIdx, 20)
+	rpcList, err := logfetcher.GetPCAndRPCs(ctUrl, startIdx, endIdx, 20)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | GetPCAndRPC | %w", err)
 	}
-	return mapUpdater.updateRPCAndPC(ctx, pcList, rpcList)
-}
-
-// UpdateRPCAndPCLocally: update RPC and PC, given a rpc and sp. Currently just mock PC and RPC
-func (mapUpdater *MapUpdater) UpdateRPCAndPCLocally(ctx context.Context, spList []*common.SP, rpcList []*common.PolicyCertificate) error {
-	return mapUpdater.updateRPCAndPC(ctx, spList, rpcList)
+	return mapUpdater.updatePolicyCerts(ctx, rpcList)
 }
 
 func (mapUpdater *MapUpdater) updateCerts(
@@ -120,9 +115,8 @@ func (mapUpdater *MapUpdater) updateCerts(
 	return nil
 }
 
-func (mapUpdater *MapUpdater) updateRPCAndPC(
+func (mapUpdater *MapUpdater) updatePolicyCerts(
 	ctx context.Context,
-	sps []*common.SP,
 	rpcs []*common.PolicyCertificate,
 ) error {
 

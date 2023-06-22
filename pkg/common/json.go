@@ -61,20 +61,16 @@ func (o serializableObjectBase) MarshalJSON() ([]byte, error) {
 func (*serializableObjectBase) marshalJSON(obj any) (string, []byte, error) {
 	var T string
 	switch obj.(type) {
-	case RCSR:
-		T = "rcsr"
+	case PolicyCertificateSigningRequest:
+		T = "pcsr"
 	case PolicyCertificate:
-		T = "rpc"
-	case PCRevocation:
-		T = "rev"
-	case SP:
-		T = "sp"
-	case SPT:
-		T = "spt"
-	case SPRT:
-		T = "sprt"
-	case PSR:
-		T = "psr"
+		T = "pc"
+	case SignedPolicyCertificateTimestamp:
+		T = "spct"
+	case PolicyCertificateRevocation:
+		T = "pcrev"
+	case SignedPolicyCertificateRevocationTimestamp:
+		T = "spcrevt"
 	case trillian.Proof:
 		T = "trillian.Proof"
 	case trilliantypes.LogRootV1:
@@ -193,20 +189,16 @@ func (o *serializableObjectBase) unmarshalTypeObject(T string, data []byte) (boo
 				list[i] = tmp.O
 			}
 		}
-	case "rcsr":
-		obj, err = inflateObj[RCSR](data)
-	case "rpc":
+	case "pcsr":
+		obj, err = inflateObj[PolicyCertificateSigningRequest](data)
+	case "pc":
 		obj, err = inflateObj[PolicyCertificate](data)
-	case "rev":
-		obj, err = inflateObj[PCRevocation](data)
-	case "sp":
-		obj, err = inflateObj[SP](data)
-	case "spt":
-		obj, err = inflateObj[SPT](data)
-	case "sprt":
-		obj, err = inflateObj[SPRT](data)
-	case "psr":
-		obj, err = inflateObj[PSR](data)
+	case "pcrev":
+		obj, err = inflateObj[PolicyCertificateRevocation](data)
+	case "spct":
+		obj, err = inflateObj[SignedPolicyCertificateTimestamp](data)
+	case "spcrevt":
+		obj, err = inflateObj[SignedPolicyCertificateRevocationTimestamp](data)
 	case "trillian.Proof":
 		obj, err = inflateObj[trillian.Proof](data)
 	case "logrootv1":
@@ -248,8 +240,8 @@ func FromJSONFile(filePath string) (any, error) {
 	return FromJSON(data)
 }
 
-// JsonFileToRPC: read json files and unmarshal it to Root Policy Certificate
-func JsonFileToRPC(filePath string) (*PolicyCertificate, error) {
+// JsonFileToPolicyCert: read json files and unmarshal it to Root Policy Certificate
+func JsonFileToPolicyCert(filePath string) (*PolicyCertificate, error) {
 	po, err := FromJSONFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("JsonFileToRPC | Unmarshal | %w", err)
@@ -263,17 +255,17 @@ func JsonFileToRPC(filePath string) (*PolicyCertificate, error) {
 }
 
 // JsonFileToSPT: read json files and unmarshal it to Signed Policy Timestamp
-func JsonFileToSPT(filePath string) (*SPT, error) {
+func JsonFileToSPT(filePath string) (*SignedPolicyCertificateTimestamp, error) {
 	po, err := FromJSONFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("JsonFileToSPT | Unmarshal | %w", err)
 	}
 
-	o, ok := po.(*SPT)
+	t, ok := po.(*SignedPolicyCertificateTimestamp)
 	if !ok {
 		return nil, fmt.Errorf("JsonFileToSPT | object is %T", po)
 	}
-	return o, nil
+	return t, nil
 }
 
 // JsonFileToProof: read json files and unmarshal it to trillian proof
@@ -302,18 +294,4 @@ func JsonFileToSTH(filePath string) (*trilliantypes.LogRootV1, error) {
 		return nil, fmt.Errorf("JsonFileToSTH | object is %T", po)
 	}
 	return o, nil
-}
-
-// JsonFileToSTH reads a json file and unmarshals it to a Signed Policy.
-func JsonFileToSP(filePath string) (*SP, error) {
-	po, err := FromJSONFile(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("JsonFileToSP | Unmarshal | %w", err)
-	}
-
-	o, ok := po.(*SP)
-	if !ok {
-		err = fmt.Errorf("JsonFileToSP | object is %T", po)
-	}
-	return o, err
 }

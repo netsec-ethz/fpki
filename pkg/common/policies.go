@@ -27,30 +27,24 @@ func (p PolicyCertificateBase) Equal(x PolicyCertificateBase) bool {
 		p.RawSerialNumber == x.RawSerialNumber
 }
 
-// PolicyCertificate is a Root Policy Certificate.
-type PolicyCertificate struct {
+type PolicyCertificateFields struct {
 	PolicyCertificateBase
-	IsIssuer           bool               `json:",omitempty"`
-	PublicKeyAlgorithm PublicKeyAlgorithm `json:",omitempty"`
-	PublicKey          []byte             `json:",omitempty"`
 	NotBefore          time.Time          `json:",omitempty"`
 	NotAfter           time.Time          `json:",omitempty"`
+	IsIssuer           bool               `json:",omitempty"`
+	PublicKey          []byte             `json:",omitempty"` // In PEM format
+	PublicKeyAlgorithm PublicKeyAlgorithm `json:",omitempty"`
 	SignatureAlgorithm SignatureAlgorithm `json:",omitempty"`
 	TimeStamp          time.Time          `json:",omitempty"`
-	PRCSignature       []byte             `json:",omitempty"`
-	CASignature        []byte             `json:",omitempty"`
 	PolicyAttributes   []PolicyAttributes `json:",omitempty"`
-	SPTs               []SPT              `json:",omitempty"`
+	OwnerSignature     []byte             `json:",omitempty"`
 }
 
-// SP is a Signed Policy.
-type SP struct {
-	PolicyCertificateBase
-	Policies          PolicyAttributes `json:",omitempty"`
-	TimeStamp         time.Time        `json:",omitempty"`
-	CASignature       []byte           `json:",omitempty"`
-	RootCertSignature []byte           `json:",omitempty"`
-	SPTs              []SPT            `json:",omitempty"`
+// PolicyCertificate is a Root Policy Certificate.
+type PolicyCertificate struct {
+	PolicyCertificateFields
+	IssuerSignature []byte                             `json:",omitempty"`
+	SPTs            []SignedPolicyCertificateTimestamp `json:",omitempty"`
 }
 
 // PolicyAttributes is a domain policy that specifies what is or not acceptable for a domain.
@@ -59,78 +53,55 @@ type PolicyAttributes struct {
 	AllowedSubdomains []string `json:",omitempty"`
 }
 
-// PCRevocation is for now empty.
-type PCRevocation struct {
+type PolicyCertificateRevocationFields struct {
 	PolicyCertificateBase
-	// TODO(juagargi) define the revocation.
+	TimeStamp      time.Time `json:",omitempty"`
+	OwnerSignature []byte    `json:",omitempty"`
 }
 
-func NewPolicyCertificate(
-	Subject string,
-	policyAttributes []PolicyAttributes,
-	serialNumber int,
-	Version int,
-	PublicKeyAlgorithm PublicKeyAlgorithm,
-	PublicKey []byte,
-	NotBefore time.Time,
-	NotAfter time.Time,
-	issuer string,
-	SignatureAlgorithm SignatureAlgorithm,
-	TimeStamp time.Time,
-	PRCSignature []byte,
-	CASignature []byte,
-	SPTs []SPT,
-) *PolicyCertificate {
+type PolicyCertificateRevocation struct {
+	PolicyCertificateRevocationFields
+	IssuerSignature []byte                                       `json:",omitempty"`
+	SPCRTs          []SignedPolicyCertificateRevocationTimestamp `json:",omitempty"`
+}
 
-	return &PolicyCertificate{
+func NewPolicyCertificateFields(
+	version int,
+	issuer string,
+	subject string,
+	serialNumber int,
+	notBefore time.Time,
+	notAfter time.Time,
+	isIssuer bool,
+	publicKey []byte,
+	publicKeyAlgorithm PublicKeyAlgorithm,
+	signatureAlgorithm SignatureAlgorithm,
+	timeStamp time.Time,
+	policyAttributes []PolicyAttributes,
+	ownerSignature []byte,
+) *PolicyCertificateFields {
+	return &PolicyCertificateFields{
 		PolicyCertificateBase: PolicyCertificateBase{
 			PolicyPartBase: PolicyPartBase{
-				Version: Version,
+				Version: version,
 				Issuer:  issuer,
 			},
-			RawSubject:      Subject,
+			RawSubject:      subject,
 			RawSerialNumber: serialNumber,
 		},
-		PublicKeyAlgorithm: PublicKeyAlgorithm,
-		PublicKey:          PublicKey,
-		NotBefore:          NotBefore,
-		NotAfter:           NotAfter,
-		SignatureAlgorithm: SignatureAlgorithm,
-		TimeStamp:          TimeStamp,
-		PRCSignature:       PRCSignature,
-		CASignature:        CASignature,
-		SPTs:               SPTs,
+		NotBefore:          notBefore,
+		NotAfter:           notAfter,
+		IsIssuer:           isIssuer,
+		PublicKey:          publicKey,
+		PublicKeyAlgorithm: publicKeyAlgorithm,
+		SignatureAlgorithm: signatureAlgorithm,
+		TimeStamp:          timeStamp,
+		PolicyAttributes:   policyAttributes,
+		OwnerSignature:     ownerSignature,
 	}
 }
 
-func NewSP(
-	Subject string,
-	Policy PolicyAttributes,
-	TimeStamp time.Time,
-	issuer string,
-	serialNumber int,
-	CASignature []byte,
-	RootCertSignature []byte,
-	SPTs []SPT,
-) *SP {
-
-	return &SP{
-		PolicyCertificateBase: PolicyCertificateBase{
-			PolicyPartBase: PolicyPartBase{
-				Issuer: issuer,
-			},
-			RawSubject:      Subject,
-			RawSerialNumber: serialNumber,
-		},
-		Policies:          Policy,
-		TimeStamp:         TimeStamp,
-		CASignature:       CASignature,
-		RootCertSignature: RootCertSignature,
-		SPTs:              SPTs,
-	}
-}
-
-func (c PolicyCertificate) Equal(x PolicyCertificate) bool {
+func (c PolicyCertificateFields) Equal(x PolicyCertificateFields) bool {
 	return c.PolicyCertificateBase.Equal(x.PolicyCertificateBase) &&
 		c.PublicKeyAlgorithm == x.PublicKeyAlgorithm &&
 		bytes.Equal(c.PublicKey, x.PublicKey) &&
@@ -138,19 +109,53 @@ func (c PolicyCertificate) Equal(x PolicyCertificate) bool {
 		c.NotAfter.Equal(x.NotAfter) &&
 		c.SignatureAlgorithm == x.SignatureAlgorithm &&
 		c.TimeStamp.Equal(x.TimeStamp) &&
-		bytes.Equal(c.PRCSignature, x.PRCSignature) &&
-		bytes.Equal(c.CASignature, x.CASignature) &&
-		equalSlices(c.SPTs, x.SPTs) &&
+		bytes.Equal(c.OwnerSignature, x.OwnerSignature) &&
 		equalSlices(c.PolicyAttributes, x.PolicyAttributes)
 }
 
-func (s SP) Equal(o SP) bool {
-	return s.PolicyCertificateBase.Equal(o.PolicyCertificateBase) &&
-		s.TimeStamp.Equal(o.TimeStamp) &&
-		bytes.Equal(s.CASignature, o.CASignature) &&
-		bytes.Equal(s.RootCertSignature, o.RootCertSignature) &&
-		s.Policies.Equal(o.Policies) &&
-		equalSlices(s.SPTs, o.SPTs)
+func NewPolicyCertificate(
+	version int,
+	issuer string,
+	subject string,
+	serialNumber int,
+	notBefore time.Time,
+	notAfter time.Time,
+	isIssuer bool,
+	publicKey []byte,
+	publicKeyAlgorithm PublicKeyAlgorithm,
+	signatureAlgorithm SignatureAlgorithm,
+	timeStamp time.Time,
+	policyAttributes []PolicyAttributes,
+	ownerSignature []byte,
+	issuerSignature []byte,
+	SPTs []SignedPolicyCertificateTimestamp,
+) *PolicyCertificate {
+
+	return &PolicyCertificate{
+		PolicyCertificateFields: *NewPolicyCertificateFields(
+			version,
+			issuer,
+			subject,
+			serialNumber,
+			notBefore,
+			notAfter,
+			isIssuer,
+			publicKey,
+			publicKeyAlgorithm,
+			signatureAlgorithm,
+			timeStamp,
+			policyAttributes,
+			ownerSignature,
+		),
+		IssuerSignature: issuerSignature,
+		SPTs:            SPTs,
+	}
+}
+
+func (c PolicyCertificate) Equal(x PolicyCertificate) bool {
+	return c.PolicyCertificateFields.Equal(x.PolicyCertificateFields) &&
+		bytes.Equal(c.IssuerSignature, x.IssuerSignature) &&
+		equalSlices(c.SPTs, x.SPTs)
 }
 
 func (s PolicyAttributes) Equal(o PolicyAttributes) bool {
@@ -159,12 +164,62 @@ func (s PolicyAttributes) Equal(o PolicyAttributes) bool {
 		equalStringSlices(s.AllowedSubdomains, o.AllowedSubdomains)
 }
 
-func NewPCRevocation(subject string) *PCRevocation {
-	return &PCRevocation{
+func NewPolicyCertificateRevocationFields(
+	version int,
+	issuer string,
+	subject string,
+	serialNumber int,
+	timeStamp time.Time,
+	ownerSignature []byte,
+) *PolicyCertificateRevocationFields {
+	return &PolicyCertificateRevocationFields{
 		PolicyCertificateBase: PolicyCertificateBase{
-			RawSubject: subject,
+			PolicyPartBase: PolicyPartBase{
+				Version: version,
+				Issuer:  issuer,
+			},
+			RawSubject:      subject,
+			RawSerialNumber: serialNumber,
 		},
+		TimeStamp:      timeStamp,
+		OwnerSignature: ownerSignature,
 	}
+}
+
+func (c PolicyCertificateRevocationFields) Equal(x PolicyCertificateRevocationFields) bool {
+	return c.PolicyCertificateBase.Equal(x.PolicyCertificateBase) &&
+		c.TimeStamp == x.TimeStamp &&
+		bytes.Equal(c.OwnerSignature, x.OwnerSignature)
+}
+
+func NewPolicyCertificateRevocation(
+	version int,
+	issuer string,
+	subject string,
+	serialNumber int,
+	timeStamp time.Time,
+	ownerSignature []byte,
+	issuerSignature []byte,
+	serverTimestamps []SignedPolicyCertificateRevocationTimestamp,
+) *PolicyCertificateRevocation {
+	return &PolicyCertificateRevocation{
+		PolicyCertificateRevocationFields: *NewPolicyCertificateRevocationFields(
+			version,
+			issuer,
+			subject,
+			serialNumber,
+			timeStamp,
+			ownerSignature,
+		),
+		IssuerSignature: issuerSignature,
+		SPCRTs:          serverTimestamps,
+	}
+}
+
+func (r PolicyCertificateRevocation) Equal(x PolicyCertificateRevocation) bool {
+	return r.PolicyCertificateRevocationFields.Equal(x.PolicyCertificateRevocationFields) &&
+		bytes.Equal(r.IssuerSignature, x.IssuerSignature) &&
+		equalSlices(r.SPCRTs, x.SPCRTs)
 }
 
 func equalStringSlices(a, b []string) bool {
