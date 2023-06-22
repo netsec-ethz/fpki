@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/rand"
-	"os"
 	"testing"
 	"time"
 
@@ -60,10 +59,7 @@ func TestUpdateWithKeepExisting(t *testing.T) {
 	}
 
 	// Ingest two mock policies.
-	data, err := os.ReadFile("../../../tests/testdata/2-SPs.json")
-	require.NoError(t, err)
-	pols, err := util.LoadPoliciesFromRaw(data)
-	require.NoError(t, err)
+	pols := random.BuildTestRandomPolicyHierarchy(t, "a-domain-name.thing")
 
 	// Update with certificates and policies.
 	t0 := time.Now()

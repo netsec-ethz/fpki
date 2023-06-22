@@ -1,98 +1,53 @@
 package common
 
 import (
-	"bytes"
 	"time"
 )
 
-type PolicyIssuer interface {
-	PolicyPart
-	Subject() string
-	SerialNumber() int
+// PolicyCertificateSigningRequest is a policy certificate signing request.
+type PolicyCertificateSigningRequest struct {
+	PolicyCertificateFields
 }
 
-type PolicyIssuerBase struct {
-	PolicyPartBase
-	RawSubject      string `json:"Subject,omitempty"`
-	RawSerialNumber int    `json:"SerialNumber,omitempty"`
+type PolicyCertificateRevocationSigningRequest struct {
+	Subject string `json:",omitemptyu"`
 }
 
-func (p PolicyIssuerBase) Subject() string { return p.RawSubject }
-func (p PolicyIssuerBase) Equal(x PolicyIssuerBase) bool {
-	return p.PolicyPartBase.Equal(x.PolicyPartBase) &&
-		p.RawSubject == x.RawSubject &&
-		p.RawSerialNumber == x.RawSerialNumber
-}
+func NewPolicyCertificateSigningRequest(
+	version int,
+	issuer string,
+	subject string,
+	serialNumber int,
+	notBefore time.Time,
+	notAfter time.Time,
+	isIssuer bool,
+	publicKey []byte,
+	publicKeyAlgorithm PublicKeyAlgorithm,
+	signatureAlgorithm SignatureAlgorithm,
+	timeStamp time.Time,
+	policyAttributes []PolicyAttributes,
+	ownerSignature []byte,
+) *PolicyCertificateSigningRequest {
 
-// RCSR is a root certificate signing request.
-type RCSR struct {
-	PolicyIssuerBase
-	TimeStamp          time.Time          `json:",omitempty"`
-	PublicKeyAlgorithm PublicKeyAlgorithm `json:",omitempty"`
-	PublicKey          []byte             `json:",omitempty"`
-	SignatureAlgorithm SignatureAlgorithm `json:",omitempty"`
-	PRCSignature       []byte             `json:",omitempty"`
-	Signature          []byte             `json:",omitempty"`
-}
-
-// PSR is a Policy Signing Request.
-type PSR struct {
-	PolicyIssuerBase
-	Policy            PolicyAttributes `json:",omitempty"`
-	TimeStamp         time.Time        `json:",omitempty"`
-	RootCertSignature []byte           `json:",omitempty"`
-}
-
-func NewRCSR(
-	Subject string,
-	Version int,
-	TimeStamp time.Time,
-	PublicKeyAlgo PublicKeyAlgorithm,
-	PublicKey []byte,
-	SignatureAlgo SignatureAlgorithm,
-	PRCSignature []byte,
-	Signature []byte,
-) *RCSR {
-
-	return &RCSR{
-		PolicyIssuerBase: PolicyIssuerBase{
-			PolicyPartBase: PolicyPartBase{
-				Version: Version,
-			},
-			RawSubject: Subject,
-		},
-		TimeStamp:          TimeStamp,
-		PublicKeyAlgorithm: PublicKeyAlgo,
-		PublicKey:          PublicKey,
-		SignatureAlgorithm: SignatureAlgo,
-		PRCSignature:       PRCSignature,
-		Signature:          Signature,
+	return &PolicyCertificateSigningRequest{
+		PolicyCertificateFields: *NewPolicyCertificateFields(
+			version,
+			issuer,
+			subject,
+			serialNumber,
+			notBefore,
+			notAfter,
+			isIssuer,
+			publicKey,
+			publicKeyAlgorithm,
+			signatureAlgorithm,
+			timeStamp,
+			policyAttributes,
+			ownerSignature,
+		),
 	}
 }
 
-func (rcsr *RCSR) Equal(rcsr_ *RCSR) bool {
-	return rcsr.PolicyIssuerBase.Equal(rcsr.PolicyIssuerBase) &&
-		rcsr.TimeStamp.Equal(rcsr_.TimeStamp) &&
-		rcsr.PublicKeyAlgorithm == rcsr_.PublicKeyAlgorithm &&
-		bytes.Equal(rcsr.PublicKey, rcsr_.PublicKey) &&
-		rcsr.SignatureAlgorithm == rcsr_.SignatureAlgorithm &&
-		bytes.Equal(rcsr.PRCSignature, rcsr_.PRCSignature) &&
-		bytes.Equal(rcsr.Signature, rcsr_.Signature)
-}
-
-func NewPSR(
-	Subject string,
-	Policy PolicyAttributes,
-	TimeStamp time.Time,
-	RootCertSignature []byte,
-) *PSR {
-
-	return &PSR{
-		PolicyIssuerBase: PolicyIssuerBase{
-			RawSubject: Subject,
-		},
-		Policy:            Policy,
-		TimeStamp:         TimeStamp,
-		RootCertSignature: RootCertSignature,
-	}
+func (req *PolicyCertificateSigningRequest) Equal(x *PolicyCertificateSigningRequest) bool {
+	return req.PolicyCertificateFields.Equal(x.PolicyCertificateFields)
 }

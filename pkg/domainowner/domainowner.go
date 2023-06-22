@@ -26,72 +26,87 @@ func NewDomainOwner() *DomainOwner {
 	}
 }
 
-// GenerateRCSR: Generate a Root Certificate Signing Request for one domain
+// GeneratePolCertSignRequest: Generate a Root Certificate Signing Request for one domain
 // subject is the name of the domain: eg. fpki.com
-func (do *DomainOwner) GenerateRCSR(domainName string, version int) (*common.RCSR, error) {
+func (do *DomainOwner) GeneratePolCertSignRequest(domainName string, version int) (*common.PolicyCertificateSigningRequest, error) {
 	// generate a fresh RSA key pair; new RSA key for every RCSR, thus every RPC
 	newPrivKeyPair, err := do.generateRSAPrivKeyPair()
 	if err != nil {
-		return nil, fmt.Errorf("GenerateRCSR | generateRSAPrivKey | %w", err)
+		return nil, fmt.Errorf("GeneratePolCertSignRequest | generateRSAPrivKey | %w", err)
 	}
 
 	// marshall public key into bytes
 	pubKeyBytes, err := util.RSAPublicToPEM(&newPrivKeyPair.PublicKey)
 	if err != nil {
-		return nil, fmt.Errorf("GenerateRCSR | RsaPublicKeyToPemBytes | %w", err)
+		return nil, fmt.Errorf("GeneratePolCertSignRequest | RsaPublicKeyToPemBytes | %w", err)
 	}
 
-	rcsr := common.NewRCSR(
-		domainName,
+	req := common.NewPolicyCertificateSigningRequest(
 		version,
+		"", // issuer
+		domainName,
+		0, // serial number
 		time.Now(),
-		common.RSA,
+		time.Now().Add(time.Microsecond), // not after
+		false,                            // is issuer
 		pubKeyBytes,
+		common.RSA,
 		common.SHA256,
-		nil,
-		nil,
+		time.Now(), // timestamp
+		nil,        // policy attributes
+		nil,        // owner signature
 	)
 
 	// if domain owner still have the private key of the previous RPC -> can avoid cool-off period
 	if prevKey, ok := do.privKeyByDomainName[domainName]; ok {
-		err = crypto.RCSRGenerateRPCSignature(rcsr, prevKey)
+		err = crypto.SignAsOwner(prevKey, req)
 		if err != nil {
-			return nil, fmt.Errorf("GenerateRCSR | RCSRGenerateRPCSignature | %w", err)
+			return nil, fmt.Errorf("GeneratePolCertSignRequest | RCSRGenerateRPCSignature | %w", err)
 		}
 	}
 
 	// generate signature for RCSR, using the new pub key
-	err = crypto.RCSRCreateSignature(newPrivKeyPair, rcsr)
+	err = crypto.SignAsOwner(newPrivKeyPair, req)
 	if err != nil {
-		return nil, fmt.Errorf("GenerateRCSR | RCSRCreateSignature | %w", err)
+		return nil, fmt.Errorf("GeneratePolCertSignRequest | RCSRCreateSignature | %w", err)
 	}
 
 	do.privKeyByDomainName[domainName] = newPrivKeyPair
 
-	return rcsr, nil
+	return req, nil
 }
 
-// GeneratePSR: generate one psr for one specific domain.
-func (do *DomainOwner) GeneratePSR(domainName string, policy common.PolicyAttributes) (*common.PSR, error) {
+// RandomPolicyCertificate: generate one psr for one specific domain.
+func (do *DomainOwner) RandomPolicyCertificate(domainName string, policy common.PolicyAttributes,
+) (*common.PolicyCertificateSigningRequest, error) {
+
 	rpcKeyPair, ok := do.privKeyByDomainName[domainName]
 	if !ok {
-		return nil, fmt.Errorf("GeneratePSR | No valid RPC for domain %s", domainName)
+		return nil, fmt.Errorf("RandomPolicyCertificate | No valid RPC for domain %s", domainName)
 	}
 
-	psr := &common.PSR{
-		PolicyIssuerBase: common.PolicyIssuerBase{
-			RawSubject: domainName,
-		},
-		Policy:    policy,
-		TimeStamp: time.Now(),
-	}
+	polCertSignReq := common.NewPolicyCertificateSigningRequest(
+		0,          // version
+		"",         // issuer
+		domainName, // subject
+		0,          // serial number
+		time.Now(),
+		time.Now().Add(time.Microsecond), // not after
+		false,                            // is issuer
+		nil,                              // public key
+		common.RSA,
+		common.SHA256,
+		time.Now(),                        // timestamp
+		[]common.PolicyAttributes{policy}, // policy attributes
+		nil,                               // owner's signature
+	)
 
-	err := crypto.DomainOwnerSignPSR(rpcKeyPair, psr)
+	err := crypto.SignAsOwner(rpcKeyPair, polCertSignReq)
 	if err != nil {
-		return nil, fmt.Errorf("GeneratePSR | DomainOwnerSignPSR | %w", err)
+		return nil, fmt.Errorf("RandomPolicyCertificate | DomainOwnerSignPSR | %w", err)
 	}
 
-	return psr, nil
+	return polCertSignReq, nil
 }
 
 // generate new rsa key pair

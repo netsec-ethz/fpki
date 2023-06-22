@@ -13,10 +13,10 @@ func (p EmbeddedPolicyBase) Equal(x EmbeddedPolicyBase) bool {
 	return p.PolicyPartBase.Equal(x.PolicyPartBase)
 }
 
-// SPT is a signed policy timestamp.
-type SPT struct {
+// . SignedThingTimestamp is common to all timestamps returned by a policy log server.
+type SignedThingTimestamp struct {
 	EmbeddedPolicyBase
-	LogID           int       `json:",omitempty"`
+	LogID           []byte    `json:",omitempty"`
 	CertType        uint8     `json:",omitempty"`
 	AddedTS         time.Time `json:",omitempty"`
 	STH             []byte    `json:",omitempty"`
@@ -25,45 +25,50 @@ type SPT struct {
 	Signature       []byte    `json:",omitempty"`
 }
 
-// SPRT is a signed policy revocation timestamp.
-type SPRT struct {
-	SPT
+// SignedPolicyCertificateTimestamp is a signed policy certificate timestamp.
+type SignedPolicyCertificateTimestamp struct {
+	SignedThingTimestamp
+}
+
+// SignedPolicyCertificateRevocationTimestamp is a signed policy certificate revocation timestamp.
+type SignedPolicyCertificateRevocationTimestamp struct {
+	SignedThingTimestamp
 	Reason int `json:",omitempty"`
 }
 
-func NewSPT(
-	Subject string,
-	Version int,
+func NewSignedThingTimestamp(
+	subject string,
+	version int,
 	issuer string,
-	LogID int,
-	CertType uint8,
-	AddedTS time.Time,
-	STH []byte,
-	PoI []byte,
-	STHSerialNumber int,
-	Signature []byte,
-) *SPT {
+	logID []byte,
+	certType uint8,
+	addedTS time.Time,
+	sTH []byte,
+	poI []byte,
+	sTHSerialNumber int,
+	signature []byte,
+) *SignedThingTimestamp {
 
-	return &SPT{
+	return &SignedThingTimestamp{
 		EmbeddedPolicyBase: EmbeddedPolicyBase{
 			PolicyPartBase: PolicyPartBase{
-				Version: Version,
+				Version: version,
 				Issuer:  issuer,
 			},
 		},
-		LogID:           LogID,
-		CertType:        CertType,
-		AddedTS:         AddedTS,
-		STH:             STH,
-		PoI:             PoI,
-		STHSerialNumber: STHSerialNumber,
-		Signature:       Signature,
+		LogID:           logID,
+		CertType:        certType,
+		AddedTS:         addedTS,
+		STH:             sTH,
+		PoI:             poI,
+		STHSerialNumber: sTHSerialNumber,
+		Signature:       signature,
 	}
 }
 
-func (s SPT) Equal(x SPT) bool {
+func (s SignedThingTimestamp) Equal(x SignedThingTimestamp) bool {
 	return s.EmbeddedPolicyBase.Equal(x.EmbeddedPolicyBase) &&
-		s.LogID == x.LogID &&
+		bytes.Equal(s.LogID, x.LogID) &&
 		s.CertType == x.CertType &&
 		s.AddedTS.Equal(x.AddedTS) &&
 		bytes.Equal(s.STH, x.STH) &&
@@ -72,14 +77,69 @@ func (s SPT) Equal(x SPT) bool {
 		bytes.Equal(s.Signature, x.Signature)
 }
 
-func NewSPRT(SPT *SPT, Reason int) *SPRT {
-	return &SPRT{
-		SPT:    *SPT,
-		Reason: Reason,
+func NewSignedPolicyCertificateTimestamp(
+	subject string,
+	version int,
+	issuer string,
+	logID []byte,
+	certType uint8,
+	addedTS time.Time,
+	sTH []byte,
+	poI []byte,
+	sTHSerialNumber int,
+	signature []byte,
+) *SignedPolicyCertificateTimestamp {
+	return &SignedPolicyCertificateTimestamp{
+		SignedThingTimestamp: *NewSignedThingTimestamp(
+			subject,
+			version,
+			issuer,
+			logID,
+			certType,
+			addedTS,
+			sTH,
+			poI,
+			sTHSerialNumber,
+			signature,
+		),
 	}
 }
 
-func (sprt SPRT) Equal(x SPRT) bool {
-	return sprt.SPT.Equal(x.SPT) &&
-		sprt.Reason == x.Reason
+func (t SignedPolicyCertificateTimestamp) Equal(x SignedPolicyCertificateTimestamp) bool {
+	return t.SignedThingTimestamp.Equal(x.SignedThingTimestamp)
+}
+
+func NewSignedPolicyCertificateRevocationTimestamp(
+	subject string,
+	version int,
+	issuer string,
+	logID []byte,
+	certType uint8,
+	addedTS time.Time,
+	sTH []byte,
+	poI []byte,
+	sTHSerialNumber int,
+	signature []byte,
+	reason int,
+) *SignedPolicyCertificateRevocationTimestamp {
+	return &SignedPolicyCertificateRevocationTimestamp{
+		SignedThingTimestamp: *NewSignedThingTimestamp(
+			subject,
+			version,
+			issuer,
+			logID,
+			certType,
+			addedTS,
+			sTH,
+			poI,
+			sTHSerialNumber,
+			signature,
+		),
+		Reason: reason,
+	}
+}
+
+func (t SignedPolicyCertificateRevocationTimestamp) Equal(x SignedPolicyCertificateRevocationTimestamp) bool {
+	return t.SignedThingTimestamp.Equal(x.SignedThingTimestamp) &&
+		t.Reason == x.Reason
 }

@@ -33,32 +33,21 @@ func RandomX509Cert(t tests.T, domain string) *ctx509.Certificate {
 	}
 }
 
+// BuildTestRandomPolicyHierarchy creates two policy certificates for the given name.
 func BuildTestRandomPolicyHierarchy(t tests.T, domainName string) []common.PolicyDocument {
-	// Create one RPC and one SP for that name.
-	rpc := RandomRPC(t)
-	rpc.RawSubject = domainName
-	rpc.Issuer = "c0.com"
+	// Create two policy certificates for that name.
+	docs := make([]common.PolicyDocument, 2)
+	for i := range docs {
+		pc := RandomPolicyCertificate(t)
+		pc.RawSubject = domainName
+		pc.Issuer = "c0.com"
 
-	data, err := common.ToJSON(rpc)
-	require.NoError(t, err)
-	rpc.RawJSON = data
-
-	sp := common.NewSP(
-		domainName,
-		common.PolicyAttributes{},
-		RandomTimeWithoutMonotonic(),
-		"c0.com",
-		0,                          // serial number
-		RandomBytesForTest(t, 100), // CA signature
-		RandomBytesForTest(t, 100), // root cert signature
-		nil,                        // SPTs
-	)
-
-	data, err = common.ToJSON(sp)
-	require.NoError(t, err)
-	sp.RawJSON = data
-
-	return []common.PolicyDocument{rpc, sp}
+		data, err := common.ToJSON(pc)
+		require.NoError(t, err)
+		pc.RawJSON = data
+		docs[i] = pc
+	}
+	return docs
 }
 
 // BuildTestRandomCertHierarchy returns the certificates, chains, and names for two mock certificate
@@ -110,12 +99,12 @@ func RandomTimeWithoutMonotonic() time.Time {
 	)
 }
 
-func RandomSPT(t tests.T) *common.SPT {
-	return common.NewSPT(
+func RandomSignedPolicyCertificateTimestamp(t tests.T) *common.SignedPolicyCertificateTimestamp {
+	return common.NewSignedPolicyCertificateTimestamp(
 		"spt subject",
-		rand.Intn(10),
+		rand.Intn(10), // version
 		"Issuer",
-		rand.Intn(100000), // 0-99,999
+		RandomBytesForTest(t, 10), // log id
 		0x21,
 		RandomTimeWithoutMonotonic(),
 		RandomBytesForTest(t, 32),
@@ -125,69 +114,43 @@ func RandomSPT(t tests.T) *common.SPT {
 	)
 }
 
-func RandomRPC(t tests.T) *common.PolicyCertificate {
-	return common.NewPolicyCertificate(
-		"RPC subject",
-		nil, // policy attributes (empty for now)
+func RandomPolCertSignRequest(t tests.T) *common.PolicyCertificateSigningRequest {
+	return common.NewPolicyCertificateSigningRequest(
 		rand.Intn(10),
-		rand.Intn(10),
-		common.RSA,
-		RandomBytesForTest(t, 32),
-		RandomTimeWithoutMonotonic(),
-		RandomTimeWithoutMonotonic(),
 		"Issuer",
-		common.SHA256,
+		"RPC subject",
+		rand.Intn(1000), // serial number
 		RandomTimeWithoutMonotonic(),
-		RandomBytesForTest(t, 32),
-		RandomBytesForTest(t, 32),
-		[]common.SPT{*RandomSPT(t), *RandomSPT(t)},
-	)
-}
-
-func RandomSPRT(t tests.T) *common.SPRT {
-	return common.NewSPRT(RandomSPT(t), rand.Intn(1000))
-}
-
-func RandomSP(t tests.T) *common.SP {
-	return common.NewSP(
-		"domainname.com",
-		common.PolicyAttributes{
-			TrustedCA: []string{"ca1", "ca2"},
-		},
 		RandomTimeWithoutMonotonic(),
-		"ca1",
-		rand.Int(),
+		true,
 		RandomBytesForTest(t, 32),
-		RandomBytesForTest(t, 32),
-		[]common.SPT{
-			*RandomSPT(t),
-			*RandomSPT(t),
-			*RandomSPT(t),
-		},
-	)
-}
-
-func RandomPSR(t tests.T) *common.PSR {
-	return common.NewPSR(
-		"domain_name.com",
-		common.PolicyAttributes{
-			TrustedCA:         []string{"one CA", "another CA"},
-			AllowedSubdomains: []string{"sub1.com", "sub2.com"},
-		},
-		RandomTimeWithoutMonotonic(),
-		RandomBytesForTest(t, 32),
-	)
-}
-
-func RandomRCSR(t tests.T) *common.RCSR {
-	return common.NewRCSR(
-		"subject",
-		6789,
-		RandomTimeWithoutMonotonic(),
 		common.RSA,
-		RandomBytesForTest(t, 32),
 		common.SHA256,
+		RandomTimeWithoutMonotonic(),
+		nil, // policy attributes (empty for now)
+		RandomBytesForTest(t, 32),
+	)
+}
+
+func RandomPolicyCertificate(t tests.T) *common.PolicyCertificate {
+	return common.NewPolicyCertificate(
+		rand.Intn(10),
+		"Issuer",
+		"RPC subject",
+		rand.Intn(1000), // serial number
+		RandomTimeWithoutMonotonic(),
+		RandomTimeWithoutMonotonic(),
+		true,
+		RandomBytesForTest(t, 32),
+		common.RSA,
+		common.SHA256,
+		RandomTimeWithoutMonotonic(),
+		nil, // policy attributes (empty for now)
 		RandomBytesForTest(t, 32),
 		RandomBytesForTest(t, 32),
+		[]common.SignedPolicyCertificateTimestamp{
+			*RandomSignedPolicyCertificateTimestamp(t),
+			*RandomSignedPolicyCertificateTimestamp(t),
+		},
 	)
 }

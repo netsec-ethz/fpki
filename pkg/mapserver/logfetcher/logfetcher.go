@@ -306,13 +306,18 @@ func (f *LogFetcher) getRawEntries(
 
 // GetPCAndRPCs: get PC and RPC from url
 // TODO(yongzhe): currently just generate random PC and RPC using top 1k domain names
-func GetPCAndRPCs(ctURL string, startIndex int64, endIndex int64, numOfWorker int) ([]*common.SP, []*common.PolicyCertificate, error) {
-	resultPCs := make([]*common.SP, 0)
-	resultRPCs := make([]*common.PolicyCertificate, 0)
+func GetPCAndRPCs(
+	ctURL string,
+	startIndex int64,
+	endIndex int64,
+	numOfWorker int,
+) ([]*common.PolicyCertificate, error) {
+
+	resultPolCerts := make([]*common.PolicyCertificate, 0)
 
 	f, err := os.Open(ctURL)
 	if err != nil {
-		return nil, nil, fmt.Errorf("GetPCAndRPC | os.Open | %w", err)
+		return nil, fmt.Errorf("GetPCAndRPC | os.Open | %w", err)
 	}
 	defer f.Close()
 
@@ -326,27 +331,29 @@ func GetPCAndRPCs(ctURL string, startIndex int64, endIndex int64, numOfWorker in
 			continue
 		}
 
-		resultPCs = append(resultPCs, common.NewSP(
-			domainName,
-			common.PolicyAttributes{},
-			time.Now(),
+		resultPolCerts = append(resultPolCerts, common.NewPolicyCertificate(
+			0,
 			"", // CA name
-			0,  // serial number
-			generateRandomBytes(),
-			nil, // root cert signature
-			nil, // SPTs
+			domainName,
+			0,                                // serial number
+			time.Now(),                       // not before
+			time.Now().Add(time.Microsecond), // not after
+			false,                            // is issuer
+			generateRandomBytes(),            // public key
+			common.RSA,
+			common.SHA256,
+			time.Now(), // timestamp
+			nil,        // policy attributes
+			nil,        // owner signature
+			nil,        // issuer signature
+			nil,        // server timestamps
 		))
-
-		rpc := &common.PolicyCertificate{}
-		rpc.RawSubject = domainName
-		rpc.NotBefore = time.Now()
-		resultRPCs = append(resultRPCs, rpc)
 	}
 	if err := scanner.Err(); err != nil {
-		return nil, nil, fmt.Errorf("GetPCAndRPC | scanner.Err | %w", err)
+		return nil, fmt.Errorf("GetPCAndRPC | scanner.Err | %w", err)
 	}
 
-	return resultPCs, resultRPCs, nil
+	return resultPolCerts, nil
 }
 
 func generateRandomBytes() []byte {

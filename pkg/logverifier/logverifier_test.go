@@ -28,14 +28,14 @@ func TestVerifyInclusionByHash(t *testing.T) {
 	// Create a mock STH with the correct root hash to pass the test.
 	sth := &types.LogRootV1{
 		TreeSize:       2,
-		RootHash:       tests.MustDecodeBase64(t, "m5Lwb1nDco/+mrAdAQnue4WIne67qRACok/ESYmCsZ8="),
+		RootHash:       tests.MustDecodeBase64(t, "3mI5Az/2fISqNSrfUQuWZAkvFuP2ozS2ad4+hnZ1Eh4="),
 		TimestampNanos: 1661986742112252000,
 		Revision:       0,
 		Metadata:       []byte{},
 	}
 
 	// Mock up a RPC.
-	rpc := random.RandomRPC(t)
+	rpc := random.RandomPolicyCertificate(t)
 
 	// Serialize it without SPTs.
 	serializedRPC, err := common.ToJSON(rpc)
@@ -84,7 +84,7 @@ func TestCheckRPC(t *testing.T) {
 	// Mock a STH with the right root hash.
 	sth := &types.LogRootV1{
 		TreeSize:       2,
-		RootHash:       tests.MustDecodeBase64(t, "0ePUVBOu4WOgAo1pW+JMUCGUVUWaK/6C7JqLJt9XWk4="),
+		RootHash:       tests.MustDecodeBase64(t, "sVt7R5j3fpNSgUfYMH6r9cfWx9N3Nq9UXaLEpa6/KBQ="),
 		TimestampNanos: 1661986742112252000,
 		Revision:       0,
 		Metadata:       []byte{},
@@ -103,58 +103,20 @@ func TestCheckRPC(t *testing.T) {
 	require.NoError(t, err)
 
 	// Mock a RPC.
-	rpc := random.RandomRPC(t)
-	rpc.SPTs = []common.SPT{
-		{
-			AddedTS: util.TimeFromSecs(99),
-			STH:     serializedSTH,
-			PoI:     serializedPoI,
-		},
+	rpc := random.RandomPolicyCertificate(t)
+	rpc.SPTs = []common.SignedPolicyCertificateTimestamp{
+		*common.NewSignedPolicyCertificateTimestamp(
+			"", 0, "", nil,
+			0,
+			util.TimeFromSecs(99),
+			serializedSTH,
+			serializedPoI,
+			0, nil,
+		),
 	}
 
 	// Check VerifyRPC.
 	logverifier := NewLogVerifier(nil)
 	err = logverifier.VerifyRPC(rpc)
-	require.NoError(t, err)
-}
-
-func TestCheckSP(t *testing.T) {
-	// Because we are using "random" bytes deterministically here, set a fixed seed.
-	rand.Seed(3)
-
-	// Mock a STH with the right root hash.
-	sth := &types.LogRootV1{
-		TreeSize:       2,
-		RootHash:       tests.MustDecodeBase64(t, "SqfdrDwpR1nlUZ/MGvC0qKH48CYcAHRlBspg6l/G060="),
-		TimestampNanos: 1661986742112252000,
-		Revision:       0,
-		Metadata:       []byte{},
-	}
-	serializedSTH, err := common.ToJSON(sth)
-	require.NoError(t, err)
-
-	// Mock a PoI.
-	poi := []*trillian.Proof{
-		{
-			LeafIndex: 1,
-			Hashes:    [][]byte{random.RandomBytesForTest(t, 32)},
-		},
-	}
-	serializedPoI, err := common.ToJSON(poi)
-	require.NoError(t, err)
-
-	// Mock an SP.
-	sp := random.RandomSP(t)
-	sp.SPTs = []common.SPT{
-		{
-			AddedTS: util.TimeFromSecs(444),
-			STH:     serializedSTH,
-			PoI:     serializedPoI,
-		},
-	}
-
-	// Check VerifySP works.
-	logverifier := NewLogVerifier(nil)
-	err = logverifier.VerifySP(sp)
 	require.NoError(t, err)
 }

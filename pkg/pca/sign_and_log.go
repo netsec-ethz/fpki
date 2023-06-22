@@ -4,24 +4,26 @@ import (
 	"encoding/base64"
 	"fmt"
 	"strconv"
-	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/common/crypto"
 )
 
 // SignAndLogRCSR: sign the rcsr and generate a rpc -> store the rpc to the "fileExchange" folder; policy log will fetch rpc from the folder
-func (pca *PCA) SignAndLogRCSR(rcsr *common.RCSR) error {
+func (pca *PCA) SignAndLogRCSR(req *common.PolicyCertificateSigningRequest) error {
 	// verify the signature in the rcsr; check if the domain's pub key is correct
-	err := crypto.RCSRVerifySignature(rcsr)
+	err := crypto.VerifyOwnerSignature(req)
 	if err != nil {
 		return fmt.Errorf("SignAndLogRCSR | RCSRVerifySignature | %w", err)
 	}
 
+	// Set the issuer values from this CA.
 	pca.increaseSerialNumber()
+	req.Issuer = pca.caName
+	req.RawSerialNumber = pca.serialNumber
 
 	// generate pre-RPC (without SPT)
-	rpc, err := crypto.RCSRGenerateRPC(rcsr, time.Now(), pca.serialNumber, pca.rsaKeyPair, pca.caName)
+	rpc, err := crypto.SignAsIssuer(req, pca.rsaKeyPair)
 	if err != nil {
 		return fmt.Errorf("SignAndLogRCSR | RCSRGenerateRPC | %w", err)
 	}
@@ -32,7 +34,7 @@ func (pca *PCA) SignAndLogRCSR(rcsr *common.RCSR) error {
 	}
 
 	// add the rpc to preRPC(without SPT)
-	pca.preRPCByDomains[rpcHash] = rpc
+	pca.prePolCertsPerDomain[rpcHash] = rpc
 
 	// send RPC to policy log
 	err = pca.sendRPCToPolicyLog(rpc, strconv.Itoa(pca.serialNumber))
@@ -44,27 +46,27 @@ func (pca *PCA) SignAndLogRCSR(rcsr *common.RCSR) error {
 }
 
 // SignAndLogPSR: sign and log policy signing request
-func (pca *PCA) SignAndLogSP(psr *common.PSR) error {
-	err := pca.findRPCAndVerifyPSR(psr)
+func (pca *PCA) SignAndLogPolicyCertificate(req *common.PolicyCertificateSigningRequest) error {
+	err := pca.findRPCAndVerifyPSR(req)
 	if err != nil {
 		return fmt.Errorf("SignAndLogPSR | findRPCAndVerifyPSR | %w", err)
 	}
 
 	pca.increaseSerialNumber()
 
-	sp, err := crypto.CASignSP(psr, pca.rsaKeyPair, pca.caName, pca.serialNumber)
+	polCert, err := crypto.SignAsIssuer(req, pca.rsaKeyPair)
 	if err != nil {
 		return fmt.Errorf("SignAndLogPSR | CASignSP | %w", err)
 	}
 
-	spHash, err := pca.getHashName(sp)
+	spHash, err := pca.getHashName(polCert)
 	if err != nil {
 		return fmt.Errorf("SignAndLogRCSR | getHashName | %w", err)
 	}
 
-	pca.preSPByDomains[spHash] = sp
+	pca.prePolCertsPerDomain[spHash] = polCert
 
-	err = pca.sendSPToPolicyLog(sp, strconv.Itoa(sp.SerialNumber()))
+	err = pca.sendSPToPolicyLog(polCert, strconv.Itoa(polCert.SerialNumber()))
 	if err != nil {
 		return fmt.Errorf("SignAndLogPSR | sendSPToPolicyLog | %w", err)
 	}
@@ -72,13 +74,13 @@ func (pca *PCA) SignAndLogSP(psr *common.PSR) error {
 	return nil
 }
 
-func (pca *PCA) findRPCAndVerifyPSR(psr *common.PSR) error {
-	rpc, ok := pca.validRPCsByDomains[psr.Subject()]
+func (pca *PCA) findRPCAndVerifyPSR(req *common.PolicyCertificateSigningRequest) error {
+	rpc, ok := pca.validPolCertsPerDomain[req.Subject()]
 	if !ok {
 		return fmt.Errorf("findRPCAndVerifyPSR | validRPCsByDomains | no valid rpc at this moment")
 	}
 
-	err := crypto.VerifyPSRUsingRPC(psr, rpc)
+	err := crypto.VerifyOwnerSignatureWithPolCert(req, rpc)
 	if err != nil {
 		return fmt.Errorf("findRPCAndVerifyPSR | VerifyPSRUsingRPC | %w", err)
 	}
@@ -92,7 +94,7 @@ func (pca *PCA) sendRPCToPolicyLog(rpc *common.PolicyCertificate, fileName strin
 }
 
 // save file to output dir
-func (pca *PCA) sendSPToPolicyLog(sp *common.SP, fileName string) error {
+func (pca *PCA) sendSPToPolicyLog(sp *common.PolicyCertificate, fileName string) error {
 	return common.ToJSONFile(sp, pca.policyLogExgPath+"/sp/"+fileName)
 }
 

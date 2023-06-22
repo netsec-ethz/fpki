@@ -31,12 +31,12 @@ func main() {
 	}
 
 	// first rcsr
-	rcsr, err := do.GenerateRCSR("abc.com", 1)
+	rcsr, err := do.GeneratePolCertSignRequest("abc.com", 1)
 	if err != nil {
 		logErrAndQuit(err)
 	}
 
-	if len(rcsr.PRCSignature) != 0 {
+	if len(rcsr.OwnerSignature) != 0 {
 		panic("first rcsr error: should not have RPCSignature")
 	}
 
@@ -47,7 +47,7 @@ func main() {
 	}
 
 	// second rcsr
-	rcsr, err = do.GenerateRCSR("fpki.com", 1)
+	rcsr, err = do.GeneratePolCertSignRequest("fpki.com", 1)
 	if err != nil {
 		logErrAndQuit(err)
 	}
@@ -135,27 +135,27 @@ func main() {
 		TrustedCA: []string{"US CA"},
 	}
 
-	psr1, err := do.GeneratePSR("abc.com", policy1)
+	pcsr1, err := do.RandomPolicyCertificate("abc.com", policy1)
 	if err != nil {
 		logErrAndQuit(err)
 	}
 
-	psr2, err := do.GeneratePSR("fpki.com", policy2)
+	pcsr2, err := do.RandomPolicyCertificate("fpki.com", policy2)
 	if err != nil {
 		logErrAndQuit(err)
 	}
 
-	err = pca.SignAndLogSP(psr1)
+	err = pca.SignAndLogPolicyCertificate(pcsr1)
 	if err != nil {
 		logErrAndQuit(err)
 	}
 
-	err = pca.SignAndLogSP(psr2)
+	err = pca.SignAndLogPolicyCertificate(pcsr2)
 	if err != nil {
 		logErrAndQuit(err)
 	}
 
-	logClient.QueueSPs(ctx)
+	// logClient.QueueSPs(ctx)
 
 	err = pca.ReceiveSPTFromPolicyLog()
 	if err != nil {
@@ -166,7 +166,7 @@ func main() {
 		logErrAndQuit(fmt.Errorf("queue error SP"))
 	}
 
-	err = pca.OutputRPCAndSP()
+	err = pca.OutputPolicyCertificate()
 	if err != nil {
 		logErrAndQuit(err)
 	}

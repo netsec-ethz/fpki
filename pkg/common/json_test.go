@@ -19,37 +19,32 @@ func TestPolicyObjects(t *testing.T) {
 		data any
 	}{
 		"rpcPtr": {
-			data: random.RandomRPC(t),
+			data: random.RandomPolicyCertificate(t),
 		},
 		"rpcValue": {
-			data: *random.RandomRPC(t),
+			data: *random.RandomPolicyCertificate(t),
 		},
 		"rcsr": {
-			data: random.RandomRCSR(t),
-		},
-		"sp": {
-			data: random.RandomSP(t),
+			data: random.RandomPolCertSignRequest(t),
 		},
 		"spt": {
-			data: *random.RandomSPT(t),
+			data: *random.RandomSignedPolicyCertificateTimestamp(t),
 		},
 		"list": {
 			data: []any{
-				random.RandomRPC(t),
-				random.RandomRCSR(t),
-				random.RandomSP(t),
-				random.RandomSPRT(t),
-				random.RandomPSR(t),
+				random.RandomPolicyCertificate(t),
+				random.RandomPolCertSignRequest(t),
+				random.RandomSignedPolicyCertificateTimestamp(t),
 				randomTrillianProof(t),
 				randomLogRootV1(t),
 			},
 		},
 		"list_embedded": {
 			data: []any{
-				random.RandomRPC(t),
+				random.RandomPolicyCertificate(t),
 				[]any{
-					random.RandomSP(t),
-					random.RandomSPT(t),
+					random.RandomPolicyCertificate(t),
+					random.RandomSignedPolicyCertificateTimestamp(t),
 				},
 				[]any{
 					randomTrillianProof(t),
@@ -59,14 +54,14 @@ func TestPolicyObjects(t *testing.T) {
 		},
 		"multiListPtr": {
 			data: &[]any{
-				random.RandomRPC(t),
-				*random.RandomRPC(t),
+				random.RandomPolicyCertificate(t),
+				*random.RandomPolicyCertificate(t),
 				[]any{
-					random.RandomSP(t),
-					*random.RandomSP(t),
+					random.RandomPolicyCertificate(t),
+					*random.RandomPolicyCertificate(t),
 					&[]any{
-						random.RandomSPT(t),
-						*random.RandomSPT(t),
+						random.RandomSignedPolicyCertificateTimestamp(t),
+						*random.RandomSignedPolicyCertificateTimestamp(t),
 					},
 				},
 			},
@@ -98,7 +93,7 @@ func TestPolicyObjectBaseRaw(t *testing.T) {
 		getRawElemsFcn func(obj any) [][]byte // Return the Raw components of this thing.
 	}{
 		"rpc": {
-			obj:           random.RandomRPC(t),
+			obj:           random.RandomPolicyCertificate(t),
 			rawElemsCount: 1,
 			getRawElemsFcn: func(obj any) [][]byte {
 				rpc := obj.(*common.PolicyCertificate)
@@ -106,32 +101,32 @@ func TestPolicyObjectBaseRaw(t *testing.T) {
 			},
 		},
 		"spPtr": {
-			obj:           random.RandomSP(t),
+			obj:           random.RandomPolicyCertificate(t),
 			rawElemsCount: 1,
 			getRawElemsFcn: func(obj any) [][]byte {
-				sp := obj.(*common.SP)
+				sp := obj.(*common.PolicyCertificate)
 				return [][]byte{sp.RawJSON}
 			},
 		},
 		"spValue": {
-			obj:           *random.RandomSP(t),
+			obj:           *random.RandomPolicyCertificate(t),
 			rawElemsCount: 1,
 			getRawElemsFcn: func(obj any) [][]byte {
-				sp := obj.(common.SP)
+				sp := obj.(common.PolicyCertificate)
 				return [][]byte{sp.RawJSON}
 			},
 		},
 		"list": {
 			obj: []any{
-				random.RandomSP(t),
-				random.RandomRPC(t),
+				random.RandomPolicyCertificate(t),
+				random.RandomPolCertSignRequest(t),
 			},
 			rawElemsCount: 2,
 			getRawElemsFcn: func(obj any) [][]byte {
 				l := obj.([]any)
 				return [][]byte{
-					l[0].(*common.SP).RawJSON,
-					l[1].(*common.PolicyCertificate).RawJSON,
+					l[0].(*common.PolicyCertificate).RawJSON,
+					l[1].(*common.PolicyCertificateSigningRequest).RawJSON,
 				}
 			},
 		},

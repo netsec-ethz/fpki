@@ -221,73 +221,6 @@ func (c *LogClient) QueueRPCs(ctx context.Context) (*QueueRPCResult, error) {
 	return queueRPCResult, nil
 }
 
-func (c *LogClient) QueueSPs(ctx context.Context) (*QueueRPCResult, error) {
-	queueRPCResult := &QueueRPCResult{}
-
-	// read RPC from files
-	data, err := c.readSPFromFileToBytes()
-	if err != nil {
-		return nil, fmt.Errorf("QueueSPs | readRPCFromFileToBytes: %w", err)
-	}
-
-	leafNum := len(data)
-
-	start := time.Now()
-
-	// add leaves
-	addLeavesErrors := c.AddLeaves(ctx, data)
-
-	// process the errors from AddLeaves()
-	queueRPCResult.NumOfSucceedAddedLeaves = leafNum - len(addLeavesErrors.Errs)
-	queueRPCResult.FailToAddLeaves = addLeavesErrors.FailedLeaves
-
-	// calculate time
-	elapsed := time.Since(start)
-	fmt.Println("queue leaves succeed!")
-	fmt.Println(elapsed)
-
-	// record previous tree size
-	prevTreeSize := c.currentTreeSize
-
-	// wait for the leaves to be added to the log (BUG FOUND!!!!!!)
-	for {
-		err = c.UpdateTreeSize(ctx)
-		if err != nil {
-			return queueRPCResult, fmt.Errorf("QueueSPs | UpdateTreeSize: %w", err)
-		}
-		if c.currentTreeSize == prevTreeSize+int64(queueRPCResult.NumOfSucceedAddedLeaves) {
-			break
-		}
-		// wait 50 ms before next query
-		time.Sleep(50 * time.Millisecond)
-	}
-
-	start = time.Now()
-
-	// fetch the inclusion
-	fetchInclusionResult := c.FetchInclusions(ctx, data)
-
-	// precess fetch inclusion errors
-	queueRPCResult.NumOfRetrievedLeaves = len(fetchInclusionResult.PoIs)
-	queueRPCResult.FailToRetrievedLeaves = fetchInclusionResult.FailedLeaves
-	queueRPCResult.FailToRetrieveLeavesName = fetchInclusionResult.FailedLeavesName
-	queueRPCResult.RetrieveLeavesErrs = fetchInclusionResult.Errs
-
-	elapsed = time.Since(start)
-	fmt.Println("fetch proofs succeed!")
-	fmt.Println(elapsed)
-
-	// queueRPCResult will always be returned, even if error occurs in the future
-
-	// store proof to SPT file
-	err = c.storeProofMapToSPT(fetchInclusionResult.PoIs)
-	if err != nil {
-		return queueRPCResult, fmt.Errorf("QueueSPs | storeProofMapToSPT: %w", err)
-	}
-
-	return queueRPCResult, nil
-}
-
 // file -> RPC -> bytes
 func (c *LogClient) readRPCFromFileToBytes() ([][]byte, error) {
 	data := [][]byte{}
@@ -302,7 +235,7 @@ func (c *LogClient) readRPCFromFileToBytes() ([][]byte, error) {
 		filaPath := c.config.PolicyLogExchangePath + "/rpc/" + filaName.Name()
 
 		// read RPC from file
-		rpc, err := common.JsonFileToRPC(filaPath)
+		rpc, err := common.JsonFileToPolicyCert(filaPath)
 		if err != nil {
 			return nil, fmt.Errorf("readRPCFromFileToBytes | JsonFileToRPC %w", err)
 		}
@@ -317,39 +250,6 @@ func (c *LogClient) readRPCFromFileToBytes() ([][]byte, error) {
 
 		// delete rpc
 		os.Remove(filaPath)
-	}
-	return data, nil
-}
-
-// file -> RPC -> bytes
-func (c *LogClient) readSPFromFileToBytes() ([][]byte, error) {
-	data := [][]byte{}
-
-	fileNames, err := ioutil.ReadDir(c.config.PolicyLogExchangePath + "/sp")
-	if err != nil {
-		return nil, fmt.Errorf("readSPFromFileToBytes | ReadDir | %w", err)
-	}
-
-	// read SPT from "fileTransfer" folder
-	for _, filaName := range fileNames {
-		filePath := c.config.PolicyLogExchangePath + "/sp/" + filaName.Name()
-
-		// read RPC from file
-		sp, err := common.JsonFileToSP(filePath)
-		if err != nil {
-			return nil, fmt.Errorf("readSPFromFileToBytes | JsonFileToRPC %w", err)
-		}
-
-		// serialize sp
-		bytes, err := common.ToJSON(sp)
-		if err != nil {
-			return nil, fmt.Errorf("readSPFromFileToBytes | ToJSON: %w", err)
-		}
-
-		data = append(data, bytes)
-
-		// delete rpc
-		os.Remove(filePath)
 	}
 	return data, nil
 }
@@ -372,13 +272,14 @@ func (c *LogClient) storeProofMapToSPT(proofMap map[string]*PoIAndSTH) error {
 
 		// attach PoI and STH to SPT
 		// TODO(yongzhe): fill in the other fields
-		spt := &common.SPT{
-			PoI: proofBytes,
-			STH: sth,
-		}
+		serverTimestamp := common.NewSignedPolicyCertificateTimestamp(
+			"", 0, "", nil, 0, time.Time{},
+			sth, proofBytes,
+			0, nil,
+		)
 
 		// store SPT to file
-		err = common.ToJSONFile(spt, c.config.PolicyLogExchangePath+"/spt/"+k)
+		err = common.ToJSONFile(serverTimestamp, c.config.PolicyLogExchangePath+"/spt/"+k)
 		if err != nil {
 			return fmt.Errorf("storeProofMapToSPT | JsonStructToFile: %w", err)
 		}

@@ -77,37 +77,6 @@ func (domainEntry *DomainEntry) AddCert(cert *x509.Certificate, certChain []*x50
 	return false
 }
 
-// AddPC: add a Policy Certificate to a domain entry. Return whether the domain entry is updated.
-func (domainEntry *DomainEntry) AddPC(pc *common.SP) bool {
-	// caName := pc.CAName
-	// isFound := false
-
-	// // iterate CAEntry list, find if the target CA list exists
-	// for i := range domainEntry.Entries {
-	// 	if domainEntry.Entries[i].CAName == caName {
-	// 		isFound = true
-	// 		// check whether this certificate is already registered
-	// 		if !domainEntry.Entries[i].PCs.Equal(*pc) {
-	// 			domainEntry.Entries[i].PCs = *pc
-	// 			return true
-	// 		}
-	// 		return false
-	// 	}
-	// }
-
-	// // if CA list is not found
-	// if !isFound {
-	// 	// add a new CA list
-	// 	domainEntry.Entries = append(domainEntry.Entries, Entry{
-	// 		CAName: caName,
-	// 		CAHash: common.SHA256Hash([]byte(caName)),
-	// 		PCs:    *pc,
-	// 	})
-	// 	return true
-	// }
-	return false
-}
-
 // AddRPC: add a Root Policy Certificate to a domain entry. Return whether the domain entry is updated.
 func (domainEntry *DomainEntry) AddRPC(rpc *common.PolicyCertificate) bool {
 	// caName := rpc.CAName

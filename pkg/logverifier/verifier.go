@@ -1,6 +1,7 @@
 package logverifier
 
 import (
+	"encoding/base64"
 	"fmt"
 
 	"github.com/google/trillian"
@@ -101,39 +102,21 @@ func (c *LogVerifier) VerifyInclusionByHash(trustedRoot *types.LogRootV1, leafHa
 			return fmt.Errorf("VerifyInclusionByHash | Unexpected error: %w", err)
 		}
 
-		// deleteme, err := logProof.RootFromInclusionProof(c.hasher, uint64(proof.LeafIndex), trustedRoot.TreeSize,
-		// 	leafHash, proof.Hashes)
-		// if err != nil {
-		// 	panic(err)
-		// }
-		// fmt.Printf("deleteme calcRoot = %s\n", base64.StdEncoding.EncodeToString(deleteme))
+		deleteme, err := logProof.RootFromInclusionProof(c.hasher, uint64(proof.LeafIndex), trustedRoot.TreeSize,
+			leafHash, proof.Hashes)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Printf("deleteme calcRoot = %s\n", base64.StdEncoding.EncodeToString(deleteme))
 	}
 	// This is a logProof.RootMismatchError, aka different hash values.
 	return fmt.Errorf("verification failed: different hashes")
 }
 
-func (v *LogVerifier) VerifySP(sp *common.SP) error {
-	// Get the hash of the SP without SPTs:
-	SPTs := sp.SPTs
-	sp.SPTs = []common.SPT{}
-	serializedSP, err := common.ToJSON(sp)
-	if err != nil {
-		return fmt.Errorf("VerifySP | ToJSON | %w", err)
-	}
-	bytesHash := v.HashLeaf([]byte(serializedSP))
-	// Restore the SPTs to the SP:
-	sp.SPTs = SPTs
-
-	if err := v.verifySPTs(sp.SPTs, bytesHash); err != nil {
-		return fmt.Errorf("VerifySP | %w", err)
-	}
-	return nil
-}
-
 func (v *LogVerifier) VerifyRPC(rpc *common.PolicyCertificate) error {
 	// Get the hash of the RPC without SPTs:
 	SPTs := rpc.SPTs
-	rpc.SPTs = []common.SPT{}
+	rpc.SPTs = []common.SignedPolicyCertificateTimestamp{}
 	serializedStruct, err := common.ToJSON(rpc)
 	if err != nil {
 		return fmt.Errorf("VerifyRPC | ToJSON | %w", err)
@@ -148,7 +131,7 @@ func (v *LogVerifier) VerifyRPC(rpc *common.PolicyCertificate) error {
 	return nil
 }
 
-func (v *LogVerifier) verifySPTs(SPTs []common.SPT, dataHash []byte) error {
+func (v *LogVerifier) verifySPTs(SPTs []common.SignedPolicyCertificateTimestamp, dataHash []byte) error {
 	for _, p := range SPTs {
 		// Load the STH from JSON.
 		sthRaw, err := common.FromJSON(p.STH)
