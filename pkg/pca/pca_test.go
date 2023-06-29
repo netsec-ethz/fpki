@@ -133,7 +133,7 @@ func TestPCAWorkflow(t *testing.T) {
 	// 		8. PCA adds SPT to list in policy certificate
 	err = pca.sendRequestToAllLogServers(pc)
 	require.NoError(t, err)
-	require.Len(t, pc.SPTs, len(pca.CtLogServers)) // as many SPTs as CT log servers
+	require.Len(t, pc.SPCTs, len(pca.CtLogServers)) // as many SPTs as CT log servers
 	checkSPTs(t, pca, pc)
 
 	// 9. PCA signs again the policy certificate
@@ -246,7 +246,7 @@ func checkSPTs(t tests.T, pca *PCA, pc *common.PolicyCertificate) {
 	require.NoError(t, err)
 	hashedDerKey := common.SHA256Hash(derKey)
 
-	for _, spt := range pc.SPTs {
+	for _, spt := range pc.SPCTs {
 		require.Equal(t, hashedDerKey, spt.LogID)
 		require.Equal(t, pca.RootPolicyCert.Subject(), spt.Issuer)
 		require.Less(t, time.Since(spt.AddedTS), time.Minute)

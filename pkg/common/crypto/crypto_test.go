@@ -72,7 +72,7 @@ func TestSignAsIssuer(t *testing.T) {
 	// Sign as issuer.
 	polCert, err := crypto.SignRequestAsIssuer(req, issuerKey)
 	require.NoError(t, err, "RCSR Generate RPC error")
-	assert.Equal(t, len(polCert.SPTs), 0, "SPTs must be empty right after first issuer signature")
+	assert.Equal(t, len(polCert.SPCTs), 0, "SPTs must be empty right after first issuer signature")
 
 	// -------------------------------------
 	//  phase 3: domain owner check rpc
@@ -113,5 +113,5 @@ func TestIssuanceOfSP(t *testing.T) {
 	rpc, err := crypto.SignRequestAsIssuer(req, pcaPrivKey)
 	require.NoError(t, err, "RCSR Generate RPC error")
 
-	assert.Equal(t, len(rpc.SPTs), 0, "spt in the rpc should be empty")
+	assert.Equal(t, len(rpc.SPCTs), 0, "spt in the rpc should be empty")
 }

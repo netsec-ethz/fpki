@@ -240,7 +240,7 @@ func (pca *PCA) sendRequestToAllLogServers(pc *common.PolicyCertificate) error {
 		}
 		SPTs = append(SPTs, *spt)
 	}
-	pc.SPTs = SPTs
+	pc.SPCTs = SPTs
 	return nil
 }
 
