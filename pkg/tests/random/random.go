@@ -40,6 +40,7 @@ func BuildTestRandomPolicyHierarchy(t tests.T, domainName string) []common.Polic
 	for i := range docs {
 		pc := RandomPolicyCertificate(t)
 		pc.RawSubject = domainName
+		pc.Domain = domainName
 		pc.Issuer = "c0.com"
 
 		data, err := common.ToJSON(pc)
@@ -115,6 +116,7 @@ func RandomPolCertSignRequest(t tests.T) *common.PolicyCertificateSigningRequest
 		"Issuer",
 		"RPC subject",
 		rand.Intn(1000), // serial number
+		"domain.com",
 		RandomTimeWithoutMonotonic(),
 		RandomTimeWithoutMonotonic(),
 		true,
@@ -134,6 +136,7 @@ func RandomPolicyCertificate(t tests.T) *common.PolicyCertificate {
 		"Issuer",
 		"RPC subject",
 		rand.Intn(1000), // serial number
+		"fpki.com",
 		RandomTimeWithoutMonotonic(),
 		RandomTimeWithoutMonotonic(),
 		true,

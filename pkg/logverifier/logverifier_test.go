@@ -44,7 +44,7 @@ func TestVerifyInclusionByHash(t *testing.T) {
 	// Create a mock STH with the correct root hash to pass the test.
 	sth := &types.LogRootV1{
 		TreeSize:       2,
-		RootHash:       tests.MustDecodeBase64(t, "92bzhDqqvk5x2YFWpeHNNKIS5lRQYnF2pbvdk7NprX0="),
+		RootHash:       tests.MustDecodeBase64(t, "rHCFIFTtQjLK5dgSl/DS/wi8qctNmB6nrAI8gEq9AIM="),
 		TimestampNanos: 1661986742112252000,
 		Revision:       0,
 		Metadata:       []byte{},

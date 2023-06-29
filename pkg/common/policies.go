@@ -29,6 +29,7 @@ func (p PolicyCertificateBase) Equal(x PolicyCertificateBase) bool {
 
 type PolicyCertificateFields struct {
 	PolicyCertificateBase
+	Domain             string             `json:",omitempty"`
 	NotBefore          time.Time          `json:",omitempty"`
 	NotAfter           time.Time          `json:",omitempty"`
 	IsIssuer           bool               `json:",omitempty"`
@@ -74,6 +75,7 @@ func NewPolicyCertificateFields(
 	issuer string,
 	subject string,
 	serialNumber int,
+	domain string,
 	notBefore time.Time,
 	notAfter time.Time,
 	isIssuer bool,
@@ -94,6 +96,7 @@ func NewPolicyCertificateFields(
 			RawSubject:      subject,
 			RawSerialNumber: serialNumber,
 		},
+		Domain:             domain,
 		NotBefore:          notBefore,
 		NotAfter:           notAfter,
 		IsIssuer:           isIssuer,
@@ -111,6 +114,7 @@ func (c PolicyCertificateFields) Equal(x PolicyCertificateFields) bool {
 	return c.PolicyCertificateBase.Equal(x.PolicyCertificateBase) &&
 		c.PublicKeyAlgorithm == x.PublicKeyAlgorithm &&
 		bytes.Equal(c.PublicKey, x.PublicKey) &&
+		c.Domain == x.Domain &&
 		c.NotBefore.Equal(x.NotBefore) &&
 		c.NotAfter.Equal(x.NotAfter) &&
 		c.SignatureAlgorithm == x.SignatureAlgorithm &&
@@ -125,6 +129,7 @@ func NewPolicyCertificate(
 	issuer string,
 	subject string,
 	serialNumber int,
+	domain string,
 	notBefore time.Time,
 	notAfter time.Time,
 	isIssuer bool,
@@ -146,6 +151,7 @@ func NewPolicyCertificate(
 			issuer,
 			subject,
 			serialNumber,
+			domain,
 			notBefore,
 			notAfter,
 			isIssuer,

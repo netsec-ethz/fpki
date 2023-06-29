@@ -10,7 +10,7 @@ type PolicyCertificateSigningRequest struct {
 }
 
 type PolicyCertificateRevocationSigningRequest struct {
-	Subject string `json:",omitemptyu"`
+	Subject string `json:",omitempty"`
 }
 
 func NewPolicyCertificateSigningRequest(
@@ -18,6 +18,7 @@ func NewPolicyCertificateSigningRequest(
 	issuer string,
 	subject string,
 	serialNumber int,
+	domain string,
 	notBefore time.Time,
 	notAfter time.Time,
 	isIssuer bool,
@@ -36,6 +37,7 @@ func NewPolicyCertificateSigningRequest(
 			issuer,
 			subject,
 			serialNumber,
+			domain,
 			notBefore,
 			notAfter,
 			isIssuer,
