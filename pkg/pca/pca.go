@@ -104,7 +104,7 @@ func (pca *PCA) NewPolicyCertificateSigningRequest(
 	publicKey []byte,
 	publicKeyAlgorithm common.PublicKeyAlgorithm,
 	signatureAlgorithm common.SignatureAlgorithm,
-	policyAttributes []common.PolicyAttributes,
+	policyAttributes common.PolicyAttributes,
 	ownerSigningFunction func(serialized []byte) []byte,
 	ownerPubKeyHash []byte,
 ) (*common.PolicyCertificateSigningRequest, error) {

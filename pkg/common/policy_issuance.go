@@ -25,7 +25,7 @@ func NewPolicyCertificateSigningRequest(
 	publicKeyAlgorithm PublicKeyAlgorithm,
 	signatureAlgorithm SignatureAlgorithm,
 	timeStamp time.Time,
-	policyAttributes []PolicyAttributes,
+	policyAttributes PolicyAttributes,
 	ownerSignature []byte,
 	ownerPubKeyHash []byte,
 ) *PolicyCertificateSigningRequest {

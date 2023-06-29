@@ -122,7 +122,7 @@ func RandomPolCertSignRequest(t tests.T) *common.PolicyCertificateSigningRequest
 		common.RSA,
 		common.SHA256,
 		RandomTimeWithoutMonotonic(),
-		nil,                       // policy attributes (empty for now)
+		common.PolicyAttributes{}, // policy attributes (empty for now)
 		RandomBytesForTest(t, 32), // ownwer signature
 		RandomBytesForTest(t, 32), // ownwer pub key hash
 	)
@@ -141,7 +141,7 @@ func RandomPolicyCertificate(t tests.T) *common.PolicyCertificate {
 		common.RSA,
 		common.SHA256,
 		RandomTimeWithoutMonotonic(),
-		nil,                       // policy attributes (empty for now)
+		common.PolicyAttributes{}, // policy attributes (empty for now)
 		RandomBytesForTest(t, 32), // ownwer signature
 		RandomBytesForTest(t, 32), // ownwer pub key hash
 		RandomBytesForTest(t, 32), // issuer signature

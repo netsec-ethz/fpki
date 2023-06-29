@@ -51,10 +51,10 @@ func (do *DomainOwner) GeneratePolCertSignRequest(issuer, domainName string, ver
 		pubKeyBytes,
 		common.RSA,
 		common.SHA256,
-		time.Now(), // timestamp
-		nil,        // policy attributes
-		nil,        // owner signature
-		nil,        // owner pub key hash
+		time.Now(),                // timestamp
+		common.PolicyAttributes{}, // policy attributes
+		nil,                       // owner signature
+		nil,                       // owner pub key hash
 	)
 
 	// if domain owner still have the private key of the previous RPC -> can avoid cool-off period
@@ -91,10 +91,10 @@ func (do *DomainOwner) RandomPolicyCertificate(domainName string, policy common.
 		nil,                              // public key
 		common.RSA,
 		common.SHA256,
-		time.Now(),                        // timestamp
-		[]common.PolicyAttributes{policy}, // policy attributes
-		nil,                               // owner's signature
-		nil,                               // owner pub key hash
+		time.Now(), // timestamp
+		policy,     // policy attributes
+		nil,        // owner's signature
+		nil,        // owner pub key hash
 	)
 
 	err := crypto.SignAsOwner(rpcKeyPair, polCertSignReq)
