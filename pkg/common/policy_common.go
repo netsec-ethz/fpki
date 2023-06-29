@@ -13,7 +13,7 @@ func (o MarshallableDocumentBase) Raw() []byte { return o.RawJSON }
 
 // PolicyPart is an interface that is implemented by all objects that are part of the set
 // of "policy objects". A policy object is that one that represents functionality of policies
-// for a domain, such as RPC, RCSR, SPT, SPRT, SP, PSR or Policy.
+// for a domain, such as PolicyCertificate, a PolicyCertificateSigningRequest, etc.
 type PolicyPart interface {
 	MarshallableDocument
 }
