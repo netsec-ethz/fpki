@@ -1,19 +1,15 @@
 package pca
 
 import (
+	"bytes"
 	"crypto/rsa"
 	"fmt"
-	"log"
-	"os"
+	"time"
 
-	"github.com/google/trillian"
-	"github.com/google/trillian/types"
 	"github.com/netsec-ethz/fpki/pkg/common"
-	"github.com/netsec-ethz/fpki/pkg/logverifier"
+	"github.com/netsec-ethz/fpki/pkg/common/crypto"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
-
-// CRITICAL: The funcs are not thread-safe for now. DO NOT use them for multi-thread program.
 
 // TODO(yongzhe):
 //       How to handle Cool-off period?
@@ -22,28 +18,28 @@ import (
 //           If domain owner loses the RPC, PCA can return the missing RPC)
 //       More complete logic
 
-// PCA: Structure which represent one PCA
+// PCA represents a policy certificate authority.
 type PCA struct {
-	caName string
+	CAName             string
+	RsaKeyPair         *rsa.PrivateKey                        // PCA's signing key pair
+	RootPolicyCert     *common.PolicyCertificate              // The PCA's policy certificate
+	CtLogServers       map[[32]byte]*CTLogServerEntryConfig   // CT log servers
+	LogServerRequester LogServerRequester                     // not set
+	DB                 map[[32]byte]*common.PolicyCertificate // per hash of public key
+	SerialNumber       int                                    // unique serial number per pol cert
+}
 
-	// pca's signing rsa key pair; used to sign rcsr -> rpc
-	rsaKeyPair *rsa.PrivateKey
-
-	// store valid Pol Cert (with server timestamps) in memory; Later replaced by data base
-	validPolCertsPerDomain map[string]*common.PolicyCertificate
-
-	// Pol Cert without timestamps; pre-certificate
-	prePolCertsPerDomain map[string]*common.PolicyCertificate
-
-	policyLogExgPath string
-
-	outputPath string
-
-	// verifier to verify the STH and PoI
-	logVerifier *logverifier.LogVerifier
-
-	// serial number for the RPC; unique for every RPC
-	serialNumber int
+// LogServerRequester is implemented by objects that can talk to CT log servers.
+// TODO(juanga) implement a real one, not only a mock for the tests.
+type LogServerRequester interface {
+	ObtainSptFromLogServer(
+		URL string,
+		pc *common.PolicyCertificate,
+	) (*common.SignedPolicyCertificateTimestamp, error)
+	SendPolicyCertificateToLogServer(
+		URL string,
+		pc *common.PolicyCertificate,
+	) error
 }
 
 // NewPCA: Return a new instance of PCa
@@ -54,144 +50,231 @@ func NewPCA(configPath string) (*PCA, error) {
 	if err != nil {
 		return nil, fmt.Errorf("NewPCA | ReadConfigFromFile | %w", err)
 	}
-	// load rsa key pair
+
+	// Load rsa key pair
 	keyPair, err := util.RSAKeyFromPEMFile(config.KeyPath)
 	if err != nil {
 		return nil, fmt.Errorf("NewPCA | LoadRSAKeyPairFromFile | %w", err)
 	}
+
+	// Load Root Policy Certificate.
+	a, err := common.FromJSONFile(config.RootPolicyCertPath)
+	if err != nil {
+		return nil, err
+	}
+	rpc, err := util.ToType[*common.PolicyCertificate](a)
+	if err != nil {
+		return nil, err
+	}
+	// Check the private key and RPC match.
+	derBytes, err := util.RSAPublicToDERBytes(&keyPair.PublicKey)
+	if err != nil {
+		return nil, err
+	}
+
+	if !bytes.Equal(rpc.PublicKey, derBytes) {
+		return nil, fmt.Errorf("RPC and key do not match")
+	}
+
+	// Load the CT log server entries.
+	logServers := make(map[[32]byte]*CTLogServerEntryConfig)
+	for _, s := range config.CTLogServers {
+		// Compute the hash of the public key.
+		h := common.SHA256Hash32Bytes(s.PublicKeyDER)
+		logServers[h] = &s
+	}
+
 	return &PCA{
-		validPolCertsPerDomain: make(map[string]*common.PolicyCertificate),
-		prePolCertsPerDomain:   make(map[string]*common.PolicyCertificate),
-		logVerifier:            logverifier.NewLogVerifier(nil),
-		caName:                 config.CAName,
-		outputPath:             config.OutputPath,
-		policyLogExgPath:       config.PolicyLogExgPath,
-		rsaKeyPair:             keyPair,
+		CAName:         config.CAName,
+		RsaKeyPair:     keyPair,
+		RootPolicyCert: rpc,
+		CtLogServers:   logServers,
+		DB:             make(map[[32]byte]*common.PolicyCertificate),
+		SerialNumber:   0,
 	}, nil
 }
 
-// ReceiveSPTFromPolicyLog: When policy log returns SPT, this func will be called
-// this func will read the SPTs from the file, and process them
-func (pca *PCA) ReceiveSPTFromPolicyLog() error {
-	for domainName, v := range pca.prePolCertsPerDomain {
-		// read the corresponding spt
-		spt, err := common.JsonFileToSPT(pca.policyLogExgPath + "/spt/" + domainName)
-		if err != nil {
-			return fmt.Errorf("ReceiveSPTFromPolicyLog | JsonFileToSPT | %w", err)
-		}
+func (pca *PCA) NewPolicyCertificateSigningRequest(
+	version int,
+	subject string,
+	serialNumber int,
+	notBefore time.Time,
+	notAfter time.Time,
+	isIssuer bool,
+	publicKey []byte,
+	publicKeyAlgorithm common.PublicKeyAlgorithm,
+	signatureAlgorithm common.SignatureAlgorithm,
+	policyAttributes []common.PolicyAttributes,
+	ownerSigningFunction func(serialized []byte) []byte,
+	ownerPubKeyHash []byte,
+) (*common.PolicyCertificateSigningRequest, error) {
 
-		// verify the PoI, STH
-		err = pca.verifySPTWithRPC(spt, v)
-		if err == nil {
-			log.Printf("Get a new SPT for domain RPC: %s\n", domainName)
-			v.SPTs = []common.SignedPolicyCertificateTimestamp{*spt}
-
-			// move the rpc from pre-rpc to valid-rpc
-			delete(pca.prePolCertsPerDomain, domainName)
-			pca.validPolCertsPerDomain[v.RawSubject] = v
-		} else {
-			return fmt.Errorf("Fail to verify one SPT RPC")
-		}
-		os.Remove(pca.policyLogExgPath + "/spt/" + domainName)
+	// Check validity range falls inside PCAs.
+	if notBefore.Before(pca.RootPolicyCert.NotBefore) {
+		return nil, fmt.Errorf("invalid validity range: %s before PCAs %s",
+			notBefore, pca.RootPolicyCert.NotBefore)
+	}
+	if notAfter.After(pca.RootPolicyCert.NotAfter) {
+		return nil, fmt.Errorf("invalid validity range: %s after PCAs %s",
+			notAfter, pca.RootPolicyCert.NotAfter)
 	}
 
+	// Create request with appropriate values.
+	req := common.NewPolicyCertificateSigningRequest(
+		version,
+		pca.CAName,
+		subject,
+		serialNumber,
+		notBefore,
+		notAfter,
+		isIssuer,
+		publicKey,
+		publicKeyAlgorithm,
+		signatureAlgorithm,
+		time.Now(),
+		policyAttributes,
+		nil,
+		ownerPubKeyHash,
+	)
+	// Serialize it.
+	serializedReq, err := common.ToJSON(req)
+	if err != nil {
+		return nil, err
+	}
+	// Obtain signature.
+	req.OwnerSignature = ownerSigningFunction(serializedReq)
+
+	return req, nil
+}
+
+// SignAndLogRequest signs the policy certificate request and generates a policy certificate.
+func (pca *PCA) SignAndLogRequest(
+	req *common.PolicyCertificateSigningRequest,
+) (*common.PolicyCertificate, error) {
+
+	// verify the signature in the rcsr; check if the domain's pub key is correct
+	skip, err := pca.canSkipCoolOffPeriod(req)
+	if err != nil {
+		return nil, err
+	}
+	if !skip {
+		return nil, fmt.Errorf("for now we don't support cool off periods; all requests must " +
+			"be signed by the owner")
+	}
+
+	pc, err := pca.signRequest(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := pca.sendRequestToAllLogServers(pc); err != nil {
+		return nil, err
+	}
+
+	if err := pca.signFinalPolicyCertificate(pc); err != nil {
+		return nil, err
+	}
+
+	if err := pca.sendFinalPolCertToAllLogServers(pc); err != nil {
+		return nil, err
+	}
+
+	pca.storeInDb(pc)
+
+	return pc, nil
+}
+
+// canSkipCoolOffPeriod verifies that the owner's signature is correct, if there is an owner's
+// signature in the request, and this PCA has the policy certificate used to signed said request.
+// It returns true if this PCA can skip the cool off period, false otherwise.
+func (pca *PCA) canSkipCoolOffPeriod(req *common.PolicyCertificateSigningRequest) (bool, error) {
+	// Owner's signature?
+	if len(req.OwnerSignature) == 0 {
+		// No signature, cannot skip cool off period.
+		return false, nil
+	}
+	// If there is a owner's signature, the id of the key used must be 32 bytes.
+	if len(req.OwnerPubKeyHash) != 32 {
+		return false, fmt.Errorf("field OwnerPubKeyHash should be 32 bytes long but is %d",
+			len(req.OwnerPubKeyHash))
+	}
+	// Cast it to array and check the DB.
+	key := (*[32]byte)(req.OwnerPubKeyHash)
+	stored, ok := pca.DB[*key]
+	if !ok {
+		// No such certificate, cannot skip cool off period.
+		return false, nil
+	}
+
+	// We found the policy certificate used to sign this request. Get the public key.
+	pubKey, err := util.DERBytesToRSAPublic(stored.PublicKey)
+	if err != nil {
+		return false, err
+	}
+
+	// Verify the signature matches.
+	err = crypto.VerifyOwnerSignature(req, pubKey)
+
+	// Return true if no error, or false and the error.
+	return err == nil, err
+}
+
+func (pca *PCA) signRequest(
+	req *common.PolicyCertificateSigningRequest,
+) (*common.PolicyCertificate, error) {
+
+	// Set the issuer values from this CA.
+	pca.increaseSerialNumber()
+	req.Issuer = pca.RootPolicyCert.Subject()
+	req.RawSerialNumber = pca.SerialNumber
+	return crypto.SignRequestAsIssuer(req, pca.RsaKeyPair)
+}
+
+func (pca *PCA) sendRequestToAllLogServers(pc *common.PolicyCertificate) error {
+	// TODO(juagargi) do this concurrently
+	SPTs := make([]common.SignedPolicyCertificateTimestamp, 0, len(pca.CtLogServers))
+	for _, logServer := range pca.CtLogServers {
+		spt, err := pca.sendRequestToLogServer(pc, logServer)
+		if err != nil {
+			return err
+		}
+		SPTs = append(SPTs, *spt)
+	}
+	pc.SPTs = SPTs
 	return nil
 }
 
-func (pca *PCA) OutputPolicyCertificate() error {
-	for domain, rpc := range pca.validPolCertsPerDomain {
-		err := common.ToJSONFile(rpc, pca.outputPath+"/"+domain+"_"+rpc.Issuer+"_"+"rpc")
+func (pca *PCA) sendRequestToLogServer(
+	pc *common.PolicyCertificate,
+	logServer *CTLogServerEntryConfig,
+) (*common.SignedPolicyCertificateTimestamp, error) {
+
+	return pca.LogServerRequester.ObtainSptFromLogServer(logServer.URL, pc)
+}
+
+func (pca *PCA) signFinalPolicyCertificate(pc *common.PolicyCertificate) error {
+	_, err := crypto.SignPolicyCertificateAsIssuer(pc, pca.RsaKeyPair)
+	return err
+}
+
+// sendFinalPolCertToAllLogServers sends the final policy certificate with all the SPTs included,
+// to all the configured CT log servers for final registration.
+func (pca *PCA) sendFinalPolCertToAllLogServers(pc *common.PolicyCertificate) error {
+	for _, logServer := range pca.CtLogServers {
+		err := pca.LogServerRequester.SendPolicyCertificateToLogServer(logServer.URL, pc)
 		if err != nil {
-			return fmt.Errorf("OutputPolicyCertificate | JsonStructToFile | %w", err)
+			return err
 		}
 	}
 	return nil
 }
 
-// verify the SPT of the RPC.
-func (pca *PCA) verifySPTWithRPC(spt *common.SignedPolicyCertificateTimestamp, rpc *common.PolicyCertificate) error {
-	proofs, logRoot, err := getProofsAndLogRoot(spt)
-	if err != nil {
-		return fmt.Errorf("verifySPTWithRPC | parsePoIAndSTH | %w", err)
-	}
-
-	// get leaf hash
-	rpcBytes, err := common.ToJSON(rpc)
-	if err != nil {
-		return fmt.Errorf("verifySPT | Json_StructToBytes | %w", err)
-	}
-	leafHash := pca.logVerifier.HashLeaf(rpcBytes)
-
-	// verify the PoI
-	err = pca.logVerifier.VerifyInclusionByHash(logRoot, leafHash, proofs)
-	if err != nil {
-		return fmt.Errorf("verifySPT | VerifyInclusionByHash | %w", err)
-	}
-
-	return nil
+func (pca *PCA) storeInDb(pc *common.PolicyCertificate) {
+	key := (*[32]byte)(common.SHA256Hash(pc.PublicKey))
+	pca.DB[*key] = pc
 }
 
 // TODO(yongzhe): modify this to make sure unique SN
 func (pca *PCA) increaseSerialNumber() {
-	pca.serialNumber = pca.serialNumber + 1
+	pca.SerialNumber = pca.SerialNumber + 1
 }
-
-func (pca *PCA) ReturnValidRPC() map[string]*common.PolicyCertificate {
-	return pca.validPolCertsPerDomain
-}
-
-// getProofsAndLogRoot return the proofs and root parsed from the PoI and STH in JSON.
-func getProofsAndLogRoot(spt *common.SignedPolicyCertificateTimestamp) ([]*trillian.Proof, *types.LogRootV1, error) {
-	// Parse the PoI into []*trillian.Proof.
-	serializedProofs, err := common.FromJSON(spt.PoI)
-	if err != nil {
-		return nil, nil, err
-	}
-	proofs, err := util.ToTypedSlice[*trillian.Proof](serializedProofs)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	// Parse the STH into a *types.LogRootV1.
-	serializedRoot, err := common.FromJSON(spt.STH)
-	if err != nil {
-		return nil, nil, err
-	}
-	root, err := util.ToType[*types.LogRootV1](serializedRoot)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return proofs, root, nil
-}
-
-/*
-// check whether the RPC signature is correct
-func (pca *PCA) checkRPCSignature(rcsr *common.RCSR) bool {
-	// if no rpc signature
-	if len(rcsr.PRCSignature) == 0 {
-		return false
-	}
-
-	// check if there is any valid rpc
-	if rpc, found := pca.validRPCsByDomains[rcsr.Subject]; found {
-		err := common.RCSRVerifyRPCSignature(rcsr, rpc)
-		if err == nil {
-			return true
-		} else {
-			return false
-		}
-	} else {
-		return false
-	}
-}
-
-// GetValidRPCByDomain: return the new RPC with SPT
-func (pca *PCA) GetValidRPCByDomain(domainName string) (*common.RPC, error) {
-	if rpc, found := pca.validRPCsByDomains[domainName]; found {
-		return rpc, nil
-	} else {
-		return nil, errors.New("no valid RPC")
-	}
-}
-*/

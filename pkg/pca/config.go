@@ -8,10 +8,12 @@ import (
 
 // PCAConfig: configuration of the pca
 type PCAConfig struct {
-	CAName string `json:",omitempty"`
+	CAName             string                   `json:",omitempty"`
+	CTLogServers       []CTLogServerEntryConfig `json:",omitempty"`
+	KeyPath            string                   `json:",omitempty"`
+	RootPolicyCertPath string                   `json:",omitempty"`
 
-	// path to store the pca's key
-	KeyPath string `json:",omitempty"`
+	// deleteme remove all this below
 
 	// PCA's output path; sends RPC
 	PolicyLogExgPath string `json:",omitempty"`
@@ -19,9 +21,16 @@ type PCAConfig struct {
 	OutputPath string `json:",omitempty"`
 }
 
+type CTLogServerEntryConfig struct {
+	Name         string `json:",omitempty"`
+	URL          string `json:",omitempty"`
+	PublicKeyDER []byte `json:",omitempty"` // DER-encoded SubjectPublicKeyInfo object.
+	//                                         See ctx509.MarshalPKIXPublicKey
+}
+
 // SaveConfigToFile: save PCA config to file
 func SaveConfigToFile(config *PCAConfig, configPath string) error {
-	bytes, err := json.Marshal(config)
+	bytes, err := json.MarshalIndent(config, "", "   ")
 	if err != nil {
 		return fmt.Errorf("SaveConfigToFile | Marshal | %w", err)
 	}

@@ -101,16 +101,11 @@ func RandomTimeWithoutMonotonic() time.Time {
 
 func RandomSignedPolicyCertificateTimestamp(t tests.T) *common.SignedPolicyCertificateTimestamp {
 	return common.NewSignedPolicyCertificateTimestamp(
-		"spt subject",
-		rand.Intn(10), // version
-		"Issuer",
-		RandomBytesForTest(t, 10), // log id
-		0x21,
-		RandomTimeWithoutMonotonic(),
-		RandomBytesForTest(t, 32),
-		RandomBytesForTest(t, 32),
-		rand.Intn(1000),
-		RandomBytesForTest(t, 32),
+		rand.Intn(10),                // version
+		"Issuer",                     // issuer
+		RandomBytesForTest(t, 10),    // log id
+		RandomTimeWithoutMonotonic(), // timestamp
+		RandomBytesForTest(t, 32),    // signature
 	)
 }
 
@@ -127,8 +122,9 @@ func RandomPolCertSignRequest(t tests.T) *common.PolicyCertificateSigningRequest
 		common.RSA,
 		common.SHA256,
 		RandomTimeWithoutMonotonic(),
-		nil, // policy attributes (empty for now)
-		RandomBytesForTest(t, 32),
+		nil,                       // policy attributes (empty for now)
+		RandomBytesForTest(t, 32), // ownwer signature
+		RandomBytesForTest(t, 32), // ownwer pub key hash
 	)
 }
 
@@ -145,9 +141,11 @@ func RandomPolicyCertificate(t tests.T) *common.PolicyCertificate {
 		common.RSA,
 		common.SHA256,
 		RandomTimeWithoutMonotonic(),
-		nil, // policy attributes (empty for now)
-		RandomBytesForTest(t, 32),
-		RandomBytesForTest(t, 32),
+		nil,                       // policy attributes (empty for now)
+		RandomBytesForTest(t, 32), // ownwer signature
+		RandomBytesForTest(t, 32), // ownwer pub key hash
+		RandomBytesForTest(t, 32), // issuer signature
+		RandomBytesForTest(t, 32), // issuer pub key hash
 		[]common.SignedPolicyCertificateTimestamp{
 			*RandomSignedPolicyCertificateTimestamp(t),
 			*RandomSignedPolicyCertificateTimestamp(t),

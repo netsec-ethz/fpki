@@ -28,22 +28,21 @@ func NewDomainOwner() *DomainOwner {
 
 // GeneratePolCertSignRequest: Generate a Root Certificate Signing Request for one domain
 // subject is the name of the domain: eg. fpki.com
-func (do *DomainOwner) GeneratePolCertSignRequest(domainName string, version int) (*common.PolicyCertificateSigningRequest, error) {
-	// generate a fresh RSA key pair; new RSA key for every RCSR, thus every RPC
+func (do *DomainOwner) GeneratePolCertSignRequest(issuer, domainName string, version int) (*common.PolicyCertificateSigningRequest, error) {
+	// Generate a fresh RSA key pair; new RSA key for every RCSR, thus every RPC
 	newPrivKeyPair, err := do.generateRSAPrivKeyPair()
 	if err != nil {
 		return nil, fmt.Errorf("GeneratePolCertSignRequest | generateRSAPrivKey | %w", err)
 	}
-
 	// marshall public key into bytes
-	pubKeyBytes, err := util.RSAPublicToPEM(&newPrivKeyPair.PublicKey)
+	pubKeyBytes, err := util.RSAPublicToDERBytes(&newPrivKeyPair.PublicKey)
 	if err != nil {
 		return nil, fmt.Errorf("GeneratePolCertSignRequest | RsaPublicKeyToPemBytes | %w", err)
 	}
 
 	req := common.NewPolicyCertificateSigningRequest(
 		version,
-		"", // issuer
+		issuer, // issuer
 		domainName,
 		0, // serial number
 		time.Now(),
@@ -55,6 +54,7 @@ func (do *DomainOwner) GeneratePolCertSignRequest(domainName string, version int
 		time.Now(), // timestamp
 		nil,        // policy attributes
 		nil,        // owner signature
+		nil,        // owner pub key hash
 	)
 
 	// if domain owner still have the private key of the previous RPC -> can avoid cool-off period
@@ -65,12 +65,7 @@ func (do *DomainOwner) GeneratePolCertSignRequest(domainName string, version int
 		}
 	}
 
-	// generate signature for RCSR, using the new pub key
-	err = crypto.SignAsOwner(newPrivKeyPair, req)
-	if err != nil {
-		return nil, fmt.Errorf("GeneratePolCertSignRequest | RCSRCreateSignature | %w", err)
-	}
-
+	// Store the new keys for this domain as the latest owner keys.
 	do.privKeyByDomainName[domainName] = newPrivKeyPair
 
 	return req, nil
@@ -99,6 +94,7 @@ func (do *DomainOwner) RandomPolicyCertificate(domainName string, policy common.
 		time.Now(),                        // timestamp
 		[]common.PolicyAttributes{policy}, // policy attributes
 		nil,                               // owner's signature
+		nil,                               // owner pub key hash
 	)
 
 	err := crypto.SignAsOwner(rpcKeyPair, polCertSignReq)
