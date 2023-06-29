@@ -153,13 +153,13 @@ func VerifyIssuerSignature(caCert *ctx509.Certificate, rpc *common.PolicyCertifi
 	pubKey := caCert.PublicKey.(*rsa.PublicKey)
 
 	// Serialize without CA signature or SPTs:
-	caSig, SPTs := rpc.IssuerSignature, rpc.SPTs
-	rpc.IssuerSignature, rpc.SPTs = nil, nil
+	caSig, SPTs := rpc.IssuerSignature, rpc.SPCTs
+	rpc.IssuerSignature, rpc.SPCTs = nil, nil
 	bytes, err := common.ToJSON(rpc)
 	if err != nil {
 		return fmt.Errorf("RCSRVerifySignature | ToJSON | %w", err)
 	}
-	rpc.IssuerSignature, rpc.SPTs = caSig, SPTs
+	rpc.IssuerSignature, rpc.SPCTs = caSig, SPTs
 
 	hashOutput := sha256.Sum256(bytes)
 	err = rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, hashOutput[:], rpc.IssuerSignature)

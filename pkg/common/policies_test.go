@@ -33,7 +33,7 @@ func TestEqual(t *testing.T) {
 // TestJsonReadWrite: RPC -> file -> RPC, then RPC.Equal(RPC)
 func TestJsonReadWrite(t *testing.T) {
 	rpc := random.RandomPolicyCertificate(t)
-	rpc.SPTs = []common.SignedPolicyCertificateTimestamp{
+	rpc.SPCTs = []common.SignedPolicyCertificateTimestamp{
 		*random.RandomSignedPolicyCertificateTimestamp(t),
 		*random.RandomSignedPolicyCertificateTimestamp(t),
 	}

@@ -46,7 +46,7 @@ type PolicyCertificate struct {
 	PolicyCertificateFields
 	IssuerSignature  []byte                             `json:",omitempty"`
 	IssuerPubKeyHash []byte                             `json:",omitempty"`
-	SPTs             []SignedPolicyCertificateTimestamp `json:",omitempty"`
+	SPCTs            []SignedPolicyCertificateTimestamp `json:",omitempty"`
 }
 
 // PolicyAttributes is a domain policy that specifies what is or not acceptable for a domain.
@@ -159,7 +159,7 @@ func NewPolicyCertificate(
 		),
 		IssuerSignature:  issuerSignature,
 		IssuerPubKeyHash: issuerPubKeyHash,
-		SPTs:             SPTs,
+		SPCTs:            SPTs,
 	}
 }
 
@@ -167,7 +167,7 @@ func (c PolicyCertificate) Equal(x PolicyCertificate) bool {
 	return c.PolicyCertificateFields.Equal(x.PolicyCertificateFields) &&
 		bytes.Equal(c.IssuerSignature, x.IssuerSignature) &&
 		bytes.Equal(c.IssuerPubKeyHash, x.IssuerPubKeyHash) &&
-		equalSlices(c.SPTs, x.SPTs)
+		equalSlices(c.SPCTs, x.SPCTs)
 }
 
 func (s PolicyAttributes) Equal(o PolicyAttributes) bool {
