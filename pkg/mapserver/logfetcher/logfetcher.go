@@ -342,13 +342,13 @@ func GetPCAndRPCs(
 			generateRandomBytes(),            // public key
 			common.RSA,
 			common.SHA256,
-			time.Now(), // timestamp
-			nil,        // policy attributes
-			nil,        // owner signature
-			nil,        // owner pub key hash
-			nil,        // issuer signature
-			nil,        // issuer pub key hash
-			nil,        // server timestamps
+			time.Now(),                // timestamp
+			common.PolicyAttributes{}, // policy attributes
+			nil,                       // owner signature
+			nil,                       // owner pub key hash
+			nil,                       // issuer signature
+			nil,                       // issuer pub key hash
+			nil,                       // server timestamps
 		))
 	}
 	if err := scanner.Err(); err != nil {

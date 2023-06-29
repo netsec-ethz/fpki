@@ -36,7 +36,7 @@ type PolicyCertificateFields struct {
 	PublicKeyAlgorithm PublicKeyAlgorithm `json:",omitempty"`
 	SignatureAlgorithm SignatureAlgorithm `json:",omitempty"`
 	TimeStamp          time.Time          `json:",omitempty"`
-	PolicyAttributes   []PolicyAttributes `json:",omitempty"`
+	PolicyAttributes   PolicyAttributes   `json:",omitempty"`
 	OwnerSignature     []byte             `json:",omitempty"`
 	OwnerPubKeyHash    []byte             `json:",omitempty"` // SHA256 of owner's public key
 }
@@ -81,7 +81,7 @@ func NewPolicyCertificateFields(
 	publicKeyAlgorithm PublicKeyAlgorithm,
 	signatureAlgorithm SignatureAlgorithm,
 	timeStamp time.Time,
-	policyAttributes []PolicyAttributes,
+	policyAttributes PolicyAttributes,
 	ownerSignature []byte,
 	ownerPubKeyHash []byte,
 ) *PolicyCertificateFields {
@@ -117,7 +117,7 @@ func (c PolicyCertificateFields) Equal(x PolicyCertificateFields) bool {
 		c.TimeStamp.Equal(x.TimeStamp) &&
 		bytes.Equal(c.OwnerSignature, x.OwnerSignature) &&
 		bytes.Equal(c.OwnerPubKeyHash, x.OwnerPubKeyHash) &&
-		equalSlices(c.PolicyAttributes, x.PolicyAttributes)
+		c.PolicyAttributes.Equal(x.PolicyAttributes)
 }
 
 func NewPolicyCertificate(
@@ -132,7 +132,7 @@ func NewPolicyCertificate(
 	publicKeyAlgorithm PublicKeyAlgorithm,
 	signatureAlgorithm SignatureAlgorithm,
 	timeStamp time.Time,
-	policyAttributes []PolicyAttributes,
+	policyAttributes PolicyAttributes,
 	ownerSignature []byte,
 	ownerPubKeyHash []byte,
 	issuerSignature []byte,

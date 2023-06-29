@@ -1,6 +1,7 @@
 package logverifier
 
 import (
+	"encoding/base64"
 	"fmt"
 
 	"github.com/google/trillian"
@@ -99,12 +100,12 @@ func (c *LogVerifier) VerifyInclusionByHash(trustedRoot *types.LogRootV1, leafHa
 			return fmt.Errorf("VerifyInclusionByHash | Unexpected error: %w", err)
 		}
 
-		// deleteme, err := logProof.RootFromInclusionProof(c.hasher, uint64(proof.LeafIndex), trustedRoot.TreeSize,
-		// 	leafHash, proof.Hashes)
-		// if err != nil {
-		// 	panic(err)
-		// }
-		// fmt.Printf("deleteme calcRoot = %s\n", base64.StdEncoding.EncodeToString(deleteme))
+		deleteme, err := logProof.RootFromInclusionProof(c.hasher, uint64(proof.LeafIndex), trustedRoot.TreeSize,
+			leafHash, proof.Hashes)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Printf("deleteme calcRoot = %s\n", base64.StdEncoding.EncodeToString(deleteme))
 	}
 	// This is a logProof.RootMismatchError, aka different hash values.
 	return fmt.Errorf("verification failed: different hashes")

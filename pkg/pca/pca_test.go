@@ -43,11 +43,9 @@ func TestCreateConfig(t *testing.T) {
 		common.RSA,
 		common.SHA256,
 		util.TimeFromSecs(1),
-		[]common.PolicyAttributes{
-			{
-				TrustedCA:         []string{"pca"},
-				AllowedSubdomains: []string{""},
-			},
+		common.PolicyAttributes{
+			TrustedCA:         []string{"pca"},
+			AllowedSubdomains: []string{""},
 		},
 		nil, // no owner signature
 		nil, // hash of owner's public key
@@ -103,7 +101,7 @@ func TestPCAWorkflow(t *testing.T) {
 		ownerDerKey, // public key
 		common.RSA,
 		common.SHA256,
-		nil, // policy attributes
+		common.PolicyAttributes{}, // policy attributes
 		func(serialized []byte) []byte {
 			return nil
 		},
