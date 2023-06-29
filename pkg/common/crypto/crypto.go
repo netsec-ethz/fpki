@@ -108,6 +108,7 @@ func SignRequestAsIssuer(req *common.PolicyCertificateSigningRequest, privKey *r
 		req.Issuer,
 		req.Subject(),
 		req.SerialNumber(),
+		req.Domain,
 		req.NotBefore,
 		req.NotAfter,
 		req.IsIssuer,

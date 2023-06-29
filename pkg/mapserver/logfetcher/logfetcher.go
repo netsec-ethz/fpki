@@ -335,7 +335,8 @@ func GetPCAndRPCs(
 			0,
 			"", // CA name
 			domainName,
-			0,                                // serial number
+			0, // serial number
+			domainName,
 			time.Now(),                       // not before
 			time.Now().Add(time.Microsecond), // not after
 			false,                            // is issuer

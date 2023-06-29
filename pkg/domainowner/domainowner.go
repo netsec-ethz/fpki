@@ -44,7 +44,8 @@ func (do *DomainOwner) GeneratePolCertSignRequest(issuer, domainName string, ver
 		version,
 		issuer, // issuer
 		domainName,
-		0, // serial number
+		0,          // serial number
+		domainName, // domain
 		time.Now(),
 		time.Now().Add(time.Microsecond), // not after
 		false,                            // is issuer
@@ -85,6 +86,7 @@ func (do *DomainOwner) RandomPolicyCertificate(domainName string, policy common.
 		"",         // issuer
 		domainName, // subject
 		0,          // serial number
+		domainName, // domain
 		time.Now(),
 		time.Now().Add(time.Microsecond), // not after
 		false,                            // is issuer
