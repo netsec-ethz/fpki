@@ -7,12 +7,28 @@ import (
 	"github.com/google/trillian"
 	"github.com/google/trillian/types"
 	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/common/crypto"
 	"github.com/netsec-ethz/fpki/pkg/tests"
 	"github.com/netsec-ethz/fpki/pkg/tests/random"
 	"github.com/netsec-ethz/fpki/pkg/util"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestVerifySPT(t *testing.T) {
+	ownwerPriv, err := util.RSAKeyFromPEMFile("../../tests/testdata/clientkey.pem")
+	require.NoError(t, err, "load RSA key error")
+	issuerPriv, err := util.RSAKeyFromPEMFile("../../tests/testdata/serverkey.pem")
+	require.NoError(t, err, "load RSA key error")
+
+	req := random.RandomPolCertSignRequest(t)
+	err = crypto.SignAsOwner(ownwerPriv, req)
+	require.NoError(t, err)
+
+	cert, err := crypto.SignRequestAsIssuer(req, issuerPriv)
+	require.NoError(t, err)
+	_ = cert
+}
 
 func TestVerifyInclusionByHash(t *testing.T) {
 	// Because we are using "random" bytes deterministically here, set a fixed seed.
@@ -28,7 +44,7 @@ func TestVerifyInclusionByHash(t *testing.T) {
 	// Create a mock STH with the correct root hash to pass the test.
 	sth := &types.LogRootV1{
 		TreeSize:       2,
-		RootHash:       tests.MustDecodeBase64(t, "3mI5Az/2fISqNSrfUQuWZAkvFuP2ozS2ad4+hnZ1Eh4="),
+		RootHash:       tests.MustDecodeBase64(t, "VZfa96+e9du6zpvFD/ZlMFMiTqfruk71mqzcg+NG350="),
 		TimestampNanos: 1661986742112252000,
 		Revision:       0,
 		Metadata:       []byte{},
@@ -75,48 +91,4 @@ func TestConsistencyBetweenSTH(t *testing.T) {
 	logverifier := NewLogVerifier(nil)
 	_, err := logverifier.VerifyRoot(sth, newSTH, consistencyProof)
 	require.NoError(t, err, "Verify Root Error")
-}
-
-func TestCheckRPC(t *testing.T) {
-	// Because we are using "random" bytes deterministically here, set a fixed seed.
-	rand.Seed(1)
-
-	// Mock a STH with the right root hash.
-	sth := &types.LogRootV1{
-		TreeSize:       2,
-		RootHash:       tests.MustDecodeBase64(t, "sVt7R5j3fpNSgUfYMH6r9cfWx9N3Nq9UXaLEpa6/KBQ="),
-		TimestampNanos: 1661986742112252000,
-		Revision:       0,
-		Metadata:       []byte{},
-	}
-	serializedSTH, err := common.ToJSON(sth)
-	require.NoError(t, err)
-
-	// Mock a PoI.
-	poi := []*trillian.Proof{
-		{
-			LeafIndex: 1,
-			Hashes:    [][]byte{random.RandomBytesForTest(t, 32)},
-		},
-	}
-	serializedPoI, err := common.ToJSON(poi)
-	require.NoError(t, err)
-
-	// Mock a RPC.
-	rpc := random.RandomPolicyCertificate(t)
-	rpc.SPTs = []common.SignedPolicyCertificateTimestamp{
-		*common.NewSignedPolicyCertificateTimestamp(
-			"", 0, "", nil,
-			0,
-			util.TimeFromSecs(99),
-			serializedSTH,
-			serializedPoI,
-			0, nil,
-		),
-	}
-
-	// Check VerifyRPC.
-	logverifier := NewLogVerifier(nil)
-	err = logverifier.VerifyRPC(rpc)
-	require.NoError(t, err)
 }

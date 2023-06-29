@@ -31,7 +31,7 @@ func main() {
 	}
 
 	// first rcsr
-	rcsr, err := do.GeneratePolCertSignRequest("abc.com", 1)
+	rcsr, err := do.GeneratePolCertSignRequest("TheIssuer", "abc.com", 1)
 	if err != nil {
 		logErrAndQuit(err)
 	}
@@ -41,19 +41,19 @@ func main() {
 	}
 
 	// sign and log the first rcsr
-	err = pca.SignAndLogRCSR(rcsr)
+	err = pca.SignAndLogRequest(rcsr)
 	if err != nil {
 		logErrAndQuit(err)
 	}
 
 	// second rcsr
-	rcsr, err = do.GeneratePolCertSignRequest("fpki.com", 1)
+	rcsr, err = do.GeneratePolCertSignRequest("TheIssuer", "fpki.com", 1)
 	if err != nil {
 		logErrAndQuit(err)
 	}
 
 	// sign and log the second rcsr
-	err = pca.SignAndLogRCSR(rcsr)
+	err = pca.SignAndLogRequest(rcsr)
 	if err != nil {
 		logErrAndQuit(err)
 	}

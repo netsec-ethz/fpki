@@ -1,6 +1,17 @@
 {
- "CAName": "pca",
- "KeyPath": "testdata/server_key.pem",
- "OutputPath": "./file_exchange/pcaoutput",
- "PolicyLogOutputPath": "./file_exchange/policylog"
+   "CAName": "pca",
+   "CTLogServers": [
+      {
+         "Name": "CT log server 1",
+         "URL": "URL1.com/foo/bar1",
+         "PublicKeyDER": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArrrQ5MN4mdcp5XouqmcmPG489eRtbkIn9elKOCDLgpA9OFASKM26Vskm0jwR9unrVE8NXXdRbotQfVpL7iAPGOPfoSglBXKmiAdmRG0idw6+xRlpffgHE3CDhNnz1tpVXBTE+U84f48v+sVd1gnK4oA/uT7X7D6vO5cHK1M9rmpo+SiKlcYSHvF19/qgiwF9cc1z3ug6M4SciqEbUNdW1R3BSW+9ulTZluT4Hbml4C8hkktN9zlHUpWdHzH1NlcRqzObBp7ZvB/OrKh8iA0WBXLXNzlBdB9EXSHjqJcI/sKn0Zf/5RO9QYT8wjDDbj8H+4+/wRd2q8Y10yQomIy6WQIDAQAB"
+      },
+      {
+         "Name": "CT log server 2",
+         "URL": "URL2.com/foo/bar2",
+         "PublicKeyDER": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArrrQ5MN4mdcp5XouqmcmPG489eRtbkIn9elKOCDLgpA9OFASKM26Vskm0jwR9unrVE8NXXdRbotQfVpL7iAPGOPfoSglBXKmiAdmRG0idw6+xRlpffgHE3CDhNnz1tpVXBTE+U84f48v+sVd1gnK4oA/uT7X7D6vO5cHK1M9rmpo+SiKlcYSHvF19/qgiwF9cc1z3ug6M4SciqEbUNdW1R3BSW+9ulTZluT4Hbml4C8hkktN9zlHUpWdHzH1NlcRqzObBp7ZvB/OrKh8iA0WBXLXNzlBdB9EXSHjqJcI/sKn0Zf/5RO9QYT8wjDDbj8H+4+/wRd2q8Y10yQomIy6WQIDAQAB"
+      }
+   ],
+   "KeyPath": "../../tests/testdata/serverkey.pem",
+   "RootPolicyCertPath": "testdata/rpc.json"
 }

@@ -27,6 +27,7 @@ func NewPolicyCertificateSigningRequest(
 	timeStamp time.Time,
 	policyAttributes []PolicyAttributes,
 	ownerSignature []byte,
+	ownerPubKeyHash []byte,
 ) *PolicyCertificateSigningRequest {
 
 	return &PolicyCertificateSigningRequest{
@@ -44,6 +45,7 @@ func NewPolicyCertificateSigningRequest(
 			timeStamp,
 			policyAttributes,
 			ownerSignature,
+			ownerPubKeyHash,
 		),
 	}
 }

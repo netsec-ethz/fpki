@@ -32,19 +32,21 @@ type PolicyCertificateFields struct {
 	NotBefore          time.Time          `json:",omitempty"`
 	NotAfter           time.Time          `json:",omitempty"`
 	IsIssuer           bool               `json:",omitempty"`
-	PublicKey          []byte             `json:",omitempty"` // In PEM format
+	PublicKey          []byte             `json:",omitempty"` // DER-encoded SubjectPublicKeyInfo
 	PublicKeyAlgorithm PublicKeyAlgorithm `json:",omitempty"`
 	SignatureAlgorithm SignatureAlgorithm `json:",omitempty"`
 	TimeStamp          time.Time          `json:",omitempty"`
 	PolicyAttributes   []PolicyAttributes `json:",omitempty"`
 	OwnerSignature     []byte             `json:",omitempty"`
+	OwnerPubKeyHash    []byte             `json:",omitempty"` // SHA256 of owner's public key
 }
 
 // PolicyCertificate is a Root Policy Certificate.
 type PolicyCertificate struct {
 	PolicyCertificateFields
-	IssuerSignature []byte                             `json:",omitempty"`
-	SPTs            []SignedPolicyCertificateTimestamp `json:",omitempty"`
+	IssuerSignature  []byte                             `json:",omitempty"`
+	IssuerPubKeyHash []byte                             `json:",omitempty"`
+	SPTs             []SignedPolicyCertificateTimestamp `json:",omitempty"`
 }
 
 // PolicyAttributes is a domain policy that specifies what is or not acceptable for a domain.
@@ -55,14 +57,16 @@ type PolicyAttributes struct {
 
 type PolicyCertificateRevocationFields struct {
 	PolicyCertificateBase
-	TimeStamp      time.Time `json:",omitempty"`
-	OwnerSignature []byte    `json:",omitempty"`
+	TimeStamp       time.Time `json:",omitempty"`
+	OwnerSignature  []byte    `json:",omitempty"`
+	OwnerPubKeyHash []byte    `json:",omitempty"` // SHA256 of owner's public key
 }
 
 type PolicyCertificateRevocation struct {
 	PolicyCertificateRevocationFields
-	IssuerSignature []byte                                       `json:",omitempty"`
-	SPCRTs          []SignedPolicyCertificateRevocationTimestamp `json:",omitempty"`
+	IssuerSignature  []byte                                       `json:",omitempty"`
+	IssuerPubKeyHash []byte                                       `json:",omitempty"`
+	SPCRTs           []SignedPolicyCertificateRevocationTimestamp `json:",omitempty"`
 }
 
 func NewPolicyCertificateFields(
@@ -79,6 +83,7 @@ func NewPolicyCertificateFields(
 	timeStamp time.Time,
 	policyAttributes []PolicyAttributes,
 	ownerSignature []byte,
+	ownerPubKeyHash []byte,
 ) *PolicyCertificateFields {
 	return &PolicyCertificateFields{
 		PolicyCertificateBase: PolicyCertificateBase{
@@ -98,6 +103,7 @@ func NewPolicyCertificateFields(
 		TimeStamp:          timeStamp,
 		PolicyAttributes:   policyAttributes,
 		OwnerSignature:     ownerSignature,
+		OwnerPubKeyHash:    ownerPubKeyHash,
 	}
 }
 
@@ -110,6 +116,7 @@ func (c PolicyCertificateFields) Equal(x PolicyCertificateFields) bool {
 		c.SignatureAlgorithm == x.SignatureAlgorithm &&
 		c.TimeStamp.Equal(x.TimeStamp) &&
 		bytes.Equal(c.OwnerSignature, x.OwnerSignature) &&
+		bytes.Equal(c.OwnerPubKeyHash, x.OwnerPubKeyHash) &&
 		equalSlices(c.PolicyAttributes, x.PolicyAttributes)
 }
 
@@ -127,7 +134,9 @@ func NewPolicyCertificate(
 	timeStamp time.Time,
 	policyAttributes []PolicyAttributes,
 	ownerSignature []byte,
+	ownerPubKeyHash []byte,
 	issuerSignature []byte,
+	issuerPubKeyHash []byte,
 	SPTs []SignedPolicyCertificateTimestamp,
 ) *PolicyCertificate {
 
@@ -146,15 +155,18 @@ func NewPolicyCertificate(
 			timeStamp,
 			policyAttributes,
 			ownerSignature,
+			ownerPubKeyHash,
 		),
-		IssuerSignature: issuerSignature,
-		SPTs:            SPTs,
+		IssuerSignature:  issuerSignature,
+		IssuerPubKeyHash: issuerPubKeyHash,
+		SPTs:             SPTs,
 	}
 }
 
 func (c PolicyCertificate) Equal(x PolicyCertificate) bool {
 	return c.PolicyCertificateFields.Equal(x.PolicyCertificateFields) &&
 		bytes.Equal(c.IssuerSignature, x.IssuerSignature) &&
+		bytes.Equal(c.IssuerPubKeyHash, x.IssuerPubKeyHash) &&
 		equalSlices(c.SPTs, x.SPTs)
 }
 
@@ -171,6 +183,7 @@ func NewPolicyCertificateRevocationFields(
 	serialNumber int,
 	timeStamp time.Time,
 	ownerSignature []byte,
+	ownerPubKeyHash []byte,
 ) *PolicyCertificateRevocationFields {
 	return &PolicyCertificateRevocationFields{
 		PolicyCertificateBase: PolicyCertificateBase{
@@ -181,15 +194,17 @@ func NewPolicyCertificateRevocationFields(
 			RawSubject:      subject,
 			RawSerialNumber: serialNumber,
 		},
-		TimeStamp:      timeStamp,
-		OwnerSignature: ownerSignature,
+		TimeStamp:       timeStamp,
+		OwnerSignature:  ownerSignature,
+		OwnerPubKeyHash: ownerPubKeyHash,
 	}
 }
 
 func (c PolicyCertificateRevocationFields) Equal(x PolicyCertificateRevocationFields) bool {
 	return c.PolicyCertificateBase.Equal(x.PolicyCertificateBase) &&
 		c.TimeStamp == x.TimeStamp &&
-		bytes.Equal(c.OwnerSignature, x.OwnerSignature)
+		bytes.Equal(c.OwnerSignature, x.OwnerSignature) &&
+		bytes.Equal(c.OwnerPubKeyHash, x.OwnerPubKeyHash)
 }
 
 func NewPolicyCertificateRevocation(
@@ -199,7 +214,9 @@ func NewPolicyCertificateRevocation(
 	serialNumber int,
 	timeStamp time.Time,
 	ownerSignature []byte,
+	ownerPubKeyHash []byte,
 	issuerSignature []byte,
+	issuerPubKeyHash []byte,
 	serverTimestamps []SignedPolicyCertificateRevocationTimestamp,
 ) *PolicyCertificateRevocation {
 	return &PolicyCertificateRevocation{
@@ -210,15 +227,18 @@ func NewPolicyCertificateRevocation(
 			serialNumber,
 			timeStamp,
 			ownerSignature,
+			ownerPubKeyHash,
 		),
-		IssuerSignature: issuerSignature,
-		SPCRTs:          serverTimestamps,
+		IssuerSignature:  issuerSignature,
+		IssuerPubKeyHash: issuerPubKeyHash,
+		SPCRTs:           serverTimestamps,
 	}
 }
 
 func (r PolicyCertificateRevocation) Equal(x PolicyCertificateRevocation) bool {
 	return r.PolicyCertificateRevocationFields.Equal(x.PolicyCertificateRevocationFields) &&
 		bytes.Equal(r.IssuerSignature, x.IssuerSignature) &&
+		bytes.Equal(r.IssuerPubKeyHash, x.IssuerPubKeyHash) &&
 		equalSlices(r.SPCRTs, x.SPCRTs)
 }
 

@@ -6,8 +6,6 @@ import (
 
 	"github.com/google/trillian"
 	"github.com/google/trillian/types"
-	"github.com/netsec-ethz/fpki/pkg/common"
-	"github.com/netsec-ethz/fpki/pkg/util"
 	"github.com/transparency-dev/merkle"
 	logProof "github.com/transparency-dev/merkle/proof"
 	"github.com/transparency-dev/merkle/rfc6962"
@@ -111,57 +109,4 @@ func (c *LogVerifier) VerifyInclusionByHash(trustedRoot *types.LogRootV1, leafHa
 	}
 	// This is a logProof.RootMismatchError, aka different hash values.
 	return fmt.Errorf("verification failed: different hashes")
-}
-
-func (v *LogVerifier) VerifyRPC(rpc *common.PolicyCertificate) error {
-	// Get the hash of the RPC without SPTs:
-	SPTs := rpc.SPTs
-	rpc.SPTs = []common.SignedPolicyCertificateTimestamp{}
-	serializedStruct, err := common.ToJSON(rpc)
-	if err != nil {
-		return fmt.Errorf("VerifyRPC | ToJSON | %w", err)
-	}
-	bytesHash := v.HashLeaf([]byte(serializedStruct))
-	// Restore the SPTs to the RPC:
-	rpc.SPTs = SPTs
-
-	if err := v.verifySPTs(rpc.SPTs, bytesHash); err != nil {
-		return fmt.Errorf("VerifyRPC | %w", err)
-	}
-	return nil
-}
-
-func (v *LogVerifier) verifySPTs(SPTs []common.SignedPolicyCertificateTimestamp, dataHash []byte) error {
-	for _, p := range SPTs {
-		// Load the STH from JSON.
-		sthRaw, err := common.FromJSON(p.STH)
-		if err != nil {
-			return fmt.Errorf("verifySPTs | FromJSON(STH) | %w", err)
-		}
-		// Into its right type.
-		sth, err := util.ToType[*types.LogRootV1](sthRaw)
-		if err != nil {
-			return fmt.Errorf("verifySPTs | ToType | %w", err)
-		}
-
-		// Load the PoI from JSON.
-		poiRaw, err := common.FromJSON(p.PoI)
-		if err != nil {
-			return fmt.Errorf("verifySPTs | FromJSON(PoI) | %w", err)
-		}
-		// Into its right type.
-		poi, err := util.ToTypedSlice[*trillian.Proof](poiRaw)
-		if err != nil {
-			return fmt.Errorf("verifySPTs | ToTypedSlice | %w", err)
-		}
-
-		if err != nil {
-			return fmt.Errorf("verifySPTs | JsonBytesToPoI | %w", err)
-		}
-
-		if err = v.VerifyInclusionByHash(sth, dataHash, poi); err != nil {
-			return fmt.Errorf("verifySPTs | VerifyInclusionByHash | %w", err)
-		}
-	}
-	return nil
 }

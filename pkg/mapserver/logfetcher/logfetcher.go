@@ -345,7 +345,9 @@ func GetPCAndRPCs(
 			time.Now(), // timestamp
 			nil,        // policy attributes
 			nil,        // owner signature
+			nil,        // owner pub key hash
 			nil,        // issuer signature
+			nil,        // issuer pub key hash
 			nil,        // server timestamps
 		))
 	}

@@ -1,66 +1,83 @@
 package crypto_test
 
 import (
+	libcrypto "crypto"
+	"crypto/rsa"
 	"testing"
 
+	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/common/crypto"
 	"github.com/netsec-ethz/fpki/pkg/tests/random"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
-// TestSignatureOfRCSR: Generate RCSR -> generate signature for RCSR -> verify signature
-func TestSignatureOfRCSR(t *testing.T) {
-	privKey, err := util.RSAKeyFromPEMFile("./testdata/clientkey.pem")
+func TestSignatureOfPolicyCertSignRequest(t *testing.T) {
+	ownerPriv, err := util.RSAKeyFromPEMFile("../../../tests/testdata/clientkey.pem")
 	require.NoError(t, err, "load RSA key error")
 
-	pubKeyBytes, err := util.RSAPublicToPEM(&privKey.PublicKey)
-	require.NoError(t, err, "RSA key to bytes error")
-	test := random.RandomPolCertSignRequest(t)
-	test.PublicKey = pubKeyBytes
+	request := random.RandomPolCertSignRequest(t)
+	request.IsIssuer = true
 
-	err = crypto.SignAsOwner(privKey, test)
+	// Sign as owner.
+	err = crypto.SignAsOwner(ownerPriv, request)
 	require.NoError(t, err, "RCSR sign signature error")
 
-	err = crypto.VerifyOwnerSignature(test)
+	// Serialize the request (w/out signature) to bytes to later check its hash value.
+	sig := request.OwnerSignature
+	request.OwnerSignature = nil
+	serializedRequest, err := common.ToJSON(request)
+	require.NoError(t, err)
+	request.OwnerSignature = sig
+
+	// Check that the signature corresponds to the owner's key.
+	err = rsa.VerifyPKCS1v15(&ownerPriv.PublicKey, libcrypto.SHA256,
+		common.SHA256Hash(serializedRequest), request.OwnerSignature)
+	require.NoError(t, err)
+
+	// Check that we have the hash of the public key of the owner's key.
+	// The bytes of the public key have to be obtained via a call to ctx509.MarshalPKIXPublicKey
+	pubKeyBytes, err := ctx509.MarshalPKIXPublicKey(&ownerPriv.PublicKey)
+	require.NoError(t, err)
+	require.Equal(t, common.SHA256Hash(pubKeyBytes), request.OwnerPubKeyHash)
+
+	// Also check that our VerifyOwnerSignature works as expected.
+	err = crypto.VerifyOwnerSignature(request, &ownerPriv.PublicKey)
 	require.NoError(t, err, "RCSR verify signature error")
 }
 
 // TestIssuanceOfRPC:  check if the CA signature is correct
-func TestIssuanceOfRPC(t *testing.T) {
+func TestSignAsIssuer(t *testing.T) {
+	// Load crypto material for owner and issuer.
+	ownerKey, err := util.RSAKeyFromPEMFile("../../../tests/testdata/clientkey.pem")
+	require.NoError(t, err)
+	issuerKey, err := util.RSAKeyFromPEMFile("../../../tests/testdata/serverkey.pem")
+	require.NoError(t, err)
+	issuerCert, err := util.CertificateFromPEMFile("../../../tests/testdata/servercert.pem")
+	require.NoError(t, err, "X509 Cert From File error")
+
 	// Phase 1: domain owner generates a policy certificate signing request.
-	privKey, err := util.RSAKeyFromPEMFile("./testdata/clientkey.pem")
-	require.NoError(t, err, "Load RSA Key Pair From File error")
-	pubKeyBytes, err := util.RSAPublicToPEM(&privKey.PublicKey)
-	require.NoError(t, err, "Rsa PublicKey To Pem Bytes error")
 	req := random.RandomPolCertSignRequest(t)
-	req.PublicKey = pubKeyBytes
 	// generate signature for request
-	err = crypto.SignAsOwner(privKey, req)
-	require.NoError(t, err, "RCSR Create Signature error")
+	err = crypto.SignAsOwner(ownerKey, req)
+	require.NoError(t, err)
 
 	// Phase 2: pca issues policy certificate.
-	err = crypto.VerifyOwnerSignature(req)
-	// Validate the signature in rcsr
+	// we can validate the signature in the request, but in this test we know it's correct.
+	err = crypto.VerifyOwnerSignature(req, &ownerKey.PublicKey)
 	require.NoError(t, err, "RCSR Verify Signature error")
-
-	pcaPrivKey, err := util.RSAKeyFromPEMFile("./testdata/serverkey.pem")
-	require.NoError(t, err)
-	rpc, err := crypto.SignAsIssuer(req, pcaPrivKey)
+	// Sign as issuer.
+	polCert, err := crypto.SignRequestAsIssuer(req, issuerKey)
 	require.NoError(t, err, "RCSR Generate RPC error")
-
-	assert.Equal(t, len(rpc.SPTs), 0, "spt in the rpc should be empty")
+	assert.Equal(t, len(polCert.SPTs), 0, "SPTs must be empty right after first issuer signature")
 
 	// -------------------------------------
 	//  phase 3: domain owner check rpc
 	// -------------------------------------
-
-	caCert, err := util.CertificateFromPEMFile("./testdata/servercert.pem")
-	require.NoError(t, err, "X509 Cert From File error")
-
-	err = crypto.VerifyIssuerSignature(caCert, rpc)
+	err = crypto.VerifyIssuerSignature(issuerCert, polCert)
 	require.NoError(t, err, "RPC Verify CA Signature error")
 }
 
@@ -69,11 +86,14 @@ func TestIssuanceOfSP(t *testing.T) {
 	// -------------------------------------
 	//  phase 1: domain owner generate rcsr
 	// -------------------------------------
-	privKey, err := util.RSAKeyFromPEMFile("./testdata/clientkey.pem")
+	privKey, err := util.RSAKeyFromPEMFile("../../../tests/testdata/clientkey.pem")
 	require.NoError(t, err, "Load RSA Key Pair From File error")
 
-	pubKeyBytes, err := util.RSAPublicToPEM(&privKey.PublicKey)
+	// pubKeyBytes, err := util.RSAPublicToPEM(&privKey.PublicKey)
+	// require.NoError(t, err, "Rsa PublicKey To Pem Bytes error")
+	pubKeyBytes, err := util.RSAPublicToDERBytes(&privKey.PublicKey)
 	require.NoError(t, err, "Rsa PublicKey To Pem Bytes error")
+
 	req := random.RandomPolCertSignRequest(t)
 	req.PublicKey = pubKeyBytes
 
@@ -85,12 +105,12 @@ func TestIssuanceOfSP(t *testing.T) {
 	//  phase 2: pca issue rpc
 	// -------------------------------------
 	// validate the signature in rcsr
-	err = crypto.VerifyOwnerSignature(req)
+	err = crypto.VerifyOwnerSignature(req, &privKey.PublicKey)
 	require.NoError(t, err, "RCSR Verify Signature error")
 
-	pcaPrivKey, err := util.RSAKeyFromPEMFile("./testdata/serverkey.pem")
+	pcaPrivKey, err := util.RSAKeyFromPEMFile("../../../tests/testdata/serverkey.pem")
 	require.NoError(t, err)
-	rpc, err := crypto.SignAsIssuer(req, pcaPrivKey)
+	rpc, err := crypto.SignRequestAsIssuer(req, pcaPrivKey)
 	require.NoError(t, err, "RCSR Generate RPC error")
 
 	assert.Equal(t, len(rpc.SPTs), 0, "spt in the rpc should be empty")

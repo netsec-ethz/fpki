@@ -203,21 +203,6 @@ func (c *LogClient) QueueRPCs(ctx context.Context) (*QueueRPCResult, error) {
 	fmt.Println("fetch proofs succeed!")
 	fmt.Println(elapsed)
 
-	// queueRPCResult will always be returned, even if error occurs in the future
-
-	// store proof to SPT file
-	err = c.storeProofMapToSPT(fetchInclusionResult.PoIs)
-	if err != nil {
-		return queueRPCResult, fmt.Errorf("QueueRPCs | storeProofMapToSPT: %w", err)
-	}
-
-	/*
-		// store the STH as well; not necessary
-		err = common.JsonStructToFile(c.logRoot, c.config.OutPutPath+"/logRoot/logRoot")
-		if err != nil {
-			return queueRPCResult, fmt.Errorf("QueueRPCs | JsonStructToFile: %w", err)
-		}*/
-
 	return queueRPCResult, nil
 }
 
@@ -252,40 +237,6 @@ func (c *LogClient) readRPCFromFileToBytes() ([][]byte, error) {
 		os.Remove(filaPath)
 	}
 	return data, nil
-}
-
-// read elements in the proof map, and turn it into a SPT, then store them
-func (c *LogClient) storeProofMapToSPT(proofMap map[string]*PoIAndSTH) error {
-	// for every proof in the map
-	for k, v := range proofMap {
-		// serialize the proof
-		proofBytes, err := common.ToJSON(v.PoIs)
-		if err != nil {
-			return fmt.Errorf("storeProofMapToSPT | PoIs ToJSON: %w", err)
-		}
-
-		// serialize log root (signed tree head) to bytes
-		sth, err := common.ToJSON(&v.STH)
-		if err != nil {
-			return fmt.Errorf("storeProofMapToSPT | STH ToJSON: %w", err)
-		}
-
-		// attach PoI and STH to SPT
-		// TODO(yongzhe): fill in the other fields
-		serverTimestamp := common.NewSignedPolicyCertificateTimestamp(
-			"", 0, "", nil, 0, time.Time{},
-			sth, proofBytes,
-			0, nil,
-		)
-
-		// store SPT to file
-		err = common.ToJSONFile(serverTimestamp, c.config.PolicyLogExchangePath+"/spt/"+k)
-		if err != nil {
-			return fmt.Errorf("storeProofMapToSPT | JsonStructToFile: %w", err)
-		}
-	}
-
-	return nil
 }
 
 // BuildLeaf runs the leaf hasher over data and builds a leaf.
