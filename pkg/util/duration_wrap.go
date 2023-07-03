@@ -20,30 +20,30 @@ import (
 	"time"
 )
 
-var _ (encoding.TextUnmarshaler) = (*DurWrap)(nil)
-var _ (encoding.TextMarshaler) = DurWrap{}
-var _ (flag.Value) = (*DurWrap)(nil)
+var _ (encoding.TextUnmarshaler) = (*DurationWrap)(nil)
+var _ (encoding.TextMarshaler) = DurationWrap{}
+var _ (flag.Value) = (*DurationWrap)(nil)
 
-// DurWrap is a wrapper to enable marshalling and unmarshalling of durations
+// DurationWrap is a wrapper to enable marshalling and unmarshalling of durations
 // with the custom format.
-type DurWrap struct {
+type DurationWrap struct {
 	time.Duration
 }
 
-func (d *DurWrap) UnmarshalText(text []byte) error {
+func (d *DurationWrap) UnmarshalText(text []byte) error {
 	return d.Set(string(text))
 }
 
-func (d *DurWrap) Set(text string) error {
+func (d *DurationWrap) Set(text string) error {
 	var err error
 	d.Duration, err = ParseDuration(text)
 	return err
 }
 
-func (d DurWrap) MarshalText() (text []byte, err error) {
+func (d DurationWrap) MarshalText() (text []byte, err error) {
 	return []byte(FmtDuration(d.Duration)), nil
 }
 
-func (d DurWrap) String() string {
+func (d DurationWrap) String() string {
 	return FmtDuration(d.Duration)
 }
