@@ -3,6 +3,7 @@ package crypto_test
 import (
 	libcrypto "crypto"
 	"crypto/rsa"
+	"io/ioutil"
 	"testing"
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
@@ -11,9 +12,77 @@ import (
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/common/crypto"
+	"github.com/netsec-ethz/fpki/pkg/tests"
 	"github.com/netsec-ethz/fpki/pkg/tests/random"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
+
+var update = tests.UpdateGoldenFiles()
+
+func TestCreatePolicyCertificatesForTests(t *testing.T) {
+	if !*update {
+		t.Skip("Not updating golden files: flag not set")
+	}
+	// Obtain a new pair for the root issuer.
+	issuerCert, issuerKey := randomPolCertAndKey(t)
+
+	// Objain a new pair for the owner.
+	ownerCert, ownerKey := randomPolCertAndKey(t)
+	// The owner will be issued by the root issuer.
+	err := crypto.SignPolicyCertificateAsIssuer(issuerCert, issuerKey, ownerCert)
+	require.NoError(t, err)
+
+	// Store all certs and keys. Filename -> payload.
+	const (
+		typeIssuerCert int = iota // Even numbers are certs
+		typeIssuerKey             // Odd numbers are keys
+		typeOwnerCert
+		typeOwnerKey
+	)
+	filenames := map[int]string{
+		typeIssuerCert: "../../../tests/testdata/issuer_cert.pem",
+		typeIssuerKey:  "../../../tests/testdata/issuer_key.pem",
+		typeOwnerCert:  "../../../tests/testdata/owner_cert.pem",
+		typeOwnerKey:   "../../../tests/testdata/owner_key.pem",
+	}
+
+	payloads := make(map[int][]byte)
+	// Issuer pair:
+	data, err := util.PolicyCertificateToPEM(issuerCert)
+	require.NoError(t, err)
+	payloads[typeIssuerCert] = data
+	payloads[typeIssuerKey] = util.RSAKeyToPEM(issuerKey)
+	// Owner pair:
+	data, err = util.PolicyCertificateToPEM(ownerCert)
+	require.NoError(t, err)
+	payloads[typeOwnerCert] = data
+	payloads[typeOwnerKey] = util.RSAKeyToPEM(ownerKey)
+
+	// Write all files.
+	for _type, payload := range payloads {
+		err = ioutil.WriteFile(filenames[_type], payload, 0666)
+		require.NoError(t, err)
+	}
+
+	// For safety of these tests, check again the created files.
+	expectedObjects := map[int]any{
+		typeIssuerCert: issuerCert,
+		typeIssuerKey:  issuerKey,
+		typeOwnerCert:  ownerCert,
+		typeOwnerKey:   ownerKey,
+	}
+	for _type, filename := range filenames {
+		var gotObj any
+		if _type%2 == 0 {
+			gotObj, err = util.PolicyCertificateFromPEMFile(filename)
+			require.NoError(t, err)
+		} else {
+			gotObj, err = util.RSAKeyFromPEMFile(filename)
+			require.NoError(t, err)
+		}
+		require.Equal(t, expectedObjects[_type], gotObj)
+	}
+}
 
 func TestSignatureOfPolicyCertSignRequest(t *testing.T) {
 	ownerPriv, err := util.RSAKeyFromPEMFile("../../../tests/testdata/clientkey.pem")
