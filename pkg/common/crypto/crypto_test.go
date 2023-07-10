@@ -20,16 +20,18 @@ import (
 var update = tests.UpdateGoldenFiles()
 
 func TestCreatePolicyCertificatesForTests(t *testing.T) {
+	rand.Seed(0)
 	if !*update {
 		t.Skip("Not updating golden files: flag not set")
 	}
+	t.Log("Updating policy certificate files for tests/testdata")
 	// Obtain a new pair for the root issuer.
 	issuerCert, issuerKey := randomPolCertAndKey(t)
 
 	// Objain a new pair for the owner.
 	ownerCert, ownerKey := randomPolCertAndKey(t)
 	// The owner will be issued by the root issuer.
-	err := crypto.SignPolicyCertificateAsIssuer(issuerCert, issuerKey, ownerCert)
+	err := crypto_pkg.SignPolicyCertificateAsIssuer(issuerCert, issuerKey, ownerCert)
 	require.NoError(t, err)
 
 	// Store all certs and keys. Filename -> payload.
@@ -40,20 +42,20 @@ func TestCreatePolicyCertificatesForTests(t *testing.T) {
 		typeOwnerKey
 	)
 	filenames := map[int]string{
-		typeIssuerCert: "../../../tests/testdata/issuer_cert.pem",
+		typeIssuerCert: "../../../tests/testdata/issuer_cert.json",
 		typeIssuerKey:  "../../../tests/testdata/issuer_key.pem",
-		typeOwnerCert:  "../../../tests/testdata/owner_cert.pem",
+		typeOwnerCert:  "../../../tests/testdata/owner_cert.json",
 		typeOwnerKey:   "../../../tests/testdata/owner_key.pem",
 	}
 
 	payloads := make(map[int][]byte)
 	// Issuer pair:
-	data, err := util.PolicyCertificateToPEM(issuerCert)
+	data, err := util.PolicyCertificateToBytes(issuerCert)
 	require.NoError(t, err)
 	payloads[typeIssuerCert] = data
 	payloads[typeIssuerKey] = util.RSAKeyToPEM(issuerKey)
 	// Owner pair:
-	data, err = util.PolicyCertificateToPEM(ownerCert)
+	data, err = util.PolicyCertificateToBytes(ownerCert)
 	require.NoError(t, err)
 	payloads[typeOwnerCert] = data
 	payloads[typeOwnerKey] = util.RSAKeyToPEM(ownerKey)
@@ -74,7 +76,7 @@ func TestCreatePolicyCertificatesForTests(t *testing.T) {
 	for _type, filename := range filenames {
 		var gotObj any
 		if _type%2 == 0 {
-			gotObj, err = util.PolicyCertificateFromPEMFile(filename)
+			gotObj, err = util.PolicyCertificateFromFile(filename)
 			require.NoError(t, err)
 		} else {
 			gotObj, err = util.RSAKeyFromPEMFile(filename)
