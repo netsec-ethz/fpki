@@ -1,6 +1,8 @@
 package random
 
 import (
+	"crypto/rsa"
+	"io"
 	"math/rand"
 	"time"
 
@@ -12,6 +14,26 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/util"
 	"github.com/stretchr/testify/require"
 )
+
+// randReader is a type implementing io.Reader which _fools_ `rsa.GenerateKey` to always generate
+// reproducible keys if the random source is deterministic (reproducible).
+// Use this reader only in tests.
+type randReader struct{}
+
+func (randReader) Read(p []byte) (int, error) {
+	if len(p) == 1 {
+		return 1, nil
+	}
+	return rand.Read(p)
+}
+
+// NewRandReader returns an io.Reader that forces rsa.GenerateKeys to generate reproducible keys,
+// iff the random source is deterministic. Make a prior call to `rand.Seed()` to obtain
+// deterministic results, otherwise the random source will be pseudorandom but
+// probably not reproducible.
+func NewRandReader() io.Reader {
+	return randReader{}
+}
 
 func RandomBytesForTest(t tests.T, size int) []byte {
 	buff := make([]byte, size)
@@ -154,4 +176,11 @@ func RandomPolicyCertificate(t tests.T) *common.PolicyCertificate {
 			*RandomSignedPolicyCertificateTimestamp(t),
 		},
 	)
+}
+
+// RandomRSAPrivateKey generates a NON-cryptographycally secure RSA private key.
+func RandomRSAPrivateKey(t tests.T) *rsa.PrivateKey {
+	privateKeyPair, err := rsa.GenerateKey(NewRandReader(), 2048)
+	require.NoError(t, err)
+	return privateKeyPair
 }
