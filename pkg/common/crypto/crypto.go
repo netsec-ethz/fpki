@@ -104,8 +104,8 @@ func VerifyOwnerSignatureInPolicyCertificate(
 
 	req := common.NewPolicyCertificateSigningRequest(
 		c.Version,
-		c.RawSerialNumber,
-		c.RawDomain,
+		c.SerialNumberField,
+		c.DomainField,
 		c.NotBefore,
 		c.NotAfter,
 		c.IsIssuer,
@@ -132,7 +132,7 @@ func SignRequestAsIssuer(
 	cert := common.NewPolicyCertificate(
 		req.Version,
 		req.SerialNumber(),
-		req.RawDomain,
+		req.DomainField,
 		req.NotBefore,
 		req.NotAfter,
 		req.IsIssuer,

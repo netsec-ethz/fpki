@@ -5,11 +5,13 @@ type MarshallableDocument interface {
 	Raw() []byte // Returns the Raw JSON this object was unmarshaled from (nil if none).
 }
 
+// MarshallableDocumentBase is used to read and write document from and to json files.
+// If changing the name of the field, check the file json.go where we introspect for it.
 type MarshallableDocumentBase struct {
-	RawJSON []byte `json:"-"` // omit from JSON (un)marshaling
+	JSONField []byte `json:"-"` // omit from JSON (un)marshaling
 }
 
-func (o MarshallableDocumentBase) Raw() []byte { return o.RawJSON }
+func (o MarshallableDocumentBase) Raw() []byte { return o.JSONField }
 
 // PolicyPart is an interface that is implemented by all objects that are part of the set
 // of "policy objects". A policy object is that one that represents functionality of policies
