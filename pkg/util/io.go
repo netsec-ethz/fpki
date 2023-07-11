@@ -89,18 +89,55 @@ func RSAKeyFromPEMFile(keyPath string) (*rsa.PrivateKey, error) {
 		return nil, err
 	}
 
+	return RSAKeyFromPEM(bytes)
+}
+
+func RSAKeyFromPEM(bytes []byte) (*rsa.PrivateKey, error) {
 	block, _ := pem.Decode(bytes)
-	if block.Type != "RSA PRIVATE KEY" {
+	expectType := "RSA PRIVATE KEY"
+	if block.Type != expectType {
 		// wrong type.
 		return nil, fmt.Errorf("wrong type. Got '%s' expected '%s'",
-			block.Type, "RSA PRIVATE KEY")
+			block.Type, expectType)
 	}
 
 	keyPair, err := ctx509.ParsePKCS1PrivateKey(block.Bytes)
 	if err != nil {
 		return nil, err
 	}
+
 	return keyPair, nil
+}
+
+func RSAKeyToPEM(key *rsa.PrivateKey) []byte {
+	pemBlock := &pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: ctx509.MarshalPKCS1PrivateKey(key),
+	}
+	buff := bytes.NewBuffer(nil)
+	pem.Encode(buff, pemBlock)
+	return buff.Bytes()
+}
+
+func PolicyCertificateToBytes(pc *common.PolicyCertificate) ([]byte, error) {
+	return common.ToJSON(pc)
+}
+
+func PolicyCertificateFromFile(filepath string) (*common.PolicyCertificate, error) {
+	data, err := ioutil.ReadFile(filepath)
+	if err != nil {
+		return nil, err
+	}
+
+	return PolicyCertificateFromBytes(data)
+}
+
+func PolicyCertificateFromBytes(data []byte) (*common.PolicyCertificate, error) {
+	obj, err := common.FromJSON(data, common.WithSkipCopyJSONIntoPolicyObjects)
+	if err != nil {
+		return nil, err
+	}
+	return ToType[*common.PolicyCertificate](obj)
 }
 
 // LoadCertsAndChainsFromCSV returns a ready to insert-in-DB collection of the leaf certificate

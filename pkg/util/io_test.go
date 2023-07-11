@@ -1,6 +1,7 @@
 package util
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -27,4 +28,17 @@ func TestCertificateFromPEMFile(t *testing.T) {
 
 	result := ExtractCertDomains(cert)
 	require.ElementsMatch(t, result, []string{"*.adiq.com.br", "adiq.com.br"})
+}
+
+func TestRSAKeyFromPEMFileAndBack(t *testing.T) {
+	filename := "../../tests/testdata/clientkey.pem"
+	expectedPEM, err := os.ReadFile(filename)
+	require.NoError(t, err)
+
+	key, err := RSAKeyFromPEMFile(filename)
+	require.NoError(t, err, "load RSA key error")
+
+	gotPEM := RSAKeyToPEM(key)
+	// Compare against bytes in file.
+	require.Equal(t, expectedPEM, gotPEM)
 }

@@ -333,8 +333,6 @@ func GetPCAndRPCs(
 
 		resultPolCerts = append(resultPolCerts, common.NewPolicyCertificate(
 			0,
-			"", // CA name
-			domainName,
 			0, // serial number
 			domainName,
 			time.Now(),                       // not before
@@ -346,10 +344,10 @@ func GetPCAndRPCs(
 			time.Now(),                // timestamp
 			common.PolicyAttributes{}, // policy attributes
 			nil,                       // owner signature
-			nil,                       // owner pub key hash
-			nil,                       // issuer signature
-			nil,                       // issuer pub key hash
+			nil,                       // owner hash
 			nil,                       // server timestamps
+			nil,                       // issuer signature
+			nil,                       // issuer hash
 		))
 	}
 	if err := scanner.Err(); err != nil {

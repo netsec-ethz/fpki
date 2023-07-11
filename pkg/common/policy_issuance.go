@@ -10,13 +10,11 @@ type PolicyCertificateSigningRequest struct {
 }
 
 type PolicyCertificateRevocationSigningRequest struct {
-	Subject string `json:",omitempty"`
+	PolicyCertificateHash []byte `json:",omitempty"` // Hash of the pol. cert. to revoke
 }
 
 func NewPolicyCertificateSigningRequest(
 	version int,
-	issuer string,
-	subject string,
 	serialNumber int,
 	domain string,
 	notBefore time.Time,
@@ -28,14 +26,12 @@ func NewPolicyCertificateSigningRequest(
 	timeStamp time.Time,
 	policyAttributes PolicyAttributes,
 	ownerSignature []byte,
-	ownerPubKeyHash []byte,
+	ownerHash []byte,
 ) *PolicyCertificateSigningRequest {
 
 	return &PolicyCertificateSigningRequest{
 		PolicyCertificateFields: *NewPolicyCertificateFields(
 			version,
-			issuer,
-			subject,
 			serialNumber,
 			domain,
 			notBefore,
@@ -47,7 +43,7 @@ func NewPolicyCertificateSigningRequest(
 			timeStamp,
 			policyAttributes,
 			ownerSignature,
-			ownerPubKeyHash,
+			ownerHash,
 		),
 	}
 }

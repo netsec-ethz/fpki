@@ -1,13 +1,12 @@
 package crypto_test
 
 import (
-	libcrypto "crypto"
+	cryptolib "crypto"
 	"crypto/rsa"
 	"io/ioutil"
+	"math/rand"
 	"testing"
 
-	ctx509 "github.com/google/certificate-transparency-go/x509"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
@@ -19,7 +18,7 @@ import (
 
 var update = tests.UpdateGoldenFiles()
 
-func TestCreatePolicyCertificatesForTests(t *testing.T) {
+func TestUpdateGoldenFiles(t *testing.T) {
 	rand.Seed(0)
 	if !*update {
 		t.Skip("Not updating golden files: flag not set")
@@ -31,7 +30,7 @@ func TestCreatePolicyCertificatesForTests(t *testing.T) {
 	// Objain a new pair for the owner.
 	ownerCert, ownerKey := randomPolCertAndKey(t)
 	// The owner will be issued by the root issuer.
-	err := crypto_pkg.SignPolicyCertificateAsIssuer(issuerCert, issuerKey, ownerCert)
+	err := crypto.SignPolicyCertificateAsIssuer(issuerCert, issuerKey, ownerCert)
 	require.NoError(t, err)
 
 	// Store all certs and keys. Filename -> payload.
@@ -86,103 +85,227 @@ func TestCreatePolicyCertificatesForTests(t *testing.T) {
 	}
 }
 
-func TestSignatureOfPolicyCertSignRequest(t *testing.T) {
-	ownerPriv, err := util.RSAKeyFromPEMFile("../../../tests/testdata/clientkey.pem")
-	require.NoError(t, err, "load RSA key error")
+func TestComputeHashAsOwner(t *testing.T) {
+	rand.Seed(1)
 
+	// Get random policy certificate and check it contains SPCTs, owner, and issuer fields.
+	pc := random.RandomPolicyCertificate(t)
+	require.NotEmpty(t, pc.SPCTs)
+	require.NotEmpty(t, pc.OwnerSignature)
+	require.NotEmpty(t, pc.OwnerHash)
+	require.NotEmpty(t, pc.IssuerSignature)
+	require.NotEmpty(t, pc.IssuerHash)
+
+	gotHash, err := crypto.ComputeHashAsOwner(pc)
+	require.NoError(t, err)
+
+	// Remove SPCTs and issuer signature, and serialize.
+	pc.SPCTs = nil
+	pc.IssuerSignature = nil
+	serializedPC, err := common.ToJSON(pc)
+	require.NoError(t, err)
+
+	// Compare with the expected value.
+	expected := common.SHA256Hash(serializedPC)
+	require.Equal(t, expected, gotHash)
+}
+
+func TestComputeHashAsIssuer(t *testing.T) {
+	rand.Seed(2)
+
+	// Get random policy certificate and check it contains SPCTs, owner, and issuer fields.
+	pc := random.RandomPolicyCertificate(t)
+	require.NotEmpty(t, pc.SPCTs)
+	require.NotEmpty(t, pc.OwnerSignature)
+	require.NotEmpty(t, pc.OwnerHash)
+	require.NotEmpty(t, pc.IssuerSignature)
+	require.NotEmpty(t, pc.IssuerHash)
+
+	gotHash, err := crypto.ComputeHashAsIssuer(pc)
+	require.NoError(t, err)
+
+	// Remove SPCTs, and serialize.
+	pc.SPCTs = nil
+	serializedPC, err := common.ToJSON(pc)
+	require.NoError(t, err)
+
+	// Compare with the expected value.
+	expected := common.SHA256Hash(serializedPC)
+	require.Equal(t, expected, gotHash)
+}
+
+func TestSignAsOwner(t *testing.T) {
+	rand.Seed(11)
+
+	// Load owner policy cert and key.
+	ownerCert, err := util.PolicyCertificateFromFile("../../../tests/testdata/owner_cert.json")
+	require.NoError(t, err)
+	ownerKey, err := util.RSAKeyFromPEMFile("../../../tests/testdata/owner_key.pem")
+	require.NoError(t, err)
+
+	// Create random request.
 	request := random.RandomPolCertSignRequest(t)
+	require.NotEmpty(t, request.OwnerSignature)
+	require.NotEmpty(t, request.OwnerHash)
 	request.IsIssuer = true
 
 	// Sign as owner.
-	err = crypto.SignAsOwner(ownerPriv, request)
-	require.NoError(t, err, "RCSR sign signature error")
-
-	// Serialize the request (w/out signature) to bytes to later check its hash value.
-	sig := request.OwnerSignature
+	err = crypto.SignAsOwner(ownerCert, ownerKey, request)
+	require.Error(t, err) // owner signature and hash not nil
+	request.OwnerHash = nil
+	err = crypto.SignAsOwner(ownerCert, ownerKey, request)
+	require.Error(t, err) // owner hash not nil
+	request.OwnerSignature = []byte{}
+	err = crypto.SignAsOwner(ownerCert, ownerKey, request)
+	require.Error(t, err) // owner hash empty but not nil
 	request.OwnerSignature = nil
-	serializedRequest, err := common.ToJSON(request)
+	// It should not fail now:
+	err = crypto.SignAsOwner(ownerCert, ownerKey, request)
+	require.NoError(t, err, "RCSR sign signature error")
+	require.NotEmpty(t, request.OwnerSignature)
+	require.NotEmpty(t, request.OwnerHash)
+	gotSignature := request.OwnerSignature
+
+	// Manually do the steps to sign, and compare results. 3 stesps.
+	// 1. Check the owner hash is correct.
+	ownerHash, err := crypto.ComputeHashAsOwner(ownerCert)
 	require.NoError(t, err)
-	request.OwnerSignature = sig
+	require.Equal(t, ownerHash, request.OwnerHash)
+	// 2. Sign the child request without owner signature.
+	request.OwnerSignature = nil
+	serializedRequestWoutOwnerSignature, err := common.ToJSON(request)
+	require.NoError(t, err)
+	expectedSignature, err := crypto.SignStructRSASHA256(request, ownerKey)
+	require.NoError(t, err)
+	// 3. Compare signatures.
+	require.Equal(t, expectedSignature, gotSignature)
+	request.OwnerSignature = gotSignature
 
 	// Check that the signature corresponds to the owner's key.
-	err = rsa.VerifyPKCS1v15(&ownerPriv.PublicKey, libcrypto.SHA256,
-		common.SHA256Hash(serializedRequest), request.OwnerSignature)
+	err = rsa.VerifyPKCS1v15(&ownerKey.PublicKey, cryptolib.SHA256,
+		common.SHA256Hash(serializedRequestWoutOwnerSignature), gotSignature)
 	require.NoError(t, err)
 
-	// Check that we have the hash of the public key of the owner's key.
-	// The bytes of the public key have to be obtained via a call to ctx509.MarshalPKIXPublicKey
-	pubKeyBytes, err := ctx509.MarshalPKIXPublicKey(&ownerPriv.PublicKey)
+	// Additionally check that our VerifyOwnerSignature works as expected.
+	err = crypto.VerifyOwnerSignature(ownerCert, request)
 	require.NoError(t, err)
-	require.Equal(t, common.SHA256Hash(pubKeyBytes), request.OwnerPubKeyHash)
-
-	// Also check that our VerifyOwnerSignature works as expected.
-	err = crypto.VerifyOwnerSignature(request, &ownerPriv.PublicKey)
-	require.NoError(t, err, "RCSR verify signature error")
 }
 
-// TestIssuanceOfRPC:  check if the CA signature is correct
-func TestSignAsIssuer(t *testing.T) {
-	// Load crypto material for owner and issuer.
-	ownerKey, err := util.RSAKeyFromPEMFile("../../../tests/testdata/clientkey.pem")
-	require.NoError(t, err)
-	issuerKey, err := util.RSAKeyFromPEMFile("../../../tests/testdata/serverkey.pem")
-	require.NoError(t, err)
-	issuerCert, err := util.CertificateFromPEMFile("../../../tests/testdata/servercert.pem")
-	require.NoError(t, err, "X509 Cert From File error")
+func TestSignPolicyCertificateAsIssuer(t *testing.T) {
+	rand.Seed(12)
 
-	// Phase 1: domain owner generates a policy certificate signing request.
-	req := random.RandomPolCertSignRequest(t)
-	// generate signature for request
-	err = crypto.SignAsOwner(ownerKey, req)
+	// Load issuer policy cert and key.
+	issuerCert, err := util.PolicyCertificateFromFile("../../../tests/testdata/issuer_cert.json")
+	require.NoError(t, err)
+	issuerKey, err := util.RSAKeyFromPEMFile("../../../tests/testdata/issuer_key.pem")
 	require.NoError(t, err)
 
-	// Phase 2: pca issues policy certificate.
-	// we can validate the signature in the request, but in this test we know it's correct.
-	err = crypto.VerifyOwnerSignature(req, &ownerKey.PublicKey)
-	require.NoError(t, err, "RCSR Verify Signature error")
-	// Sign as issuer.
-	polCert, err := crypto.SignRequestAsIssuer(req, issuerKey)
-	require.NoError(t, err, "RCSR Generate RPC error")
-	assert.Equal(t, len(polCert.SPCTs), 0, "SPTs must be empty right after first issuer signature")
+	// Create random policy certificate.
+	childPolCert := random.RandomPolicyCertificate(t)
+	require.NotEmpty(t, childPolCert.SPCTs)
+	require.NotEmpty(t, childPolCert.OwnerSignature)
+	require.NotEmpty(t, childPolCert.OwnerHash)
+	require.NotEmpty(t, childPolCert.IssuerSignature)
+	require.NotEmpty(t, childPolCert.IssuerHash)
 
-	// -------------------------------------
-	//  phase 3: domain owner check rpc
-	// -------------------------------------
-	err = crypto.VerifyIssuerSignature(issuerCert, polCert)
-	require.NoError(t, err, "RPC Verify CA Signature error")
+	// Issuer-sign it:
+	err = crypto.SignPolicyCertificateAsIssuer(issuerCert, issuerKey, childPolCert)
+	require.Error(t, err) // issuer signature and hash not nil
+	childPolCert.IssuerSignature = nil
+	err = crypto.SignPolicyCertificateAsIssuer(issuerCert, issuerKey, childPolCert)
+	require.Error(t, err) // issuer hash not nil
+	childPolCert.IssuerHash = []byte{}
+	err = crypto.SignPolicyCertificateAsIssuer(issuerCert, issuerKey, childPolCert)
+	require.Error(t, err) // issuer hash empty, but still not nil
+	childPolCert.IssuerHash = nil
+	// It has to work now:
+	err = crypto.SignPolicyCertificateAsIssuer(issuerCert, issuerKey, childPolCert)
+	require.NoError(t, err)
+	gotSignature := childPolCert.IssuerSignature
+
+	// Manually do the steps to sign, and compare results. 3 stesps.
+	// 1. Check that the issuer hash is correct.
+	// Check that the issuer hash is correct.
+	issuerHash, err := crypto.ComputeHashAsIssuer(issuerCert)
+	require.NoError(t, err)
+	require.Equal(t, issuerHash, childPolCert.IssuerHash)
+	// 2. Sign the child policy certificate without issuer signature.
+	childPolCert.IssuerSignature = nil
+	expectedSignature, err := crypto.SignStructRSASHA256(childPolCert, issuerKey)
+	require.NoError(t, err)
+	serializedChildPolCertWoutOwnerSignature, err := common.ToJSON(childPolCert)
+	require.NoError(t, err)
+	// 3. Compare signatures.
+	require.Equal(t, expectedSignature, gotSignature)
+	childPolCert.IssuerSignature = gotSignature
+
+	// Check that the signature corresponds to the owner's key.
+	err = rsa.VerifyPKCS1v15(&issuerKey.PublicKey, cryptolib.SHA256,
+		common.SHA256Hash(serializedChildPolCertWoutOwnerSignature), gotSignature)
+	require.NoError(t, err)
+
+	// Additionally check that our VerifyIssuerSignature works as expected.
+	err = crypto.VerifyIssuerSignature(issuerCert, childPolCert)
+	require.NoError(t, err)
 }
 
-// TestIssuanceOfPC: generate PC -> domain owner generate signature -> pca verify signature -> pca sign PC -> domain owner verifies PC
-func TestIssuanceOfSP(t *testing.T) {
-	// -------------------------------------
-	//  phase 1: domain owner generate rcsr
-	// -------------------------------------
-	privKey, err := util.RSAKeyFromPEMFile("../../../tests/testdata/clientkey.pem")
-	require.NoError(t, err, "Load RSA Key Pair From File error")
+func TestSignRequestAsIssuer(t *testing.T) {
+	rand.Seed(13)
 
-	// pubKeyBytes, err := util.RSAPublicToPEM(&privKey.PublicKey)
-	// require.NoError(t, err, "Rsa PublicKey To Pem Bytes error")
-	pubKeyBytes, err := util.RSAPublicToDERBytes(&privKey.PublicKey)
-	require.NoError(t, err, "Rsa PublicKey To Pem Bytes error")
-
-	req := random.RandomPolCertSignRequest(t)
-	req.PublicKey = pubKeyBytes
-
-	// generate signature for rcsr
-	err = crypto.SignAsOwner(privKey, req)
-	require.NoError(t, err, "RCSR Create Signature error")
-
-	// -------------------------------------
-	//  phase 2: pca issue rpc
-	// -------------------------------------
-	// validate the signature in rcsr
-	err = crypto.VerifyOwnerSignature(req, &privKey.PublicKey)
-	require.NoError(t, err, "RCSR Verify Signature error")
-
-	pcaPrivKey, err := util.RSAKeyFromPEMFile("../../../tests/testdata/serverkey.pem")
+	// Load issuer policy cert and key.
+	issuerCert, err := util.PolicyCertificateFromFile("../../../tests/testdata/issuer_cert.json")
 	require.NoError(t, err)
-	rpc, err := crypto.SignRequestAsIssuer(req, pcaPrivKey)
-	require.NoError(t, err, "RCSR Generate RPC error")
+	issuerKey, err := util.RSAKeyFromPEMFile("../../../tests/testdata/issuer_key.pem")
+	require.NoError(t, err)
 
-	assert.Equal(t, len(rpc.SPCTs), 0, "spt in the rpc should be empty")
+	// Load owner policy cert and key.
+	ownerCert, err := util.PolicyCertificateFromFile("../../../tests/testdata/owner_cert.json")
+	require.NoError(t, err)
+	ownerKey, err := util.RSAKeyFromPEMFile("../../../tests/testdata/owner_key.pem")
+	require.NoError(t, err)
+
+	// Create random request.
+	request := random.RandomPolCertSignRequest(t)
+	request.OwnerHash = nil
+	request.OwnerSignature = nil
+
+	// Owner-sign it.
+	err = crypto.SignAsOwner(ownerCert, ownerKey, request)
+	require.NoError(t, err)
+
+	// Issuer-sign the request.
+	childPolCert, err := crypto.SignRequestAsIssuer(issuerCert, issuerKey, request)
+	require.NoError(t, err)
+
+	// Verify both owner and issuer.
+	err = crypto.VerifyOwnerSignature(ownerCert, request)
+	require.NoError(t, err)
+	err = crypto.VerifyOwnerSignatureInPolicyCertificate(ownerCert, childPolCert)
+	require.NoError(t, err)
+	err = crypto.VerifyIssuerSignature(issuerCert, childPolCert)
+	require.NoError(t, err)
+}
+
+func randomPolCertAndKey(t tests.T) (*common.PolicyCertificate, *rsa.PrivateKey) {
+	cert := random.RandomPolicyCertificate(t)
+	key := random.RandomRSAPrivateKey(t)
+
+	// DER encoded public key.
+	derPubKey, err := util.RSAPublicToDERBytes(&key.PublicKey)
+	require.NoError(t, err)
+
+	// Set the public key.
+	cert.PublicKey = derPubKey
+
+	// Set validity times between unix time 1 and 10000
+	cert.NotBefore = util.TimeFromSecs(1)
+	cert.NotAfter = util.TimeFromSecs(10000)
+
+	// Remove signature and hash for owner and issuer.
+	cert.OwnerSignature = nil
+	cert.OwnerHash = nil
+	cert.IssuerSignature = nil
+	cert.IssuerHash = nil
+
+	return cert, key
 }

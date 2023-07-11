@@ -9,45 +9,60 @@ import (
 // and others.
 type PolicyDocument interface {
 	PolicyPart
-	Subject() string
 	SerialNumber() int
+	Domain() string
 }
 
 type PolicyCertificateBase struct {
 	PolicyPartBase
-	RawSubject      string `json:"Subject,omitempty"`
 	RawSerialNumber int    `json:"SerialNumber,omitempty"`
+	RawDomain       string `json:"Domain,omitempty"`
 }
 
-func (o PolicyCertificateBase) Subject() string   { return o.RawSubject }
 func (o PolicyCertificateBase) SerialNumber() int { return o.RawSerialNumber }
+func (o PolicyCertificateBase) Domain() string    { return o.RawDomain }
 func (p PolicyCertificateBase) Equal(x PolicyCertificateBase) bool {
 	return p.PolicyPartBase.Equal(x.PolicyPartBase) &&
-		p.RawSubject == x.RawSubject &&
-		p.RawSerialNumber == x.RawSerialNumber
+		p.RawSerialNumber == x.RawSerialNumber &&
+		p.RawDomain == x.RawDomain
 }
 
+// PolicyCertificateFields contains all the fields that a policy certificate or a signing request
+// have in common. This excudes e.g. the issuer signature and hash.
+//
+// The `PublicKey` field is the DER-encoded SubjectPublicKeyInfo, as returned by the call
+// `x509.MarshalPKIXPublicKey` in the `crypto/x509` package.
+// From the `MarshalPKIXPublicKey` go docs:
+// MarshalPKIXPublicKey converts a public key to PKIX, ASN.1 DER form.
+// The encoded public key is a SubjectPublicKeyInfo structure
+// (see RFC 5280, Section 4.1).
+//
+// The `OwnerHash` field is the SHA256 of the payload of the owner certificate that contained the
+// owner signature. The hash is computed on the owner's policy certificate, but without any
+// SPCTs or issuer signature, but preserving the owner's signature.
 type PolicyCertificateFields struct {
 	PolicyCertificateBase
-	Domain             string             `json:",omitempty"`
 	NotBefore          time.Time          `json:",omitempty"`
 	NotAfter           time.Time          `json:",omitempty"`
 	IsIssuer           bool               `json:",omitempty"`
-	PublicKey          []byte             `json:",omitempty"` // DER-encoded SubjectPublicKeyInfo
+	PublicKey          []byte             `json:",omitempty"`
 	PublicKeyAlgorithm PublicKeyAlgorithm `json:",omitempty"`
 	SignatureAlgorithm SignatureAlgorithm `json:",omitempty"`
 	TimeStamp          time.Time          `json:",omitempty"`
 	PolicyAttributes   PolicyAttributes   `json:",omitempty"`
 	OwnerSignature     []byte             `json:",omitempty"`
-	OwnerPubKeyHash    []byte             `json:",omitempty"` // SHA256 of owner's public key
+	OwnerHash          []byte             `json:",omitempty"`
 }
 
-// PolicyCertificate is a Root Policy Certificate.
+// PolicyCertificate can be a Root Policy Certificate, or a policy certificate that was issued by
+// a previously existing policy certificate.
+// The field `IssuerHash` has semantics analogouys to `OwnerHash`: it is the SHA256 of the issuer
+// policy certificate that was used to sign this policy certificate, without SCPTs.
 type PolicyCertificate struct {
 	PolicyCertificateFields
-	IssuerSignature  []byte                             `json:",omitempty"`
-	IssuerPubKeyHash []byte                             `json:",omitempty"`
-	SPCTs            []SignedPolicyCertificateTimestamp `json:",omitempty"`
+	IssuerSignature []byte                             `json:",omitempty"`
+	IssuerHash      []byte                             `json:",omitempty"`
+	SPCTs           []SignedPolicyCertificateTimestamp `json:",omitempty"`
 }
 
 // PolicyAttributes is a domain policy that specifies what is or not acceptable for a domain.
@@ -58,22 +73,21 @@ type PolicyAttributes struct {
 
 type PolicyCertificateRevocationFields struct {
 	PolicyCertificateBase
-	TimeStamp       time.Time `json:",omitempty"`
-	OwnerSignature  []byte    `json:",omitempty"`
-	OwnerPubKeyHash []byte    `json:",omitempty"` // SHA256 of owner's public key
+	TimeStamp      time.Time `json:",omitempty"`
+	OwnerSignature []byte    `json:",omitempty"`
+	OwnerHash      []byte    `json:",omitempty"`
 }
 
 type PolicyCertificateRevocation struct {
 	PolicyCertificateRevocationFields
-	IssuerSignature  []byte                                       `json:",omitempty"`
-	IssuerPubKeyHash []byte                                       `json:",omitempty"`
-	SPCRTs           []SignedPolicyCertificateRevocationTimestamp `json:",omitempty"`
+	IssuerSignature []byte `json:",omitempty"`
+	// Hash of the issuer's cert w/out SPCTs:
+	IssuerHash []byte                                       `json:",omitempty"`
+	SPCRTs     []SignedPolicyCertificateRevocationTimestamp `json:",omitempty"`
 }
 
 func NewPolicyCertificateFields(
 	version int,
-	issuer string,
-	subject string,
 	serialNumber int,
 	domain string,
 	notBefore time.Time,
@@ -85,18 +99,16 @@ func NewPolicyCertificateFields(
 	timeStamp time.Time,
 	policyAttributes PolicyAttributes,
 	ownerSignature []byte,
-	ownerPubKeyHash []byte,
+	ownerHash []byte,
 ) *PolicyCertificateFields {
 	return &PolicyCertificateFields{
 		PolicyCertificateBase: PolicyCertificateBase{
 			PolicyPartBase: PolicyPartBase{
 				Version: version,
-				Issuer:  issuer,
 			},
-			RawSubject:      subject,
 			RawSerialNumber: serialNumber,
+			RawDomain:       domain,
 		},
-		Domain:             domain,
 		NotBefore:          notBefore,
 		NotAfter:           notAfter,
 		IsIssuer:           isIssuer,
@@ -106,7 +118,7 @@ func NewPolicyCertificateFields(
 		TimeStamp:          timeStamp,
 		PolicyAttributes:   policyAttributes,
 		OwnerSignature:     ownerSignature,
-		OwnerPubKeyHash:    ownerPubKeyHash,
+		OwnerHash:          ownerHash,
 	}
 }
 
@@ -114,20 +126,17 @@ func (c PolicyCertificateFields) Equal(x PolicyCertificateFields) bool {
 	return c.PolicyCertificateBase.Equal(x.PolicyCertificateBase) &&
 		c.PublicKeyAlgorithm == x.PublicKeyAlgorithm &&
 		bytes.Equal(c.PublicKey, x.PublicKey) &&
-		c.Domain == x.Domain &&
 		c.NotBefore.Equal(x.NotBefore) &&
 		c.NotAfter.Equal(x.NotAfter) &&
 		c.SignatureAlgorithm == x.SignatureAlgorithm &&
 		c.TimeStamp.Equal(x.TimeStamp) &&
 		bytes.Equal(c.OwnerSignature, x.OwnerSignature) &&
-		bytes.Equal(c.OwnerPubKeyHash, x.OwnerPubKeyHash) &&
+		bytes.Equal(c.OwnerHash, x.OwnerHash) &&
 		c.PolicyAttributes.Equal(x.PolicyAttributes)
 }
 
 func NewPolicyCertificate(
 	version int,
-	issuer string,
-	subject string,
 	serialNumber int,
 	domain string,
 	notBefore time.Time,
@@ -139,17 +148,15 @@ func NewPolicyCertificate(
 	timeStamp time.Time,
 	policyAttributes PolicyAttributes,
 	ownerSignature []byte,
-	ownerPubKeyHash []byte,
-	issuerSignature []byte,
-	issuerPubKeyHash []byte,
+	ownerHash []byte,
 	SPTs []SignedPolicyCertificateTimestamp,
+	issuerSignature []byte,
+	issuerHash []byte,
 ) *PolicyCertificate {
 
 	return &PolicyCertificate{
 		PolicyCertificateFields: *NewPolicyCertificateFields(
 			version,
-			issuer,
-			subject,
 			serialNumber,
 			domain,
 			notBefore,
@@ -161,18 +168,18 @@ func NewPolicyCertificate(
 			timeStamp,
 			policyAttributes,
 			ownerSignature,
-			ownerPubKeyHash,
+			ownerHash,
 		),
-		IssuerSignature:  issuerSignature,
-		IssuerPubKeyHash: issuerPubKeyHash,
-		SPCTs:            SPTs,
+		IssuerSignature: issuerSignature,
+		IssuerHash:      issuerHash,
+		SPCTs:           SPTs,
 	}
 }
 
 func (c PolicyCertificate) Equal(x PolicyCertificate) bool {
 	return c.PolicyCertificateFields.Equal(x.PolicyCertificateFields) &&
 		bytes.Equal(c.IssuerSignature, x.IssuerSignature) &&
-		bytes.Equal(c.IssuerPubKeyHash, x.IssuerPubKeyHash) &&
+		bytes.Equal(c.IssuerHash, x.IssuerHash) &&
 		equalSlices(c.SPCTs, x.SPCTs)
 }
 
@@ -184,25 +191,21 @@ func (s PolicyAttributes) Equal(o PolicyAttributes) bool {
 
 func NewPolicyCertificateRevocationFields(
 	version int,
-	issuer string,
-	subject string,
 	serialNumber int,
 	timeStamp time.Time,
 	ownerSignature []byte,
-	ownerPubKeyHash []byte,
+	ownerHash []byte,
 ) *PolicyCertificateRevocationFields {
 	return &PolicyCertificateRevocationFields{
 		PolicyCertificateBase: PolicyCertificateBase{
 			PolicyPartBase: PolicyPartBase{
 				Version: version,
-				Issuer:  issuer,
 			},
-			RawSubject:      subject,
 			RawSerialNumber: serialNumber,
 		},
-		TimeStamp:       timeStamp,
-		OwnerSignature:  ownerSignature,
-		OwnerPubKeyHash: ownerPubKeyHash,
+		TimeStamp:      timeStamp,
+		OwnerSignature: ownerSignature,
+		OwnerHash:      ownerHash,
 	}
 }
 
@@ -210,41 +213,37 @@ func (c PolicyCertificateRevocationFields) Equal(x PolicyCertificateRevocationFi
 	return c.PolicyCertificateBase.Equal(x.PolicyCertificateBase) &&
 		c.TimeStamp == x.TimeStamp &&
 		bytes.Equal(c.OwnerSignature, x.OwnerSignature) &&
-		bytes.Equal(c.OwnerPubKeyHash, x.OwnerPubKeyHash)
+		bytes.Equal(c.OwnerHash, x.OwnerHash)
 }
 
 func NewPolicyCertificateRevocation(
 	version int,
-	issuer string,
-	subject string,
 	serialNumber int,
 	timeStamp time.Time,
 	ownerSignature []byte,
-	ownerPubKeyHash []byte,
-	issuerSignature []byte,
-	issuerPubKeyHash []byte,
+	ownerHash []byte,
 	serverTimestamps []SignedPolicyCertificateRevocationTimestamp,
+	issuerSignature []byte,
+	issuerHash []byte,
 ) *PolicyCertificateRevocation {
 	return &PolicyCertificateRevocation{
 		PolicyCertificateRevocationFields: *NewPolicyCertificateRevocationFields(
 			version,
-			issuer,
-			subject,
 			serialNumber,
 			timeStamp,
 			ownerSignature,
-			ownerPubKeyHash,
+			ownerHash,
 		),
-		IssuerSignature:  issuerSignature,
-		IssuerPubKeyHash: issuerPubKeyHash,
-		SPCRTs:           serverTimestamps,
+		IssuerSignature: issuerSignature,
+		IssuerHash:      issuerHash,
+		SPCRTs:          serverTimestamps,
 	}
 }
 
 func (r PolicyCertificateRevocation) Equal(x PolicyCertificateRevocation) bool {
 	return r.PolicyCertificateRevocationFields.Equal(x.PolicyCertificateRevocationFields) &&
 		bytes.Equal(r.IssuerSignature, x.IssuerSignature) &&
-		bytes.Equal(r.IssuerPubKeyHash, x.IssuerPubKeyHash) &&
+		bytes.Equal(r.IssuerHash, x.IssuerHash) &&
 		equalSlices(r.SPCRTs, x.SPCRTs)
 }
 

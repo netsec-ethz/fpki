@@ -1,22 +1,19 @@
-package util
+package util_test
 
 import (
-	"crypto/rsa"
-	"math/rand"
 	"testing"
 
+	"github.com/netsec-ethz/fpki/pkg/tests/random"
+	"github.com/netsec-ethz/fpki/pkg/util"
 	"github.com/stretchr/testify/require"
 )
 
-func TestRSAPublicToPEMAndBack(t *testing.T) {
-	privateKeyPair, err := rsa.GenerateKey(rand.New(rand.NewSource(0)), 2048)
-	require.NoError(t, err)
+func TestRSAPublicToDERBytesAndBack(t *testing.T) {
+	privateKeyPair := random.RandomRSAPrivateKey(t)
 
-	bytes, err := RSAPublicToPEM(&privateKeyPair.PublicKey)
+	pubKeyDER, err := util.RSAPublicToDERBytes(&privateKeyPair.PublicKey)
 	require.NoError(t, err)
-
-	pubKey, err := PEMToRSAPublic(bytes)
+	got, err := util.DERBytesToRSAPublic(pubKeyDER)
 	require.NoError(t, err)
-
-	require.Equal(t, privateKeyPair.PublicKey, *pubKey)
+	require.Equal(t, &privateKeyPair.PublicKey, got)
 }

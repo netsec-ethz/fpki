@@ -51,29 +51,24 @@ func NewPCA(configPath string) (*PCA, error) {
 		return nil, fmt.Errorf("NewPCA | ReadConfigFromFile | %w", err)
 	}
 
-	// Load rsa key pair
-	keyPair, err := util.RSAKeyFromPEMFile(config.KeyPath)
+	// Load cert and rsa key pair.
+	cert, err := util.PolicyCertificateFromBytes(config.CertJSON)
 	if err != nil {
-		return nil, fmt.Errorf("NewPCA | LoadRSAKeyPairFromFile | %w", err)
+		return nil, fmt.Errorf("loading policy certificate from config: %w", err)
+	}
+	keyPair, err := util.RSAKeyFromPEM(config.KeyPEM)
+	if err != nil {
+		return nil, fmt.Errorf("loading RSA key from config: %w", err)
 	}
 
-	// Load Root Policy Certificate.
-	a, err := common.FromJSONFile(config.RootPolicyCertPath)
-	if err != nil {
-		return nil, err
-	}
-	rpc, err := util.ToType[*common.PolicyCertificate](a)
-	if err != nil {
-		return nil, err
-	}
 	// Check the private key and RPC match.
 	derBytes, err := util.RSAPublicToDERBytes(&keyPair.PublicKey)
 	if err != nil {
 		return nil, err
 	}
 
-	if !bytes.Equal(rpc.PublicKey, derBytes) {
-		return nil, fmt.Errorf("RPC and key do not match")
+	if !bytes.Equal(cert.PublicKey, derBytes) {
+		return nil, fmt.Errorf("key and root policy certificate do not match")
 	}
 
 	// Load the CT log server entries.
@@ -87,7 +82,7 @@ func NewPCA(configPath string) (*PCA, error) {
 	return &PCA{
 		CAName:         config.CAName,
 		RsaKeyPair:     keyPair,
-		RootPolicyCert: rpc,
+		RootPolicyCert: cert,
 		CtLogServers:   logServers,
 		DB:             make(map[[32]byte]*common.PolicyCertificate),
 		SerialNumber:   0,
@@ -96,8 +91,6 @@ func NewPCA(configPath string) (*PCA, error) {
 
 func (pca *PCA) NewPolicyCertificateSigningRequest(
 	version int,
-	subject string,
-	serialNumber int,
 	domain string,
 	notBefore time.Time,
 	notAfter time.Time,
@@ -107,7 +100,7 @@ func (pca *PCA) NewPolicyCertificateSigningRequest(
 	signatureAlgorithm common.SignatureAlgorithm,
 	policyAttributes common.PolicyAttributes,
 	ownerSigningFunction func(serialized []byte) []byte,
-	ownerPubKeyHash []byte,
+	ownerHash []byte,
 ) (*common.PolicyCertificateSigningRequest, error) {
 
 	// Check validity range falls inside PCAs.
@@ -120,12 +113,12 @@ func (pca *PCA) NewPolicyCertificateSigningRequest(
 			notAfter, pca.RootPolicyCert.NotAfter)
 	}
 
+	pca.increaseSerialNumber()
+
 	// Create request with appropriate values.
 	req := common.NewPolicyCertificateSigningRequest(
 		version,
-		pca.CAName,
-		subject,
-		serialNumber,
+		pca.SerialNumber,
 		domain,
 		notBefore,
 		notAfter,
@@ -136,9 +129,9 @@ func (pca *PCA) NewPolicyCertificateSigningRequest(
 		time.Now(),
 		policyAttributes,
 		nil,
-		ownerPubKeyHash,
+		ownerHash,
 	)
-	// Serialize it.
+	// Serialize it including the owner hash.
 	serializedReq, err := common.ToJSON(req)
 	if err != nil {
 		return nil, err
@@ -196,26 +189,20 @@ func (pca *PCA) canSkipCoolOffPeriod(req *common.PolicyCertificateSigningRequest
 		return false, nil
 	}
 	// If there is a owner's signature, the id of the key used must be 32 bytes.
-	if len(req.OwnerPubKeyHash) != 32 {
-		return false, fmt.Errorf("field OwnerPubKeyHash should be 32 bytes long but is %d",
-			len(req.OwnerPubKeyHash))
+	if len(req.OwnerHash) != 32 {
+		return false, fmt.Errorf("field OwnerHash should be 32 bytes long but is %d",
+			len(req.OwnerHash))
 	}
 	// Cast it to array and check the DB.
-	key := (*[32]byte)(req.OwnerPubKeyHash)
+	key := (*[32]byte)(req.OwnerHash)
 	stored, ok := pca.DB[*key]
 	if !ok {
 		// No such certificate, cannot skip cool off period.
 		return false, nil
 	}
 
-	// We found the policy certificate used to sign this request. Get the public key.
-	pubKey, err := util.DERBytesToRSAPublic(stored.PublicKey)
-	if err != nil {
-		return false, err
-	}
-
 	// Verify the signature matches.
-	err = crypto.VerifyOwnerSignature(req, pubKey)
+	err := crypto.VerifyOwnerSignature(stored, req)
 
 	// Return true if no error, or false and the error.
 	return err == nil, err
@@ -225,11 +212,7 @@ func (pca *PCA) signRequest(
 	req *common.PolicyCertificateSigningRequest,
 ) (*common.PolicyCertificate, error) {
 
-	// Set the issuer values from this CA.
-	pca.increaseSerialNumber()
-	req.Issuer = pca.RootPolicyCert.Subject()
-	req.RawSerialNumber = pca.SerialNumber
-	return crypto.SignRequestAsIssuer(req, pca.RsaKeyPair)
+	return crypto.SignRequestAsIssuer(pca.RootPolicyCert, pca.RsaKeyPair, req)
 }
 
 func (pca *PCA) sendRequestToAllLogServers(pc *common.PolicyCertificate) error {
@@ -255,8 +238,9 @@ func (pca *PCA) sendRequestToLogServer(
 }
 
 func (pca *PCA) signFinalPolicyCertificate(pc *common.PolicyCertificate) error {
-	_, err := crypto.SignPolicyCertificateAsIssuer(pc, pca.RsaKeyPair)
-	return err
+	pc.IssuerSignature = nil
+	pc.IssuerHash = nil
+	return crypto.SignPolicyCertificateAsIssuer(pca.RootPolicyCert, pca.RsaKeyPair, pc)
 }
 
 // sendFinalPolCertToAllLogServers sends the final policy certificate with all the SPTs included,
