@@ -61,12 +61,12 @@ func BuildTestRandomPolicyHierarchy(t tests.T, domainName string) []common.Polic
 	docs := make([]common.PolicyDocument, 2)
 	for i := range docs {
 		pc := RandomPolicyCertificate(t)
-		pc.RawDomain = domainName
+		pc.DomainField = domainName
 		pc.IssuerHash = RandomBytesForTest(t, 32)
 
 		data, err := common.ToJSON(pc)
 		require.NoError(t, err)
-		pc.RawJSON = data
+		pc.JSONField = data
 		docs[i] = pc
 	}
 	return docs

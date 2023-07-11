@@ -138,12 +138,12 @@ func (o *serializableObjectBase) UnmarshalJSON(data []byte) error {
 			base := reflect.Indirect(reflect.ValueOf(obj)).FieldByName("PolicyPartBase")
 			if base != (reflect.Value{}) {
 				// It is a PolicyPartBase like object. Check the Raw field (should always be true).
-				if raw := base.FieldByName("RawJSON"); raw != (reflect.Value{}) {
+				if raw := base.FieldByName("JSONField"); raw != (reflect.Value{}) {
 					// Set its value to the JSON data.
 					raw.Set(reflect.ValueOf(data))
 				} else {
 					// This should never happen, and the next line should ensure it:
-					_ = PolicyPartBase{}.RawJSON
+					_ = PolicyPartBase{}.JSONField
 					// But terminate the control flow anyways with a panic.
 					panic("logic error: structure PolicyPartBase has lost its Raw member")
 				}

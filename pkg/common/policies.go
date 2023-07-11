@@ -15,16 +15,16 @@ type PolicyDocument interface {
 
 type PolicyCertificateBase struct {
 	PolicyPartBase
-	RawSerialNumber int    `json:"SerialNumber,omitempty"`
-	RawDomain       string `json:"Domain,omitempty"`
+	SerialNumberField int    `json:"SerialNumber,omitempty"`
+	DomainField       string `json:"Domain,omitempty"`
 }
 
-func (o PolicyCertificateBase) SerialNumber() int { return o.RawSerialNumber }
-func (o PolicyCertificateBase) Domain() string    { return o.RawDomain }
+func (o PolicyCertificateBase) SerialNumber() int { return o.SerialNumberField }
+func (o PolicyCertificateBase) Domain() string    { return o.DomainField }
 func (p PolicyCertificateBase) Equal(x PolicyCertificateBase) bool {
 	return p.PolicyPartBase.Equal(x.PolicyPartBase) &&
-		p.RawSerialNumber == x.RawSerialNumber &&
-		p.RawDomain == x.RawDomain
+		p.SerialNumberField == x.SerialNumberField &&
+		p.DomainField == x.DomainField
 }
 
 // PolicyCertificateFields contains all the fields that a policy certificate or a signing request
@@ -106,8 +106,8 @@ func NewPolicyCertificateFields(
 			PolicyPartBase: PolicyPartBase{
 				Version: version,
 			},
-			RawSerialNumber: serialNumber,
-			RawDomain:       domain,
+			SerialNumberField: serialNumber,
+			DomainField:       domain,
 		},
 		NotBefore:          notBefore,
 		NotAfter:           notAfter,
@@ -201,7 +201,7 @@ func NewPolicyCertificateRevocationFields(
 			PolicyPartBase: PolicyPartBase{
 				Version: version,
 			},
-			RawSerialNumber: serialNumber,
+			SerialNumberField: serialNumber,
 		},
 		TimeStamp:      timeStamp,
 		OwnerSignature: ownerSignature,

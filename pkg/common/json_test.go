@@ -97,7 +97,7 @@ func TestPolicyObjectBaseRaw(t *testing.T) {
 			rawElemsCount: 1,
 			getRawElemsFcn: func(obj any) [][]byte {
 				rpc := obj.(*common.PolicyCertificate)
-				return [][]byte{rpc.RawJSON}
+				return [][]byte{rpc.JSONField}
 			},
 		},
 		"spPtr": {
@@ -105,7 +105,7 @@ func TestPolicyObjectBaseRaw(t *testing.T) {
 			rawElemsCount: 1,
 			getRawElemsFcn: func(obj any) [][]byte {
 				sp := obj.(*common.PolicyCertificate)
-				return [][]byte{sp.RawJSON}
+				return [][]byte{sp.JSONField}
 			},
 		},
 		"spValue": {
@@ -113,7 +113,7 @@ func TestPolicyObjectBaseRaw(t *testing.T) {
 			rawElemsCount: 1,
 			getRawElemsFcn: func(obj any) [][]byte {
 				sp := obj.(common.PolicyCertificate)
-				return [][]byte{sp.RawJSON}
+				return [][]byte{sp.JSONField}
 			},
 		},
 		"list": {
@@ -125,8 +125,8 @@ func TestPolicyObjectBaseRaw(t *testing.T) {
 			getRawElemsFcn: func(obj any) [][]byte {
 				l := obj.([]any)
 				return [][]byte{
-					l[0].(*common.PolicyCertificate).RawJSON,
-					l[1].(*common.PolicyCertificateSigningRequest).RawJSON,
+					l[0].(*common.PolicyCertificate).JSONField,
+					l[1].(*common.PolicyCertificateSigningRequest).JSONField,
 				}
 			},
 		},
