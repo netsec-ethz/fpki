@@ -21,12 +21,10 @@ type PolicyPart interface {
 // PolicyPartBase is the common type to all policy documents.
 type PolicyPartBase struct {
 	MarshallableDocumentBase
-	Version int    `json:",omitempty"`
-	Issuer  string `json:",omitempty"`
+	Version int `json:",omitempty"`
 }
 
 func (o PolicyPartBase) Equal(x PolicyPartBase) bool {
 	// Ignore the RawJSON component, use just the regular fields.
-	return o.Version == x.Version &&
-		o.Issuer == x.Issuer
+	return o.Version == x.Version
 }

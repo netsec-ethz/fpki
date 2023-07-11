@@ -6,10 +6,10 @@ package pca
 import (
 	"crypto/rsa"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
-	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/stretchr/testify/require"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
@@ -18,111 +18,121 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
+var updateGolden = tests.UpdateGoldenFiles()
+
 // Test_Config: do nothing
 func TestNewPCA(t *testing.T) {
 	_, err := NewPCA("testdata/pca_config.json")
 	require.NoError(t, err, "New PCA error")
 }
 
-func TestCreateConfig(t *testing.T) {
-	t.Skip("Not creating config")
-	issuerKey, err := util.RSAKeyFromPEMFile("../../tests/testdata/serverkey.pem")
+func TestUpdateGoldenFiles(t *testing.T) {
+	if !*updateGolden {
+		t.Skip("Not creating config")
+	}
+
+	// Read the files containing the cert and key.
+	certJSON, err := os.ReadFile("../../tests/testdata/issuer_cert.json")
 	require.NoError(t, err)
-	derKey, err := util.RSAPublicToDERBytes(&issuerKey.PublicKey)
+	keyPEM, err := os.ReadFile("../../tests/testdata/issuer_key.pem")
 	require.NoError(t, err)
 
-	req := common.NewPolicyCertificateSigningRequest(
-		0,
-		"pca root policy certificate",
-		"pca root policy certificate",
-		13,
-		"fpki.com",
-		util.TimeFromSecs(10),
-		util.TimeFromSecs(10000),
-		true,
-		derKey,
-		common.RSA,
-		common.SHA256,
-		util.TimeFromSecs(1),
-		common.PolicyAttributes{
-			TrustedCA:         []string{"pca"},
-			AllowedSubdomains: []string{""},
-		},
-		nil, // no owner signature
-		nil, // hash of owner's public key
-	)
-	// Self sign this pol cert.
-	rootPolCert, err := crypto.SignRequestAsIssuer(req, issuerKey)
-	require.NoError(t, err)
-	// And serialize it to file to include it in the configuration of the PCA.
-	err = common.ToJSONFile(rootPolCert, "testdata/rpc.json")
+	// Instantiate the certificate.
+	cert, err := util.PolicyCertificateFromBytes(certJSON)
 	require.NoError(t, err)
 
 	c := &PCAConfig{
-		CAName:             "pca",
-		KeyPath:            "../../tests/testdata/serverkey.pem",
-		RootPolicyCertPath: "testdata/rpc.json",
+		CAName:   "pca",
+		CertJSON: certJSON,
+		KeyPEM:   keyPEM,
 		CTLogServers: []CTLogServerEntryConfig{
 			{
 				Name:         "CT log server 1",
 				URL:          "URL1.com/foo/bar1",
-				PublicKeyDER: derKey,
+				PublicKeyDER: cert.PublicKey,
 			},
 			{
 				Name:         "CT log server 2",
 				URL:          "URL2.com/foo/bar2",
-				PublicKeyDER: derKey,
+				PublicKeyDER: cert.PublicKey,
 			},
 		},
 	}
 	err = SaveConfigToFile(c, "testdata/pca_config.json")
 	require.NoError(t, err)
 }
+
+// TestPCAWorkflow checks that the PCA workflow works as intended.
 func TestPCAWorkflow(t *testing.T) {
 	pca, err := NewPCA("testdata/pca_config.json")
 	require.NoError(t, err, "New PCA error")
-	// pca is configured using pca_config.json, which itself specifies the PCA to use serverkey.pem
-	// as the key to use to issue policy certificates.
-	notBefore := util.TimeFromSecs(10 + 1)
-	notAfter := util.TimeFromSecs(10000 - 10)
+
 	// The requester needs a key (which will be identified in the request itself).
-	ownerKey, err := util.RSAKeyFromPEMFile("../../tests/testdata/clientkey.pem")
+	ownerKey, err := util.RSAKeyFromPEMFile("../../tests/testdata/owner_key.pem")
 	require.NoError(t, err)
-	ownerDerKey, err := util.RSAPublicToDERBytes(&ownerKey.PublicKey)
+	ownerCert, err := util.PolicyCertificateFromFile("../../tests/testdata/owner_cert.json")
 	require.NoError(t, err)
-	// The workflow from the PCA's perspective is as follows:
-	// 1. Create request
-	req, err := pca.NewPolicyCertificateSigningRequest(
-		1,
-		"fpki.com",
-		1,
-		"fpki.com",
-		notBefore,
-		notAfter,
-		true,
-		ownerDerKey, // public key
-		common.RSA,
-		common.SHA256,
-		common.PolicyAttributes{}, // policy attributes
-		func(serialized []byte) []byte {
-			return nil
-		},
-		common.SHA256Hash(ownerDerKey), // owner pub key hash
-	)
+	ownerHash, err := crypto.ComputeHashAsOwner(ownerCert)
 	require.NoError(t, err)
 
-	// 2. Owner signs request
-	pca.increaseSerialNumber()
-	err = crypto.SignAsOwner(ownerKey, req)
+	signingFunctionCallTimes := 0 // incremented when the owner is requested to sign
+	// The workflow from the PCA's perspective is as follows:
+	// 1. Create request.
+	notBefore := pca.RootPolicyCert.NotBefore.Add(-1) // this will be invalid at first
+	notAfter := pca.RootPolicyCert.NotAfter.Add(1)    // this will be invalid at first
+	create := func() (*common.PolicyCertificateSigningRequest, error) {
+		return pca.NewPolicyCertificateSigningRequest(
+			1,
+			"fpki.com",
+			notBefore,
+			notAfter,
+			true,
+			ownerCert.PublicKey, // public key
+			common.RSA,
+			common.SHA256,
+			common.PolicyAttributes{}, // policy attributes
+			func(serialized []byte) []byte {
+				signingFunctionCallTimes++
+				data, err := crypto.SignBytes(serialized, ownerKey)
+				require.NoError(t, err)
+				return data
+			},
+			ownerHash, // owner hash
+		)
+	}
+	_, err = create()
+	require.Error(t, err) // not before is too early
+	notBefore = pca.RootPolicyCert.NotBefore.Add(1)
+	_, err = create()
+	require.Error(t, err) // not after is too late
+	notAfter = pca.RootPolicyCert.NotAfter.Add(-1)
+	// It shouldn't fail now.
+	req, err := create()
+	require.NoError(t, err)
+
+	// 2. Owner has signed the request. We can verify this.
+	require.Equal(t, 1, signingFunctionCallTimes)
+	// Check the signature.
+	err = crypto.VerifyOwnerSignature(ownerCert, req)
 	require.NoError(t, err)
 
 	// 3. PCA verifies owner's signature
 	skip, err := pca.canSkipCoolOffPeriod(req)
 	require.NoError(t, err)
 	require.False(t, skip) // because the PCA doesn't contain the pol cert used to sign it.
+	// Let's add the root policy certificate that owner-signed the child pol cert.
+	pca.DB[*(*[32]byte)(ownerHash)] = ownerCert
+	skip, err = pca.canSkipCoolOffPeriod(req)
+	require.NoError(t, err)
+	require.True(t, skip)
+	// For the test, remove the root pol cert from the DB.
+	delete(pca.DB, *(*[32]byte)(ownerHash))
 
 	// 4. PCA signs as issuer
 	pc, err := pca.signRequest(req)
+	require.NoError(t, err)
+	// Verify PCA's signature.
+	err = crypto.VerifyIssuerSignature(pca.RootPolicyCert, pc)
 	require.NoError(t, err)
 
 	// 5. PCA sends to log servers. Per log server:
@@ -133,7 +143,7 @@ func TestPCAWorkflow(t *testing.T) {
 	// 		8. PCA adds SPT to list in policy certificate
 	err = pca.sendRequestToAllLogServers(pc)
 	require.NoError(t, err)
-	require.Len(t, pc.SPCTs, len(pca.CtLogServers)) // as many SPTs as CT log servers
+	require.Equal(t, len(pca.CtLogServers), len(pc.SPCTs)) // as many SPTs as CT log servers
 	checkSPTs(t, pca, pc)
 
 	// 9. PCA signs again the policy certificate
@@ -151,7 +161,7 @@ func TestPCAWorkflow(t *testing.T) {
 
 	// 11. PCA stores the final policy certificate in its DB.
 	pca.storeInDb(pc)
-	require.Len(t, pca.DB, 1)
+	require.Equal(t, 1, len(pca.DB))
 	for certID, cert := range pca.DB {
 		// The ID is correct:
 		require.Equal(t, certID, [32]byte(common.SHA256Hash32Bytes(pc.PublicKey)))
@@ -161,36 +171,127 @@ func TestPCAWorkflow(t *testing.T) {
 	}
 }
 
+func TestSignAndLogRequest(t *testing.T) {
+	pca, err := NewPCA("testdata/pca_config.json")
+	require.NoError(t, err, "New PCA error")
+
+	// The requester needs a key (which will be identified in the request itself).
+	ownerKey, err := util.RSAKeyFromPEMFile("../../tests/testdata/owner_key.pem")
+	require.NoError(t, err)
+	ownerCert, err := util.PolicyCertificateFromFile("../../tests/testdata/owner_cert.json")
+	require.NoError(t, err)
+	ownerHash, err := crypto.ComputeHashAsOwner(ownerCert)
+	require.NoError(t, err)
+
+	// Let's add the root policy certificate from the owner.
+	pca.DB[*(*[32]byte)(ownerHash)] = ownerCert
+
+	req, err := pca.NewPolicyCertificateSigningRequest(
+		1,
+		"fpki.com",
+		pca.RootPolicyCert.NotBefore,
+		pca.RootPolicyCert.NotAfter,
+		true,
+		ownerCert.PublicKey, // public key
+		common.RSA,
+		common.SHA256,
+		common.PolicyAttributes{}, // policy attributes
+		func(serialized []byte) []byte {
+			data, err := crypto.SignBytes(serialized, ownerKey)
+			require.NoError(t, err)
+			return data
+		},
+		ownerHash, // owner hash
+	)
+	require.NoError(t, err)
+
+	// Before we call the regular function, we must have a LogServerRequester
+	mockRequester := newmockLogServerRequester(t, pca.CtLogServers)
+	pca.LogServerRequester = mockRequester
+
+	// Call the regular function.
+	pc, err := pca.SignAndLogRequest(req)
+	require.NoError(t, err)
+
+	// Check we have as many SPTs as CT log servers.
+	require.Equal(t, len(pca.CtLogServers), len(pc.SPCTs))
+	// And check the SPTs themselves.
+	checkSPTs(t, pca, pc)
+
+	// Check we made the correct calls to the CT log servers.
+	expectedURLs := make([]string, 0)
+	for _, e := range pca.CtLogServers {
+		expectedURLs = append(expectedURLs, e.URL)
+	}
+	require.ElementsMatch(t, expectedURLs, mockRequester.finalPolCertSentTo)
+
+	// Check that the PCA stored the policy certificate.
+	require.Equal(t, 2, len(pca.DB)) // owner root pol cert plus the new one.
+
+	// For the test, remove the root pol cert from the DB.
+	delete(pca.DB, *(*[32]byte)(ownerHash))
+
+	// Verify that the remainig one is the child certificate.
+	for certID, cert := range pca.DB {
+		// The ID is correct:
+		require.Equal(t, certID, [32]byte(common.SHA256Hash32Bytes(pc.PublicKey)))
+		// And the DB contains the correct pol cert.
+		require.Equal(t, pc, cert)
+		break
+	}
+
+	// Verify owner's signature still valid.
+	err = crypto.VerifyOwnerSignatureInPolicyCertificate(ownerCert, pc)
+	require.NoError(t, err)
+
+	// Verify PCA's signature.
+	err = crypto.VerifyIssuerSignature(pca.RootPolicyCert, pc)
+	require.NoError(t, err)
+}
+
 // mockLogServerRequester mocks a CT log server requester.
 type mockLogServerRequester struct {
-	servers map[string]*CTLogServerEntryConfig
-	pcaCert *ctx509.Certificate
-	keys    map[string]*rsa.PrivateKey
+	ctLogServers map[string]*CTLogServerEntryConfig
+	pcaCert      *common.PolicyCertificate
+
+	// Cert-Key pair per domain:
+	certs map[string]*common.PolicyCertificate
+	keys  map[string]*rsa.PrivateKey
 
 	// URLs of the called CT log servers when sending the final policy cert.
 	finalPolCertSentTo []string
 }
 
-func newmockLogServerRequester(t tests.T, servers map[[32]byte]*CTLogServerEntryConfig) *mockLogServerRequester {
+func newmockLogServerRequester(
+	t tests.T,
+	servers map[[32]byte]*CTLogServerEntryConfig,
+) *mockLogServerRequester {
+
 	// Load the certificate of the PCA.
-	pcaCert, err := util.CertificateFromPEMFile("../../tests/testdata/servercert.pem")
+	pcaCert, err := util.PolicyCertificateFromFile("../../tests/testdata/issuer_cert.json")
 	require.NoError(t, err)
 
-	// Load the keys of the CT log servers. This mock requester uses one for all of them.
-	ctKey, err := util.RSAKeyFromPEMFile("../../tests/testdata/serverkey.pem")
+	// Load the policy certificates and keys of the CT log servers. This mock requester
+	// uses one pair for all of them.
+	ctCert, err := util.PolicyCertificateFromFile("../../tests/testdata/issuer_cert.json")
+	require.NoError(t, err)
+	ctKey, err := util.RSAKeyFromPEMFile("../../tests/testdata/issuer_key.pem")
 	require.NoError(t, err)
 
 	m := make(map[string]*CTLogServerEntryConfig)
+	certs := make(map[string]*common.PolicyCertificate)
 	keys := make(map[string]*rsa.PrivateKey)
 	for _, s := range servers {
 		s := s
 		m[s.URL] = s
+		certs[s.URL] = ctCert
 		keys[s.URL] = ctKey
 	}
 
 	return &mockLogServerRequester{
-		servers:            m,
+		ctLogServers:       m,
 		pcaCert:            pcaCert,
+		certs:              certs,
 		keys:               keys,
 		finalPolCertSentTo: make([]string, 0),
 	}
@@ -215,10 +316,9 @@ func (m *mockLogServerRequester) ObtainSptFromLogServer(
 	if err != nil {
 		return nil, fmt.Errorf("error signing: %w", err)
 	}
-	logID := common.SHA256Hash(m.servers[url].PublicKeyDER)
+	logID := common.SHA256Hash(m.ctLogServers[url].PublicKeyDER)
 	spt := common.NewSignedPolicyCertificateTimestamp(
 		0,
-		pc.Issuer,
 		logID,
 		time.Now(),
 		signature,
@@ -240,16 +340,19 @@ func (m *mockLogServerRequester) SendPolicyCertificateToLogServer(
 func checkSPTs(t tests.T, pca *PCA, pc *common.PolicyCertificate) {
 	t.Helper()
 
-	ctKey, err := util.RSAKeyFromPEMFile("../../tests/testdata/serverkey.pem")
+	ctCert, err := util.PolicyCertificateFromFile("../../tests/testdata/issuer_cert.json")
 	require.NoError(t, err)
-	derKey, err := util.RSAPublicToDERBytes(&ctKey.PublicKey)
-	require.NoError(t, err)
-	hashedDerKey := common.SHA256Hash(derKey)
+
+	// ctKey, err := util.RSAKeyFromPEMFile("../../tests/testdata/serverkey.pem")
+	// require.NoError(t, err)
+	// derKey, err := util.RSAPublicToDERBytes(&ctKey.PublicKey)
+	// require.NoError(t, err)
+	hashedDerKey := common.SHA256Hash(ctCert.PublicKey)
 
 	for _, spt := range pc.SPCTs {
 		require.Equal(t, hashedDerKey, spt.LogID)
-		require.Equal(t, pca.RootPolicyCert.Subject(), spt.Issuer)
 		require.Less(t, time.Since(spt.AddedTS), time.Minute)
 		require.Greater(t, time.Since(spt.AddedTS).Seconds(), 0.0)
+		// TODO check spt.Signature
 	}
 }

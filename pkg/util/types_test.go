@@ -38,7 +38,7 @@ func TestToType(t *testing.T) {
 	// *common.RPC
 	{
 		orig := &common.PolicyCertificate{}
-		orig.RawSubject = "a.com"
+		orig.RawDomain = "a.com"
 		orig.Version = 1
 		e := any(orig)
 		r, err := ToType[*common.PolicyCertificate](e)

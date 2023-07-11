@@ -149,7 +149,7 @@ func UpdateWithOverwrite(ctx context.Context, conn db.Conn, domainNames [][]stri
 		payloads[i] = pol.Raw()
 		id := common.SHA256Hash32Bytes(pol.Raw())
 		policyIDs[i] = &id
-		policySubjects[i] = pol.Subject()
+		policySubjects[i] = pol.Domain()
 	}
 	err = insertPolicies(ctx, conn, policySubjects, policyIDs, payloads)
 
@@ -196,7 +196,7 @@ func UpdateWithKeepExisting(ctx context.Context, conn db.Conn, domainNames [][]s
 		payloads[i] = pol.Raw()
 		id := common.SHA256Hash32Bytes(pol.Raw())
 		policyIDs[i] = &id
-		policySubjects[i] = pol.Subject()
+		policySubjects[i] = pol.Domain()
 	}
 	// Check which policies are already present in the DB.
 	maskPols, err := conn.CheckPoliciesExist(ctx, policyIDs)

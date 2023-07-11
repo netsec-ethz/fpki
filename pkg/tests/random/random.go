@@ -61,9 +61,8 @@ func BuildTestRandomPolicyHierarchy(t tests.T, domainName string) []common.Polic
 	docs := make([]common.PolicyDocument, 2)
 	for i := range docs {
 		pc := RandomPolicyCertificate(t)
-		pc.RawSubject = domainName
-		pc.Domain = domainName
-		pc.Issuer = "c0.com"
+		pc.RawDomain = domainName
+		pc.IssuerHash = RandomBytesForTest(t, 32)
 
 		data, err := common.ToJSON(pc)
 		require.NoError(t, err)
@@ -125,7 +124,6 @@ func RandomTimeWithoutMonotonic() time.Time {
 func RandomSignedPolicyCertificateTimestamp(t tests.T) *common.SignedPolicyCertificateTimestamp {
 	return common.NewSignedPolicyCertificateTimestamp(
 		rand.Intn(10),                // version
-		"Issuer",                     // issuer
 		RandomBytesForTest(t, 10),    // log id
 		RandomTimeWithoutMonotonic(), // timestamp
 		RandomBytesForTest(t, 32),    // signature
@@ -135,46 +133,42 @@ func RandomSignedPolicyCertificateTimestamp(t tests.T) *common.SignedPolicyCerti
 func RandomPolCertSignRequest(t tests.T) *common.PolicyCertificateSigningRequest {
 	return common.NewPolicyCertificateSigningRequest(
 		rand.Intn(10),
-		"Issuer",
-		"RPC subject",
 		rand.Intn(1000), // serial number
-		"domain.com",
+		"domain",        // domain
 		RandomTimeWithoutMonotonic(),
 		RandomTimeWithoutMonotonic(),
 		true,
-		RandomBytesForTest(t, 32),
+		RandomBytesForTest(t, 32), // public key
 		common.RSA,
 		common.SHA256,
-		RandomTimeWithoutMonotonic(),
-		common.PolicyAttributes{}, // policy attributes (empty for now)
-		RandomBytesForTest(t, 32), // ownwer signature
-		RandomBytesForTest(t, 32), // ownwer pub key hash
+		RandomTimeWithoutMonotonic(), // timestamp
+		common.PolicyAttributes{},    // policy attributes (empty for now)
+		RandomBytesForTest(t, 32),    // owner signature
+		RandomBytesForTest(t, 32),    // owner hash
 	)
 }
 
 func RandomPolicyCertificate(t tests.T) *common.PolicyCertificate {
 	return common.NewPolicyCertificate(
 		rand.Intn(10),
-		"Issuer",
-		"RPC subject",
 		rand.Intn(1000), // serial number
 		"fpki.com",
 		RandomTimeWithoutMonotonic(),
 		RandomTimeWithoutMonotonic(),
 		true,
-		RandomBytesForTest(t, 32),
+		RandomBytesForTest(t, 32), // public key
 		common.RSA,
 		common.SHA256,
-		RandomTimeWithoutMonotonic(),
-		common.PolicyAttributes{}, // policy attributes (empty for now)
-		RandomBytesForTest(t, 32), // ownwer signature
-		RandomBytesForTest(t, 32), // ownwer pub key hash
-		RandomBytesForTest(t, 32), // issuer signature
-		RandomBytesForTest(t, 32), // issuer pub key hash
+		RandomTimeWithoutMonotonic(), // timestamp
+		common.PolicyAttributes{},    // policy attributes (empty for now)
+		RandomBytesForTest(t, 32),    // owner signature
+		RandomBytesForTest(t, 32),    // owner hash
 		[]common.SignedPolicyCertificateTimestamp{
 			*RandomSignedPolicyCertificateTimestamp(t),
 			*RandomSignedPolicyCertificateTimestamp(t),
 		},
+		RandomBytesForTest(t, 32), // issuer signature
+		RandomBytesForTest(t, 32), // issuer hash
 	)
 }
 

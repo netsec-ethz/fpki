@@ -8,17 +8,10 @@ import (
 
 // PCAConfig: configuration of the pca
 type PCAConfig struct {
-	CAName             string                   `json:",omitempty"`
-	CTLogServers       []CTLogServerEntryConfig `json:",omitempty"`
-	KeyPath            string                   `json:",omitempty"`
-	RootPolicyCertPath string                   `json:",omitempty"`
-
-	// deleteme remove all this below
-
-	// PCA's output path; sends RPC
-	PolicyLogExgPath string `json:",omitempty"`
-
-	OutputPath string `json:",omitempty"`
+	CAName       string                   `json:",omitempty"`
+	CTLogServers []CTLogServerEntryConfig `json:",omitempty"`
+	KeyPEM       []byte                   `json:",omitempty"`
+	CertJSON     []byte                   `json:",omitempty"`
 }
 
 type CTLogServerEntryConfig struct {

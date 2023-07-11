@@ -29,12 +29,10 @@ type SignedPolicyCertificateTimestamp struct {
 // SignedPolicyCertificateRevocationTimestamp is a signed policy certificate revocation timestamp.
 type SignedPolicyCertificateRevocationTimestamp struct {
 	SignedEntryTimestamp
-	Reason int `json:",omitempty"`
 }
 
 func NewSignedEntryTimestamp(
 	version int,
-	issuer string,
 	logID []byte,
 	addedTS time.Time,
 	signature []byte,
@@ -44,7 +42,6 @@ func NewSignedEntryTimestamp(
 		EmbeddedPolicyBase: EmbeddedPolicyBase{
 			PolicyPartBase: PolicyPartBase{
 				Version: version,
-				Issuer:  issuer,
 			},
 		},
 		LogID:     logID,
@@ -62,7 +59,6 @@ func (s SignedEntryTimestamp) Equal(x SignedEntryTimestamp) bool {
 
 func NewSignedPolicyCertificateTimestamp(
 	version int,
-	issuer string,
 	logID []byte,
 	addedTS time.Time,
 	signature []byte,
@@ -70,7 +66,6 @@ func NewSignedPolicyCertificateTimestamp(
 	return &SignedPolicyCertificateTimestamp{
 		SignedEntryTimestamp: *NewSignedEntryTimestamp(
 			version,
-			issuer,
 			logID,
 			addedTS,
 			signature,
@@ -84,7 +79,6 @@ func (t SignedPolicyCertificateTimestamp) Equal(x SignedPolicyCertificateTimesta
 
 func NewSignedPolicyCertificateRevocationTimestamp(
 	version int,
-	issuer string,
 	logID []byte,
 	addedTS time.Time,
 	signature []byte,
@@ -93,16 +87,13 @@ func NewSignedPolicyCertificateRevocationTimestamp(
 	return &SignedPolicyCertificateRevocationTimestamp{
 		SignedEntryTimestamp: *NewSignedEntryTimestamp(
 			version,
-			issuer,
 			logID,
 			addedTS,
 			signature,
 		),
-		Reason: reason,
 	}
 }
 
 func (t SignedPolicyCertificateRevocationTimestamp) Equal(x SignedPolicyCertificateRevocationTimestamp) bool {
-	return t.SignedEntryTimestamp.Equal(x.SignedEntryTimestamp) &&
-		t.Reason == x.Reason
+	return t.SignedEntryTimestamp.Equal(x.SignedEntryTimestamp)
 }

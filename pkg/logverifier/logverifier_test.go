@@ -16,18 +16,24 @@ import (
 )
 
 func TestVerifySPT(t *testing.T) {
-	ownwerPriv, err := util.RSAKeyFromPEMFile("../../tests/testdata/clientkey.pem")
-	require.NoError(t, err, "load RSA key error")
-	issuerPriv, err := util.RSAKeyFromPEMFile("../../tests/testdata/serverkey.pem")
-	require.NoError(t, err, "load RSA key error")
+	ownerCert, err := util.PolicyCertificateFromFile("../../tests/testdata/owner_cert.json")
+	require.NoError(t, err)
+	ownwerPriv, err := util.RSAKeyFromPEMFile("../../tests/testdata/owner_key.pem")
+	require.NoError(t, err)
+
+	issuerCert, err := util.PolicyCertificateFromFile("../../tests/testdata/issuer_cert.json")
+	require.NoError(t, err)
+	issuerPriv, err := util.RSAKeyFromPEMFile("../../tests/testdata/issuer_key.pem")
+	require.NoError(t, err)
 
 	req := random.RandomPolCertSignRequest(t)
-	err = crypto.SignAsOwner(ownwerPriv, req)
+	req.OwnerHash = nil
+	req.OwnerSignature = nil
+	err = crypto.SignAsOwner(ownerCert, ownwerPriv, req)
 	require.NoError(t, err)
 
-	cert, err := crypto.SignRequestAsIssuer(req, issuerPriv)
+	_, err = crypto.SignRequestAsIssuer(issuerCert, issuerPriv, req)
 	require.NoError(t, err)
-	_ = cert
 }
 
 func TestVerifyInclusionByHash(t *testing.T) {
@@ -44,7 +50,7 @@ func TestVerifyInclusionByHash(t *testing.T) {
 	// Create a mock STH with the correct root hash to pass the test.
 	sth := &types.LogRootV1{
 		TreeSize:       2,
-		RootHash:       tests.MustDecodeBase64(t, "rHCFIFTtQjLK5dgSl/DS/wi8qctNmB6nrAI8gEq9AIM="),
+		RootHash:       tests.MustDecodeBase64(t, "7+1ODWJbmPz206K4n/kabPoCxAiyJ2e+jSe9rH5uYFk="),
 		TimestampNanos: 1661986742112252000,
 		Revision:       0,
 		Metadata:       []byte{},
