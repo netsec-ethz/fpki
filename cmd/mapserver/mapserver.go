@@ -76,7 +76,12 @@ func NewMapserver(config *Config) (*MapServer, error) {
 
 func (s *MapServer) Update() error {
 	fmt.Printf("======== update started  at %s\n", time.Now().UTC().Format(time.RFC3339))
-	time.Sleep(1 * time.Second)
+	time.Sleep(3 * time.Second)
 	fmt.Printf("======== update finished at %s\n", time.Now().UTC().Format(time.RFC3339))
+	return nil
+}
+
+func (s *MapServer) Listen(ctx context.Context) error {
+	<-ctx.Done()
 	return nil
 }
