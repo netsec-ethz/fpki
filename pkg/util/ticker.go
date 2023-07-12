@@ -5,20 +5,25 @@ import (
 	"time"
 )
 
-// NewTickingFunction creates a new ticker that runs the function inmediately and every `dur` interval.
-// It relies on `time.Ticker`, so this function will adjust the interval depending on the duration
-// of the execution of the function. It can also drop ticks.
-// The function stops running the function if the context is cancelled.
-func NewTickingFunction(
+// RunWhen executes the function at the specified time.Time. If said time is in the
+// past, it will execute it immediately. It then executes the function repeatedly every interval.
+// It will adapt the internal ticker and even skip some ticks, so that the execution times of
+// the fuction are independent from the duration of the execution itself.
+// The function stops being executed when the context is cancelled.
+func RunWhen(
 	ctx context.Context,
-	dur time.Duration,
-	runWhenTick func(),
+	when time.Time,
+	repeat time.Duration,
+	whenTick func(),
 ) {
 
-	ticker := time.NewTicker(dur)
-	go func(ticker *time.Ticker) {
+	go func() {
+		waiting := time.Until(when)
+		timer := time.NewTimer(waiting)
+		<-timer.C
+		ticker := time.NewTicker(repeat)
 		for {
-			runWhenTick()
+			whenTick()
 			select {
 			case <-ticker.C:
 				continue
@@ -27,5 +32,5 @@ func NewTickingFunction(
 				return
 			}
 		}
-	}(ticker)
+	}()
 }
