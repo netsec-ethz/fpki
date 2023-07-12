@@ -80,15 +80,11 @@ func run(updateNow bool) error {
 
 	// Load configuration and run with it.
 	config, err := ReadConfigFromFile(flag.Arg(0))
-	if err == nil {
-		err = runWithConfig(
-			ctx,
-			config,
-			updateNow,
-		)
+	if err != nil {
+		return err
 	}
 
-	return err
+	return runWithConfig(ctx, config, updateNow)
 }
 
 // runWithConfig examines the configuration, and according to its values, starts a timer to
