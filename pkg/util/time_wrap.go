@@ -85,3 +85,23 @@ func (t TimeOfDayWrap) String() string {
 
 	return t.Format(layout)
 }
+
+// NextTimeOfDay returns the next possible time that keeps the same hour minute and second as this
+// TimeOfDayWrap. The returned time is never Before time.Now() and at most 1 day in the future.
+func (t TimeOfDayWrap) NextTimeOfDay() time.Time {
+	now := time.Now()
+
+	// The actual time in the present or future?
+	if !t.Time.Before(now) {
+		return t.Time
+	}
+
+	next := time.Date(now.Year(), now.Month(), now.Day(),
+		t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), time.UTC)
+	if !next.Before(now) {
+		return next
+	}
+
+	next = next.Add(24 * time.Hour)
+	return next
+}
