@@ -114,11 +114,17 @@ func runWithConfig(
 	// Set update cycle timer.
 
 	// Listen in responder.
+	err = server.Listen(ctx)
 
-	// Wait forever until cancellation.
-	<-ctx.Done()
+	// Regardless of the error, clean everything up.
+	cleanUp()
 
-	return nil
+	// Return the error from the responder.
+	return err
+}
+
+func cleanUp() {
+	fmt.Println("cleaning up")
 }
 
 func manageError(err error) int {
@@ -127,5 +133,6 @@ func manageError(err error) int {
 		return 1
 	}
 
+	fmt.Println("exiting")
 	return 0
 }
