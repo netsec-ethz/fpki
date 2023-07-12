@@ -14,6 +14,11 @@ func main() {
 }
 
 func mainFunc() int {
+	// Because some packages (glog) change the flags to main, and we don't want/need them, reset
+	// the flags before touching them.
+	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
+
+	// Prepare our flags.
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage:\n%s configuration_file\n", os.Args[0])
 		flag.PrintDefaults()
