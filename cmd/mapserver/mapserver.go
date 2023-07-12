@@ -15,16 +15,11 @@ type MapServer struct {
 	Updater   *updater.MapUpdater
 }
 
-func NewMapserver() (*MapServer, error) {
+func NewMapserver(dbConfig *db.Configuration) (*MapServer, error) {
 	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
 
 	// Connect to the DB.
-	dbConfig := db.NewConfig(
-		mysql.WithDefaults(),
-		mysql.WithEnvironment(),
-		mysql.WithLocalSocket("/var/run/mysqld/mysqld.sock"),
-	)
 	conn, err := mysql.Connect(dbConfig)
 	if err != nil {
 		return nil, err

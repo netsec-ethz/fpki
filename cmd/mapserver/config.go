@@ -11,7 +11,7 @@ import (
 type Config struct {
 	UpdateTimer util.DurationWrap
 	UpdateAt    util.TimeOfDayWrap
-	DB          db.Configuration
+	DB          *db.Configuration
 }
 
 func ReadConfigFromFile(filePath string) (*Config, error) {
