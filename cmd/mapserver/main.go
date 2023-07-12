@@ -91,11 +91,11 @@ func run(updateNow bool) error {
 // run the update cycle at the corresponding time.
 func runWithConfig(
 	ctx context.Context,
-	c *Config,
+	config *Config,
 	updateNow bool,
 ) error {
 
-	server, err := NewMapserver(c)
+	server, err := NewMapserver(ctx, config)
 	if err != nil {
 		return err
 	}
@@ -107,7 +107,15 @@ func runWithConfig(
 			return fmt.Errorf("performing initial update: %w", err)
 		}
 	}
+
 	// Set update cycle timer.
+	util.RunWhen(ctx, config.UpdateAt.NextTimeOfDay(), config.UpdateTimer.Duration,
+		func() {
+			err := server.Update()
+			if err != nil {
+				fmt.Printf("ERROR: update returned %s\n", err)
+			}
+		})
 
 	// Listen in responder.
 	err = server.Listen(ctx)

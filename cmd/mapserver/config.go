@@ -9,8 +9,8 @@ import (
 )
 
 type Config struct {
-	UpdateTimer    util.DurationWrap
 	UpdateAt       util.TimeOfDayWrap
+	UpdateTimer    util.DurationWrap
 	CTLogServerURL string
 	DBConfig       *db.Configuration
 

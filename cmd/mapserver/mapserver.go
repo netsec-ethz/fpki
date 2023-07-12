@@ -18,16 +18,15 @@ import (
 type MapServer struct {
 	Updater   *updater.MapUpdater
 	Responder *responder.MapResponder
-
 	// Crypto material of this map server.
 	Cert *ctx509.Certificate
 	Key  *rsa.PrivateKey
+
+	updateChan    chan struct{}
+	updateErrChan chan error
 }
 
-func NewMapserver(config *Config) (*MapServer, error) {
-	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancelF()
-
+func NewMapserver(ctx context.Context, config *Config) (*MapServer, error) {
 	// Load cert and key.
 	cert, err := util.CertificateFromPEMFile(config.CertificatePemFile)
 	if err != nil {
@@ -66,19 +65,52 @@ func NewMapserver(config *Config) (*MapServer, error) {
 	}
 
 	// Compose MapServer.
-	return &MapServer{
+	s := &MapServer{
 		Updater:   updater,
 		Responder: resp,
 		Cert:      cert,
 		Key:       key,
-	}, nil
+
+		updateChan:    make(chan struct{}),
+		updateErrChan: make(chan error),
+	}
+
+	// Start listening for update requests.
+	go func() {
+		// Non stop read from updateChan. Unless requested to exit.
+		for {
+			select {
+			case <-s.updateChan:
+				s.update()
+			case <-ctx.Done():
+				// Requested to exit.
+				close(s.updateChan)
+				return
+			}
+		}
+	}()
+
+	return s, nil
 }
 
+// Update triggers an update. If an ongoing update is still in process, it blocks.
 func (s *MapServer) Update() error {
+	// Signal we want an update.
+	s.updateChan <- struct{}{}
+
+	// Wait for the answer (in form of an error).
+	err := <-s.updateErrChan
+	return err
+}
+
+func (s *MapServer) update() {
 	fmt.Printf("======== update started  at %s\n", time.Now().UTC().Format(time.RFC3339))
 	time.Sleep(3 * time.Second)
-	fmt.Printf("======== update finished at %s\n", time.Now().UTC().Format(time.RFC3339))
-	return nil
+	fmt.Printf("======== update finished at %s\n\n", time.Now().UTC().Format(time.RFC3339))
+
+	// Queue answer in form of an error:
+	err := error(nil)
+	s.updateErrChan <- err
 }
 
 func (s *MapServer) Listen(ctx context.Context) error {

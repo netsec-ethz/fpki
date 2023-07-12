@@ -1,6 +1,6 @@
 {
-    "UpdateTimer": "1d",
     "UpdateAt": "03:00:00",
+    "UpdateTimer": "1d",
     "CTLogServerURL": "https://ct.googleapis.com/logs/xenon2023/",
     "DBConfig": {
         "Dsn": "",
