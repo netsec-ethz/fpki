@@ -11,6 +11,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
+// TestConfigJson checks that the map server configuration can be marshalled to JSON and back.
 func TestConfigJson(t *testing.T) {
 	config := &main.Config{
 		UpdateAt: util.NewTimeOfDay(3, 00, 00, 00),

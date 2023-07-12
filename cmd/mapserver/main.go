@@ -47,7 +47,8 @@ func mainFunc() int {
 		err = run(*updateVar)
 	}
 
-	// We have finished. Print message in case of error.
+	// We have finished. Probably the context created in run was been cancelled (exit request).
+	// Print message in case of error.
 	return manageError(err)
 }
 
@@ -62,7 +63,10 @@ func writeSampleConfig() error {
 		UpdateTimer: util.DurationWrap{
 			Duration: 24 * time.Hour,
 		},
-		DB: dbConfig,
+		DBConfig:           dbConfig,
+		CTLogServerURL:     "https://ct.googleapis.com/logs/xenon2023/",
+		CertificatePemFile: "tests/testdata/servercert.pem",
+		PrivateKeyPemFile:  "tests/testdata/serverkey.pem",
 	}
 
 	return WriteConfigurationToFile(flag.Arg(0), config)
@@ -95,7 +99,7 @@ func runWithConfig(
 	updateNow bool,
 ) error {
 
-	server, err := NewMapserver(c.DB)
+	server, err := NewMapserver(c)
 	if err != nil {
 		return err
 	}

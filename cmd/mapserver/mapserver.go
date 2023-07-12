@@ -1,42 +1,80 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"crypto/rsa"
+	"fmt"
 	"time"
 
-	db "github.com/netsec-ethz/fpki/pkg/db"
+	ctx509 "github.com/google/certificate-transparency-go/x509"
+
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/responder"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
+	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
 type MapServer struct {
-	Responder *responder.MapResponder
 	Updater   *updater.MapUpdater
+	Responder *responder.MapResponder
+
+	// Crypto material of this map server.
+	Cert *ctx509.Certificate
+	Key  *rsa.PrivateKey
 }
 
-func NewMapserver(dbConfig *db.Configuration) (*MapServer, error) {
+func NewMapserver(config *Config) (*MapServer, error) {
 	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
 
-	// Connect to the DB.
-	conn, err := mysql.Connect(dbConfig)
+	// Load cert and key.
+	cert, err := util.CertificateFromPEMFile(config.CertificatePemFile)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error loading certificate: %w", err)
+	}
+	key, err := util.RSAKeyFromPEMFile(config.PrivateKeyPemFile)
+	if err != nil {
+		return nil, fmt.Errorf("error loading private key: %w", err)
 	}
 
-	// Create a responder.
-	resp, err := responder.NewMapResponder(ctx, "deleteme", conn)
+	// Check they correspond to one another.
+	derBytes, err := util.RSAPublicToDERBytes(&key.PublicKey)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error encoding key to DER: %w", err)
+	}
+	if !bytes.Equal(derBytes, cert.RawSubjectPublicKeyInfo) {
+		return nil, fmt.Errorf("certificate has different public key than key file")
+	}
+
+	// Connect to the DB.
+	conn, err := mysql.Connect(config.DBConfig)
+	if err != nil {
+		return nil, fmt.Errorf("error connecting to the DB: %w", err)
+	}
+
+	// Create map updater.
+	updater, err := updater.NewMapUpdater(config.DBConfig, config.CTLogServerURL)
+	if err != nil {
+		return nil, fmt.Errorf("error creating new map updater: %w", err)
+	}
+
+	// Create map responder.
+	resp, err := responder.NewMapResponder(ctx, conn, key)
+	if err != nil {
+		return nil, fmt.Errorf("error creating new map responder: %w", err)
 	}
 
 	// Compose MapServer.
 	return &MapServer{
+		Updater:   updater,
 		Responder: resp,
+		Cert:      cert,
+		Key:       key,
 	}, nil
 }
 
 func (s *MapServer) Update() error {
+	time.Sleep(3 * time.Second)
 	return nil
 }
