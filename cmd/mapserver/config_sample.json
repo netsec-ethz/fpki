@@ -1,7 +1,8 @@
 {
     "UpdateTimer": "1d",
     "UpdateAt": "03:00:00",
-    "DB": {
+    "CTLogServerURL": "https://ct.googleapis.com/logs/xenon2023/",
+    "DBConfig": {
         "Dsn": "",
         "DBName": "",
         "Values": {
@@ -16,5 +17,7 @@
             "maxAllowedPacket": "1073741824"
         },
         "CheckSchema": false
-    }
+    },
+    "CertificatePemFile": "tests/testdata/servercert.pem",
+    "PrivateKeyPemFile": "tests/testdata/serverkey.pem"
 }

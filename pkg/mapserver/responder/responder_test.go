@@ -2,6 +2,7 @@ package responder
 
 import (
 	"context"
+	"crypto/rsa"
 	"encoding/hex"
 	"math/rand"
 	"testing"
@@ -13,6 +14,7 @@ import (
 	mapcommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/prover"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
+	"github.com/netsec-ethz/fpki/pkg/tests"
 	"github.com/netsec-ethz/fpki/pkg/tests/random"
 	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
 	"github.com/netsec-ethz/fpki/pkg/util"
@@ -32,7 +34,7 @@ func TestNewResponder(t *testing.T) {
 	defer conn.Close()
 
 	// Create a responder (root will be nil).
-	responder, err := NewMapResponder(ctx, "./testdata/mapserver_config.json", conn)
+	responder, err := NewMapResponder(ctx, conn, loadKey(t, "testdata/server_key.pem"))
 	require.NoError(t, err)
 	// Check its tree head is nil.
 	require.Nil(t, responder.smt.Root)
@@ -47,7 +49,7 @@ func TestNewResponder(t *testing.T) {
 	err = conn.SaveRoot(ctx, &root)
 	require.NoError(t, err)
 	// Create a responder (root will NOT be nil).
-	responder, err = NewMapResponder(ctx, "./testdata/mapserver_config.json", conn)
+	responder, err = NewMapResponder(ctx, conn, loadKey(t, "testdata/server_key.pem"))
 	require.NoError(t, err)
 	// Check its tree head is NOT nil.
 	require.NotNil(t, responder.smt.Root)
@@ -110,7 +112,7 @@ func TestProof(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a responder.
-	responder, err := NewMapResponder(ctx, "./testdata/mapserver_config.json", conn)
+	responder, err := NewMapResponder(ctx, conn, loadKey(t, "testdata/server_key.pem"))
 	require.NoError(t, err)
 
 	// Check a.com:
@@ -164,4 +166,10 @@ func checkProof(t *testing.T, payloadID *common.SHA256Output, proofs []*mapcommo
 			require.Contains(t, allIDs, payloadID)
 		}
 	}
+}
+
+func loadKey(t tests.T, filename string) *rsa.PrivateKey {
+	k, err := util.RSAKeyFromPEMFile(filename)
+	require.NoError(t, err)
+	return k
 }

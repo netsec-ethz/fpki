@@ -9,9 +9,13 @@ import (
 )
 
 type Config struct {
-	UpdateTimer util.DurationWrap
-	UpdateAt    util.TimeOfDayWrap
-	DB          *db.Configuration
+	UpdateTimer    util.DurationWrap
+	UpdateAt       util.TimeOfDayWrap
+	CTLogServerURL string
+	DBConfig       *db.Configuration
+
+	CertificatePemFile string // A X509 pem certificate
+	PrivateKeyPemFile  string // A RSA pem key
 }
 
 func ReadConfigFromFile(filePath string) (*Config, error) {
@@ -19,9 +23,11 @@ func ReadConfigFromFile(filePath string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	// JSON to Config.
 	c := &Config{}
 	err = json.Unmarshal(data, c)
+
 	return c, err
 }
 
