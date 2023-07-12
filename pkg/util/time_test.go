@@ -173,3 +173,50 @@ func TestTimeOfDayWrap(t *testing.T) {
 		})
 	}
 }
+
+func TestNextTimeOfDay(t *testing.T) {
+	now := time.Now().UTC()
+	t.Logf("now:\t %s", now)
+
+	// Make the TimeOfDayWrap `now` to be in the past and call it `yesterday`.
+	yesterday := TimeOfDayWrap{
+		Time: now.AddDate(0, 0, -1),
+	}
+	require.True(t, yesterday.Before(now))
+	require.Equal(t, now.Hour(), yesterday.Hour())
+	require.Equal(t, now.Minute(), yesterday.Minute())
+	require.Equal(t, now.Second(), yesterday.Second())
+	require.Equal(t, now.Nanosecond(), yesterday.Nanosecond())
+	// Test it.
+	next := yesterday.NextTimeOfDay()
+	t.Logf("yesterda:\t %s", yesterday.Time)
+	t.Logf("next:\t %s", next)
+	require.False(t, next.Before(now))
+	require.Equal(t, now.Hour(), next.Hour())
+	require.Equal(t, now.Minute(), next.Minute())
+	require.Equal(t, now.Second(), next.Second())
+	require.Equal(t, now.Nanosecond(), next.Nanosecond())
+	// At most 1 day in the future.
+	require.LessOrEqual(t, next.Sub(now), 24*time.Hour)
+
+	// Make the TimeOfDayWrap `now` to be in the future and call it `got`.
+	tomorrow := TimeOfDayWrap{
+		Time: now.AddDate(0, 0, 1),
+	}
+	require.True(t, tomorrow.After(now))
+	require.Equal(t, now.Hour(), tomorrow.Hour())
+	require.Equal(t, now.Minute(), tomorrow.Minute())
+	require.Equal(t, now.Second(), tomorrow.Second())
+	require.Equal(t, now.Nanosecond(), tomorrow.Nanosecond())
+	// Test it.
+	next = tomorrow.NextTimeOfDay()
+	t.Logf("tomorrow:\t %s", tomorrow.Time)
+	t.Logf("next:\t %s", next)
+	require.False(t, next.Before(now))
+	require.Equal(t, now.Hour(), next.Hour())
+	require.Equal(t, now.Minute(), next.Minute())
+	require.Equal(t, now.Second(), next.Second())
+	require.Equal(t, now.Nanosecond(), next.Nanosecond())
+	// At most 1 day in the future.
+	require.LessOrEqual(t, next.Sub(now), 24*time.Hour)
+}
