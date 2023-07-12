@@ -4,12 +4,14 @@ import (
 	"encoding/json"
 	"io/ioutil"
 
+	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
 type Config struct {
 	UpdateTimer util.DurationWrap
 	UpdateAt    util.TimeOfDayWrap
+	DB          db.Configuration
 }
 
 func ReadConfigFromFile(filePath string) (*Config, error) {
