@@ -32,7 +32,7 @@ const preloadCount = 2 // Number of batches the LogFetcher tries to preload.
 // TODO(juagargi) Use lists of CT log servers: check certificate-transparency-go/ctutil/sctcheck
 // or ct/client/ctclient for a full and standard list that may already implement this.
 type LogFetcher struct {
-	url   string
+	URL   string
 	start int64 // TODO(juagargi) start & end should go into fetch() and not as part as the type.
 	end   int64
 
@@ -72,7 +72,7 @@ func NewLogFetcher(url string) (*LogFetcher, error) {
 		return nil, err
 	}
 	return &LogFetcher{
-		url: url,
+		URL: url,
 
 		serverBatchSize:  defaultServerBatchSize,
 		processBatchSize: defaultProcessBatchSize,
@@ -80,6 +80,14 @@ func NewLogFetcher(url string) (*LogFetcher, error) {
 		chanResults:      make(chan *result, preloadCount),
 		chanStop:         make(chan struct{}),
 	}, nil
+}
+
+func (f LogFetcher) GetSize(ctx context.Context) (uint64, error) {
+	sth, err := f.ctClient.GetSTH(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return sth.TreeSize, nil
 }
 
 // StartFetching will start fetching certificates in the background, so that there is

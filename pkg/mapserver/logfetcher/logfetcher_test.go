@@ -2,13 +2,20 @@ package logfetcher
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
+	"net/http"
 	"testing"
 	"time"
 
-	ct "github.com/google/certificate-transparency-go"
-	ctx509 "github.com/google/certificate-transparency-go/x509"
+	tassert "github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	ct "github.com/google/certificate-transparency-go"
+	"github.com/google/certificate-transparency-go/client"
+	"github.com/google/certificate-transparency-go/jsonclient"
+	ctx509 "github.com/google/certificate-transparency-go/x509"
+	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
 // TODO(juagargi) allow mocking the fetching from the internet and run local
@@ -285,4 +292,46 @@ func TestSpeed(t *testing.T) {
 	fmt.Printf("Elapsed: %s, %f certs / minute\n",
 		elapsed, float64(end-start+1)/elapsed.Minutes())
 	require.NoError(t, err)
+}
+
+func TestGetSize(t *testing.T) {
+	ctx, cancelF := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelF()
+
+	// try to see if the client has a function to retrieve the current size
+
+	httpClient := &http.Client{
+		Timeout: 10 * time.Second,
+		Transport: &http.Transport{
+			TLSHandshakeTimeout:   30 * time.Second,
+			ResponseHeaderTimeout: 30 * time.Second,
+			MaxIdleConnsPerHost:   10,
+			DisableKeepAlives:     false,
+			MaxIdleConns:          100,
+			IdleConnTimeout:       90 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		},
+	}
+	opts := jsonclient.Options{UserAgent: "ct-go-ctclient/1.0"}
+	ctClient, err := client.New(ctURL, httpClient, opts)
+	require.NoError(t, err)
+
+	sth, err := ctClient.GetSTH(ctx)
+	require.NoError(t, err)
+	t.Logf("tree size is %d", sth.TreeSize)
+	// tt:= time.Unix(0, int64(sth.Timestamp))
+	// t.Logf("timestamp raw: %d parsed: %s", sth.Timestamp, tt)
+	t.Logf("timestamp raw: %d parsed: %s", sth.Timestamp, util.TimeFromSecs(int(sth.Timestamp/1000)))
+
+	//
+	// Test we cannot get negative entries.
+	_, err = ctClient.GetRawEntries(ctx, -1, 1)
+	tassert.Error(t, err)
+	// Zero is the first entry.
+	res, err := ctClient.GetRawEntries(ctx, 0, 0)
+	tassert.NoError(t, err)
+	tassert.Equal(t, 1, len(res.Entries))
 }
