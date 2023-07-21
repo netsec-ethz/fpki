@@ -24,8 +24,14 @@ func TestPolicyObjects(t *testing.T) {
 		"rpcValue": {
 			data: *random.RandomPolicyCertificate(t),
 		},
-		"rcsr": {
+		"pcsr": {
 			data: random.RandomPolCertSignRequest(t),
+		},
+		"pcrev": {
+			data: random.RandomPolicyCertificateRevocation(t),
+		},
+		"pcrevsr": {
+			data: random.RandomPolicyCertificateRevocationSigningRequest(t),
 		},
 		"spt": {
 			data: *random.RandomSignedPolicyCertificateTimestamp(t),

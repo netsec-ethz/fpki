@@ -82,7 +82,6 @@ func NewSignedPolicyCertificateRevocationTimestamp(
 	logID []byte,
 	addedTS time.Time,
 	signature []byte,
-	reason int,
 ) *SignedPolicyCertificateRevocationTimestamp {
 	return &SignedPolicyCertificateRevocationTimestamp{
 		SignedEntryTimestamp: *NewSignedEntryTimestamp(
