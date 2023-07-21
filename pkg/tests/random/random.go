@@ -130,6 +130,18 @@ func RandomSignedPolicyCertificateTimestamp(t tests.T) *common.SignedPolicyCerti
 	)
 }
 
+func RandomSignedPolicyCertificateRevocationTimestamp(
+	t tests.T,
+) *common.SignedPolicyCertificateRevocationTimestamp {
+
+	return common.NewSignedPolicyCertificateRevocationTimestamp(
+		rand.Intn(10),                // version
+		RandomBytesForTest(t, 10),    // log id
+		RandomTimeWithoutMonotonic(), // timestamp
+		RandomBytesForTest(t, 32),    // signature
+	)
+}
+
 func RandomPolCertSignRequest(t tests.T) *common.PolicyCertificateSigningRequest {
 	return common.NewPolicyCertificateSigningRequest(
 		rand.Intn(10),
@@ -166,6 +178,28 @@ func RandomPolicyCertificate(t tests.T) *common.PolicyCertificate {
 		[]common.SignedPolicyCertificateTimestamp{
 			*RandomSignedPolicyCertificateTimestamp(t),
 			*RandomSignedPolicyCertificateTimestamp(t),
+		},
+		RandomBytesForTest(t, 32), // issuer signature
+		RandomBytesForTest(t, 32), // issuer hash
+	)
+}
+
+func RandomPolicyCertificateRevocationSigningRequest(t tests.T) *common.PolicyCertificateRevocationSigningRequest {
+	return common.NewPolicyCertificateRevocationSigningRequest(
+		RandomBytesForTest(t, 32), // hash of the pol cert to revoke
+	)
+}
+
+func RandomPolicyCertificateRevocation(t tests.T) *common.PolicyCertificateRevocation {
+	return common.NewPolicyCertificateRevocation(
+		rand.Intn(10),                // version
+		rand.Intn(1000),              // serial number
+		RandomTimeWithoutMonotonic(), // timestamp
+		RandomBytesForTest(t, 32),    // owner signature
+		RandomBytesForTest(t, 32),    // owner hash
+		[]common.SignedPolicyCertificateRevocationTimestamp{
+			*RandomSignedPolicyCertificateRevocationTimestamp(t),
+			*RandomSignedPolicyCertificateRevocationTimestamp(t),
 		},
 		RandomBytesForTest(t, 32), // issuer signature
 		RandomBytesForTest(t, 32), // issuer hash

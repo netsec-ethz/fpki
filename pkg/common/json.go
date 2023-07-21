@@ -67,6 +67,8 @@ func (*serializableObjectBase) marshalJSON(obj any) (string, []byte, error) {
 		T = "pc"
 	case SignedPolicyCertificateTimestamp:
 		T = "spct"
+	case PolicyCertificateRevocationSigningRequest:
+		T = "pcrevsr"
 	case PolicyCertificateRevocation:
 		T = "pcrev"
 	case SignedPolicyCertificateRevocationTimestamp:
@@ -193,6 +195,8 @@ func (o *serializableObjectBase) unmarshalTypeObject(T string, data []byte) (boo
 		obj, err = inflateObj[PolicyCertificateSigningRequest](data)
 	case "pc":
 		obj, err = inflateObj[PolicyCertificate](data)
+	case "pcrevsr":
+		obj, err = inflateObj[PolicyCertificateRevocationSigningRequest](data)
 	case "pcrev":
 		obj, err = inflateObj[PolicyCertificateRevocation](data)
 	case "spct":

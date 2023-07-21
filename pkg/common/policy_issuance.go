@@ -1,6 +1,7 @@
 package common
 
 import (
+	"bytes"
 	"time"
 )
 
@@ -50,4 +51,20 @@ func NewPolicyCertificateSigningRequest(
 
 func (req *PolicyCertificateSigningRequest) Equal(x *PolicyCertificateSigningRequest) bool {
 	return req.PolicyCertificateFields.Equal(x.PolicyCertificateFields)
+}
+
+func NewPolicyCertificateRevocationSigningRequest(
+	polCertHash []byte,
+) *PolicyCertificateRevocationSigningRequest {
+	return &PolicyCertificateRevocationSigningRequest{
+		PolicyCertificateHash: polCertHash,
+	}
+}
+
+func (req *PolicyCertificateRevocationSigningRequest) Equal(
+	x *PolicyCertificateRevocationSigningRequest,
+) bool {
+
+	return bytes.Equal(req.PolicyCertificateHash, x.PolicyCertificateHash)
+
 }
