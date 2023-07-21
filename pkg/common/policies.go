@@ -222,7 +222,7 @@ func NewPolicyCertificateRevocation(
 	timeStamp time.Time,
 	ownerSignature []byte,
 	ownerHash []byte,
-	serverTimestamps []SignedPolicyCertificateRevocationTimestamp,
+	SPCRTs []SignedPolicyCertificateRevocationTimestamp,
 	issuerSignature []byte,
 	issuerHash []byte,
 ) *PolicyCertificateRevocation {
@@ -236,7 +236,7 @@ func NewPolicyCertificateRevocation(
 		),
 		IssuerSignature: issuerSignature,
 		IssuerHash:      issuerHash,
-		SPCRTs:          serverTimestamps,
+		SPCRTs:          SPCRTs,
 	}
 }
 
