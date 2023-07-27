@@ -26,9 +26,13 @@ func TestUpdateGoldenFiles(t *testing.T) {
 	t.Log("Updating policy certificate files for tests/testdata")
 	// Obtain a new pair for the root issuer.
 	issuerCert, issuerKey := randomPolCertAndKey(t)
+	issuerCert.CanIssue = true
+	issuerCert.CanOwn = true
 
 	// Objain a new pair for the owner.
 	ownerCert, ownerKey := randomPolCertAndKey(t)
+	ownerCert.CanIssue = false
+	ownerCert.CanOwn = true
 	// The owner will be issued by the root issuer.
 	err := crypto.SignPolicyCertificateAsIssuer(issuerCert, issuerKey, ownerCert)
 	require.NoError(t, err)
@@ -123,7 +127,7 @@ func TestSignAsOwner(t *testing.T) {
 	request := random.RandomPolCertSignRequest(t)
 	require.NotEmpty(t, request.OwnerSignature)
 	require.NotEmpty(t, request.OwnerHash)
-	request.IsIssuer = true
+	request.CanIssue = true
 
 	// Sign as owner.
 	err = crypto.SignAsOwner(ownerCert, ownerKey, request)
@@ -137,7 +141,7 @@ func TestSignAsOwner(t *testing.T) {
 	request.OwnerSignature = nil
 	// It should not fail now:
 	err = crypto.SignAsOwner(ownerCert, ownerKey, request)
-	require.NoError(t, err, "RCSR sign signature error")
+	require.NoError(t, err)
 	require.NotEmpty(t, request.OwnerSignature)
 	require.NotEmpty(t, request.OwnerHash)
 	gotSignature := request.OwnerSignature

@@ -43,11 +43,15 @@ func (p PolicyCertificateBase) Equal(x PolicyCertificateBase) bool {
 // The issuer signature is removed because the party verifying the validity of the signature cannot
 // reconstruct the signature that would depend on SPCTs that were in the issuer certificate at the
 // time of issuance. We want the hash to be SPCT independent, thus the signature has to be removed.
+//
+// Any domain with CanOwn can sign for its domain or subdomains. E.g. a.fpki.com can be the owner of
+// a.fpki.com and b.a.fpki.com, as long as it has CanOwn == 1.
 type PolicyCertificateFields struct {
 	PolicyCertificateBase
 	NotBefore          time.Time          `json:",omitempty"`
 	NotAfter           time.Time          `json:",omitempty"`
-	IsIssuer           bool               `json:",omitempty"`
+	CanIssue           bool               `json:",omitempty"`
+	CanOwn             bool               `json:",omitempty"`
 	PublicKey          []byte             `json:",omitempty"`
 	PublicKeyAlgorithm PublicKeyAlgorithm `json:",omitempty"`
 	SignatureAlgorithm SignatureAlgorithm `json:",omitempty"`
@@ -104,7 +108,8 @@ func NewPolicyCertificateFields(
 	domain string,
 	notBefore time.Time,
 	notAfter time.Time,
-	isIssuer bool,
+	canIssue bool,
+	canOwn bool,
 	publicKey []byte,
 	publicKeyAlgorithm PublicKeyAlgorithm,
 	signatureAlgorithm SignatureAlgorithm,
@@ -123,7 +128,8 @@ func NewPolicyCertificateFields(
 		},
 		NotBefore:          notBefore,
 		NotAfter:           notAfter,
-		IsIssuer:           isIssuer,
+		CanIssue:           canIssue,
+		CanOwn:             canOwn,
 		PublicKey:          publicKey,
 		PublicKeyAlgorithm: publicKeyAlgorithm,
 		SignatureAlgorithm: signatureAlgorithm,
@@ -140,6 +146,8 @@ func (c PolicyCertificateFields) Equal(x PolicyCertificateFields) bool {
 		bytes.Equal(c.PublicKey, x.PublicKey) &&
 		c.NotBefore.Equal(x.NotBefore) &&
 		c.NotAfter.Equal(x.NotAfter) &&
+		c.CanIssue == x.CanIssue &&
+		c.CanOwn == x.CanOwn &&
 		c.SignatureAlgorithm == x.SignatureAlgorithm &&
 		c.TimeStamp.Equal(x.TimeStamp) &&
 		bytes.Equal(c.OwnerSignature, x.OwnerSignature) &&
@@ -153,7 +161,8 @@ func NewPolicyCertificate(
 	domain string,
 	notBefore time.Time,
 	notAfter time.Time,
-	isIssuer bool,
+	canIssue bool,
+	canOwn bool,
 	publicKey []byte,
 	publicKeyAlgorithm PublicKeyAlgorithm,
 	signatureAlgorithm SignatureAlgorithm,
@@ -173,7 +182,8 @@ func NewPolicyCertificate(
 			domain,
 			notBefore,
 			notAfter,
-			isIssuer,
+			canIssue,
+			canOwn,
 			publicKey,
 			publicKeyAlgorithm,
 			signatureAlgorithm,
@@ -195,7 +205,8 @@ func NewPolicyCertificateFromRequest(req *PolicyCertificateSigningRequest) *Poli
 		req.DomainField,
 		req.NotBefore,
 		req.NotAfter,
-		req.IsIssuer,
+		req.CanIssue,
+		req.CanOwn,
 		req.PublicKey,
 		req.PublicKeyAlgorithm,
 		req.SignatureAlgorithm,

@@ -35,6 +35,9 @@ func SignAsOwner(
 	if req.OwnerSignature != nil || req.OwnerHash != nil {
 		return fmt.Errorf("there exists a non nil owner signature and hash")
 	}
+	if !ownerPolCert.CanOwn {
+		return fmt.Errorf("the owner certificate cannot sign as owner")
+	}
 	// Owner identifier:
 	ownerHash, err := ComputeHashAsSigner(ownerPolCert)
 	if err != nil {
@@ -61,15 +64,25 @@ func VerifyOwnerSignature(
 	req *common.PolicyCertificateSigningRequest,
 ) error {
 
+	return VerifyOwnerSignatureInPolicyCertificate(
+		ownerPolCert,
+		common.NewPolicyCertificateFromRequest(req))
+}
+
+func VerifyOwnerSignatureInPolicyCertificate(
+	ownerPolCert *common.PolicyCertificate,
+	c *common.PolicyCertificate,
+) error {
+
 	// Check owner identification.
 	ownerHash, err := ComputeHashAsSigner(ownerPolCert)
 	if err != nil {
 		return err
 	}
-	if subtle.ConstantTimeCompare(req.OwnerHash, ownerHash) != 1 {
+	if subtle.ConstantTimeCompare(c.OwnerHash, ownerHash) != 1 {
 		// Not equal.
 		return fmt.Errorf("request's owner is identified by %s, but policy certificate is %s",
-			hex.EncodeToString(req.OwnerHash), hex.EncodeToString(ownerHash))
+			hex.EncodeToString(c.OwnerHash), hex.EncodeToString(ownerHash))
 	}
 
 	// Reconstruct owner's public key.
@@ -78,46 +91,25 @@ func VerifyOwnerSignature(
 		return err
 	}
 
-	// Serialize request without signature:
-	sig := req.OwnerSignature
-	req.OwnerSignature = nil
-	serializedStruct, err := common.ToJSON(common.NewPolicyCertificateFromRequest(req))
+	// Serialize owned pol cert without SPCTs, issuer signature, issuer hash, and owner signature:
+	SPCTs, issuerSignature, issuerHash, ownerSignature :=
+		c.SPCTs, c.IssuerSignature, c.IssuerHash, c.OwnerSignature
+	c.SPCTs, c.IssuerSignature, c.IssuerHash, c.OwnerSignature = nil, nil, nil, nil
+	serializedStruct, err := common.ToJSON(c)
 	if err != nil {
 		return fmt.Errorf("RCSRVerifySignature | ToJSON | %w", err)
 	}
-	req.OwnerSignature = sig // restore previous signature
+	c.SPCTs, c.IssuerSignature, c.IssuerHash, c.OwnerSignature =
+		SPCTs, issuerSignature, issuerHash, ownerSignature // restore previous values
 
 	// Hash serialized request and check the signature with the owner's public key.
 	hashOutput := sha256.Sum256(serializedStruct)
-	err = rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, hashOutput[:], req.OwnerSignature)
+	err = rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, hashOutput[:], c.OwnerSignature)
 	if err != nil {
 		return fmt.Errorf("bad owner signature: %w", err)
 	}
 
 	return nil
-}
-
-func VerifyOwnerSignatureInPolicyCertificate(
-	ownerPolCert *common.PolicyCertificate,
-	c *common.PolicyCertificate,
-) error {
-
-	req := common.NewPolicyCertificateSigningRequest(
-		c.Version,
-		c.SerialNumberField,
-		c.DomainField,
-		c.NotBefore,
-		c.NotAfter,
-		c.IsIssuer,
-		c.PublicKey,
-		c.PublicKeyAlgorithm,
-		c.SignatureAlgorithm,
-		c.TimeStamp,
-		c.PolicyAttributes,
-		c.OwnerSignature,
-		c.OwnerHash,
-	)
-	return VerifyOwnerSignature(ownerPolCert, req)
 }
 
 // SignRequestAsIssuer is called by the Policy CA. It signs the request and generates a
@@ -135,7 +127,8 @@ func SignRequestAsIssuer(
 		req.DomainField,
 		req.NotBefore,
 		req.NotAfter,
-		req.IsIssuer,
+		req.CanIssue,
+		req.CanOwn,
 		req.PublicKey,
 		req.PublicKeyAlgorithm,
 		req.SignatureAlgorithm,

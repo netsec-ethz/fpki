@@ -86,7 +86,8 @@ func TestPCAWorkflow(t *testing.T) {
 			"fpki.com",
 			notBefore,
 			notAfter,
-			true,
+			true,                // can issue
+			true,                // can own
 			ownerCert.PublicKey, // public key
 			common.RSA,
 			common.SHA256,
@@ -191,7 +192,8 @@ func TestSignAndLogRequest(t *testing.T) {
 		"fpki.com",
 		pca.RootPolicyCert.NotBefore,
 		pca.RootPolicyCert.NotAfter,
-		true,
+		true,                // can issue
+		true,                // can own
 		ownerCert.PublicKey, // public key
 		common.RSA,
 		common.SHA256,
