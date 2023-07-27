@@ -36,14 +36,14 @@ func SignAsOwner(
 		return fmt.Errorf("there exists a non nil owner signature and hash")
 	}
 	// Owner identifier:
-	ownerHash, err := ComputeHashAsOwner(ownerPolCert)
+	ownerHash, err := ComputeHashAsSigner(ownerPolCert)
 	if err != nil {
 		return err
 	}
 	req.OwnerHash = ownerHash
 
 	// Sign using the owner's private key and including the hash of its public key.
-	ownerSignature, err := signStructRSASHA256(req, ownerKey)
+	ownerSignature, err := signStructRSASHA256(common.NewPolicyCertificateFromRequest(req), ownerKey)
 	if err != nil {
 		req.OwnerHash = nil
 		return fmt.Errorf("RCSRCreateSignature | SignStructRSASHA256 | %w", err)
@@ -62,7 +62,7 @@ func VerifyOwnerSignature(
 ) error {
 
 	// Check owner identification.
-	ownerHash, err := ComputeHashAsOwner(ownerPolCert)
+	ownerHash, err := ComputeHashAsSigner(ownerPolCert)
 	if err != nil {
 		return err
 	}
@@ -81,7 +81,7 @@ func VerifyOwnerSignature(
 	// Serialize request without signature:
 	sig := req.OwnerSignature
 	req.OwnerSignature = nil
-	serializedStruct, err := common.ToJSON(req)
+	serializedStruct, err := common.ToJSON(common.NewPolicyCertificateFromRequest(req))
 	if err != nil {
 		return fmt.Errorf("RCSRVerifySignature | ToJSON | %w", err)
 	}
@@ -169,7 +169,7 @@ func SignPolicyCertificateAsIssuer(
 	}
 	// Identify the issuer of the child policy certificate with the hash of the modified policy
 	// certificate of the issuer.
-	issuerHash, err := ComputeHashAsIssuer(issuerPolCert)
+	issuerHash, err := ComputeHashAsSigner(issuerPolCert)
 	if err != nil {
 		return err
 	}
@@ -195,7 +195,7 @@ func VerifyIssuerSignature(
 ) error {
 
 	// Check owner identification.
-	issuerHash, err := ComputeHashAsIssuer(issuerPolCert)
+	issuerHash, err := ComputeHashAsSigner(issuerPolCert)
 	if err != nil {
 		return err
 	}
@@ -242,9 +242,9 @@ func signStructRSASHA256(s any, key *rsa.PrivateKey) ([]byte, error) {
 	return SignBytes(data, key)
 }
 
-// ComputeHashAsOwner computes the bytes of the policy certificate as being an owner certificate.
+// ComputeHashAsSigner computes the bytes of the policy certificate as being an owner certificate.
 // This means: it serializes it but without SPCTs or issuer signature, and computes its sha256.
-func ComputeHashAsOwner(p *common.PolicyCertificate) ([]byte, error) {
+func ComputeHashAsSigner(p *common.PolicyCertificate) ([]byte, error) {
 	// Remove SPCTs and issuer signature.
 	SPCTs, issuerSignature := p.SPCTs, p.IssuerSignature
 	p.SPCTs, p.IssuerSignature = nil, nil
@@ -252,18 +252,6 @@ func ComputeHashAsOwner(p *common.PolicyCertificate) ([]byte, error) {
 	// Serialize and restore previously removed fields.
 	serializedPC, err := common.ToJSON(p)
 	p.SPCTs, p.IssuerSignature = SPCTs, issuerSignature
-
-	return common.SHA256Hash(serializedPC), err
-}
-
-func ComputeHashAsIssuer(p *common.PolicyCertificate) ([]byte, error) {
-	// Remove SPCTs.
-	SPCTs := p.SPCTs
-	p.SPCTs = nil
-
-	// Serialize and restore previously removed fields.
-	serializedPC, err := common.ToJSON(p)
-	p.SPCTs = SPCTs
 
 	return common.SHA256Hash(serializedPC), err
 }

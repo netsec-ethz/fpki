@@ -96,36 +96,12 @@ func TestComputeHashAsOwner(t *testing.T) {
 	require.NotEmpty(t, pc.IssuerSignature)
 	require.NotEmpty(t, pc.IssuerHash)
 
-	gotHash, err := crypto.ComputeHashAsOwner(pc)
+	gotHash, err := crypto.ComputeHashAsSigner(pc)
 	require.NoError(t, err)
 
 	// Remove SPCTs and issuer signature, and serialize.
 	pc.SPCTs = nil
 	pc.IssuerSignature = nil
-	serializedPC, err := common.ToJSON(pc)
-	require.NoError(t, err)
-
-	// Compare with the expected value.
-	expected := common.SHA256Hash(serializedPC)
-	require.Equal(t, expected, gotHash)
-}
-
-func TestComputeHashAsIssuer(t *testing.T) {
-	rand.Seed(2)
-
-	// Get random policy certificate and check it contains SPCTs, owner, and issuer fields.
-	pc := random.RandomPolicyCertificate(t)
-	require.NotEmpty(t, pc.SPCTs)
-	require.NotEmpty(t, pc.OwnerSignature)
-	require.NotEmpty(t, pc.OwnerHash)
-	require.NotEmpty(t, pc.IssuerSignature)
-	require.NotEmpty(t, pc.IssuerHash)
-
-	gotHash, err := crypto.ComputeHashAsIssuer(pc)
-	require.NoError(t, err)
-
-	// Remove SPCTs, and serialize.
-	pc.SPCTs = nil
 	serializedPC, err := common.ToJSON(pc)
 	require.NoError(t, err)
 
@@ -168,14 +144,14 @@ func TestSignAsOwner(t *testing.T) {
 
 	// Manually do the steps to sign, and compare results. 3 stesps.
 	// 1. Check the owner hash is correct.
-	ownerHash, err := crypto.ComputeHashAsOwner(ownerCert)
+	ownerHash, err := crypto.ComputeHashAsSigner(ownerCert)
 	require.NoError(t, err)
 	require.Equal(t, ownerHash, request.OwnerHash)
 	// 2. Sign the child request without owner signature.
 	request.OwnerSignature = nil
-	serializedRequestWoutOwnerSignature, err := common.ToJSON(request)
+	serializedRequestWoutOwnerSignature, err := common.ToJSON(common.NewPolicyCertificateFromRequest(request))
 	require.NoError(t, err)
-	expectedSignature, err := crypto.SignStructRSASHA256(request, ownerKey)
+	expectedSignature, err := crypto.SignStructRSASHA256(common.NewPolicyCertificateFromRequest(request), ownerKey)
 	require.NoError(t, err)
 	// 3. Compare signatures.
 	require.Equal(t, expectedSignature, gotSignature)
@@ -226,7 +202,7 @@ func TestSignPolicyCertificateAsIssuer(t *testing.T) {
 	// Manually do the steps to sign, and compare results. 3 stesps.
 	// 1. Check that the issuer hash is correct.
 	// Check that the issuer hash is correct.
-	issuerHash, err := crypto.ComputeHashAsIssuer(issuerCert)
+	issuerHash, err := crypto.ComputeHashAsSigner(issuerCert)
 	require.NoError(t, err)
 	require.Equal(t, issuerHash, childPolCert.IssuerHash)
 	// 2. Sign the child policy certificate without issuer signature.
