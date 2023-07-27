@@ -171,10 +171,9 @@ func removeWildCardAndWWW(domainName string) string {
 
 // uniqueValidDomainName: extract valid domain names
 func uniqueValidDomainName(domainNames []string) []string {
-	uniqueDomainName := make(map[string]struct{})
+	uniqueDomainName := make(map[string]struct{}, len(domainNames))
 	for _, domainName := range domainNames {
 		if !IsValidDomain(domainName) {
-			//fmt.Printf("    !!! invalid domain name: \"%s\"\n", domainName)
 			continue
 		}
 		name := removeWildCardAndWWW(domainName)
