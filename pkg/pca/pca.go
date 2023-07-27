@@ -132,7 +132,7 @@ func (pca *PCA) NewPolicyCertificateSigningRequest(
 		ownerHash,
 	)
 	// Serialize it including the owner hash.
-	serializedReq, err := common.ToJSON(req)
+	serializedReq, err := common.ToJSON(common.NewPolicyCertificateFromRequest(req))
 	if err != nil {
 		return nil, err
 	}

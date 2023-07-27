@@ -72,7 +72,7 @@ func TestPCAWorkflow(t *testing.T) {
 	require.NoError(t, err)
 	ownerCert, err := util.PolicyCertificateFromFile("../../tests/testdata/owner_cert.json")
 	require.NoError(t, err)
-	ownerHash, err := crypto.ComputeHashAsOwner(ownerCert)
+	ownerHash, err := crypto.ComputeHashAsSigner(ownerCert)
 	require.NoError(t, err)
 
 	signingFunctionCallTimes := 0 // incremented when the owner is requested to sign
@@ -180,7 +180,7 @@ func TestSignAndLogRequest(t *testing.T) {
 	require.NoError(t, err)
 	ownerCert, err := util.PolicyCertificateFromFile("../../tests/testdata/owner_cert.json")
 	require.NoError(t, err)
-	ownerHash, err := crypto.ComputeHashAsOwner(ownerCert)
+	ownerHash, err := crypto.ComputeHashAsSigner(ownerCert)
 	require.NoError(t, err)
 
 	// Let's add the root policy certificate from the owner.

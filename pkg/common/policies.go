@@ -40,6 +40,9 @@ func (p PolicyCertificateBase) Equal(x PolicyCertificateBase) bool {
 // The `OwnerHash` field is the SHA256 of the payload of the owner certificate that contained the
 // owner signature. The hash is computed on the owner's policy certificate, but without any
 // SPCTs or issuer signature, but preserving the owner's signature.
+// The issuer signature is removed because the party verifying the validity of the signature cannot
+// reconstruct the signature that would depend on SPCTs that were in the issuer certificate at the
+// time of issuance. We want the hash to be SPCT independent, thus the signature has to be removed.
 type PolicyCertificateFields struct {
 	PolicyCertificateBase
 	NotBefore          time.Time          `json:",omitempty"`
@@ -57,7 +60,16 @@ type PolicyCertificateFields struct {
 // PolicyCertificate can be a Root Policy Certificate, or a policy certificate that was issued by
 // a previously existing policy certificate.
 // The field `IssuerHash` has semantics analogouys to `OwnerHash`: it is the SHA256 of the issuer
-// policy certificate that was used to sign this policy certificate, without SCPTs.
+// policy certificate that was used to sign this policy certificate, without SCPTs or issuer
+// signature.
+//
+// We want the hash identifying a certificate as owner or issuer to be SPCT independent because we
+// want the signer certificate to "evolve" towards being more trusted, without changing its hash,
+// by being logged into CT log servers. By logging a certificate into a CT log server the
+// certificate can only remain or improve its trustworthiness, thus any certificate used to sign as
+// owner or issuer will always remain at least as trusted as before, and thus there is no need to
+// reissue existing issued certificates by that certificate (we want the `OwnerHash` and
+// `IssuerHash` to be still valid).
 type PolicyCertificate struct {
 	PolicyCertificateFields
 	IssuerSignature []byte                             `json:",omitempty"`
@@ -174,6 +186,27 @@ func NewPolicyCertificate(
 		IssuerHash:      issuerHash,
 		SPCTs:           SPTs,
 	}
+}
+
+func NewPolicyCertificateFromRequest(req *PolicyCertificateSigningRequest) *PolicyCertificate {
+	return NewPolicyCertificate(
+		req.Version,
+		req.SerialNumberField,
+		req.DomainField,
+		req.NotBefore,
+		req.NotAfter,
+		req.IsIssuer,
+		req.PublicKey,
+		req.PublicKeyAlgorithm,
+		req.SignatureAlgorithm,
+		req.TimeStamp,
+		req.PolicyAttributes,
+		req.OwnerSignature,
+		req.OwnerHash,
+		nil, // SPCTs
+		nil, // issuer signature
+		nil, // issuer hash
+	)
 }
 
 func (c PolicyCertificate) Equal(x PolicyCertificate) bool {
