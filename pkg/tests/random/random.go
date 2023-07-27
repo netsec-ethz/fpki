@@ -149,7 +149,8 @@ func RandomPolCertSignRequest(t tests.T) *common.PolicyCertificateSigningRequest
 		"domain",        // domain
 		RandomTimeWithoutMonotonic(),
 		RandomTimeWithoutMonotonic(),
-		true,
+		true,                      // can issue
+		true,                      // can own
 		RandomBytesForTest(t, 32), // public key
 		common.RSA,
 		common.SHA256,
@@ -167,7 +168,8 @@ func RandomPolicyCertificate(t tests.T) *common.PolicyCertificate {
 		"fpki.com",
 		RandomTimeWithoutMonotonic(),
 		RandomTimeWithoutMonotonic(),
-		true,
+		true,                      // can issue
+		true,                      // can own
 		RandomBytesForTest(t, 32), // public key
 		common.RSA,
 		common.SHA256,

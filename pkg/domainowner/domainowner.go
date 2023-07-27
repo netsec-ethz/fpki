@@ -57,7 +57,8 @@ func (do *DomainOwner) GeneratePolCertSignRequest(
 		domainName,                       // domain
 		time.Now(),                       // not before
 		time.Now().Add(time.Microsecond), // not after
-		false,                            // is issuer
+		false,                            // can issue
+		false,                            // can own
 		pubKeyBytes,                      // public key
 		common.RSA,
 		common.SHA256,

@@ -337,7 +337,8 @@ func GetPCAndRPCs(
 			domainName,
 			time.Now(),                       // not before
 			time.Now().Add(time.Microsecond), // not after
-			false,                            // is issuer
+			false,                            // can issue
+			false,                            // can own
 			generateRandomBytes(),            // public key
 			common.RSA,
 			common.SHA256,
