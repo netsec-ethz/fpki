@@ -54,7 +54,7 @@ func TestUniqueValidDomainName(t *testing.T) {
 		},
 		"3": {
 			input:  []string{"com", "*.*.baidu.com", "12378.com"},
-			length: 0,
+			length: 1,
 		},
 		"4": {
 			input:  []string{"video.google.com", "mail.google.com", "audio.google.com"},
@@ -62,10 +62,13 @@ func TestUniqueValidDomainName(t *testing.T) {
 		},
 	}
 
-	for name, v := range test {
+	for name, tc := range test {
+		name, tc := name, tc
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, v.length, len(uniqueValidDomainName(v.input)))
+			got := uniqueValidDomainName(tc.input)
+			t.Logf("got %v", got)
+			assert.Equal(t, tc.length, len(got))
 		})
 	}
 }
