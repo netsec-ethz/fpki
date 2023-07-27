@@ -10,6 +10,9 @@ type PolicyCertificateSigningRequest struct {
 	PolicyCertificateFields
 }
 
+// PolicyCertificateRevocationSigningRequest is a request to prepare a revocation.
+// The hash of the certificate intended to be revoked must be computed without any SPCT and
+// issuer signature (i.e. SPCT independent).
 type PolicyCertificateRevocationSigningRequest struct {
 	PolicyCertificateHash []byte `json:",omitempty"` // Hash of the pol. cert. to revoke
 }
