@@ -8,13 +8,12 @@ require (
 	github.com/google/certificate-transparency-go v1.1.3
 	github.com/google/trillian v1.4.1
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
-	github.com/hashicorp/golang-lru v0.5.1
 	github.com/minio/sha256-simd v1.0.0
 	github.com/stretchr/testify v1.7.4
 	github.com/transparency-dev/merkle v0.0.1
 	go.uber.org/atomic v1.9.0
-	golang.org/x/net v0.0.0-20220425223048-2871e0cb64e4
-	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
+	golang.org/x/net v0.0.0-20220722155237-a158d28d115b
+	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4
 	google.golang.org/grpc v1.47.0
 	google.golang.org/protobuf v1.28.0
 )
