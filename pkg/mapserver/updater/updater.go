@@ -20,9 +20,9 @@ import (
 
 // MapUpdater: map updater. It is responsible for updating the tree, and writing to db
 type MapUpdater struct {
-	Fetcher logfetcher.LogFetcher
+	Fetcher logfetcher.Fetcher
 	smt     *trie.Trie
-	dbConn  db.Conn
+	Conn    db.Conn
 }
 
 // NewMapUpdater: return a new map updater.
@@ -47,9 +47,9 @@ func NewMapUpdater(config *db.Configuration, url string) (*MapUpdater, error) {
 	}
 
 	return &MapUpdater{
-		Fetcher: *fetcher,
+		Fetcher: fetcher,
 		smt:     smt,
-		dbConn:  dbConn,
+		Conn:    dbConn,
 	}, nil
 }
 
@@ -92,7 +92,7 @@ func (mapUpdater *MapUpdater) UpdateCertsLocally(ctx context.Context, certList [
 		certChains = append(certChains, chain)
 	}
 	certs, IDs, parentIDs, names := util.UnfoldCerts(certs, certChains)
-	return UpdateWithKeepExisting(ctx, mapUpdater.dbConn, names, IDs, parentIDs, certs, expirations, nil)
+	return UpdateWithKeepExisting(ctx, mapUpdater.Conn, names, IDs, parentIDs, certs, expirations, nil)
 }
 
 // UpdatePolicyCerts: update RPC and PC from url. Currently just mock PC and RPC

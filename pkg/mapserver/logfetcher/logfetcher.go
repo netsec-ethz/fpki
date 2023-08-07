@@ -24,6 +24,13 @@ const defaultProcessBatchSize = defaultServerBatchSize * 128
 
 const preloadCount = 2 // Number of batches the LogFetcher tries to preload.
 
+type Fetcher interface {
+	URL() string
+	GetSize(ctx context.Context) (uint64, error)
+	StartFetching(startIndex, endIndex int64)
+	NextBatch(ctx context.Context) ([]*ctx509.Certificate, [][]*ctx509.Certificate, error)
+}
+
 // LogFetcher is used to download CT TBS certificates. It has state and keeps some routines
 // downloading certificates in the background, trying to prefetch preloadCount batches.
 // LogFetcher uses the certificate-transparency-go/client from google to do the heavy lifting.
@@ -32,7 +39,7 @@ const preloadCount = 2 // Number of batches the LogFetcher tries to preload.
 // TODO(juagargi) Use lists of CT log servers: check certificate-transparency-go/ctutil/sctcheck
 // or ct/client/ctclient for a full and standard list that may already implement this.
 type LogFetcher struct {
-	URL   string
+	url   string
 	start int64 // TODO(juagargi) start & end should go into fetch() and not as part as the type.
 	end   int64
 
@@ -72,7 +79,7 @@ func NewLogFetcher(url string) (*LogFetcher, error) {
 		return nil, err
 	}
 	return &LogFetcher{
-		URL: url,
+		url: url,
 
 		serverBatchSize:  defaultServerBatchSize,
 		processBatchSize: defaultProcessBatchSize,
@@ -80,6 +87,10 @@ func NewLogFetcher(url string) (*LogFetcher, error) {
 		chanResults:      make(chan *result, preloadCount),
 		chanStop:         make(chan struct{}),
 	}, nil
+}
+
+func (f LogFetcher) URL() string {
+	return f.url
 }
 
 func (f LogFetcher) GetSize(ctx context.Context) (uint64, error) {
