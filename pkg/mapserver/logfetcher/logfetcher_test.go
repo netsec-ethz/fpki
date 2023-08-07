@@ -236,8 +236,8 @@ func TestLogFetcher(t *testing.T) {
 
 			allCerts := make([]*ctx509.Certificate, 0)
 			allChains := make([][]*ctx509.Certificate, 0)
-			for {
-				certs, chains, err := f.NextBatch(ctx)
+			for f.NextBatch(ctx) {
+				certs, chains, err := f.ReturnNextBatch()
 				require.NoError(t, err)
 				require.LessOrEqual(t, len(certs), int(f.processBatchSize),
 					"%d is not <= than %d", len(certs), f.processBatchSize)
@@ -253,10 +253,8 @@ func TestLogFetcher(t *testing.T) {
 				"got %d instead of %d", len(allChains), tc.end-tc.start+1)
 
 			// Again. It should return empty.
-			certs, chains, err := f.NextBatch(ctx)
-			require.NoError(t, err)
-			require.Nil(t, certs)
-			require.Nil(t, chains)
+			ok := f.NextBatch(ctx)
+			require.False(t, ok)
 		})
 	}
 }

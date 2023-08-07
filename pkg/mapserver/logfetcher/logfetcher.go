@@ -28,7 +28,12 @@ type Fetcher interface {
 	URL() string
 	GetSize(ctx context.Context) (uint64, error)
 	StartFetching(startIndex, endIndex int64)
-	NextBatch(ctx context.Context) ([]*ctx509.Certificate, [][]*ctx509.Certificate, error)
+	StopFetching()
+
+	// Like with sql.Rows.Next()
+	NextBatch(ctx context.Context) bool
+	// Like sql.Rows.Scan(...)
+	ReturnNextBatch() ([]*ctx509.Certificate, [][]*ctx509.Certificate, error)
 }
 
 // LogFetcher is used to download CT TBS certificates. It has state and keeps some routines
@@ -49,6 +54,11 @@ type LogFetcher struct {
 	chanResults      chan *result
 	chanStop         chan struct{} // tells the workers to stop fetching
 	stopping         bool          // Set at the same time than sending to chanStop
+
+	// The chanResults channel is used to obtain results from this fetcher. Each call to NextBatch
+	// pulls one full result from the channel into the currentResult variable. And each call
+	// to GetBatchResults returns it.
+	currentResult *result // The last result from the batch.
 }
 
 type result struct {
@@ -114,33 +124,36 @@ func (f *LogFetcher) StopFetching() {
 	f.chanStop <- struct{}{}
 }
 
-// NextBatch returns the next batch of certificates as if it were a channel.
+// NextBatch returns true if there is a next batch to be retrieved, or error, I.e. if the call to
+// ReturnNextBatch will return something other than nil, nil, nil.
+func (f *LogFetcher) NextBatch(ctx context.Context) bool {
+	f.currentResult = &result{}
+	var ok bool
+	select {
+	case <-ctx.Done():
+		f.currentResult.err = ctx.Err()
+	case f.currentResult, ok = <-f.chanResults:
+		// Only in case that there is no error AND no data should we return false:
+		if !ok ||
+			f.currentResult.err == nil &&
+				len(f.currentResult.certs) == 0 &&
+				len(f.currentResult.chains) == 0 {
+			// If no  error and no data, return false
+			return false // do not attempt to get result
+		}
+	}
+	return true
+}
+
+// ReturnNextBatch returns the next batch of certificates as if it were a channel.
 // The call blocks until a whole batch is available. The last batch may have less elements.
 // Returns nil when there is no more batches, i.e. all certificates have been fetched.
-func (f *LogFetcher) NextBatch(
-	ctx context.Context,
-) (
+func (f *LogFetcher) ReturnNextBatch() (
 	certs []*ctx509.Certificate,
 	chains [][]*ctx509.Certificate,
 	err error) {
 
-	select {
-	case <-ctx.Done():
-		f.StopFetching()
-		err = fmt.Errorf("NextBatch %w", ctx.Err())
-		return
-	case res, ok := <-f.chanResults:
-		if !ok {
-			// Channel is closed.
-			return
-		}
-		if err = res.err; err != nil {
-			return
-		}
-		certs = res.certs
-		chains = res.chains
-		return
-	}
+	return f.currentResult.certs, f.currentResult.chains, f.currentResult.err
 }
 
 // FetchAllCertificates will block until all certificates and chains [start,end] have been fetched.
@@ -157,8 +170,8 @@ func (f *LogFetcher) FetchAllCertificates(
 	f.StartFetching(start, end)
 	certs = make([]*ctx509.Certificate, 0, end-start+1)
 	chains = make([][]*ctx509.Certificate, 0, end-start+1)
-	for {
-		bCerts, bChains, bErr := f.NextBatch(ctx)
+	for f.NextBatch(ctx) {
+		bCerts, bChains, bErr := f.ReturnNextBatch()
 		if bErr != nil {
 			err = bErr
 			return
@@ -169,6 +182,7 @@ func (f *LogFetcher) FetchAllCertificates(
 		certs = append(certs, bCerts...)
 		chains = append(chains, bChains...)
 	}
+	f.StopFetching()
 	return
 }
 

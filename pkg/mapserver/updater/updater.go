@@ -59,12 +59,16 @@ func (u *MapUpdater) StartFetching(startIndex, endIndex int64) {
 	u.Fetcher.StartFetching(startIndex, endIndex)
 }
 
+func (u *MapUpdater) NextBatch(ctx context.Context) bool {
+	return u.Fetcher.NextBatch(ctx)
+}
+
 // UpdateNextBatch downloads the next batch from the CT log server and updates the domain and
 // Updates tables. Also the SMT.
 func (u *MapUpdater) UpdateNextBatch(ctx context.Context) (int, error) {
-	certs, chains, err := u.Fetcher.NextBatch(ctx)
+	certs, chains, err := u.Fetcher.ReturnNextBatch()
 	if err != nil {
-		return 0, fmt.Errorf("CollectCerts | GetCertMultiThread | %w", err)
+		return 0, fmt.Errorf("fetcher: %w", err)
 	}
 	return len(certs), u.updateCerts(ctx, certs, chains)
 }
