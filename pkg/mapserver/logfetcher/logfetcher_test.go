@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	tassert "github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	ct "github.com/google/certificate-transparency-go"
@@ -20,7 +19,7 @@ import (
 
 // TODO(juagargi) allow mocking the fetching from the internet and run local
 
-const ctURL = "https://ct.googleapis.com/logs/argon2021"
+const testURL = "https://ct.googleapis.com/logs/argon2021"
 
 func TestGetRawEntries(t *testing.T) {
 	cases := map[string]struct {
@@ -53,7 +52,7 @@ func TestGetRawEntries(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			f, err := NewLogFetcher(ctURL)
+			f, err := NewLogFetcher(testURL)
 			require.NoError(t, err)
 			rawEntries := make([]*ct.LeafEntry, tc.end-tc.start+1)
 			n, err := f.getRawEntries(rawEntries, tc.start, tc.end)
@@ -64,7 +63,7 @@ func TestGetRawEntries(t *testing.T) {
 }
 
 func TestStoppingGetRawEntries(t *testing.T) {
-	f, err := NewLogFetcher(ctURL)
+	f, err := NewLogFetcher(testURL)
 	require.NoError(t, err)
 	f.start = 3000
 	f.end = f.start + 10000
@@ -131,7 +130,7 @@ func TestGetRawEntriesInBatches(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			f, err := NewLogFetcher(ctURL)
+			f, err := NewLogFetcher(testURL)
 			require.NoError(t, err)
 			if tc.batchSize != 0 {
 				f.serverBatchSize = tc.batchSize
@@ -152,7 +151,7 @@ func TestStoppingGetRawEntriesInBatches(t *testing.T) {
 	// element, and we process in batches of 100K.
 	// This means that getRawEntriesInBatches will have to make 100K calls to getRawEntries,
 	// and in the middle of them, we will request to stop the fetcher.
-	f, err := NewLogFetcher(ctURL)
+	f, err := NewLogFetcher(testURL)
 	require.NoError(t, err)
 	f.serverBatchSize = 1
 	f.processBatchSize = 100000
@@ -227,7 +226,7 @@ func TestLogFetcher(t *testing.T) {
 
 			ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancelF()
-			f, err := NewLogFetcher(ctURL)
+			f, err := NewLogFetcher(testURL)
 			require.NoError(t, err)
 			if tc.batchSize > 0 {
 				f.serverBatchSize = int64(tc.batchSize)
@@ -265,7 +264,7 @@ func TestLogFetcher(t *testing.T) {
 func TestTimeoutLogFetcher(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
 	defer cancelF()
-	f, err := NewLogFetcher(ctURL)
+	f, err := NewLogFetcher(testURL)
 	require.NoError(t, err)
 
 	// Attempt to fetch something really big that would need more than 1 sec.
@@ -281,7 +280,7 @@ func TestSpeed(t *testing.T) {
 
 	ctx, cancelF := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancelF()
-	f, err := NewLogFetcher(ctURL)
+	f, err := NewLogFetcher(testURL)
 	require.NoError(t, err)
 	t0 := time.Now()
 	start := int64(18000)
@@ -294,12 +293,12 @@ func TestSpeed(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// TestGetSize checks that the client's function to retrieve the current size works.
 func TestGetSize(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelF()
 
-	// try to see if the client has a function to retrieve the current size
-
+	// Configure client.
 	httpClient := &http.Client{
 		Timeout: 10 * time.Second,
 		Transport: &http.Transport{
@@ -316,22 +315,35 @@ func TestGetSize(t *testing.T) {
 		},
 	}
 	opts := jsonclient.Options{UserAgent: "ct-go-ctclient/1.0"}
-	ctClient, err := client.New(ctURL, httpClient, opts)
+	ctClient, err := client.New(testURL, httpClient, opts)
 	require.NoError(t, err)
-
+	// Call GetSTH to obtain the size.
 	sth, err := ctClient.GetSTH(ctx)
 	require.NoError(t, err)
 	t.Logf("tree size is %d", sth.TreeSize)
-	// tt:= time.Unix(0, int64(sth.Timestamp))
-	// t.Logf("timestamp raw: %d parsed: %s", sth.Timestamp, tt)
+	tt := time.Unix(0, int64(sth.Timestamp))
+	t.Logf("timestamp raw: %d parsed: %s", sth.Timestamp, tt)
 	t.Logf("timestamp raw: %d parsed: %s", sth.Timestamp, util.TimeFromSecs(int(sth.Timestamp/1000)))
 
-	//
-	// Test we cannot get negative entries.
+	// Check that the size returned by the GetSize method is the same.
+	f, err := NewLogFetcher(testURL)
+	require.NoError(t, err)
+	s, err := f.GetSize(ctx)
+	require.NoError(t, err)
+	require.Equal(t, sth.TreeSize, s)
+
+	// Test that this is the correct size, because we cannot get negative entries or past this.
 	_, err = ctClient.GetRawEntries(ctx, -1, 1)
-	tassert.Error(t, err)
+	require.Error(t, err)
 	// Zero is the first entry.
 	res, err := ctClient.GetRawEntries(ctx, 0, 0)
-	tassert.NoError(t, err)
-	tassert.Equal(t, 1, len(res.Entries))
+	require.NoError(t, err)
+	require.Equal(t, 1, len(res.Entries))
+	// We can query the last item (which is size -1, as the first index is 0).
+	res, err = ctClient.GetRawEntries(ctx, int64(s)-1, int64(s)-1)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(res.Entries))
+	// But we can't query past it.
+	_, err = ctClient.GetRawEntries(ctx, int64(s), int64(s))
+	require.Error(t, err)
 }
