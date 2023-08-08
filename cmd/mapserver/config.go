@@ -9,13 +9,13 @@ import (
 )
 
 type Config struct {
-	UpdateAt       util.TimeOfDayWrap
-	UpdateTimer    util.DurationWrap
-	CTLogServerURL string
-	DBConfig       *db.Configuration
-
+	CTLogServerURL     string
+	DBConfig           *db.Configuration
 	CertificatePemFile string // A X509 pem certificate
 	PrivateKeyPemFile  string // A RSA pem key
+
+	UpdateAt    util.TimeOfDayWrap
+	UpdateTimer util.DurationWrap
 }
 
 func ReadConfigFromFile(filePath string) (*Config, error) {
