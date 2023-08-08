@@ -14,8 +14,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Connect(config *db.Configuration) (db.Conn, error) {
-	return mysql.Connect(config)
+func Connect(t tests.T, config *db.Configuration) db.Conn {
+	conn, err := mysql.Connect(config)
+	require.NoError(t, err)
+	return conn
 }
 
 // ConfigureTestDB creates a new configuration and database with the name of the test, and
@@ -35,7 +37,7 @@ func ConfigureTestDB(t tests.T) (*db.Configuration, func()) {
 	// Return the configuration and removal function.
 	removeFunc := func() {
 		ctx, cancelF := context.WithTimeout(context.Background(), 2*time.Second)
-		err = removeTestDB(ctx, config)
+		err = removeTestDB(ctx, t, config)
 		require.NoError(t, err)
 		cancelF()
 	}
@@ -113,15 +115,10 @@ func createTestDB(ctx context.Context, dbName string) error {
 }
 
 // removeTestDB removes a test DB that was created with CreateTestDB.
-func removeTestDB(ctx context.Context, config *db.Configuration) error {
-	conn, err := Connect(config)
-	if err != nil {
-		return fmt.Errorf("connecting to test DB: %w", err)
-	}
+func removeTestDB(ctx context.Context, t tests.T, config *db.Configuration) error {
+	conn := Connect(t, config)
 	str := fmt.Sprintf("DROP DATABASE IF EXISTS %s", config.DBName)
-	_, err = conn.DB().ExecContext(ctx, str)
-	if err != nil {
-		return fmt.Errorf("removing the database: %w", err)
-	}
+	_, err := conn.DB().ExecContext(ctx, str)
+	require.NoError(t, err, "error removing the database")
 	return nil
 }

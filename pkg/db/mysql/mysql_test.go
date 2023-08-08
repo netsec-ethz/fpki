@@ -29,8 +29,7 @@ func TestCheckCertsExist(t *testing.T) {
 	defer removeF()
 
 	// Connect to the DB.
-	conn, err := testdb.Connect(config)
-	require.NoError(t, err)
+	conn := testdb.Connect(t, config)
 	defer conn.Close()
 
 	// Obtain a convenient MysqlDBForTests object (only in tests).
@@ -48,7 +47,7 @@ func TestCheckCertsExist(t *testing.T) {
 	N := 10
 	ids := createIDs(N)
 	presence := make([]bool, N)
-	err = c.DebugCheckCertsExist(ctx, ids, presence)
+	err := c.DebugCheckCertsExist(ctx, ids, presence)
 	require.NoError(t, err)
 
 	// Check now with 10000 elements, will fail.
@@ -80,8 +79,7 @@ func TestCoalesceForDirtyDomains(t *testing.T) {
 	defer removeF()
 
 	// Connect to the DB.
-	conn, err := testdb.Connect(config)
-	require.NoError(t, err)
+	conn := testdb.Connect(t, config)
 	defer conn.Close()
 
 	// Prepare two mock leaf certificates, with their trust chains.
@@ -98,7 +96,7 @@ func TestCoalesceForDirtyDomains(t *testing.T) {
 	pols, polIDs := testPolicyHierarchyForLeafs(t, leafPols)
 
 	// Update with certificates and policies.
-	err = updater.UpdateWithKeepExisting(ctx, conn, certNames, certIDs, parentCertIDs,
+	err := updater.UpdateWithKeepExisting(ctx, conn, certNames, certIDs, parentCertIDs,
 		certs, util.ExtractExpirations(certs), pols)
 	require.NoError(t, err)
 
@@ -150,8 +148,7 @@ func TestRetrieveCertificatePayloads(t *testing.T) {
 	defer removeF()
 
 	// Connect to the DB.
-	conn, err := testdb.Connect(config)
-	require.NoError(t, err)
+	conn := testdb.Connect(t, config)
 	defer conn.Close()
 
 	// Ingest some data.
@@ -161,7 +158,7 @@ func TestRetrieveCertificatePayloads(t *testing.T) {
 	}
 	certs, certIDs, parentCertIDs, certNames := testCertHierarchyForLeafs(t, leafCerts)
 	pols, polIDs := testPolicyHierarchyForLeafs(t, leafCerts)
-	err = updater.UpdateWithKeepExisting(ctx, conn, certNames, certIDs, parentCertIDs,
+	err := updater.UpdateWithKeepExisting(ctx, conn, certNames, certIDs, parentCertIDs,
 		certs, util.ExtractExpirations(certs), pols)
 	require.NoError(t, err)
 	// Coalescing of payloads.

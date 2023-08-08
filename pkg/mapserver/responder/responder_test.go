@@ -29,8 +29,7 @@ func TestNewResponder(t *testing.T) {
 	defer removeF()
 
 	// Connect to the DB.
-	conn, err := testdb.Connect(config)
-	require.NoError(t, err)
+	conn := testdb.Connect(t, config)
 	defer conn.Close()
 
 	// Create a responder (root will be nil).
@@ -74,13 +73,12 @@ func TestProof(t *testing.T) {
 	defer removeF()
 
 	// Connect to the DB.
-	conn, err := testdb.Connect(config)
-	require.NoError(t, err)
+	conn := testdb.Connect(t, config)
 	defer conn.Close()
 
 	// a.com
 	certs, certIDs, parentCertIDs, names := random.BuildTestRandomCertHierarchy(t, "a.com")
-	err = updater.UpdateWithKeepExisting(ctx, conn, names, certIDs, parentCertIDs, certs,
+	err := updater.UpdateWithKeepExisting(ctx, conn, names, certIDs, parentCertIDs, certs,
 		util.ExtractExpirations(certs), nil)
 	require.NoError(t, err)
 	certsA := certs

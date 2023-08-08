@@ -9,12 +9,13 @@ import (
 	"time"
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/tests/random"
 	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
 	"github.com/netsec-ethz/fpki/pkg/util"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // TestUpdateWithKeepExisting checks that the UpdateWithKeepExisting function can update a large
@@ -31,8 +32,7 @@ func TestUpdateWithKeepExisting(t *testing.T) {
 	defer removeF()
 
 	// Connect to the DB.
-	conn, err := testdb.Connect(config)
-	require.NoError(t, err)
+	conn := testdb.Connect(t, config)
 	defer conn.Close()
 
 	// leafCerts contains the names of the leaf certificates we will test.
@@ -63,7 +63,7 @@ func TestUpdateWithKeepExisting(t *testing.T) {
 
 	// Update with certificates and policies.
 	t0 := time.Now()
-	err = UpdateWithKeepExisting(ctx, conn, certNames, certIDs, parentCertIDs,
+	err := UpdateWithKeepExisting(ctx, conn, certNames, certIDs, parentCertIDs,
 		certs, util.ExtractExpirations(certs), pols)
 	require.NoError(t, err)
 	t.Logf("time needed to update %d certificates: %s", len(certIDs), time.Since(t0))
