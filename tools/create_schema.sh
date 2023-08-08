@@ -135,6 +135,20 @@ EOF
 
 CMD=$(cat <<EOF
 USE $DBNAME;
+-- Stores the last size that was ingested, per CT log server URL
+CREATE TABLE last_size (
+  url_hash VARBINARY(32) NOT NULL,
+  size INTEGER,
+
+  PRIMARY KEY (url_hash)
+) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
+EOF
+  )
+  echo "$CMD" | $MYSQLCMD
+
+
+CMD=$(cat <<EOF
+USE $DBNAME;
 CREATE TABLE tree (
   key32 VARBINARY(32) NOT NULL,
   value longblob NOT NULL,
