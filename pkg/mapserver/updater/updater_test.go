@@ -308,7 +308,6 @@ func TestMapUpdaterStartFetchingRemaining(t *testing.T) {
 		size: 10,
 		onStartFetching: func(startIndex, endIndex int64) {
 			gotStart, gotEnd = startIndex, endIndex
-			fmt.Printf("deleteme onStartFetching called (%d,%d)\n", gotStart, gotEnd)
 		},
 		onNextBatch: func(ctx context.Context) bool {
 			// Returns elements in batchSize: still something to return if size not reached.
