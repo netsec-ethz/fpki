@@ -81,7 +81,7 @@ func NewMapServer(ctx context.Context, config *Config) (*MapServer, error) {
 		for {
 			select {
 			case c := <-s.updateChan:
-				s.update(c)
+				s.pruneAndUpdate(c)
 			case <-ctx.Done():
 				// Requested to exit.
 				close(s.updateChan)
@@ -93,8 +93,14 @@ func NewMapServer(ctx context.Context, config *Config) (*MapServer, error) {
 	return s, nil
 }
 
-// Update triggers an update. If an ongoing update is still in process, it blocks.
-func (s *MapServer) Update(ctx context.Context) error {
+// Listen is responsible to start the listener for the responder.
+func (s *MapServer) Listen(ctx context.Context) error {
+	<-ctx.Done()
+	return nil
+}
+
+// PruneAndUpdate triggers an update. If an ongoing update is still in process, it blocks.
+func (s *MapServer) PruneAndUpdate(ctx context.Context) error {
 	// Signal we want an update.
 	s.updateChan <- ctx
 
@@ -103,15 +109,28 @@ func (s *MapServer) Update(ctx context.Context) error {
 	return err
 }
 
+func (s *MapServer) pruneAndUpdate(ctx context.Context) {
+	s.prune(ctx)
+	s.update(ctx)
+}
+
+func (s *MapServer) prune(ctx context.Context) {
+	getTime := func() string {
+		return time.Now().UTC().Format(time.RFC3339)
+	}
+	fmt.Printf("======== prune started  at %s\n", getTime())
+	// deleteme TODO
+	fmt.Printf("======== prune finished at %s\n\n", getTime())
+}
+
 func (s *MapServer) update(ctx context.Context) {
 	getTime := func() string {
 		return time.Now().UTC().Format(time.RFC3339)
 	}
+
 	fmt.Printf("======== update started  at %s\n", getTime())
-
-	// time.Sleep(3 * time.Second)
-
 	if err := s.Updater.StartFetchingRemaining(); err != nil {
+
 		s.updateErrChan <- fmt.Errorf("retrieving start and end indices: %w", err)
 		return
 	}
@@ -133,9 +152,4 @@ func (s *MapServer) update(ctx context.Context) {
 
 	// Queue answer in form of an error:
 	s.updateErrChan <- error(nil)
-}
-
-func (s *MapServer) Listen(ctx context.Context) error {
-	<-ctx.Done()
-	return nil
 }

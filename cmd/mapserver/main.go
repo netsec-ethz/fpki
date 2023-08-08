@@ -59,14 +59,15 @@ func writeSampleConfig() error {
 		mysql.WithLocalSocket("/var/run/mysqld/mysqld.sock"),
 	)
 	config := &Config{
-		UpdateAt: util.NewTimeOfDay(3, 00, 00, 00),
-		UpdateTimer: util.DurationWrap{
-			Duration: 24 * time.Hour,
-		},
 		DBConfig:           dbConfig,
 		CTLogServerURL:     "https://ct.googleapis.com/logs/xenon2023/",
 		CertificatePemFile: "tests/testdata/servercert.pem",
 		PrivateKeyPemFile:  "tests/testdata/serverkey.pem",
+
+		UpdateAt: util.NewTimeOfDay(3, 00, 00, 00),
+		UpdateTimer: util.DurationWrap{
+			Duration: 24 * time.Hour,
+		},
 	}
 
 	return WriteConfigurationToFile(flag.Arg(0), config)
@@ -102,7 +103,7 @@ func runWithConfig(
 
 	// Should update now?
 	if updateNow {
-		err := server.Update(ctx)
+		err := server.PruneAndUpdate(ctx)
 		if err != nil {
 			return fmt.Errorf("performing initial update: %w", err)
 		}
@@ -111,7 +112,7 @@ func runWithConfig(
 	// Set update cycle timer.
 	util.RunWhen(ctx, config.UpdateAt.NextTimeOfDay(), config.UpdateTimer.Duration,
 		func(ctx context.Context) {
-			err := server.Update(ctx)
+			err := server.PruneAndUpdate(ctx)
 			if err != nil {
 				fmt.Printf("ERROR: update returned %s\n", err)
 			}
