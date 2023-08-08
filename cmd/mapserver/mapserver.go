@@ -22,11 +22,11 @@ type MapServer struct {
 	Cert *ctx509.Certificate
 	Key  *rsa.PrivateKey
 
-	updateChan    chan struct{}
+	updateChan    chan context.Context
 	updateErrChan chan error
 }
 
-func NewMapserver(ctx context.Context, config *Config) (*MapServer, error) {
+func NewMapServer(ctx context.Context, config *Config) (*MapServer, error) {
 	// Load cert and key.
 	cert, err := util.CertificateFromPEMFile(config.CertificatePemFile)
 	if err != nil {
@@ -71,7 +71,7 @@ func NewMapserver(ctx context.Context, config *Config) (*MapServer, error) {
 		Cert:      cert,
 		Key:       key,
 
-		updateChan:    make(chan struct{}),
+		updateChan:    make(chan context.Context),
 		updateErrChan: make(chan error),
 	}
 
@@ -80,8 +80,8 @@ func NewMapserver(ctx context.Context, config *Config) (*MapServer, error) {
 		// Non stop read from updateChan. Unless requested to exit.
 		for {
 			select {
-			case <-s.updateChan:
-				s.update()
+			case c := <-s.updateChan:
+				s.update(c)
 			case <-ctx.Done():
 				// Requested to exit.
 				close(s.updateChan)
@@ -94,23 +94,45 @@ func NewMapserver(ctx context.Context, config *Config) (*MapServer, error) {
 }
 
 // Update triggers an update. If an ongoing update is still in process, it blocks.
-func (s *MapServer) Update() error {
+func (s *MapServer) Update(ctx context.Context) error {
 	// Signal we want an update.
-	s.updateChan <- struct{}{}
+	s.updateChan <- ctx
 
 	// Wait for the answer (in form of an error).
 	err := <-s.updateErrChan
 	return err
 }
 
-func (s *MapServer) update() {
-	fmt.Printf("======== update started  at %s\n", time.Now().UTC().Format(time.RFC3339))
-	time.Sleep(3 * time.Second)
-	fmt.Printf("======== update finished at %s\n\n", time.Now().UTC().Format(time.RFC3339))
+func (s *MapServer) update(ctx context.Context) {
+	getTime := func() string {
+		return time.Now().UTC().Format(time.RFC3339)
+	}
+	fmt.Printf("======== update started  at %s\n", getTime())
+
+	// time.Sleep(3 * time.Second)
+
+	if err := s.Updater.StartFetchingRemaining(); err != nil {
+		s.updateErrChan <- fmt.Errorf("retrieving start and end indices: %w", err)
+		return
+	}
+
+	// Main update loop.
+	for s.Updater.NextBatch(ctx) {
+		n, err := s.Updater.UpdateNextBatch(ctx)
+
+		fmt.Printf("updated %5d certs batch at %s\n", n, getTime())
+		if err != nil {
+			// We stop the loop here, as probably requires manual inspection of the logs, etc.
+			fmt.Printf("error: %s\n", err)
+			break
+		}
+	}
+	s.Updater.StopFetching()
+
+	fmt.Printf("======== update finished at %s\n\n", getTime())
 
 	// Queue answer in form of an error:
-	err := error(nil)
-	s.updateErrChan <- err
+	s.updateErrChan <- error(nil)
 }
 
 func (s *MapServer) Listen(ctx context.Context) error {
