@@ -255,6 +255,7 @@ func TestLogFetcher(t *testing.T) {
 			// Again. It should return empty.
 			ok := f.NextBatch(ctx)
 			require.False(t, ok)
+			f.StopFetching()
 		})
 	}
 }
