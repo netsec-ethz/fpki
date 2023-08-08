@@ -52,8 +52,7 @@ type LogFetcher struct {
 	processBatchSize int64 // We unblock NextBatch in batches of this size.
 	ctClient         *client.LogClient
 	chanResults      chan *result
-	chanStop         chan struct{} // tells the workers to stop fetching
-	stopping         bool          // Set at the same time than sending to chanStop
+	stopping         bool // Set to request the LogFetcher to stop fetching.
 
 	// The chanResults channel is used to obtain results from this fetcher. Each call to NextBatch
 	// pulls one full result from the channel into the currentResult variable. And each call
@@ -95,7 +94,6 @@ func NewLogFetcher(url string) (*LogFetcher, error) {
 		processBatchSize: defaultProcessBatchSize,
 		ctClient:         ctClient,
 		chanResults:      make(chan *result, preloadCount),
-		chanStop:         make(chan struct{}),
 	}, nil
 }
 
@@ -121,7 +119,6 @@ func (f *LogFetcher) StartFetching(start, end int64) {
 
 func (f *LogFetcher) StopFetching() {
 	f.stopping = true
-	f.chanStop <- struct{}{}
 }
 
 // NextBatch returns true if there is a next batch to be retrieved, or error, I.e. if the call to
@@ -188,7 +185,6 @@ func (f *LogFetcher) FetchAllCertificates(
 
 func (f *LogFetcher) fetch() {
 	defer close(f.chanResults)
-	defer close(f.chanStop)
 
 	if f.start > f.end {
 		return
@@ -319,10 +315,9 @@ func (f *LogFetcher) getRawEntries(
 	_ = leafEntries[end-start] // Fail early if the slice is too small.
 
 	for offset := int64(0); offset < end-start+1; {
-		select {
-		case <-f.chanStop: // requested to stop
+		if f.stopping {
+			// Requested to stop
 			return 0, nil
-		default:
 		}
 		rsp, err := f.ctClient.GetRawEntries(context.Background(), start+offset, end)
 		if err != nil {
