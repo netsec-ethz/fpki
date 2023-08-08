@@ -64,6 +64,14 @@ type certs interface {
 	// RetrieveCertificatePayloads returns the payload for each of the certificates identified
 	// by the passed ID.
 	RetrieveCertificatePayloads(ctx context.Context, IDs []*common.SHA256Output) ([][]byte, error)
+
+	// LastCertIndexWritten returns the last certificate index number written into the DB.
+	// The url specifies the CT log server from which this index comes from.
+	LastCertIndexWritten(ctx context.Context, url string) (int64, error)
+
+	// UpdateLastCertIndexWritten updates the index of the last certificate written into the DB.
+	// The url specifies the CT log server from which this index comes from.
+	UpdateLastCertIndexWritten(ctx context.Context, url string, index int64) error
 }
 
 type policies interface {

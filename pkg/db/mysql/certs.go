@@ -137,6 +137,27 @@ func (c *mysqlDB) RetrieveCertificatePayloads(ctx context.Context, IDs []*common
 	return payloads, nil
 }
 
+// LastCertIndexWritten returns the last certificate index number written into the DB.
+// The url specifies the CT log server from which this index comes from.
+func (c *mysqlDB) LastCertIndexWritten(ctx context.Context, url string) (int64, error) {
+	str := "SELECT size FROM last_size WHERE url_hash = ?"
+	var value int64 = -1
+	err := c.db.QueryRowContext(ctx, str, common.SHA256Hash([]byte(url))).Scan(&value)
+	if err == sql.ErrNoRows {
+		err = nil
+	}
+
+	return value, nil
+}
+
+// UpdateLastCertIndexWritten updates the index of the last certificate written into the DB.
+// The url specifies the CT log server from which this index comes from.
+func (c *mysqlDB) UpdateLastCertIndexWritten(ctx context.Context, url string, index int64) error {
+	str := "REPLACE INTO last_size (url_hash, size) VALUES (?,?)"
+	_, err := c.db.ExecContext(ctx, str, common.SHA256Hash([]byte(url)), index)
+	return err
+}
+
 // checkCertsExist should not be called with larger than ~1000 elements, the query being used
 // may fail with a message like:
 // Error 1436 (HY000): Thread stack overrun:  1028624 bytes used of a 1048576 byte stack,

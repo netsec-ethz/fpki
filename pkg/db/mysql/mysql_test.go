@@ -196,6 +196,52 @@ func TestRetrieveCertificatePayloads(t *testing.T) {
 	}
 }
 
+func TestLastCertIndexWritten(t *testing.T) {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	defer cancelF()
+
+	// Configure a test DB.
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	// Connect to the DB.
+	conn := testdb.Connect(t, config)
+	defer conn.Close()
+
+	// Check that querying for an unknown URL doesn't fail and returns -1 as its last index:
+	n, err := conn.LastCertIndexWritten(ctx, "doesnt exist")
+	require.NoError(t, err)
+	require.Equal(t, int64(-1), n)
+
+	// Store values for two urls.
+	url1 := "myurl"
+	err = conn.UpdateLastCertIndexWritten(ctx, url1, 42)
+	require.NoError(t, err)
+	url2 := "anotherurl"
+	err = conn.UpdateLastCertIndexWritten(ctx, url2, 123)
+	require.NoError(t, err)
+
+	// Check the stored values.
+	n, err = conn.LastCertIndexWritten(ctx, url1)
+	require.NoError(t, err)
+	require.Equal(t, int64(42), n)
+	n, err = conn.LastCertIndexWritten(ctx, url2)
+	require.NoError(t, err)
+	require.Equal(t, int64(123), n)
+
+	// Replace one value and check it.
+	err = conn.UpdateLastCertIndexWritten(ctx, url2, 222)
+	require.NoError(t, err)
+	n, err = conn.LastCertIndexWritten(ctx, url2)
+	require.NoError(t, err)
+	require.Equal(t, int64(222), n)
+
+	// Unknown urls still give out -1:
+	n, err = conn.LastCertIndexWritten(ctx, "doesnt exist")
+	require.NoError(t, err)
+	require.Equal(t, int64(-1), n)
+}
+
 // testCertHierarchyForLeafs returns a hierarchy per leaf certificate. Each certificate is composed
 // of two mock chains, like: leaf->c1.com->c0.com, leaf->c0.com , created using the function
 // BuildTestRandomCertHierarchy.
