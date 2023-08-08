@@ -14,7 +14,7 @@ func RunWhen(
 	ctx context.Context,
 	when time.Time,
 	repeat time.Duration,
-	whenTick func(),
+	whenTick func(ctx context.Context),
 ) {
 
 	go func() {
@@ -23,7 +23,7 @@ func RunWhen(
 		<-timer.C
 		ticker := time.NewTicker(repeat)
 		for {
-			whenTick()
+			whenTick(ctx)
 			select {
 			case <-ticker.C:
 				continue

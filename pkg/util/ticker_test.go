@@ -47,7 +47,7 @@ func TestRunWhen(t *testing.T) {
 			callAmount := 0
 
 			// Run the function when specified.
-			util.RunWhen(ctx, tc.when, tc.interval, func() {
+			util.RunWhen(ctx, tc.when, tc.interval, func(c context.Context) {
 				callAmount++
 				t.Logf("called %d times", callAmount)
 			})
