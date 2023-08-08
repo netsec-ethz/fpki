@@ -34,7 +34,6 @@ func NewMapUpdater(config *db.Configuration, url string) (*MapUpdater, error) {
 		return nil, fmt.Errorf("NewMapUpdater | db.Connect | %w", err)
 	}
 
-	// deleteme
 	// SMT
 	smt, err := trie.NewTrie(nil, common.SHA256Hash, dbConn)
 	if err != nil {
@@ -105,7 +104,6 @@ func (u *MapUpdater) UpdateNextBatch(ctx context.Context) (int, error) {
 		// Store the last index obtained from the fetcher as updated.
 		u.lastUpdatedIndex += int64(n)
 		err = u.Conn.UpdateLastCertIndexWritten(ctx, url, u.lastUpdatedIndex)
-		fmt.Printf("deleteme I've written last updated index = %d\n", u.lastUpdatedIndex)
 	}
 	return n, err
 }
