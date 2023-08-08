@@ -22,13 +22,15 @@ func TestTrieEmpty(t *testing.T) {
 	config, removeF := testdb.ConfigureTestDB(t)
 	defer removeF()
 
-	conn, err := testdb.Connect(config)
-	require.NoError(t, err)
+	conn := testdb.Connect(t, config)
 
 	smt, err := NewTrie(nil, common.SHA256Hash, conn)
 	require.NoError(t, err)
 
 	require.Empty(t, smt.Root)
+
+	err = smt.Close()
+	require.NoError(t, err)
 }
 
 // TestTrieUpdateAndGet: Update leaves and get leaves
@@ -40,8 +42,7 @@ func TestTrieUpdateAndGet(t *testing.T) {
 	config, removeF := testdb.ConfigureTestDB(t)
 	defer removeF()
 
-	conn, err := testdb.Connect(config)
-	require.NoError(t, err)
+	conn := testdb.Connect(t, config)
 
 	smt, err := NewTrie(nil, common.SHA256Hash, conn)
 	require.NoError(t, err)
@@ -74,6 +75,9 @@ func TestTrieUpdateAndGet(t *testing.T) {
 		newValue, _ := smt.get(ctx, newRoot, newKey, nil, 0, smt.TrieHeight)
 		require.Equal(t, newValues[i], newValue)
 	}
+
+	err = smt.Close()
+	require.NoError(t, err)
 }
 
 // TestTrieAtomicUpdate: test AtomicUpdate()
@@ -85,8 +89,7 @@ func TestTrieAtomicUpdate(t *testing.T) {
 	config, removeF := testdb.ConfigureTestDB(t)
 	defer removeF()
 
-	conn, err := testdb.Connect(config)
-	require.NoError(t, err)
+	conn := testdb.Connect(t, config)
 
 	smt, err := NewTrie(nil, common.SHA256Hash, conn)
 	require.NoError(t, err)
@@ -109,6 +112,9 @@ func TestTrieAtomicUpdate(t *testing.T) {
 		value, _ := smt.get(ctx, root, key, nil, 0, smt.TrieHeight)
 		require.Equal(t, values[i], value)
 	}
+
+	err = smt.Close()
+	require.NoError(t, err)
 }
 
 // TestTriePublicUpdateAndGet: test Update() and verify the memory
@@ -120,8 +126,7 @@ func TestTriePublicUpdateAndGet(t *testing.T) {
 	config, removeF := testdb.ConfigureTestDB(t)
 	defer removeF()
 
-	conn, err := testdb.Connect(config)
-	require.NoError(t, err)
+	conn := testdb.Connect(t, config)
 
 	smt, err := NewTrie(nil, common.SHA256Hash, conn)
 	require.NoError(t, err)
@@ -151,6 +156,9 @@ func TestTriePublicUpdateAndGet(t *testing.T) {
 		value, _ := smt.Get(ctx, key)
 		require.Equal(t, newValues[i], value)
 	}
+
+	err = smt.Close()
+	require.NoError(t, err)
 }
 
 // TestTrieUpdateAndDelete: test updating and deleting at the same time
@@ -162,8 +170,7 @@ func TestTrieUpdateAndDelete(t *testing.T) {
 	config, removeF := testdb.ConfigureTestDB(t)
 	defer removeF()
 
-	conn, err := testdb.Connect(config)
-	require.NoError(t, err)
+	conn := testdb.Connect(t, config)
 
 	smt, err := NewTrie(nil, common.SHA256Hash, conn)
 	require.NoError(t, err)
@@ -194,6 +201,9 @@ func TestTrieUpdateAndDelete(t *testing.T) {
 	require.True(t, isShortcut)
 	require.Equal(t, key1, k[:HashLength])
 	require.Equal(t, values[1], v[:HashLength])
+
+	err = smt.Close()
+	require.NoError(t, err)
 }
 
 // TestTrieMerkleProof: test if merkle proof is correct
@@ -205,8 +215,7 @@ func TestTrieMerkleProof(t *testing.T) {
 	config, removeF := testdb.ConfigureTestDB(t)
 	defer removeF()
 
-	conn, err := testdb.Connect(config)
-	require.NoError(t, err)
+	conn := testdb.Connect(t, config)
 
 	smt, err := NewTrie(nil, common.SHA256Hash, conn)
 	require.NoError(t, err)
@@ -231,6 +240,9 @@ func TestTrieMerkleProof(t *testing.T) {
 	require.False(t, included)
 
 	require.True(t, VerifyNonInclusion(smt.Root, ap, emptyKey, proofValue, proofKey))
+
+	err = smt.Close()
+	require.NoError(t, err)
 }
 
 // TestTrieMerkleProofCompressed: compressed proofs test
@@ -242,8 +254,7 @@ func TestTrieMerkleProofCompressed(t *testing.T) {
 	config, removeF := testdb.ConfigureTestDB(t)
 	defer removeF()
 
-	conn, err := testdb.Connect(config)
-	require.NoError(t, err)
+	conn := testdb.Connect(t, config)
 
 	smt, err := NewTrie(nil, common.SHA256Hash, conn)
 	require.NoError(t, err)
@@ -266,6 +277,9 @@ func TestTrieMerkleProofCompressed(t *testing.T) {
 	bitmap, ap, length, included, proofKey, proofValue, _ := smt.MerkleProofCompressed(ctx, emptyKey)
 	require.False(t, included)
 	require.True(t, smt.VerifyNonInclusionC(ap, length, bitmap, emptyKey, proofValue, proofKey))
+
+	err = smt.Close()
+	require.NoError(t, err)
 }
 
 func TestHeight0LeafShortcut(t *testing.T) {
@@ -276,8 +290,7 @@ func TestHeight0LeafShortcut(t *testing.T) {
 	config, removeF := testdb.ConfigureTestDB(t)
 	defer removeF()
 
-	conn, err := testdb.Connect(config)
-	require.NoError(t, err)
+	conn := testdb.Connect(t, config)
 
 	smt, err := NewTrie(nil, common.SHA256Hash, conn)
 	require.NoError(t, err)
@@ -326,6 +339,9 @@ func TestHeight0LeafShortcut(t *testing.T) {
 	// with a DefaultLeaf on the path
 	require.Nil(t, k)
 	require.Equal(t, values[1], v)
+
+	err = smt.Close()
+	require.NoError(t, err)
 }
 
 func getRandomData(t require.TestingT, count int) [][]byte {
