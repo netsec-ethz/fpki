@@ -20,9 +20,10 @@ import (
 
 // MapUpdater: map updater. It is responsible for updating the tree, and writing to db
 type MapUpdater struct {
-	Fetcher logfetcher.Fetcher
-	smt     *trie.Trie
-	Conn    db.Conn
+	Fetcher          logfetcher.Fetcher
+	smt              *trie.Trie
+	Conn             db.Conn
+	lastUpdatedIndex int64
 }
 
 // NewMapUpdater: return a new map updater.
@@ -56,7 +57,35 @@ func NewMapUpdater(config *db.Configuration, url string) (*MapUpdater, error) {
 // StartFetching will initiate the CT logs fetching process in the background, trying to
 // obtain the next batch of certificates and have it ready for the next update.
 func (u *MapUpdater) StartFetching(startIndex, endIndex int64) {
+	u.lastUpdatedIndex = startIndex - 1
 	u.Fetcher.StartFetching(startIndex, endIndex)
+}
+
+func (u *MapUpdater) StopFetching() {
+	u.Fetcher.StopFetching()
+}
+
+// StartFetchingRemaining retrieves the last stored index number for this CT log server, and the
+// current last index, and uses them to call StartFetching.
+// It returns an error if there was one retrieving the start or end indices.
+func (u *MapUpdater) StartFetchingRemaining() error {
+	ctx, cancelF := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelF()
+
+	url := u.Fetcher.URL()
+	lastIndex, err := u.Conn.LastCertIndexWritten(ctx, url)
+	if err != nil {
+		return fmt.Errorf("getting the last retrieved index number from DB: %w", err)
+	}
+
+	endIndex, err := u.Fetcher.GetSize(ctx)
+	if err != nil {
+		return fmt.Errorf("getting the size of the CT log server: %w", err)
+	}
+
+	u.lastUpdatedIndex = lastIndex
+	u.Fetcher.StartFetching(lastIndex+1, int64(endIndex)-1)
+	return nil
 }
 
 func (u *MapUpdater) NextBatch(ctx context.Context) bool {
@@ -66,11 +95,19 @@ func (u *MapUpdater) NextBatch(ctx context.Context) bool {
 // UpdateNextBatch downloads the next batch from the CT log server and updates the domain and
 // Updates tables. Also the SMT.
 func (u *MapUpdater) UpdateNextBatch(ctx context.Context) (int, error) {
+	url := u.Fetcher.URL()
 	certs, chains, err := u.Fetcher.ReturnNextBatch()
 	if err != nil {
 		return 0, fmt.Errorf("fetcher: %w", err)
 	}
-	return len(certs), u.updateCerts(ctx, certs, chains)
+	n, err := len(certs), u.updateCerts(ctx, certs, chains)
+	if err == nil {
+		// Store the last index obtained from the fetcher as updated.
+		u.lastUpdatedIndex += int64(n)
+		err = u.Conn.UpdateLastCertIndexWritten(ctx, url, u.lastUpdatedIndex)
+		fmt.Printf("deleteme I've written last updated index = %d\n", u.lastUpdatedIndex)
+	}
+	return n, err
 }
 
 // UpdateCertsLocally: add certs (in the form of asn.1 encoded byte arrays) directly without querying log
