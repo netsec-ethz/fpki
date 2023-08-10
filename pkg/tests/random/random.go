@@ -3,6 +3,7 @@ package random
 import (
 	"crypto/rsa"
 	"io"
+	"math/big"
 	"math/rand"
 	"time"
 
@@ -43,16 +44,31 @@ func RandomBytesForTest(t tests.T, size int) []byte {
 	return buff
 }
 
+var keyCreatingRandomCerts = RandomRSAPrivateKey(tests.NewTestObject())
+
+// RandomX509Cert creates a random x509 certificate, with correct ASN.1 DER representation.
 func RandomX509Cert(t tests.T, domain string) *ctx509.Certificate {
-	return &ctx509.Certificate{
-		DNSNames: []string{domain},
+	template := &ctx509.Certificate{
+		SerialNumber: big.NewInt(rand.Int63()),
 		Subject: pkix.Name{
 			CommonName: domain,
 		},
+		DNSNames:  []string{domain},
 		NotBefore: util.TimeFromSecs(0),
-		NotAfter:  time.Date(3000, 1, 1, 0, 0, 0, 0, time.UTC),
-		Raw:       RandomBytesForTest(t, 10),
+		NotAfter:  RandomTimeWithoutMonotonic(),
+		KeyUsage:  ctx509.KeyUsageKeyEncipherment | ctx509.KeyUsageDigitalSignature,
 	}
+	derBytes, err := ctx509.CreateCertificate(
+		NewRandReader(),
+		template,
+		template,
+		&keyCreatingRandomCerts.PublicKey,
+		keyCreatingRandomCerts,
+	)
+	require.NoError(t, err)
+	template.Raw = derBytes
+
+	return template
 }
 
 // BuildTestRandomPolicyHierarchy creates two policy certificates for the given name.

@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type Conn db.Conn
+
 func Connect(t tests.T, config *db.Configuration) db.Conn {
 	conn, err := mysql.Connect(config)
 	require.NoError(t, err)
