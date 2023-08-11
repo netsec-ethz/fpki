@@ -1,0 +1,18 @@
+[Unit]
+Description=Map Server Service. Updates automatically depending on configuration.
+Documentation=https://github.com/netsec-ethz/fpki
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=fpki
+Group=fpki
+ExecStart=/usr/bin/mapserver --config /etc/fpki/config.json
+Restart=always
+RestartSec=5            # wait 5 seconds if app crashes
+RemainAfterExit=False   # report status bad if process is not running
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target
