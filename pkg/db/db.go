@@ -72,6 +72,10 @@ type certs interface {
 	// UpdateLastCertIndexWritten updates the index of the last certificate written into the DB.
 	// The url specifies the CT log server from which this index comes from.
 	UpdateLastCertIndexWritten(ctx context.Context, url string, index int64) error
+
+	// PruneCerts removes all certificates that are no longer valid according to the paramter.
+	// I.e. any certificate whose NotAfter date is equal or before the parameter.
+	PruneCerts(ctx context.Context, now time.Time) (int64, error)
 }
 
 type policies interface {

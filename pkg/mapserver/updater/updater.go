@@ -99,7 +99,7 @@ func (u *MapUpdater) UpdateNextBatch(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("fetcher: %w", err)
 	}
-	n, err := len(certs), u.updateCerts(ctx, certs, chains)
+	n, err := len(certs), u.updateCertBatch(ctx, certs, chains)
 	if err == nil {
 		// Store the last index obtained from the fetcher as updated.
 		u.lastUpdatedIndex += int64(n)
@@ -144,14 +144,33 @@ func (mapUpdater *MapUpdater) UpdatePolicyCerts(ctx context.Context, ctUrl strin
 	return mapUpdater.updatePolicyCerts(ctx, rpcList)
 }
 
-func (mapUpdater *MapUpdater) updateCerts(
+func (mapUpdater *MapUpdater) updateCertBatch(
 	ctx context.Context,
-	certs []*ctx509.Certificate,
+	leafCerts []*ctx509.Certificate,
 	chains [][]*ctx509.Certificate,
 ) error {
 
-	// TODO(juagargi)
-	return nil
+	if len(leafCerts) != len(chains) {
+		return fmt.Errorf("inconsistent certs and chains count: %d and %d respectively",
+			len(leafCerts), len(chains))
+	}
+
+	certs, certIDs, parentIDs, names := util.UnfoldCerts(leafCerts, chains)
+
+	// Extract expirations.
+	expirations := util.ExtractExpirations(certs)
+
+	// Process whole batch.
+	return UpdateWithKeepExisting(
+		ctx,
+		mapUpdater.Conn,
+		names,
+		certIDs,
+		parentIDs,
+		certs,
+		expirations,
+		nil, // no policies in this call
+	)
 }
 
 func (mapUpdater *MapUpdater) updatePolicyCerts(

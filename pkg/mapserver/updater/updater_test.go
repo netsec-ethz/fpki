@@ -3,7 +3,6 @@ package updater
 import (
 	"context"
 	"encoding/hex"
-	"fmt"
 	"math/rand"
 	"testing"
 	"time"
@@ -40,10 +39,6 @@ func TestUpdateWithKeepExisting(t *testing.T) {
 		"leaf.certs.com",
 		"example.certs.com",
 	}
-	// Add many more leaf certificates for the test.
-	for i := 0; i < 20000; i++ {
-		leafCerts = append(leafCerts, fmt.Sprintf("leaf-%d.auto.certs.com", i+1))
-	}
 
 	// Create a random certificate test hierarchy for each leaf.
 	var certs []*ctx509.Certificate
@@ -62,11 +57,9 @@ func TestUpdateWithKeepExisting(t *testing.T) {
 	pols := random.BuildTestRandomPolicyHierarchy(t, "a-domain-name.thing")
 
 	// Update with certificates and policies.
-	t0 := time.Now()
 	err := UpdateWithKeepExisting(ctx, conn, certNames, certIDs, parentCertIDs,
 		certs, util.ExtractExpirations(certs), pols)
 	require.NoError(t, err)
-	t.Logf("time needed to update %d certificates: %s", len(certIDs), time.Since(t0))
 
 	// Coalescing of payloads.
 	err = CoalescePayloadsForDirtyDomains(ctx, conn)
@@ -78,6 +71,7 @@ func TestUpdateWithKeepExisting(t *testing.T) {
 		// t.Logf("%s: %s", leaf, hex.EncodeToString(domainID[:]))
 		gotCertIDsID, gotCertIDs, err := conn.RetrieveDomainCertificatesIDs(ctx, domainID)
 		require.NoError(t, err)
+		// Expect as many IDs as total certs per leaf ( #certs / #leafs ). Each ID is 32 bytes:
 		expectedSize := common.SHA256Size * len(certs) / len(leafCerts)
 		require.Len(t, gotCertIDs, expectedSize, "bad length, should be %d but it's %d",
 			expectedSize, len(gotCertIDs))
@@ -188,7 +182,11 @@ func TestMapUpdaterStartFetching(t *testing.T) {
 			if (onReturnNextBatchCalls * batchSize) > fetcher.size {
 				n = fetcher.size % batchSize
 			}
-			return make([]*ctx509.Certificate, n),
+			randomCerts := make([]*ctx509.Certificate, n)
+			for i := range randomCerts {
+				randomCerts[i] = random.RandomX509Cert(t, t.Name())
+			}
+			return randomCerts,
 				make([][]*ctx509.Certificate, n),
 				nil
 		},
@@ -314,9 +312,10 @@ func TestMapUpdaterStartFetchingRemaining(t *testing.T) {
 			return fetcher.size-onReturnNextBatchCalls > 0
 		},
 		onReturnNextBatch: func() ([]*ctx509.Certificate, [][]*ctx509.Certificate, error) {
-			// Return one cert and chain.
+			// Return one cert and chain with no parents.
 			onReturnNextBatchCalls++
-			return make([]*ctx509.Certificate, 1), make([][]*ctx509.Certificate, 1), nil
+			return []*ctx509.Certificate{random.RandomX509Cert(t, "a.com")},
+				make([][]*ctx509.Certificate, 1), nil
 		},
 	}
 	updater.Fetcher = fetcher

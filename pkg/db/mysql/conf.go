@@ -65,6 +65,7 @@ func WithDefaults() db.ConfigurationModFunction {
 			"interpolateParams": "true", // 1 round trip per query
 			"collation":         "binary",
 			"maxAllowedPacket":  "1073741824", // 1G (cannot use "1G" as the driver uses Atoi)
+			"parseTime":         "true",       // driver parses DATETIME into time.Time
 		}
 		for k, v := range defaults {
 			c.Values[k] = v
