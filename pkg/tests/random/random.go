@@ -12,7 +12,6 @@ import (
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/tests"
-	"github.com/netsec-ethz/fpki/pkg/util"
 	"github.com/stretchr/testify/require"
 )
 
@@ -54,8 +53,8 @@ func RandomX509Cert(t tests.T, domain string) *ctx509.Certificate {
 			CommonName: domain,
 		},
 		DNSNames:  []string{domain},
-		NotBefore: util.TimeFromSecs(0),
-		NotAfter:  RandomTimeWithoutMonotonic(),
+		NotBefore: RandomTimeWithoutMonotonicBounded(1900, 2000),
+		NotAfter:  RandomTimeWithoutMonotonicBounded(2200, 2300),
 		KeyUsage:  ctx509.KeyUsageKeyEncipherment | ctx509.KeyUsageDigitalSignature,
 	}
 	derBytes, err := ctx509.CreateCertificate(
@@ -124,9 +123,9 @@ func BuildTestRandomCertHierarchy(t tests.T, domainName string) (
 	return
 }
 
-func RandomTimeWithoutMonotonic() time.Time {
+func RandomTimeWithoutMonotonicBounded(minYear, maxYear int) time.Time {
 	return time.Date(
-		1900+rand.Intn(200),         // 1900-2100
+		minYear+rand.Intn(maxYear-minYear+1),
 		time.Month(1+rand.Intn(12)), // 1-12
 		1+rand.Intn(31),             // 1-31
 		rand.Intn(24),               // 0-23
@@ -135,6 +134,10 @@ func RandomTimeWithoutMonotonic() time.Time {
 		0,
 		time.UTC,
 	)
+}
+
+func RandomTimeWithoutMonotonic() time.Time {
+	return RandomTimeWithoutMonotonicBounded(1900, 2099)
 }
 
 func RandomSignedPolicyCertificateTimestamp(t tests.T) *common.SignedPolicyCertificateTimestamp {
