@@ -240,11 +240,78 @@ func TestLastCertIndexWritten(t *testing.T) {
 	n, err = conn.LastCertIndexWritten(ctx, "doesnt exist")
 	require.NoError(t, err)
 	require.Equal(t, int64(-1), n)
+
+}
+
+func TestPruneCerts(t *testing.T) {
+	ctx, cancelF := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancelF()
+
+	// Configure a test DB.
+	config, removeF := testdb.ConfigureTestDB(t)
+	// defer removeF()
+	_ = removeF
+
+	// Connect to the DB.
+	conn := testdb.Connect(t, config)
+	defer conn.Close()
+
+	// Prepare test data.
+	// a.com 's chain will not expire.
+	// b.com 's chain will expire at its leaf.
+	// c.com 's chain will expire only its root.
+	expiredTime := util.TimeFromSecs(100)
+	now := expiredTime.Add(time.Hour)
+	leafNames := []string{
+		"a.com",
+		"b.com",
+		"c.com",
+	}
+	certs, certIDs, parentIDs, names := testCertHierarchyForLeafs(t, leafNames)
+	// Check that no certificate is expired yet.
+	for i, cert := range certs {
+		require.False(t, now.After(cert.NotAfter),
+			"failed test data precondition at %d, with value %s",
+			i, cert.NotAfter)
+	}
+	// Check that ensure that the data setup has not changed (leaves at the expected index, etc).
+	require.Equal(t, len(leafNames)*4, len(certs))
+	require.Equal(t, len(certs), len(certIDs))
+	require.Equal(t, len(certs), len(parentIDs))
+	require.Equal(t, len(certs), len(names))
+	// Modify b.com: only the 2 leaf certificates.
+	c := certs[4*1+2]                               // first chain of b.com
+	require.Equal(t, "b.com", c.Subject.CommonName) // assert that the test data is still correct.
+	c.NotAfter = expiredTime
+	c = certs[4*1+3]                                // second chain of b.com
+	require.Equal(t, "b.com", c.Subject.CommonName) // assert that the test data is still correct.
+	c.NotAfter = expiredTime
+	// Modify c.com: only the single root of its two chains.
+	c = certs[4*2]                                   // root of both chains for c.com
+	require.Equal(t, "c0.com", c.Subject.CommonName) // assert that the test data is still correct.
+	c.NotAfter = expiredTime
+
+	// Ingest data into DB.
+	err := updater.UpdateWithKeepExisting(ctx, conn, names, certIDs, parentIDs,
+		certs, util.ExtractExpirations(certs), nil)
+	require.NoError(t, err)
+	// Coalescing of payloads.
+	err = updater.CoalescePayloadsForDirtyDomains(ctx, conn)
+	require.NoError(t, err)
+
+	// Now test that prune removes some of them.
+	n, err := conn.PruneCerts(ctx, now)
+	require.NoError(t, err)
+	// We have two leafs in b.com + root of two chains (but ONE root)
+	require.Equal(t, int64((1+1)+(1)), n)
+
+	// deleteme TODO now test that we can still query
 }
 
 // testCertHierarchyForLeafs returns a hierarchy per leaf certificate. Each certificate is composed
 // of two mock chains, like: leaf->c1.com->c0.com, leaf->c0.com , created using the function
-// BuildTestRandomCertHierarchy.
+// BuildTestRandomCertHierarchy. That function always returns four certificates, in this order:
+// c0.com,c1.com, leaf->c1->c0, leaf->c0
 func testCertHierarchyForLeafs(t tests.T, leaves []string) (certs []*ctx509.Certificate,
 	certIDs, parentCertIDs []*common.SHA256Output, certNames [][]string) {
 

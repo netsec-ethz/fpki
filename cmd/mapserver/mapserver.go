@@ -110,7 +110,16 @@ func (s *MapServer) PruneAndUpdate(ctx context.Context) error {
 }
 
 func (s *MapServer) pruneAndUpdate(ctx context.Context) {
+	// prune() and update() both send an answer to the updateErrChan. Refrain from updating if
+	// pruning failed.
 	s.prune(ctx)
+	err := <-s.updateErrChan
+	if err != nil {
+		s.updateErrChan <- err
+		return
+	}
+
+	// update() will send its own response to the updateErrChan.
 	s.update(ctx)
 }
 
@@ -119,16 +128,25 @@ func (s *MapServer) prune(ctx context.Context) {
 		return time.Now().UTC().Format(time.RFC3339)
 	}
 	fmt.Printf("======== prune started  at %s\n", getTime())
+	defer fmt.Printf("======== prune finished at %s\n\n", getTime())
+
 	// deleteme TODO
-	fmt.Printf("======== prune finished at %s\n\n", getTime())
+	n, err := s.Updater.Conn.PruneCerts(ctx, time.Now())
+	if err != nil {
+		s.updateErrChan <- fmt.Errorf("pruning: %w", err)
+	}
+	fmt.Printf("pruning: %d certs removed\n", n)
+
+	s.updateErrChan <- error(nil) // Always answer something.
 }
 
 func (s *MapServer) update(ctx context.Context) {
 	getTime := func() string {
 		return time.Now().UTC().Format(time.RFC3339)
 	}
-
 	fmt.Printf("======== update started  at %s\n", getTime())
+	defer fmt.Printf("======== update finished at %s\n\n", getTime())
+
 	if err := s.Updater.StartFetchingRemaining(); err != nil {
 
 		s.updateErrChan <- fmt.Errorf("retrieving start and end indices: %w", err)
@@ -147,8 +165,6 @@ func (s *MapServer) update(ctx context.Context) {
 		}
 	}
 	s.Updater.StopFetching()
-
-	fmt.Printf("======== update finished at %s\n\n", getTime())
 
 	// Queue answer in form of an error:
 	s.updateErrChan <- error(nil)
