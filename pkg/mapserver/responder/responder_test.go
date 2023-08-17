@@ -102,7 +102,7 @@ func TestProof(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create/update the SMT.
-	err = updater.UpdateSMT(ctx, conn, 32)
+	err = updater.UpdateSMT(ctx, conn)
 	require.NoError(t, err)
 
 	// And cleanup dirty, flagging the end of the update cycle.

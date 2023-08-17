@@ -135,7 +135,7 @@ func mainFunction() int {
 
 	// Now update the SMT Trie with the changed domains:
 	fmt.Println("Starting SMT update ...")
-	err = updater.UpdateSMT(ctx, conn, 32)
+	err = updater.UpdateSMT(ctx, conn)
 	exitIfError(err)
 	fmt.Println("Done SMT update.")
 
