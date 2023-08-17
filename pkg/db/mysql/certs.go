@@ -160,7 +160,7 @@ func (c *mysqlDB) UpdateLastCertIndexWritten(ctx context.Context, url string, in
 
 // PruneCerts removes all certificates that are no longer valid according to the paramter.
 // I.e. any certificate whose NotAfter date is equal or before the parameter.
-func (c *mysqlDB) PruneCerts(ctx context.Context, now time.Time) (int64, error) {
+func (c *mysqlDB) PruneCerts(ctx context.Context, now time.Time) error {
 	return c.pruneCerts(ctx, now)
 }
 
@@ -212,16 +212,11 @@ func (c *mysqlDB) checkCertsExist(ctx context.Context, ids []*common.SHA256Outpu
 	return nil
 }
 
-func (c *mysqlDB) pruneCerts(ctx context.Context, now time.Time) (int64, error) {
+func (c *mysqlDB) pruneCerts(ctx context.Context, now time.Time) error {
 	// A certificate is valid if its NotAfter is greater or equal than now.
 	// We thus look for certificates with expiration less than now.
 
-	// Simply remove all expired certificates.
-
-	str := "DELETE FROM certs WHERE expiration < ?"
-	res, err := c.db.ExecContext(ctx, str, now)
-	if err != nil {
-		return 0, err
-	}
-	return res.RowsAffected()
+	str := "CALL prune_expired(?)"
+	_, err := c.db.ExecContext(ctx, str, now)
+	return err
 }

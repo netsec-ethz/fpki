@@ -282,6 +282,57 @@ EOF
   )
   echo "$CMD" | $MYSQLCMD
 
+
+CMD=$(cat <<EOF
+USE $DBNAME;
+DROP PROCEDURE IF EXISTS prune_expired;
+DELIMITER $$
+-- The procedure has one parameter, the time considered "now".
+-- Any x509 certificate that expires before that time will be removed.
+-- Any removed certificate will also trigger the removal of its descendants.
+-- Any domain which had a certificate pruned will be added to the "dirty" list.
+CREATE PROCEDURE prune_expired(IN now DATETIME)
+BEGIN
+
+	-- Create a temporary table to hold the IDs of all the expired certs or descendants.
+	CREATE TEMPORARY TABLE temp_cert_ids (
+	  cert_id VARBINARY(32)
+	);
+
+	-- Insert the IDs of expired certificates or their descendants into the temporary table.
+	INSERT INTO temp_cert_ids(cert_id)
+	SELECT cert_id FROM
+	(
+		WITH RECURSIVE expired_and_descendants AS (
+			-- Base case: Select all expired certificates
+			SELECT cert_id
+			FROM certs
+			WHERE expiration < '1971-01-01 00:01:40'
+			UNION ALL
+			-- Recursive case: Join the above result with certs on parent_id to get descendants
+			SELECT c.cert_id
+			FROM certs c
+			INNER JOIN expired_and_descendants ead ON c.parent_id = ead.cert_id
+		)
+		SELECT cert_id FROM expired_and_descendants
+	) AS exp_certs;
+
+	-- Insert the domain IDs that had a certificate in the temporary table.
+	INSERT INTO dirty
+	SELECT DISTINCT domain_id FROM domain_certs WHERE cert_id IN (SELECT cert_id FROM temp_cert_ids);
+
+	-- Remove expired certificates
+	DELETE FROM certs WHERE cert_id IN (SELECT cert_id FROM temp_cert_ids);
+
+	-- Finally, remove temporary table
+	DROP TEMPORARY TABLE temp_cert_ids;
+
+END$$
+DELIMITER ;
+EOF
+  )
+  echo "$CMD" | $MYSQLCMD
+
 } # end of `create_new_db` function
 
 
