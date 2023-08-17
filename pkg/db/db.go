@@ -75,7 +75,7 @@ type certs interface {
 
 	// PruneCerts removes all certificates that are no longer valid according to the paramter.
 	// I.e. any certificate whose NotAfter date is equal or before the parameter.
-	PruneCerts(ctx context.Context, now time.Time) (int64, error)
+	PruneCerts(ctx context.Context, now time.Time) error
 }
 
 type policies interface {
