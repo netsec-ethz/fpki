@@ -123,35 +123,62 @@ func (s *MapServer) pruneAndUpdate(ctx context.Context) {
 	s.update(ctx)
 }
 
+// prune only removes the affected certificates from the certs table and adds the affected domains
+// to the dirty table. Because update is always called right after prune, we don't need to first
+// compute the coalesced domains for those dirty domains after prune and before update. It is
+// sufficient to call CoalescePayloadsForDirtyDomains after update and it will take care of all
+// dirty domains, coming from both prune and update.
 func (s *MapServer) prune(ctx context.Context) {
-	getTime := func() string {
-		return time.Now().UTC().Format(time.RFC3339)
-	}
 	fmt.Printf("======== prune started  at %s\n", getTime())
 	defer fmt.Printf("======== prune finished at %s\n\n", getTime())
 
-	// deleteme TODO
-	n, err := s.Updater.Conn.PruneCerts(ctx, time.Now())
+	err := s.Updater.Conn.PruneCerts(ctx, time.Now())
 	if err != nil {
 		s.updateErrChan <- fmt.Errorf("pruning: %w", err)
 	}
-	fmt.Printf("pruning: %d certs removed\n", n)
 
 	s.updateErrChan <- error(nil) // Always answer something.
 }
 
 func (s *MapServer) update(ctx context.Context) {
-	getTime := func() string {
-		return time.Now().UTC().Format(time.RFC3339)
-	}
 	fmt.Printf("======== update started  at %s\n", getTime())
 	defer fmt.Printf("======== update finished at %s\n\n", getTime())
 
-	if err := s.Updater.StartFetchingRemaining(); err != nil {
-
-		s.updateErrChan <- fmt.Errorf("retrieving start and end indices: %w", err)
+	if err := s.updateCerts(ctx); err != nil {
+		s.updateErrChan <- err
 		return
 	}
+	// TODO(juagargi) do policy certificates here.
+
+	fmt.Printf("coalescing certificate payloads at %s\n", getTime())
+	if err := s.Updater.CoalescePayloadsForDirtyDomains(ctx); err != nil {
+		s.updateErrChan <- err
+		return
+	}
+
+	// Update SMT.
+	fmt.Printf("updating SMT at %s\n", getTime())
+	if err := s.Updater.UpdateSMT(ctx); err != nil {
+		s.updateErrChan <- fmt.Errorf("updating SMT: %w", err)
+		return
+	}
+
+	// Cleanup.
+	fmt.Printf("cleaning up at %s\n", getTime())
+	if err := s.Updater.Conn.CleanupDirty(ctx); err != nil {
+		s.updateErrChan <- fmt.Errorf("cleaning up DB: %w", err)
+		return
+	}
+
+	// Always queue answer in form of an error:
+	s.updateErrChan <- error(nil)
+}
+
+func (s *MapServer) updateCerts(ctx context.Context) error {
+	if err := s.Updater.StartFetchingRemaining(); err != nil {
+		return fmt.Errorf("retrieving start and end indices: %w", err)
+	}
+	defer s.Updater.StopFetching()
 
 	// Main update loop.
 	for s.Updater.NextBatch(ctx) {
@@ -160,12 +187,12 @@ func (s *MapServer) update(ctx context.Context) {
 		fmt.Printf("updated %5d certs batch at %s\n", n, getTime())
 		if err != nil {
 			// We stop the loop here, as probably requires manual inspection of the logs, etc.
-			fmt.Printf("error: %s\n", err)
-			break
+			return fmt.Errorf("updating next batch of x509 certificates: %w", err)
 		}
 	}
-	s.Updater.StopFetching()
+	return nil
+}
 
-	// Queue answer in form of an error:
-	s.updateErrChan <- error(nil)
+func getTime() string {
+	return time.Now().UTC().Format(time.RFC3339)
 }

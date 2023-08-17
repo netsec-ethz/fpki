@@ -21,9 +21,10 @@ import (
 // MapUpdater: map updater. It is responsible for updating the tree, and writing to db
 type MapUpdater struct {
 	Fetcher          logfetcher.Fetcher
-	smt              *trie.Trie
 	Conn             db.Conn
 	lastUpdatedIndex int64
+	// Don't use a Trie in memory. The updater just creates one when needed and disposes of it
+	// afterwards.
 }
 
 // NewMapUpdater: return a new map updater.
@@ -34,13 +35,6 @@ func NewMapUpdater(config *db.Configuration, url string) (*MapUpdater, error) {
 		return nil, fmt.Errorf("NewMapUpdater | db.Connect | %w", err)
 	}
 
-	// SMT
-	smt, err := trie.NewTrie(nil, common.SHA256Hash, dbConn)
-	if err != nil {
-		return nil, fmt.Errorf("NewMapServer | NewTrie | %w", err)
-	}
-	smt.CacheHeightLimit = 32
-
 	fetcher, err := logfetcher.NewLogFetcher(url)
 	if err != nil {
 		return nil, err
@@ -48,7 +42,6 @@ func NewMapUpdater(config *db.Configuration, url string) (*MapUpdater, error) {
 
 	return &MapUpdater{
 		Fetcher: fetcher,
-		smt:     smt,
 		Conn:    dbConn,
 	}, nil
 }
@@ -109,7 +102,7 @@ func (u *MapUpdater) UpdateNextBatch(ctx context.Context) (int, error) {
 }
 
 // UpdateCertsLocally: add certs (in the form of asn.1 encoded byte arrays) directly without querying log
-func (mapUpdater *MapUpdater) UpdateCertsLocally(ctx context.Context, certList [][]byte, certChainList [][][]byte) error {
+func (u *MapUpdater) UpdateCertsLocally(ctx context.Context, certList [][]byte, certChainList [][][]byte) error {
 	expirations := make([]*time.Time, 0, len(certList))
 	certs := make([]*ctx509.Certificate, 0, len(certList))
 	certChains := make([][]*ctx509.Certificate, 0, len(certList))
@@ -131,20 +124,28 @@ func (mapUpdater *MapUpdater) UpdateCertsLocally(ctx context.Context, certList [
 		certChains = append(certChains, chain)
 	}
 	certs, IDs, parentIDs, names := util.UnfoldCerts(certs, certChains)
-	return UpdateWithKeepExisting(ctx, mapUpdater.Conn, names, IDs, parentIDs, certs, expirations, nil)
+	return UpdateWithKeepExisting(ctx, u.Conn, names, IDs, parentIDs, certs, expirations, nil)
 }
 
 // UpdatePolicyCerts: update RPC and PC from url. Currently just mock PC and RPC
-func (mapUpdater *MapUpdater) UpdatePolicyCerts(ctx context.Context, ctUrl string, startIdx, endIdx int64) error {
+func (u *MapUpdater) UpdatePolicyCerts(ctx context.Context, ctUrl string, startIdx, endIdx int64) error {
 	// get PC and RPC first
 	rpcList, err := logfetcher.GetPCAndRPCs(ctUrl, startIdx, endIdx, 20)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | GetPCAndRPC | %w", err)
 	}
-	return mapUpdater.updatePolicyCerts(ctx, rpcList)
+	return u.updatePolicyCerts(ctx, rpcList)
 }
 
-func (mapUpdater *MapUpdater) updateCertBatch(
+func (u *MapUpdater) UpdateSMT(ctx context.Context) error {
+	return UpdateSMT(ctx, u.Conn)
+}
+
+func (u *MapUpdater) CoalescePayloadsForDirtyDomains(ctx context.Context) error {
+	return CoalescePayloadsForDirtyDomains(ctx, u.Conn)
+}
+
+func (u *MapUpdater) updateCertBatch(
 	ctx context.Context,
 	leafCerts []*ctx509.Certificate,
 	chains [][]*ctx509.Certificate,
@@ -163,7 +164,7 @@ func (mapUpdater *MapUpdater) updateCertBatch(
 	// Process whole batch.
 	return UpdateWithKeepExisting(
 		ctx,
-		mapUpdater.Conn,
+		u.Conn,
 		names,
 		certIDs,
 		parentIDs,
@@ -173,7 +174,7 @@ func (mapUpdater *MapUpdater) updateCertBatch(
 	)
 }
 
-func (mapUpdater *MapUpdater) updatePolicyCerts(
+func (u *MapUpdater) updatePolicyCerts(
 	ctx context.Context,
 	rpcs []*common.PolicyCertificate,
 ) error {
@@ -316,21 +317,18 @@ func UpdateSMTfromDomains(
 // UpdateSMT reads all the dirty domains (pending to update their contents in the SMT), creates
 // a SMT Trie, loads it, and updates its entries with the new values.
 // It finally commits the Trie and saves its root in the DB.
-func UpdateSMT(ctx context.Context, conn db.Conn, cacheHeight int) error {
+func UpdateSMT(ctx context.Context, conn db.Conn) error {
 	// Load root.
-	var root []byte
-	if rootID, err := conn.LoadRoot(ctx); err != nil {
+	root, err := loadRoot(ctx, conn)
+	if err != nil {
 		return err
-	} else if rootID != nil {
-		root = rootID[:]
 	}
-
 	// Load SMT.
 	smtTrie, err := trie.NewTrie(root, common.SHA256Hash, conn)
 	if err != nil {
-		err = fmt.Errorf("with root \"%s\", creating NewTrie: %w", hex.EncodeToString(root), err)
-		panic(err)
+		return fmt.Errorf("with root \"%s\", creating NewTrie: %w", hex.EncodeToString(root), err)
 	}
+	// smtTrie.CacheHeightLimit = 32
 
 	// Get the dirty domains.
 	domains, err := conn.RetrieveDirtyDomains(ctx)
@@ -349,6 +347,16 @@ func UpdateSMT(ctx context.Context, conn db.Conn, cacheHeight int) error {
 	}
 
 	return nil
+}
+
+func loadRoot(ctx context.Context, conn db.Conn) ([]byte, error) {
+	var root []byte
+	if rootID, err := conn.LoadRoot(ctx); err != nil {
+		return nil, err
+	} else if rootID != nil {
+		root = rootID[:]
+	}
+	return root, nil
 }
 
 func insertCerts(ctx context.Context, conn db.Conn, names [][]string,
