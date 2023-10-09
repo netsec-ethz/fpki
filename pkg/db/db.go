@@ -3,11 +3,10 @@ package db
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 )
-
-const batchSize = 1000
 
 // KeyValuePair: key-value pair
 type KeyValuePair struct {
@@ -15,67 +14,96 @@ type KeyValuePair struct {
 	Value []byte
 }
 
-// Conn: interface for db connection
+type smt interface {
+	LoadRoot(ctx context.Context) (*common.SHA256Output, error)
+	SaveRoot(ctx context.Context, root *common.SHA256Output) error
+
+	// RetrieveTreeNode: Retrieve one key-value pair from Tree table.
+	RetrieveTreeNode(ctx context.Context, id common.SHA256Output) ([]byte, error)
+	// UpdateTreeNodes: Update a list of key-value pairs in Tree table
+	UpdateTreeNodes(ctx context.Context, keyValuePairs []*KeyValuePair) (int, error)
+	// DeleteTreeNodes: Delete a list of key-value pairs in Tree table
+	DeleteTreeNodes(ctx context.Context, keys []common.SHA256Output) (int, error)
+}
+
+type dirty interface {
+
+	// RetrieveDirtyDomains returns a channel of batches of updated domains.
+	// A batch will have a implementation dependent size.
+	// Each updated domain represents the SHA256 of the textual domain that was updated and
+	// present in the `updates` table.
+	RetrieveDirtyDomains(ctx context.Context) ([]*common.SHA256Output, error)
+
+	// RecomputeDirtyDomainsCertAndPolicyIDs retrieves dirty domains from the dirty list, starting
+	// at firstRow and finishing at lastRow (for a total of lastRow - firstRow + 1 domains),
+	// computes the aggregated payload for their certificates and policies, and stores it in the DB.
+	// The aggregated payload takes into account all policies and certificates needed for that
+	// domain, including e.g. the trust chain.
+	RecomputeDirtyDomainsCertAndPolicyIDs(ctx context.Context) error
+
+	CleanupDirty(ctx context.Context) error
+}
+
+type certs interface {
+
+	// CheckCertsExist returns a slice of true/false values. Each value indicates if
+	// the corresponding certificate identified by its ID is already present in the DB.
+	CheckCertsExist(ctx context.Context, ids []*common.SHA256Output) ([]bool, error)
+
+	UpdateCerts(ctx context.Context, ids, parents []*common.SHA256Output, expirations []*time.Time,
+		payloads [][]byte) error
+
+	// UpdateDomainCerts updates the domain_certs table with new entries.
+	UpdateDomainCerts(ctx context.Context, domainIDs, certIDs []*common.SHA256Output) error
+
+	// RetrieveDomainCertificatesIDs retrieves the domain's certificate payload ID and the payload
+	// itself, given the domain ID.
+	RetrieveDomainCertificatesIDs(ctx context.Context, id common.SHA256Output) (
+		certIDsID *common.SHA256Output, certIDs []byte, err error)
+
+	// RetrieveCertificatePayloads returns the payload for each of the certificates identified
+	// by the passed ID.
+	RetrieveCertificatePayloads(ctx context.Context, IDs []*common.SHA256Output) ([][]byte, error)
+}
+
+type policies interface {
+	// CheckPoliciesExist returns a slice of true/false values. Each value indicates if
+	// the corresponding policy identified by its ID is already present in the DB.
+	CheckPoliciesExist(ctx context.Context, ids []*common.SHA256Output) ([]bool, error)
+
+	UpdatePolicies(ctx context.Context, ids, parents []*common.SHA256Output,
+		expirations []*time.Time, payloads [][]byte) error
+
+	// UpdateDomainPolicies updates the domain_policies table with new entries.
+	UpdateDomainPolicies(ctx context.Context, domainIDs, policyIDs []*common.SHA256Output) error
+
+	// RetrieveDomainPoliciesIDs returns the policy related payload for a given domain.
+	// This includes the RPCs, SPs, etc.
+	RetrieveDomainPoliciesIDs(ctx context.Context, id common.SHA256Output) (
+		payloadID *common.SHA256Output, payload []byte, err error)
+
+	// RetrievePolicyPayloads returns the payload for each of the policies identified
+	// by the passed ID.
+	RetrievePolicyPayloads(ctx context.Context, IDs []*common.SHA256Output) ([][]byte, error)
+}
+
 type Conn interface {
+	smt
+	dirty
+	certs
+	policies
+
+	// TODO(juagargi) remove the temporary access to the sql.DB object
 	DB() *sql.DB
 	// Close closes the connection.
 	Close() error
 
 	// TruncateAllTables resets the DB to an initial state.
-	TruncateAllTables() error
+	TruncateAllTables(ctx context.Context) error
 
-	// DisableIndexing stops the indexing in the table.
-	DisableIndexing(table string) error
-
-	// DisableIndexing starts the indexing in the table.
-	EnableIndexing(table string) error
-
-	// ************************************************************
-	//              Function for Tree table
-	// ************************************************************
-
-	// RetrieveTreeNode: Retrieve one key-value pair from Tree table.
-	RetrieveTreeNode(ctx context.Context, id common.SHA256Output) ([]byte, error)
-
-	// UpdateTreeNodes: Update a list of key-value pairs in Tree table
-	UpdateTreeNodes(ctx context.Context, keyValuePairs []*KeyValuePair) (int, error)
-
-	// DeleteTreeNodes: Delete a list of key-value pairs in Tree table
-	DeleteTreeNodes(ctx context.Context, keys []common.SHA256Output) (int, error)
-
-	// ************************************************************
-	//             Function for DomainEntries table
-	// ************************************************************
-
-	// RetrieveDomainEntry: Retrieve one key-value pair from domain entries table
-	RetrieveDomainEntry(ctx context.Context, id common.SHA256Output) ([]byte, error)
+	// UpdateDomains updates the domains and dirty tables.
+	UpdateDomains(ctx context.Context, domainIDs []*common.SHA256Output, domainNames []string) error
 
 	// RetrieveDomainEntries: Retrieve a list of domain entries table
-	RetrieveDomainEntries(ctx context.Context, id []common.SHA256Output) ([]*KeyValuePair, error)
-
-	// UpdateDomainEntries: Update a list of key-value pairs in domain entries table
-	UpdateDomainEntries(ctx context.Context, keyValuePairs []*KeyValuePair) (int, error)
-
-	// ************************************************************
-	//           Function for Updates table
-	// ************************************************************
-
-	// CountUpdatedDomains: Retrieve number of updated domains during this updates.
-	CountUpdatedDomains(ctx context.Context) (int, error) // TODO(juagargi) review usage
-
-	// AddUpdatedDomains: Add a list of hashes of updated domain into the updates table. If key exists, ignore it.
-	AddUpdatedDomains(ctx context.Context, keys []common.SHA256Output) (int, error)
-
-	// TODO(yongzhe): investigate whether perQueryLimit is necessary
-	// RetrieveUpdatedDomains: Retrieve all updated domain hashes from update table
-	RetrieveUpdatedDomains(ctx context.Context, perQueryLimit int) ([]common.SHA256Output, error)
-
-	// RemoveAllUpdatedDomains: Truncate updates table; Called after updating is finished
-	RemoveAllUpdatedDomains(ctx context.Context) error
-
-	// UpdatedDomains returns a channel of batches of updated domains.
-	// A batch will have a implementation dependent size.
-	// Each updated domain represents the SHA256 of the textual domain that was updated and
-	// present in the `updates` table.
-	UpdatedDomains() (chan []common.SHA256Output, chan error)
+	RetrieveDomainEntries(ctx context.Context, id []*common.SHA256Output) ([]*KeyValuePair, error)
 }

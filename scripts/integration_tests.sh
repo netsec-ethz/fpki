@@ -12,7 +12,6 @@ PCA_EXIT_CPDE="succeed"
 POLICY_EXIT_CPDE="succeed"
 MAP_EXIT_CPDE="succeed"
 SMT_EXIT_CPDE="succeed"
-DB_EXIT_CPDE="succeed"
 GRPC_EXIT_CPDE="succeed"
 
 RESULT="succeed"
@@ -44,13 +43,6 @@ then
 	SMT_EXIT_CPDE="failed"
 fi
 
-echo "#################         Running db test                    ###################"
-./bin/test_db
-if [ $? -ne 0 ]
-then
-	DB_EXIT_CPDE="failed"
-fi
-
 echo "#################         Running grpc test                    ###################"
 ./bin/test_grpc
 if [ $? -ne 0 ]
@@ -63,11 +55,12 @@ echo " Test: domainowner_pca_policlog_interaction:        ${PCA_EXIT_CPDE}"
 echo " Test: policylog_interaction:                       ${POLICY_EXIT_CPDE}"
 echo " Test: mapserver:                                   ${MAP_EXIT_CPDE}"
 echo " Test: sparse merkle tree:                          ${SMT_EXIT_CPDE}"
-echo " Test: db:                                          ${DB_EXIT_CPDE}"
 echo " Test: grpc:                                        ${GRPC_EXIT_CPDE}"
 
 echo " **********************************     Overall Result      ***************************************    "
-if [ $PCA_EXIT_CPDE != "succeed" ] || [ $POLICY_EXIT_CPDE != "succeed" ] || [ $MAP_EXIT_CPDE != "succeed" ] || [ $SMT_EXIT_CPDE != "succeed" ] || [ $DB_EXIT_CPDE != "succeed" ]  || [ $GRPC_EXIT_CPDE != "succeed" ] 
+if [ $PCA_EXIT_CPDE != "succeed" ] || [ $POLICY_EXIT_CPDE != "succeed" ] ||
+   [ $MAP_EXIT_CPDE != "succeed" ] || [ $SMT_EXIT_CPDE != "succeed" ] ||
+   [ $GRPC_EXIT_CPDE != "succeed" ]
 then
 	RESULT="failed"
 fi

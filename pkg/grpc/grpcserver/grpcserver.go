@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 
+	"github.com/netsec-ethz/fpki/pkg/db"
 	pb "github.com/netsec-ethz/fpki/pkg/grpc/query"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/responder"
@@ -25,7 +26,7 @@ type ResponderServer struct {
 }
 
 type GRPCProofs struct {
-	Proofs []common.MapServerResponse
+	Proofs []*common.MapServerResponse
 }
 
 // QueryMapEntries: return value according to key
@@ -48,8 +49,10 @@ func (server ResponderServer) QueryMapEntries(ctx context.Context, in *pb.MapCli
 	}, nil
 }
 
-func NewGRPCServer(ctx context.Context, root []byte, cacheHeight int, mapserverConfigPath string) (*ResponderServer, error) {
-	responder, err := responder.NewMapResponder(ctx, root, cacheHeight, mapserverConfigPath)
+func NewGRPCServer(ctx context.Context, mapserverConfigPath string,
+	conn db.Conn) (*ResponderServer, error) {
+
+	responder, err := responder.NewMapResponder(ctx, mapserverConfigPath, conn)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +61,7 @@ func NewGRPCServer(ctx context.Context, root []byte, cacheHeight int, mapserverC
 }
 
 func (s *ResponderServer) Close() error {
-	return s.responder.Close()
+	return nil
 }
 
 func (server *ResponderServer) StartWork(terminateChan chan byte, port int) error {

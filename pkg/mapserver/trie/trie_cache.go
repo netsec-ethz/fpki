@@ -29,7 +29,7 @@ type CacheDB struct {
 	wholeCacheDBLock sync.RWMutex
 
 	// dbConn is the conn to mysql db
-	Store       db.Conn
+	Store       DBConn
 	readLimiter chan struct{}
 
 	// nodes to be removed from db
@@ -37,8 +37,15 @@ type CacheDB struct {
 	removeMux   sync.RWMutex
 }
 
+type DBConn interface {
+	Close() error
+	RetrieveTreeNode(ctx context.Context, key common.SHA256Output) ([]byte, error)
+	UpdateTreeNodes(ctx context.Context, keyValuePairs []*db.KeyValuePair) (int, error)
+	DeleteTreeNodes(ctx context.Context, keys []common.SHA256Output) (int, error)
+}
+
 // NewCacheDB: return a cached db
-func NewCacheDB(store db.Conn) (*CacheDB, error) {
+func NewCacheDB(store DBConn) (*CacheDB, error) {
 	return &CacheDB{
 		liveCache:    make(map[Hash][][]byte),
 		updatedNodes: make(map[Hash][][]byte),
@@ -98,7 +105,7 @@ func (cacheDB *CacheDB) getValueLimit(ctx context.Context, key []byte) ([]byte, 
 }
 
 func (cacheDB *CacheDB) getValueLockFree(ctx context.Context, key []byte) ([]byte, error) {
-	value, err := cacheDB.Store.RetrieveTreeNode(ctx, *(*[32]byte)(key))
+	value, err := cacheDB.Store.RetrieveTreeNode(ctx, *(*common.SHA256Output)(key))
 	if err != nil {
 		return nil, fmt.Errorf("getValue | RetrieveOneKeyValuePair | %w", err)
 	}
@@ -121,11 +128,15 @@ func serializeBatch(batch [][]byte) []byte {
 	return serialized
 }
 
-//**************************************************
-//          functions for live cache
-//**************************************************
+// **************************************************
+//
+//	functions for live cache
+//
+// **************************************************
 // GetLiveCacheSize: get current size of live cache
 func (db *CacheDB) GetLiveCacheSize() int {
+	db.liveMux.RLock()
+	defer db.liveMux.RUnlock()
 	return len(db.liveCache)
 }
 
@@ -151,9 +162,11 @@ func (db *CacheDB) getLiveCache(node common.SHA256Output) ([][]byte, bool) {
 	return val, exists
 }
 
-//**************************************************
-//          functions for updated nodes
-//**************************************************
+// **************************************************
+//
+//	functions for updated nodes
+//
+// **************************************************
 // getUpdatedNodes: get one node from updated nodes
 func (db *CacheDB) getUpdatedNodes(node common.SHA256Output) ([][]byte, bool) {
 	db.updatedMux.RLock()

@@ -1,146 +1,172 @@
-package common
+package common_test
 
 import (
-	"os"
-	"path"
+	"bytes"
+	"strings"
 	"testing"
-	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/tests/random"
 )
 
-//------------------------------------------------------
-//           tests for json.go
-//------------------------------------------------------
-
-// TestEncodeAndDecodeOfSPT: SPT -> files -> SPT
-func TestEncodeAndDecodeOfSPT(t *testing.T) {
-	tempFile := path.Join("./", "spt.json")
-	defer os.Remove(tempFile)
-
-	spt := &SPT{
-		Version:         12314,
-		Subject:         "you are funny",
-		CAName:          "hihihihihihi",
-		LogID:           123412,
-		CertType:        0x11,
-		AddedTS:         time.Now(),
-		STH:             generateRandomBytes(),
-		PoI:             generateRandomBytesArray(),
-		STHSerialNumber: 7689,
-		Signature:       generateRandomBytes(),
+// TestPolicyObjects checks that the structure types in the test cases can be converted to JSON and
+// back, using the functions ToJSON and FromJSON.
+// It checks after deserialization that the objects are equal.
+func TestPolicyObjects(t *testing.T) {
+	cases := map[string]struct {
+		data any
+	}{
+		"rpcPtr": {
+			data: random.RandomPolicyCertificate(t),
+		},
+		"rpcValue": {
+			data: *random.RandomPolicyCertificate(t),
+		},
+		"pcsr": {
+			data: random.RandomPolCertSignRequest(t),
+		},
+		"pcrev": {
+			data: random.RandomPolicyCertificateRevocation(t),
+		},
+		"pcrevsr": {
+			data: random.RandomPolicyCertificateRevocationSigningRequest(t),
+		},
+		"spt": {
+			data: *random.RandomSignedPolicyCertificateTimestamp(t),
+		},
+		"list": {
+			data: []any{
+				random.RandomPolicyCertificate(t),
+				random.RandomPolCertSignRequest(t),
+				random.RandomSignedPolicyCertificateTimestamp(t),
+				randomTrillianProof(t),
+				randomLogRootV1(t),
+			},
+		},
+		"list_embedded": {
+			data: []any{
+				random.RandomPolicyCertificate(t),
+				[]any{
+					random.RandomPolicyCertificate(t),
+					random.RandomSignedPolicyCertificateTimestamp(t),
+				},
+				[]any{
+					randomTrillianProof(t),
+					randomTrillianProof(t),
+				},
+			},
+		},
+		"multiListPtr": {
+			data: &[]any{
+				random.RandomPolicyCertificate(t),
+				*random.RandomPolicyCertificate(t),
+				[]any{
+					random.RandomPolicyCertificate(t),
+					*random.RandomPolicyCertificate(t),
+					&[]any{
+						random.RandomSignedPolicyCertificateTimestamp(t),
+						*random.RandomSignedPolicyCertificateTimestamp(t),
+					},
+				},
+			},
+		},
 	}
-
-	err := JsonStructToFile(spt, tempFile)
-	require.NoError(t, err, "Json Struct To File error")
-
-	deserializedSPT := &SPT{}
-
-	err = JsonFileToSPT(deserializedSPT, tempFile)
-	require.NoError(t, err, "Json File To SPT error")
-
-	assert.True(t, deserializedSPT.Equal(*spt), "SPT serialized and deserialized error")
+	for name, tc := range cases {
+		name, tc := name, tc
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			// Serialize.
+			data, err := common.ToJSON(tc.data)
+			require.NoError(t, err)
+			// Deserialize.
+			deserialized, err := common.FromJSON(data, common.WithSkipCopyJSONIntoPolicyObjects)
+			require.NoError(t, err)
+			// Compare.
+			require.Equal(t, tc.data, deserialized)
+		})
+	}
 }
 
-// TestEncodeAndDecodeOfRPC: RPC -> files -> RPC
-func TestEncodeAndDecodeOfRPC(t *testing.T) {
-	tempFile := path.Join("./", "rpc.json")
-	defer os.Remove(tempFile)
-
-	spt1 := &SPT{
-		Version:         12313,
-		Subject:         "hihihihihhi",
-		CAName:          "I'm honest CA, nice to meet you",
-		LogID:           1231323,
-		CertType:        0x11,
-		AddedTS:         time.Now(),
-		STH:             generateRandomBytes(),
-		PoI:             generateRandomBytesArray(),
-		STHSerialNumber: 131678,
-		Signature:       generateRandomBytes(),
+// TestPolicyObjectBaseRaw checks that the Raw field of the PolicyObjectBase for any PolicyObject
+// that is rebuilt using our functions contains the original JSON.
+func TestPolicyObjectBaseRaw(t *testing.T) {
+	// Empty RPC to JSON.
+	testCases := map[string]struct {
+		obj            any                    // Thing to serialize and deserialize and check Raw.
+		rawElemsCount  int                    // Expected number of Raw elements inside.
+		getRawElemsFcn func(obj any) [][]byte // Return the Raw components of this thing.
+	}{
+		"rpc": {
+			obj:           random.RandomPolicyCertificate(t),
+			rawElemsCount: 1,
+			getRawElemsFcn: func(obj any) [][]byte {
+				rpc := obj.(*common.PolicyCertificate)
+				return [][]byte{rpc.JSONField}
+			},
+		},
+		"spPtr": {
+			obj:           random.RandomPolicyCertificate(t),
+			rawElemsCount: 1,
+			getRawElemsFcn: func(obj any) [][]byte {
+				sp := obj.(*common.PolicyCertificate)
+				return [][]byte{sp.JSONField}
+			},
+		},
+		"spValue": {
+			obj:           *random.RandomPolicyCertificate(t),
+			rawElemsCount: 1,
+			getRawElemsFcn: func(obj any) [][]byte {
+				sp := obj.(common.PolicyCertificate)
+				return [][]byte{sp.JSONField}
+			},
+		},
+		"list": {
+			obj: []any{
+				random.RandomPolicyCertificate(t),
+				random.RandomPolCertSignRequest(t),
+			},
+			rawElemsCount: 2,
+			getRawElemsFcn: func(obj any) [][]byte {
+				l := obj.([]any)
+				return [][]byte{
+					l[0].(*common.PolicyCertificate).JSONField,
+					l[1].(*common.PolicyCertificateSigningRequest).JSONField,
+				}
+			},
+		},
 	}
-
-	spt2 := &SPT{
-		Version:         12368713,
-		Subject:         "hohohoho",
-		CAName:          "I'm malicious CA, nice to meet you",
-		LogID:           1324123,
-		CertType:        0x21,
-		AddedTS:         time.Now(),
-		STH:             generateRandomBytes(),
-		PoI:             generateRandomBytesArray(),
-		STHSerialNumber: 114378,
-		Signature:       generateRandomBytes(),
+	for name, tc := range testCases {
+		name, tc := name, tc
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			// Serialize.
+			data, err := common.ToJSON(tc.obj)
+			require.NoError(t, err)
+			// Deserialize.
+			obj, err := common.FromJSON(data)
+			require.NoError(t, err)
+			t.Logf("This object is of type %T", obj)
+			raws := tc.getRawElemsFcn(obj)
+			require.Len(t, raws, tc.rawElemsCount)
+			// Log facts about this object for debug purposes in case the test fails.
+			allRaw := make([]string, tc.rawElemsCount)
+			for i, raw := range raws {
+				allRaw[i] = string(raw)
+			}
+			t.Logf("This object has this JSON:\n----------\n%s\n----------",
+				strings.Join(allRaw, ""))
+			// Each one of the raw bytes should be a substring of the JSON data, in order.
+			offset := 0
+			for i, raw := range raws {
+				require.NotEmpty(t, raw, "bad raw JSON for subelement %d", i)
+				idx := bytes.Index(data[offset:], raw) // if not found, -1 is returned
+				require.GreaterOrEqual(t, idx, 0)
+				offset = idx
+			}
+			// We could check that the complete JSON is an aggregation of the elements' JSON plus
+			// maybe some "list" indicator (sometimes).
+		})
 	}
-
-	rpc := &RPC{
-		SerialNumber:       1729381,
-		Subject:            "bad domain",
-		Version:            1729381,
-		PublicKeyAlgorithm: RSA,
-		PublicKey:          generateRandomBytes(),
-		NotBefore:          time.Now(),
-		NotAfter:           time.Now(),
-		CAName:             "bad domain",
-		SignatureAlgorithm: SHA256,
-		TimeStamp:          time.Now(),
-		PRCSignature:       generateRandomBytes(),
-		CASignature:        generateRandomBytes(),
-		SPTs:               []SPT{*spt1, *spt2},
-	}
-
-	err := JsonStructToFile(rpc, tempFile)
-	require.NoError(t, err, "Json Struct To File error")
-
-	deserializedSPT := &RPC{}
-
-	err = JsonFileToRPC(deserializedSPT, tempFile)
-	require.NoError(t, err, "Json File To RPC error")
-
-	assert.True(t, deserializedSPT.Equal(rpc), "RPC serialized and deserialized error")
-}
-
-// TestEncodeAndDecodeOfPC: PC -> file -> PC
-func TestEncodeAndDecodeOfPC(t *testing.T) {
-	tempFile := path.Join("./", "pc.json")
-	defer os.Remove(tempFile)
-
-	spt := SPT{
-		Version:         12368713,
-		Subject:         "hohohoho",
-		CAName:          "I'm malicious CA, nice to meet you",
-		LogID:           1324123,
-		CertType:        0x21,
-		AddedTS:         time.Now(),
-		STH:             generateRandomBytes(),
-		PoI:             generateRandomBytesArray(),
-		STHSerialNumber: 114378,
-		Signature:       generateRandomBytes(),
-	}
-
-	policy := Policy{
-		TrustedCA: []string{"my CA"},
-	}
-
-	pc := SP{
-		Policies:          policy,
-		TimeStamp:         time.Now(),
-		Subject:           "hihihi",
-		CAName:            "hihihi",
-		SerialNumber:      1,
-		CASignature:       []byte{1, 4, 2, 1, 4},
-		RootCertSignature: []byte{1, 4, 2, 1, 4},
-		SPTs:              []SPT{spt},
-	}
-
-	err := JsonStructToFile(&pc, tempFile)
-	require.NoError(t, err, "Json Struct To File error")
-
-	deserializedPC := &SP{}
-
-	err = JsonFileToSP(deserializedPC, tempFile)
-	require.NoError(t, err, "Json File To SPT error")
-
-	assert.True(t, deserializedPC.Equal(pc), "PC serialized and deserialized error")
 }

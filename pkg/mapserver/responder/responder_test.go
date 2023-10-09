@@ -2,207 +2,166 @@ package responder
 
 import (
 	"context"
-	"io/ioutil"
+	"encoding/hex"
+	"math/rand"
 	"testing"
 	"time"
 
-	"github.com/google/certificate-transparency-go/x509"
-	"github.com/netsec-ethz/fpki/pkg/common"
-	"github.com/netsec-ethz/fpki/pkg/db"
-	mapcommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/internal"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/logpicker"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/prover"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 	"github.com/stretchr/testify/require"
+
+	"github.com/netsec-ethz/fpki/pkg/common"
+	mapcommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/prover"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
+	"github.com/netsec-ethz/fpki/pkg/tests/random"
+	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
+	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
-// TestGetProof: test GetProof()
-func TestGetProof(t *testing.T) {
-	certs := []*x509.Certificate{}
-
-	// load test certs
-	files, err := ioutil.ReadDir("../updater/testdata/certs/")
-	require.NoError(t, err)
-
-	for _, file := range files {
-		cert, err := common.CTX509CertFromFile("../updater/testdata/certs/" + file.Name())
-		require.NoError(t, err)
-		certs = append(certs, cert)
-	}
-
-	// get mock responder
-	responder := getMockResponder(t, certs)
-	require.NoError(t, err)
-
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+func TestNewResponder(t *testing.T) {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
 	defer cancelF()
 
-	for _, cert := range certs {
-		proofs, err := responder.GetProof(ctx, cert.Subject.CommonName)
-		require.NoError(t, err)
+	// Configure a test DB.
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
 
-		checkProof(t, *cert, proofs)
-	}
+	// Connect to the DB.
+	conn, err := testdb.Connect(config)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	// Create a responder (root will be nil).
+	responder, err := NewMapResponder(ctx, "./testdata/mapserver_config.json", conn)
+	require.NoError(t, err)
+	// Check its tree head is nil.
+	require.Nil(t, responder.smt.Root)
+	// Check its STH is not nil.
+	sth := responder.SignedTreeHead()
+	require.Equal(t, 8*common.SHA256Size, len(sth),
+		"bad length of STH: %s", hex.EncodeToString(sth))
+
+	// Repeat test with a non nil root.
+	// Insert a mockup root.
+	root := common.SHA256Hash32Bytes([]byte{0})
+	err = conn.SaveRoot(ctx, &root)
+	require.NoError(t, err)
+	// Create a responder (root will NOT be nil).
+	responder, err = NewMapResponder(ctx, "./testdata/mapserver_config.json", conn)
+	require.NoError(t, err)
+	// Check its tree head is NOT nil.
+	require.NotNil(t, responder.smt.Root)
+	// Check its STH is not nil.
+	sth2 := responder.SignedTreeHead()
+	require.Equal(t, 8*common.SHA256Size, len(sth2),
+		"bad length of STH: %s", hex.EncodeToString(sth2))
 }
 
-func TestResponderWithPoP(t *testing.T) {
-	db.TruncateAllTablesForTest(t)
+// TestProofWithPoP checks for 3 domains: a.com (certs), b.com (policies), c.com (both),
+// that the proofs of presence work correctly, by ingesting all the material, updating the DB,
+// creating a responder, and checking those domains.
+func TestProof(t *testing.T) {
+	// Because we are using "random" bytes deterministically here, set a fixed seed.
+	rand.Seed(1)
 
-	mapUpdater, err := updater.NewMapUpdater(nil, 233)
-	require.NoError(t, err)
-	ctx, cancelF := context.WithTimeout(context.Background(), 15*time.Minute)
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
 	defer cancelF()
 
-	mapUpdater.Fetcher.BatchSize = 10000
-	const baseCTSize = 2 * 1000
-	const count = 2
-	mapUpdater.StartFetching("https://ct.googleapis.com/logs/argon2021",
-		baseCTSize, baseCTSize+count-1)
+	// Configure a test DB.
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
 
-	n, err := mapUpdater.UpdateNextBatch(ctx)
+	// Connect to the DB.
+	conn, err := testdb.Connect(config)
 	require.NoError(t, err)
-	require.Equal(t, n, count)
+	defer conn.Close()
 
-	n, err = mapUpdater.UpdateNextBatch(ctx)
+	// a.com
+	certs, certIDs, parentCertIDs, names := random.BuildTestRandomCertHierarchy(t, "a.com")
+	err = updater.UpdateWithKeepExisting(ctx, conn, names, certIDs, parentCertIDs, certs,
+		util.ExtractExpirations(certs), nil)
 	require.NoError(t, err)
-	require.Equal(t, n, 0)
+	certsA := certs
 
-	err = mapUpdater.CommitSMTChanges(ctx)
+	// b.com
+	policies := random.BuildTestRandomPolicyHierarchy(t, "b.com")
+	err = updater.UpdateWithKeepExisting(ctx, conn, nil, nil, nil, nil, nil, policies)
 	require.NoError(t, err)
+	policiesB := policies
 
-	root := mapUpdater.GetRoot()
-	err = mapUpdater.Close()
+	// c.com
+	certs, certIDs, parentCertIDs, names = random.BuildTestRandomCertHierarchy(t, "c.com")
+	policies = random.BuildTestRandomPolicyHierarchy(t, "c.com")
+	err = updater.UpdateWithKeepExisting(ctx, conn, names, certIDs, parentCertIDs, certs,
+		util.ExtractExpirations(certs), policies)
 	require.NoError(t, err)
+	certsC := certs
 
-	// manually get those certificates and make a list of the common names
-	// https://ct.googleapis.com/logs/argon2021/ct/v1/get-entries?start=2000&end=2001
-	fetcher := logpicker.LogFetcher{
-		URL:         "https://ct.googleapis.com/logs/argon2021",
-		Start:       baseCTSize,
-		End:         baseCTSize + count - 1,
-		WorkerCount: 1,
-		BatchSize:   20,
-	}
-	certs, err := fetcher.FetchAllCertificates(ctx)
-	require.NoError(t, err)
-	require.Len(t, certs, count)
-
-	// create responder and request proof for those names
-	responder, err := NewMapResponder(ctx, root, 233, "./testdata/mapserver_config.json")
-	require.NoError(t, err)
-	for _, cert := range certs {
-		responses, err := responder.GetProof(ctx, cert.Subject.CommonName)
-		require.NoError(t, err)
-
-		for _, r := range responses {
-			t.Logf("%v : %s", r.PoI.ProofType, r.Domain)
-		}
-
-		require.NotEmpty(t, responses)
-		checkProof(t, *cert, responses)
-		// ensure that the response for the whole name is a PoP
-		require.Equal(t, mapcommon.PoP, responses[len(responses)-1].PoI.ProofType,
-			"PoP not found for %s", cert.Subject.CommonName)
-	}
-}
-
-// TestGetDomainProof: test getDomainProof()
-func TestGetDomainProof(t *testing.T) {
-	certs := []*x509.Certificate{}
-
-	// load test certs
-	files, err := ioutil.ReadDir("../updater/testdata/certs/")
+	// Coalescing of payloads.
+	err = updater.CoalescePayloadsForDirtyDomains(ctx, conn)
 	require.NoError(t, err)
 
-	for _, file := range files {
-		cert, err := common.CTX509CertFromFile("../updater/testdata/certs/" + file.Name())
-		require.NoError(t, err)
-		certs = append(certs, cert)
-	}
-
-	responderWorker := getMockResponder(t, certs)
-
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
-	defer cancelF()
-
-	for _, cert := range certs {
-		proofs, err := responderWorker.getProof(ctx, cert.Subject.CommonName)
-		require.NoError(t, err)
-
-		checkProof(t, *cert, proofs)
-	}
-}
-
-// getMockResponder builds a mock responder.
-func getMockResponder(t require.TestingT, certs []*x509.Certificate) *MapResponder {
-	// update the certs, and get the mock db of SMT and db
-	conn, root, err := getUpdatedUpdater(t, certs)
+	// Create/update the SMT.
+	err = updater.UpdateSMT(ctx, conn, 32)
 	require.NoError(t, err)
 
-	smt, err := trie.NewTrie(root, common.SHA256Hash, conn)
-	require.NoError(t, err)
-	smt.CacheHeightLimit = 233
-
-	return newMapResponder(conn, smt)
-}
-
-// getUpdatedUpdater builds an updater using a mock db, updates the certificates
-// and returns the mock db.
-func getUpdatedUpdater(t require.TestingT, certs []*x509.Certificate) (db.Conn, []byte, error) {
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
-	defer cancelF()
-
-	conn := internal.NewMockDB()
-	smt, err := trie.NewTrie(nil, common.SHA256Hash, conn)
-	require.NoError(t, err)
-	smt.CacheHeightLimit = 233
-
-	updater := &updater.UpdaterTestAdapter{}
-	updater.SetDBConn(conn)
-	updater.SetSMT(smt)
-
-	// Update the db using the certs and empty chains:
-	emptyChains := make([][]*x509.Certificate, len(certs))
-	err = updater.UpdateCerts(ctx, certs, emptyChains)
+	// And cleanup dirty, flagging the end of the update cycle.
+	err = conn.CleanupDirty(ctx)
 	require.NoError(t, err)
 
-	err = updater.CommitSMTChanges(ctx)
+	// Create a responder.
+	responder, err := NewMapResponder(ctx, "./testdata/mapserver_config.json", conn)
 	require.NoError(t, err)
 
-	return conn, updater.SMT().Root, nil
+	// Check a.com:
+	proofChain, err := responder.GetProof(ctx, "a.com")
+	require.NoError(t, err)
+	id := common.SHA256Hash32Bytes(certsA[0].Raw)
+	checkProof(t, &id, proofChain)
+
+	// Check b.com:
+	proofChain, err = responder.GetProof(ctx, "b.com")
+	require.NoError(t, err)
+	id = common.SHA256Hash32Bytes(policiesB[0].Raw())
+	checkProof(t, &id, proofChain)
+
+	// Check c.com:
+	proofChain, err = responder.GetProof(ctx, "c.com")
+	require.NoError(t, err)
+	id = common.SHA256Hash32Bytes(certsC[0].Raw)
+	checkProof(t, &id, proofChain)
+
+	// Now check an absent domain.
+	proofChain, err = responder.GetProof(ctx, "absentdomain.domain")
+	require.NoError(t, err)
+	checkProof(t, nil, proofChain)
 }
 
 // checkProof checks the proof to be correct.
-func checkProof(t *testing.T, cert x509.Certificate, proofs []mapcommon.MapServerResponse) {
+func checkProof(t *testing.T, payloadID *common.SHA256Output, proofs []*mapcommon.MapServerResponse) {
 	t.Helper()
-	caName := cert.Issuer.String()
-	require.Equal(t, mapcommon.PoP, proofs[len(proofs)-1].PoI.ProofType,
-		"PoP not found for %s", cert.Subject.CommonName)
+	// Determine if we are checking an absence or presence.
+	if payloadID == nil {
+		// Absence.
+		require.Equal(t, mapcommon.PoA, proofs[len(proofs)-1].PoI.ProofType, "PoA not found")
+	} else {
+		// Check the last component is present.
+		require.Equal(t, mapcommon.PoP, proofs[len(proofs)-1].PoI.ProofType, "PoP not found")
+	}
 	for _, proof := range proofs {
-		require.Contains(t, cert.Subject.CommonName, proof.Domain)
 		proofType, isCorrect, err := prover.VerifyProofByDomain(proof)
 		require.NoError(t, err)
 		require.True(t, isCorrect)
 
 		if proofType == mapcommon.PoA {
-			require.Empty(t, proof.DomainEntryBytes)
+			require.Empty(t, proof.DomainEntry.CertIDs)
+			require.Empty(t, proof.DomainEntry.PolicyIDs)
 		}
 		if proofType == mapcommon.PoP {
-			domainEntry, err := mapcommon.DeserializeDomainEntry(proof.DomainEntryBytes)
-			require.NoError(t, err)
-			// get the correct CA entry
-			for _, caEntry := range domainEntry.CAEntry {
-				if caEntry.CAName == caName {
-					// check if the cert is in the CA entry
-					for _, certRaw := range caEntry.DomainCerts {
-						require.Equal(t, certRaw, cert.Raw)
-						return
-					}
-				}
-			}
+			// The ID passed as argument must be one of the IDs present in the domain entry.
+			allIDs := append(common.BytesToIDs(proof.DomainEntry.CertIDs),
+				common.BytesToIDs(proof.DomainEntry.PolicyIDs)...)
+			require.Contains(t, allIDs, payloadID)
 		}
 	}
-	require.Fail(t, "cert/CA not found")
 }

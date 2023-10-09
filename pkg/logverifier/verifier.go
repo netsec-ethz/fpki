@@ -5,7 +5,6 @@ import (
 
 	"github.com/google/trillian"
 	"github.com/google/trillian/types"
-	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/transparency-dev/merkle"
 	logProof "github.com/transparency-dev/merkle/proof"
 	"github.com/transparency-dev/merkle/rfc6962"
@@ -27,7 +26,7 @@ func NewLogVerifier(hasher merkle.LogHasher) *LogVerifier {
 	}
 }
 
-// HashLeaf: hash the input
+// HashLeaf hashes the input.
 func (logVerifier *LogVerifier) HashLeaf(input []byte) []byte {
 	return logVerifier.hasher.HashLeaf(input)
 }
@@ -82,84 +81,31 @@ func (c *LogVerifier) VerifyRoot(trusted *types.LogRootV1, newRoot *types.LogRoo
 
 // VerifyInclusionByHash verifies that the inclusion proof for the given Merkle leafHash
 // matches the given trusted root.
-func (c *LogVerifier) VerifyInclusionByHash(trusted *types.LogRootV1, leafHash []byte,
+func (c *LogVerifier) VerifyInclusionByHash(trustedRoot *types.LogRootV1, leafHash []byte,
 	proofs []*trillian.Proof) error {
-
-	switch {
-	case trusted == nil:
-		return fmt.Errorf("VerifyInclusionByHash() error: trusted == nil")
-	case proofs == nil:
-		return fmt.Errorf("VerifyInclusionByHash() error: proof == nil")
-	}
 
 	// As long as one proof is verified, the verification is successful.
 	// Proofs might contain multiple proofs for different leaves, while the content of each leaf
 	// is identical. Trillian will return all the proofs for one content.
 	// So one successful verification is enough.
 	for _, proof := range proofs {
-		if err := logProof.VerifyInclusion(c.hasher, uint64(proof.LeafIndex), trusted.TreeSize,
-			leafHash, proof.Hashes, trusted.RootHash); err == nil {
+		err := logProof.VerifyInclusion(c.hasher, uint64(proof.LeafIndex), trustedRoot.TreeSize,
+			leafHash, proof.Hashes, trustedRoot.RootHash)
 
+		if err == nil {
 			return nil
 		}
+		if _, ok := err.(logProof.RootMismatchError); !ok {
+			return fmt.Errorf("VerifyInclusionByHash | Unexpected error: %w", err)
+		}
+
+		// deleteme, err := logProof.RootFromInclusionProof(c.hasher, uint64(proof.LeafIndex), trustedRoot.TreeSize,
+		// 	leafHash, proof.Hashes)
+		// if err != nil {
+		// 	panic(err)
+		// }
+		// fmt.Printf("deleteme calcRoot = %s\n", base64.StdEncoding.EncodeToString(deleteme))
 	}
-	return fmt.Errorf("verification fails")
-}
-
-func (c *LogVerifier) VerifySP(sp *common.SP) error {
-	// Get the hash of the SP without SPTs:
-	SPTs := sp.SPTs
-	sp.SPTs = []common.SPT{}
-	serializedStruct, err := common.JsonStructToBytes(sp)
-	if err != nil {
-		return fmt.Errorf("VerifyRPC | JsonStructToBytes | %w", err)
-	}
-	bytesHash := c.HashLeaf([]byte(serializedStruct))
-	// Restore the SPTs to the SP:
-	sp.SPTs = SPTs
-
-	for _, p := range sp.SPTs {
-		sth, err := common.JsonBytesToLogRoot(p.STH)
-		if err != nil {
-			return fmt.Errorf("VerifySP | JsonBytesToLogRoot | %w", err)
-		}
-		poi, err := common.JsonBytesToPoI(p.PoI)
-		if err != nil {
-			return fmt.Errorf("VerifySP | JsonBytesToPoI | %w", err)
-		}
-
-		if err = c.VerifyInclusionByHash(sth, bytesHash, poi); err != nil {
-			return fmt.Errorf("VerifySP | VerifyInclusionByHash | %w", err)
-		}
-	}
-	return nil
-}
-
-func (c *LogVerifier) VerifyRPC(rpc *common.RPC) error {
-	// Get the hash of the RPC without SPTs:
-	SPTs := rpc.SPTs
-	rpc.SPTs = []common.SPT{}
-	serializedStruct, err := common.JsonStructToBytes(rpc)
-	if err != nil {
-		return fmt.Errorf("VerifyRPC | JsonStructToBytes | %w", err)
-	}
-	bytesHash := c.HashLeaf([]byte(serializedStruct))
-	// Restore the SPTs to the RPC:
-	rpc.SPTs = SPTs
-
-	for _, p := range rpc.SPTs {
-		sth, err := common.JsonBytesToLogRoot(p.STH)
-		if err != nil {
-			return fmt.Errorf("VerifyRPC | JsonBytesToLogRoot | %w", err)
-		}
-		poi, err := common.JsonBytesToPoI(p.PoI)
-		if err != nil {
-			return fmt.Errorf("VerifyRPC | JsonBytesToPoI | %w", err)
-		}
-
-		if err = c.VerifyInclusionByHash(sth, bytesHash, poi); err != nil {
-			return fmt.Errorf("VerifyRPC | VerifyInclusionByHash | %w", err)
-		}
-	}
-	return nil
+	// This is a logProof.RootMismatchError, aka different hash values.
+	return fmt.Errorf("verification failed: different hashes")
 }

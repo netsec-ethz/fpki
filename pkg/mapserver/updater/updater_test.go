@@ -2,183 +2,172 @@ package updater
 
 import (
 	"context"
-	"io/ioutil"
+	"encoding/hex"
+	"fmt"
+	"math/rand"
 	"testing"
 	"time"
 
-	"github.com/google/certificate-transparency-go/x509"
-	projectCommon "github.com/netsec-ethz/fpki/pkg/common"
-	"github.com/netsec-ethz/fpki/pkg/domain"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/common"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/internal"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/logpicker"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
+	ctx509 "github.com/google/certificate-transparency-go/x509"
+	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/tests/random"
+	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
+	"github.com/netsec-ethz/fpki/pkg/util"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// TestUpdateCerts: test updateCerts()
-func TestUpdateCerts(t *testing.T) {
-	smt, err := trie.NewTrie(nil, projectCommon.SHA256Hash, internal.NewMockDB())
-	require.NoError(t, err)
-	smt.CacheHeightLimit = 233
+// TestUpdateWithKeepExisting checks that the UpdateWithKeepExisting function can update a large
+// number of certificates and policy objects.
+func TestUpdateWithKeepExisting(t *testing.T) {
+	// Because we are using "random" bytes deterministically here, set a fixed seed.
+	rand.Seed(111)
 
-	updaterDB := internal.NewMockDB()
-	updater, err := getMockUpdater(smt, updaterDB)
-	require.NoError(t, err)
-
-	certs := []*x509.Certificate{}
-
-	// load test certs
-	files, err := ioutil.ReadDir("./testdata/certs/")
-	require.NoError(t, err, "ioutil.ReadDir")
-	for _, file := range files {
-		cert, err := projectCommon.CTX509CertFromFile("./testdata/certs/" + file.Name())
-		require.NoError(t, err, "projectCommon.CTX509CertFromFile")
-		certs = append(certs, cert)
-	}
-
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
 
-	// update the db using the certs
-	emptyCertChains := make([][]*x509.Certificate, len(certs))
-	err = updater.updateCerts(ctx, certs, emptyCertChains)
+	// Configure a test DB.
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	// Connect to the DB.
+	conn, err := testdb.Connect(config)
+	require.NoError(t, err)
+	defer conn.Close()
+
+	// leafCerts contains the names of the leaf certificates we will test.
+	leafCerts := []string{
+		"leaf.certs.com",
+		"example.certs.com",
+	}
+	// Add many more leaf certificates for the test.
+	for i := 0; i < 20000; i++ {
+		leafCerts = append(leafCerts, fmt.Sprintf("leaf-%d.auto.certs.com", i+1))
+	}
+
+	// Create a random certificate test hierarchy for each leaf.
+	var certs []*ctx509.Certificate
+	var certIDs, parentCertIDs []*common.SHA256Output
+	var certNames [][]string
+	for _, leaf := range leafCerts {
+		// Create two mock x509 chains on top of leaf:
+		certs2, certIDs2, parentCertIDs2, certNames2 := random.BuildTestRandomCertHierarchy(t, leaf)
+		certs = append(certs, certs2...)
+		certIDs = append(certIDs, certIDs2...)
+		parentCertIDs = append(parentCertIDs, parentCertIDs2...)
+		certNames = append(certNames, certNames2...)
+	}
+
+	// Ingest two mock policies.
+	pols := random.BuildTestRandomPolicyHierarchy(t, "a-domain-name.thing")
+
+	// Update with certificates and policies.
+	t0 := time.Now()
+	err = UpdateWithKeepExisting(ctx, conn, certNames, certIDs, parentCertIDs,
+		certs, util.ExtractExpirations(certs), pols)
+	require.NoError(t, err)
+	t.Logf("time needed to update %d certificates: %s", len(certIDs), time.Since(t0))
+
+	// Coalescing of payloads.
+	err = CoalescePayloadsForDirtyDomains(ctx, conn)
 	require.NoError(t, err)
 
-	// update table should be empty
-	assert.Equal(t, 0, len(updaterDB.UpdatesTable))
+	// Check the certificate coalescing: under leaf there must be 4 IDs, for the certs.
+	for i, leaf := range leafCerts {
+		domainID := common.SHA256Hash32Bytes([]byte(leaf))
+		// t.Logf("%s: %s", leaf, hex.EncodeToString(domainID[:]))
+		gotCertIDsID, gotCertIDs, err := conn.RetrieveDomainCertificatesIDs(ctx, domainID)
+		require.NoError(t, err)
+		expectedSize := common.SHA256Size * len(certs) / len(leafCerts)
+		require.Len(t, gotCertIDs, expectedSize, "bad length, should be %d but it's %d",
+			expectedSize, len(gotCertIDs))
+		// From the certificate IDs, grab the IDs corresponding to this leaf:
+		N := len(certIDs) / len(leafCerts) // IDs per leaf = total / leaf_count
+		expectedCertIDs, expectedCertIDsID := glueSortedIDsAndComputeItsID(certIDs[i*N : (i+1)*N])
+		// t.Logf("expectedCertIDs:\t%s\n", hex.EncodeToString(expectedCertIDs))
+		// t.Logf("gotCertIDs:     \t%s\n", hex.EncodeToString(gotCertIDs))
+		require.Equal(t, expectedCertIDs, gotCertIDs)
+		require.Equal(t, expectedCertIDsID, gotCertIDsID)
+	}
 
-	// check whether certs are correctly added to the db
-	for _, cert := range certs {
-		domains := domain.ExtractAffectedDomains(extractCertDomains(cert))
-
-		for _, domain := range domains {
-			domainHash := projectCommon.SHA256Hash32Bytes([]byte(domain))
-			assert.Contains(t, updaterDB.DomainEntriesTable, domainHash)
-			domainEntryBytes := updaterDB.DomainEntriesTable[domainHash]
-
-			domainEntry, err := common.DeserializeDomainEntry(domainEntryBytes)
-			require.NoError(t, err)
-
-			for _, caList := range domainEntry.CAEntry {
-				if caList.CAName != cert.Issuer.String() {
-					assert.NotContains(t, caList.DomainCerts, cert.Raw)
-				} else {
-					assert.Contains(t, caList.DomainCerts, cert.Raw)
-				}
-			}
-
-			// test if SMT response is correct
-			_, isPoP, _, _, err := smt.MerkleProof(ctx, domainHash[:])
-			assert.True(t, isPoP)
-			require.NoError(t, err)
-		}
+	// Check policy coalescing.
+	policiesPerName := make(map[string][]common.PolicyDocument, len(pols))
+	for _, pol := range pols {
+		policiesPerName[pol.Domain()] = append(policiesPerName[pol.Domain()], pol)
+	}
+	for name, policies := range policiesPerName {
+		id := common.SHA256Hash32Bytes([]byte(name))
+		gotPolIDsID, gotPolIDs, err := conn.RetrieveDomainPoliciesIDs(ctx, id)
+		require.NoError(t, err)
+		// For each sequence of policies, compute the ID of their JSON.
+		polIDs := computeIDsOfPolicies(policies)
+		expectedPolIDs, expectedPolIDsID := glueSortedIDsAndComputeItsID(polIDs)
+		t.Logf("expectedPolIDs: %s\n", hex.EncodeToString(expectedPolIDs))
+		require.Equal(t, expectedPolIDs, gotPolIDs)
+		require.Equal(t, expectedPolIDsID, gotPolIDsID)
 	}
 }
 
-// TestUpdateRPCAndPC: test updateRPCAndPC()
-func TestUpdateRPCAndPC(t *testing.T) {
-	pcList, rpcList, err := logpicker.GetPCAndRPC("./testdata/domain_list/domains.txt", 0, 0, 20)
-	require.NoError(t, err)
-
-	smt, err := trie.NewTrie(nil, projectCommon.SHA256Hash, internal.NewMockDB())
-	require.NoError(t, err)
-	smt.CacheHeightLimit = 233
-
-	updaterDB := internal.NewMockDB()
-	updater, err := getMockUpdater(smt, updaterDB)
-	require.NoError(t, err)
-
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
-	defer cancelF()
-
-	err = updater.updateRPCAndPC(ctx, pcList, rpcList)
-	require.NoError(t, err)
-
-	// check pc list in memory
-	for _, pc := range pcList {
-		domainHash := projectCommon.SHA256Hash32Bytes([]byte(pc.Subject))
-		assert.Contains(t, updaterDB.DomainEntriesTable, domainHash)
-		domainEntryBytes := updaterDB.DomainEntriesTable[domainHash]
-
-		domainEntry, err := common.DeserializeDomainEntry(domainEntryBytes)
-		require.NoError(t, err)
-
-		for _, caList := range domainEntry.CAEntry {
-			if caList.CAName != pc.CAName {
-				assert.Equal(t, pc, caList.CurrentPC)
-			} else {
-				assert.NotEqual(t, pc, caList.CurrentPC)
-			}
-		}
-
-		// test if SMT response is correct
-		_, isPoP, _, _, err := smt.MerkleProof(ctx, domainHash[:])
-		assert.True(t, isPoP)
-		require.NoError(t, err)
+func TestRunWhenFalse(t *testing.T) {
+	cases := map[string]struct {
+		presence   []bool
+		fromParams []int
+		toParams   []int
+	}{
+		"empty": {
+			fromParams: []int{},
+			toParams:   []int{},
+		},
+		"one": {
+			presence:   []bool{false},
+			fromParams: []int{0},
+			toParams:   []int{0},
+		},
+		"one_true": {
+			presence:   []bool{true},
+			fromParams: []int{},
+			toParams:   []int{},
+		},
+		"010": {
+			presence:   []bool{false, true, false},
+			fromParams: []int{0, 2},
+			toParams:   []int{0, 1},
+		},
 	}
-
-	// check rpc list in memory
-	for _, rpc := range rpcList {
-		domainHash := projectCommon.SHA256Hash32Bytes([]byte(rpc.Subject))
-		assert.Contains(t, updaterDB.DomainEntriesTable, domainHash)
-		domainEntryBytes := updaterDB.DomainEntriesTable[domainHash]
-
-		domainEntry, err := common.DeserializeDomainEntry(domainEntryBytes)
-		require.NoError(t, err)
-
-		for _, caList := range domainEntry.CAEntry {
-			if caList.CAName != rpc.CAName {
-				assert.Equal(t, rpc, caList.CurrentRPC)
-			} else {
-				assert.NotEqual(t, rpc, caList.CurrentRPC)
-			}
-		}
-
-		// test if SMT response is correct
-		_, isPoP, _, _, err := smt.MerkleProof(ctx, domainHash[:])
-		assert.True(t, isPoP)
-		require.NoError(t, err)
+	for name, tc := range cases {
+		name, tc := name, tc
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			gotTo := make([]int, 0)
+			gotFrom := make([]int, 0)
+			runWhenFalse(tc.presence, func(to, from int) {
+				gotTo = append(gotTo, to)
+				gotFrom = append(gotFrom, from)
+			})
+			assert.Equal(t, tc.fromParams, gotFrom)
+			assert.Equal(t, tc.toParams, gotTo)
+		})
 	}
 }
 
-// TestFetchUpdatedDomainHash: test fetchUpdatedDomainHash()
-func TestFetchUpdatedDomainHash(t *testing.T) {
-	smt, err := trie.NewTrie(nil, projectCommon.SHA256Hash, internal.NewMockDB())
-	require.NoError(t, err)
-	smt.CacheHeightLimit = 233
+func glueSortedIDsAndComputeItsID(IDs []*common.SHA256Output) ([]byte, *common.SHA256Output) {
+	gluedIDs := common.SortIDsAndGlue(IDs)
+	// Compute the hash of the glued IDs.
+	id := common.SHA256Hash32Bytes(gluedIDs)
+	return gluedIDs, &id
+}
 
-	updaterDB := internal.NewMockDB()
-	updater, err := getMockUpdater(smt, updaterDB)
-	require.NoError(t, err)
-
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
-	defer cancelF()
-
-	randomKeys := []projectCommon.SHA256Output{}
-	for i := 0; i < 15; i++ {
-		newRandomKey := getRandomHash()
-		updaterDB.UpdatesTable[newRandomKey] = struct{}{}
-		randomKeys = append(randomKeys, newRandomKey)
+func computeIDsOfPolicies(policies []common.PolicyDocument) []*common.SHA256Output {
+	set := make(map[common.SHA256Output]struct{}, len(policies))
+	for _, pol := range policies {
+		id := common.SHA256Hash32Bytes(pol.Raw())
+		set[id] = struct{}{}
 	}
 
-	// result is not important.
-	_, err = updater.fetchUpdatedDomainHash(ctx)
-	require.NoError(t, err)
-
-	// make sure the db is cleaned.
-	assert.Equal(t, 0, len(updaterDB.UpdatesTable))
-}
-
-func getRandomHash() projectCommon.SHA256Output {
-	return projectCommon.SHA256Hash32Bytes(generateRandomBytes(50))
-}
-
-// get a updater using mock db
-func getMockUpdater(smt *trie.Trie, updaterDB *internal.MockDB) (*MapUpdater, error) {
-	return &MapUpdater{
-		smt:    smt,
-		dbConn: updaterDB,
-	}, nil
+	IDs := make([]*common.SHA256Output, 0, len(set))
+	for k := range set {
+		k := k
+		IDs = append(IDs, &k)
+	}
+	return IDs
 }
