@@ -2,13 +2,12 @@
 
 
 create_new_db() {
-  set -e
 
-  DBNAME=$1
-  MYSQLCMD="mysql -u root"
+set -e
 
-
+DBNAME=$1
 MYSQLCMD="mysql -u root"
+
 
 CMD=$(cat <<EOF
 DROP DATABASE IF EXISTS $DBNAME;
