@@ -1,5 +1,7 @@
 # FPKI
 
+TODO: This information is old and outdated.
+
 ## Features
 
 - Issuance and logging of RPC (Root Policy Certificate)
