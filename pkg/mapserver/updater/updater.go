@@ -20,9 +20,10 @@ import (
 
 // MapUpdater: map updater. It is responsible for updating the tree, and writing to db
 type MapUpdater struct {
-	Fetcher          logfetcher.Fetcher
-	Conn             db.Conn
-	lastUpdatedIndex int64
+	Fetcher   logfetcher.Fetcher
+	Conn      db.Conn
+	lastState logfetcher.State // last known server status
+	currState logfetcher.State // the current status
 	// Don't use a Trie in memory. The updater just creates one when needed and disposes of it
 	// afterwards.
 }
@@ -46,13 +47,6 @@ func NewMapUpdater(config *db.Configuration, url string) (*MapUpdater, error) {
 	}, nil
 }
 
-// StartFetching will initiate the CT logs fetching process in the background, trying to
-// obtain the next batch of certificates and have it ready for the next update.
-func (u *MapUpdater) StartFetching(startIndex, endIndex int64) {
-	u.lastUpdatedIndex = startIndex - 1
-	u.Fetcher.StartFetching(startIndex, endIndex)
-}
-
 func (u *MapUpdater) StopFetching() {
 	u.Fetcher.StopFetching()
 }
@@ -65,18 +59,24 @@ func (u *MapUpdater) StartFetchingRemaining() error {
 	defer cancelF()
 
 	url := u.Fetcher.URL()
-	lastIndex, err := u.Conn.LastCertIndexWritten(ctx, url)
+	lastSize, lastSTH, err := u.Conn.LastCTlogServerState(ctx, url)
 	if err != nil {
 		return fmt.Errorf("getting the last retrieved index number from DB: %w", err)
 	}
+	// TODO(juagargi): use the fetcher's ctClient to get a new STH, and verify STH consistency
+	// between the new and the old heads.
 
-	endIndex, err := u.Fetcher.GetSize(ctx)
+	u.lastState = logfetcher.State{
+		Size: uint64(lastSize),
+		STH:  lastSTH,
+	}
+
+	u.currState, err = u.Fetcher.GetCurrentState(ctx)
 	if err != nil {
 		return fmt.Errorf("getting the size of the CT log server: %w", err)
 	}
 
-	u.lastUpdatedIndex = lastIndex
-	u.Fetcher.StartFetching(lastIndex+1, int64(endIndex)-1)
+	u.Fetcher.StartFetching(lastSize, int64(u.currState.Size)-1)
 	return nil
 }
 
@@ -92,17 +92,43 @@ func (u *MapUpdater) UpdateNextBatch(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("fetcher: %w", err)
 	}
-	n, err := len(certs), u.updateCertBatch(ctx, certs, chains)
-	if err == nil {
-		// Store the last index obtained from the fetcher as updated.
-		u.lastUpdatedIndex += int64(n)
-		err = u.Conn.UpdateLastCertIndexWritten(ctx, url, u.lastUpdatedIndex)
+
+	// Verify validity of this batch.
+	// TODO(juagargi) This doesn't work like this. The only STHs we have are the last one and
+	// the current one, and the batch end doesn't correspond to the current size (but only an
+	// intermediate step).
+	// We may want to start a transaction in the DB at the StartFetchingRemaining and commit it
+	// only if the verification of all batches is alright.
+	err = u.verifyValidity(ctx, certs, chains)
+	if err != nil {
+		return 0, fmt.Errorf("validity from CT log server: %w", err)
 	}
+
+	// Insert into DB.
+	n, err := len(certs), u.updateCertBatch(ctx, certs, chains)
+	if err != nil {
+		return n, err
+	}
+
+	// Store the last status obtained from the fetcher as updated.
+	u.lastState.Size += uint64(n)
+	if u.lastState.Size == u.currState.Size {
+		err = u.Conn.UpdateLastCTlogServerState(ctx, url,
+			int64(u.currState.Size),
+			u.currState.STH)
+	}
+
 	return n, err
 }
 
-// UpdateCertsLocally: add certs (in the form of asn.1 encoded byte arrays) directly without querying log
-func (u *MapUpdater) UpdateCertsLocally(ctx context.Context, certList [][]byte, certChainList [][][]byte) error {
+// UpdateCertsLocally: add certs (in the form of asn.1 encoded byte arrays) directly
+// without querying log.
+func (u *MapUpdater) UpdateCertsLocally(
+	ctx context.Context,
+	certList [][]byte,
+	certChainList [][][]byte,
+) error {
+
 	expirations := make([]*time.Time, 0, len(certList))
 	certs := make([]*ctx509.Certificate, 0, len(certList))
 	certChains := make([][]*ctx509.Certificate, 0, len(certList))
@@ -143,6 +169,19 @@ func (u *MapUpdater) UpdateSMT(ctx context.Context) error {
 
 func (u *MapUpdater) CoalescePayloadsForDirtyDomains(ctx context.Context) error {
 	return CoalescePayloadsForDirtyDomains(ctx, u.Conn)
+}
+
+func (u *MapUpdater) verifyValidity(
+	ctx context.Context,
+	leafCerts []*ctx509.Certificate,
+	chains [][]*ctx509.Certificate,
+) error {
+
+	// TODO(juagargi): for each certificate in the batch, verify its proof of inclusion.
+	// The new STH was consistent with the old one, so here it is enough to verify the inclusion
+	// against the current head.
+	// See certificate-transparency-go/client.GetRawEntries, .GetSTHConsistency, .GetProofByHash
+	return nil
 }
 
 func (u *MapUpdater) updateCertBatch(

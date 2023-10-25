@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/logfetcher"
 	"github.com/netsec-ethz/fpki/pkg/tests/random"
 	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
 	"github.com/netsec-ethz/fpki/pkg/util"
@@ -144,9 +145,9 @@ func TestRunWhenFalse(t *testing.T) {
 	}
 }
 
-// TestMapUpdaterStartFetching checks that the updater is able to keep a tally of which indices have been
-// already updated and write them down in the DB.
-func TestMapUpdaterStartFetching(t *testing.T) {
+// TestMapUpdaterStartFetchingRemaining checks that the updater is able to keep a tally of
+// which indices have been already updated and write them down in the DB.
+func TestMapUpdaterStartFetchingRemaining(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancelF()
 
@@ -166,6 +167,7 @@ func TestMapUpdaterStartFetching(t *testing.T) {
 	fetcher = &mockFetcher{
 		url:  url,
 		size: 0,
+		STH:  []byte{1, 2, 3, 4},
 		onNextBatch: func(ctx context.Context) bool {
 			// Returns elements in batchSize: still something to return if size not reached.
 			return fetcher.size-onReturnNextBatchCalls*batchSize > 0
@@ -217,7 +219,10 @@ func TestMapUpdaterStartFetching(t *testing.T) {
 	defer conn.Close()
 
 	// Case 1: Size is 0
-	updater.StartFetching(0, 999)
+	originalState := updater.lastState // Empty
+	updater.StartFetchingRemaining()
+	// Check that lastState is unaltered.
+	require.Equal(t, originalState, updater.lastState)
 	for nextBatch() {
 		require.FailNow(t, "there should not be any iteration")
 	}
@@ -229,62 +234,69 @@ func TestMapUpdaterStartFetching(t *testing.T) {
 	// Check number of calls to ReturnNextBatch.
 	require.Equal(t, fetcher.size, min(fetcher.size, onReturnNextBatchCalls*batchSize))
 	// Check that we stored the current size.
-	lastIndex, err := conn.LastCertIndexWritten(ctx, url)
+	lastSize, lastSTH, err := conn.LastCTlogServerState(ctx, url)
 	require.NoError(t, err)
-	require.Equal(t, fetcher.size, lastIndex+1)
+	require.Equal(t, int64(0), lastSize) // Because there is no Merkle Tree yet
+	require.Nil(t, lastSTH)              // Because there is no lastSTH yet
 
 	// Case 2: Size is 12, batch still is 1.
 	onReturnNextBatchCalls = 0
 	fetcher.size = 12
-	updater.StartFetching(0, 1000)
-	for nextBatch() {
+	fetcher.STH = []byte{5, 6, 7, 8}
+	updater.StartFetchingRemaining()
+
+	for i := 0; nextBatch(); i++ {
 		_, err := updater.UpdateNextBatch(ctx)
 		require.NoError(t, err)
-		// Check that at every batch we store the last index.
-		lastIndex, err = conn.LastCertIndexWritten(ctx, url)
-		require.NoError(t, err)
-		require.Equal(t,
-			min(fetcher.size, onReturnNextBatchCalls*batchSize),
-			lastIndex+1)
+
+		// Only check if it's not the last iteration.
+		if batchSize*onReturnNextBatchCalls < int64(i) {
+			// Check that at every batch, we don't modify the last state.
+			require.Equal(t, originalState, updater.lastState, "at iteration %d", i)
+			require.Equal(t, originalState, updater.currState)
+		}
 	}
 	updater.StopFetching()
 	// Check number of calls to ReturnNextBatch.
 	require.Equal(t, fetcher.size, min(fetcher.size, onReturnNextBatchCalls*batchSize))
 	// Check that we stored the current size.
-	lastIndex, err = conn.LastCertIndexWritten(ctx, url)
+	lastSize, lastSTH, err = conn.LastCTlogServerState(ctx, url)
 	require.NoError(t, err)
-	require.Equal(t, fetcher.size, lastIndex+1)
+	require.Equal(t, fetcher.size, lastSize)
+	require.Equal(t, []byte{5, 6, 7, 8}, lastSTH)
 
 	// Case 2: Size is 12, batch is 5.
 	onReturnNextBatchCalls = 0
 	fetcher.size = 12
 	batchSize = 5
-	// Reset the size for this CT log server:
-	err = conn.UpdateLastCertIndexWritten(ctx, url, -1)
+	// Reset the state for this CT log server:
+	err = conn.UpdateLastCTlogServerState(ctx, url, 0, nil)
 	require.NoError(t, err)
-	updater.StartFetching(0, 1000)
-	for nextBatch() {
+	updater.StartFetchingRemaining()
+	for i := 0; nextBatch(); i++ {
 		_, err := updater.UpdateNextBatch(ctx)
 		require.NoError(t, err)
-		// Check that at every batch we store the last index.
-		lastIndex, err = conn.LastCertIndexWritten(ctx, url)
-		require.NoError(t, err)
-		require.Equal(t,
-			min(fetcher.size, onReturnNextBatchCalls*batchSize),
-			lastIndex+1)
+
+		// Only check if it's not the last iteration.
+		if batchSize*onReturnNextBatchCalls < int64(i) {
+			// Check that at every batch, we don't modify the last state.
+			require.Equal(t, originalState, updater.lastState, "at iteration %d", i)
+			require.Equal(t, originalState, updater.currState)
+		}
 	}
 	updater.StopFetching()
 	// Check number of calls to ReturnNextBatch.
 	require.Equal(t, fetcher.size, min(fetcher.size, onReturnNextBatchCalls*batchSize))
 	// Check that we stored the current size.
-	lastIndex, err = conn.LastCertIndexWritten(ctx, url)
+	lastSize, lastSTH, err = conn.LastCTlogServerState(ctx, url)
 	require.NoError(t, err)
-	require.Equal(t, fetcher.size, lastIndex+1)
+	require.Equal(t, fetcher.size, lastSize)
+	require.Equal(t, []byte{5, 6, 7, 8}, lastSTH)
 }
 
-// TestMapUpdaterStartFetchingRemaining checks that after a full round of updates, the next call
-// to StartFetchingRemaining continues with the last unfetched index.
-func TestMapUpdaterStartFetchingRemaining(t *testing.T) {
+// TestMapUpdaterStartFetchingRemainingNextDay checks that after a full round of updates,
+// the next call to StartFetchingRemaining continues with the last unfetched index.
+func TestMapUpdaterStartFetchingRemainingNextDay(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancelF()
 
@@ -292,7 +304,7 @@ func TestMapUpdaterStartFetchingRemaining(t *testing.T) {
 	config, removeF := testdb.ConfigureTestDB(t)
 	defer removeF()
 
-	url := "myURL"
+	url := "myURL_" + t.Name()
 	updater, err := NewMapUpdater(config, url)
 	require.NoError(t, err)
 
@@ -377,6 +389,7 @@ func computeIDsOfPolicies(policies []common.PolicyDocument) []*common.SHA256Outp
 type mockFetcher struct {
 	url               string
 	size              int64
+	STH               []byte
 	onStartFetching   func(startIndex, endIndex int64)
 	onStopFetching    func()
 	onNextBatch       func(ctx context.Context) bool
@@ -387,8 +400,11 @@ func (f *mockFetcher) URL() string {
 	return f.url
 }
 
-func (f *mockFetcher) GetSize(ctx context.Context) (uint64, error) {
-	return uint64(f.size), nil
+func (f *mockFetcher) GetCurrentState(ctx context.Context) (logfetcher.State, error) {
+	return logfetcher.State{
+		Size: uint64(f.size),
+		STH:  f.STH,
+	}, nil
 }
 
 func (f *mockFetcher) StartFetching(startIndex, endIndex int64) {

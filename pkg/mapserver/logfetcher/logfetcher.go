@@ -26,7 +26,7 @@ const preloadCount = 2 // Number of batches the LogFetcher tries to preload.
 
 type Fetcher interface {
 	URL() string
-	GetSize(ctx context.Context) (uint64, error)
+	GetCurrentState(ctx context.Context) (State, error)
 	StartFetching(startIndex, endIndex int64)
 	StopFetching()
 
@@ -34,6 +34,11 @@ type Fetcher interface {
 	NextBatch(ctx context.Context) bool
 	// Like sql.Rows.Scan(...)
 	ReturnNextBatch() ([]*ctx509.Certificate, [][]*ctx509.Certificate, error)
+}
+
+type State struct {
+	Size uint64
+	STH  []byte
 }
 
 // LogFetcher is used to download CT TBS certificates. It has state and keeps some routines
@@ -101,12 +106,15 @@ func (f LogFetcher) URL() string {
 	return f.url
 }
 
-func (f LogFetcher) GetSize(ctx context.Context) (uint64, error) {
+func (f LogFetcher) GetCurrentState(ctx context.Context) (State, error) {
 	sth, err := f.ctClient.GetSTH(ctx)
 	if err != nil {
-		return 0, err
+		return State{}, err
 	}
-	return sth.TreeSize, nil
+	return State{
+		Size: sth.TreeSize,
+		STH:  sth.TreeHeadSignature.Signature,
+	}, nil
 }
 
 // StartFetching will start fetching certificates in the background, so that there is

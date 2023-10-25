@@ -327,9 +327,9 @@ func TestGetSize(t *testing.T) {
 	// Check that the size returned by the GetSize method is the same.
 	f, err := NewLogFetcher(testURL)
 	require.NoError(t, err)
-	s, err := f.GetSize(ctx)
+	s, err := f.GetCurrentState(ctx)
 	require.NoError(t, err)
-	require.Equal(t, sth.TreeSize, s)
+	require.Equal(t, sth.TreeSize, s.Size)
 
 	// Test that this is the correct size, because we cannot get negative entries or past this.
 	_, err = ctClient.GetRawEntries(ctx, -1, 1)
@@ -339,10 +339,10 @@ func TestGetSize(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, len(res.Entries))
 	// We can query the last item (which is size -1, as the first index is 0).
-	res, err = ctClient.GetRawEntries(ctx, int64(s)-1, int64(s)-1)
+	res, err = ctClient.GetRawEntries(ctx, int64(s.Size)-1, int64(s.Size)-1)
 	require.NoError(t, err)
 	require.Equal(t, 1, len(res.Entries))
 	// But we can't query past it.
-	_, err = ctClient.GetRawEntries(ctx, int64(s), int64(s))
+	_, err = ctClient.GetRawEntries(ctx, int64(s.Size), int64(s.Size))
 	require.Error(t, err)
 }

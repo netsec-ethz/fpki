@@ -65,13 +65,13 @@ type certs interface {
 	// by the passed ID.
 	RetrieveCertificatePayloads(ctx context.Context, IDs []*common.SHA256Output) ([][]byte, error)
 
-	// LastCertIndexWritten returns the last certificate index number written into the DB.
-	// The url specifies the CT log server from which this index comes from.
-	LastCertIndexWritten(ctx context.Context, url string) (int64, error)
+	// LastCTlogServerState returns the last state of the CT log server written into the DB.
+	// The url specifies the CT log server from which this data comes from.
+	LastCTlogServerState(ctx context.Context, url string) (size int64, sth []byte, err error)
 
-	// UpdateLastCertIndexWritten updates the index of the last certificate written into the DB.
-	// The url specifies the CT log server from which this index comes from.
-	UpdateLastCertIndexWritten(ctx context.Context, url string, index int64) error
+	// UpdateLastCTlogServerState updates the last status of the CT log server written into the DB.
+	// The url specifies the CT log server from which this data comes from.
+	UpdateLastCTlogServerState(ctx context.Context, url string, size int64, sth []byte) error
 
 	// PruneCerts removes all certificates that are no longer valid according to the paramter.
 	// I.e. any certificate whose NotAfter date is equal or before the parameter.

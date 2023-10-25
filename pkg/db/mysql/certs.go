@@ -137,24 +137,27 @@ func (c *mysqlDB) RetrieveCertificatePayloads(ctx context.Context, IDs []*common
 	return payloads, nil
 }
 
-// LastCertIndexWritten returns the last certificate index number written into the DB.
-// The url specifies the CT log server from which this index comes from.
-func (c *mysqlDB) LastCertIndexWritten(ctx context.Context, url string) (int64, error) {
-	str := "SELECT size FROM last_size WHERE url_hash = ?"
-	var value int64 = -1
-	err := c.db.QueryRowContext(ctx, str, common.SHA256Hash([]byte(url))).Scan(&value)
+// LastCTlogServerState returns the last state of the server written into the DB.
+// The url specifies the CT log server from which this data comes from.
+func (c *mysqlDB) LastCTlogServerState(ctx context.Context, url string,
+) (size int64, sth []byte, err error) {
+
+	size = 0
+	str := "SELECT size, sth FROM ctlog_server_last_status WHERE url_hash = ?"
+	err = c.db.QueryRowContext(ctx, str, common.SHA256Hash([]byte(url))).Scan(&size, &sth)
 	if err == sql.ErrNoRows {
 		err = nil
 	}
-
-	return value, nil
+	return
 }
 
-// UpdateLastCertIndexWritten updates the index of the last certificate written into the DB.
+// UpdateLastCTlogServerState updates the index of the last certificate written into the DB.
 // The url specifies the CT log server from which this index comes from.
-func (c *mysqlDB) UpdateLastCertIndexWritten(ctx context.Context, url string, index int64) error {
-	str := "REPLACE INTO last_size (url_hash, size) VALUES (?,?)"
-	_, err := c.db.ExecContext(ctx, str, common.SHA256Hash([]byte(url)), index)
+func (c *mysqlDB) UpdateLastCTlogServerState(ctx context.Context, url string,
+	size int64, sth []byte) error {
+
+	str := "REPLACE INTO ctlog_server_last_status (url_hash, size, sth) VALUES (?,?,?)"
+	_, err := c.db.ExecContext(ctx, str, common.SHA256Hash([]byte(url)), size, sth)
 	return err
 }
 

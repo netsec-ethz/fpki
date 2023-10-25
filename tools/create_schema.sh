@@ -135,10 +135,11 @@ EOF
 
 CMD=$(cat <<EOF
 USE $DBNAME;
--- Stores the last size that was ingested, per CT log server URL
-CREATE TABLE last_size (
+-- Stores the last valid status that was ingested, per CT log server URL
+CREATE TABLE ctlog_server_last_status (
   url_hash VARBINARY(32) NOT NULL,
   size INTEGER,
+  sth BLOB,
 
   PRIMARY KEY (url_hash)
 ) ENGINE=MyISAM CHARSET=binary COLLATE=binary;

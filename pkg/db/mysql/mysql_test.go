@@ -196,7 +196,7 @@ func TestRetrieveCertificatePayloads(t *testing.T) {
 	}
 }
 
-func TestLastCertIndexWritten(t *testing.T) {
+func TestLastCTlogServerState(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
 	defer cancelF()
 
@@ -208,39 +208,43 @@ func TestLastCertIndexWritten(t *testing.T) {
 	conn := testdb.Connect(t, config)
 	defer conn.Close()
 
-	// Check that querying for an unknown URL doesn't fail and returns -1 as its last index:
-	n, err := conn.LastCertIndexWritten(ctx, "doesnt exist")
+	// Check that querying for an unknown URL doesn't fail and returns 0 as its last size:
+	n, sth, err := conn.LastCTlogServerState(ctx, "doesnt exist")
 	require.NoError(t, err)
-	require.Equal(t, int64(-1), n)
+	require.Equal(t, int64(0), n)
+	require.Nil(t, sth)
 
 	// Store values for two urls.
 	url1 := "myurl"
-	err = conn.UpdateLastCertIndexWritten(ctx, url1, 42)
+	err = conn.UpdateLastCTlogServerState(ctx, url1, 42, []byte{4, 2})
 	require.NoError(t, err)
 	url2 := "anotherurl"
-	err = conn.UpdateLastCertIndexWritten(ctx, url2, 123)
+	err = conn.UpdateLastCTlogServerState(ctx, url2, 123, []byte{1, 2, 3})
 	require.NoError(t, err)
 
 	// Check the stored values.
-	n, err = conn.LastCertIndexWritten(ctx, url1)
+	n, sth, err = conn.LastCTlogServerState(ctx, url1)
 	require.NoError(t, err)
 	require.Equal(t, int64(42), n)
-	n, err = conn.LastCertIndexWritten(ctx, url2)
+	require.Equal(t, sth, []byte{4, 2})
+	n, sth, err = conn.LastCTlogServerState(ctx, url2)
 	require.NoError(t, err)
 	require.Equal(t, int64(123), n)
+	require.Equal(t, sth, []byte{1, 2, 3})
 
 	// Replace one value and check it.
-	err = conn.UpdateLastCertIndexWritten(ctx, url2, 222)
+	err = conn.UpdateLastCTlogServerState(ctx, url2, 222, []byte{2, 2, 2})
 	require.NoError(t, err)
-	n, err = conn.LastCertIndexWritten(ctx, url2)
+	n, sth, err = conn.LastCTlogServerState(ctx, url2)
 	require.NoError(t, err)
 	require.Equal(t, int64(222), n)
+	require.Equal(t, sth, []byte{2, 2, 2})
 
 	// Unknown urls still give out -1:
-	n, err = conn.LastCertIndexWritten(ctx, "doesnt exist")
+	n, sth, err = conn.LastCTlogServerState(ctx, "doesnt exist")
 	require.NoError(t, err)
-	require.Equal(t, int64(-1), n)
-
+	require.Equal(t, int64(0), n)
+	require.Nil(t, sth)
 }
 
 func TestPruneCerts(t *testing.T) {
