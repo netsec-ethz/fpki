@@ -156,14 +156,14 @@ func TestMapUpdaterStartFetchingRemaining(t *testing.T) {
 	defer removeF()
 
 	url := "myURL"
-	updater, err := NewMapUpdater(config, url)
+	updater, err := NewMapUpdater(config, []string{url})
 	require.NoError(t, err)
 
 	// Replace fetcher with a mock one.
 	onReturnNextBatchCalls := int64(0)
 	onStopFetchingCalls := 0
 	batchSize := int64(1)
-	fetcher := &mockFetcher{}
+	fetcher := &mockFetcher{} // "forward" define it to use it in its own definition
 	fetcher = &mockFetcher{
 		url:  url,
 		size: 0,
@@ -196,7 +196,7 @@ func TestMapUpdaterStartFetchingRemaining(t *testing.T) {
 			onStopFetchingCalls++
 		},
 	}
-	updater.Fetcher = fetcher
+	updater.Fetchers = []logfetcher.Fetcher{fetcher}
 
 	// Because every call to NextBatch is potentially blocking, we need to wrap it around a
 	// function that can timeout.
@@ -305,7 +305,7 @@ func TestMapUpdaterStartFetchingRemainingNextDay(t *testing.T) {
 	defer removeF()
 
 	url := "myURL_" + t.Name()
-	updater, err := NewMapUpdater(config, url)
+	updater, err := NewMapUpdater(config, []string{url})
 	require.NoError(t, err)
 
 	// Replace fetcher with a mock one.
@@ -330,7 +330,7 @@ func TestMapUpdaterStartFetchingRemainingNextDay(t *testing.T) {
 				make([][]*ctx509.Certificate, 1), nil
 		},
 	}
-	updater.Fetcher = fetcher
+	updater.Fetchers = []logfetcher.Fetcher{fetcher}
 
 	// Start fetching remaining. Because this is the first time, it should fetch them all.
 	err = updater.StartFetchingRemaining()
@@ -362,6 +362,90 @@ func TestMapUpdaterStartFetchingRemainingNextDay(t *testing.T) {
 	require.Equal(t, fetcher.size-1, gotEnd)
 	require.Equal(t, fetcher.size, onReturnNextBatchCalls)
 	updater.StopFetching()
+}
+
+func TestMultipleFetchers(t *testing.T) {
+	ctx, cancelF := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancelF()
+
+	// Configure a test DB.
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	urls := []string{
+		t.Name() + "_1",
+		t.Name() + "_2",
+		t.Name() + "_3",
+	}
+	updater, err := NewMapUpdater(config, urls)
+	require.NoError(t, err)
+
+	// Replace fetchers with mock ones.
+	onReturnNextBatchCalls := int64(0)
+	onStopFetchingCalls := 0
+	batchSize := int64(3)
+	fetcherSizes := []int64{10, 11, 12}
+	for i, url := range urls {
+		sentCertCount := int64(0)
+		fetcher := &mockFetcher{} // "forward" define it to use it in its own definition
+		fetcher = &mockFetcher{
+			url:  url,
+			size: fetcherSizes[i],
+			STH:  []byte{byte(i), 2, 3, 4},
+			onNextBatch: func(ctx context.Context) bool {
+				// Returns elements in batchSize: still something to return if size not reached.
+				return fetcher.size-sentCertCount > 0
+			},
+			onReturnNextBatch: func() (
+				[]*ctx509.Certificate, // certs
+				[][]*ctx509.Certificate, // chains
+				error,
+			) {
+				// Return a slice of nil certs and chains, with the correct size.
+				onReturnNextBatchCalls++
+				// The n variable is the number of items to return.
+				n := batchSize
+				if sentCertCount+batchSize > fetcher.size {
+					n = fetcher.size % batchSize
+				}
+				randomCerts := make([]*ctx509.Certificate, n)
+				for i := range randomCerts {
+					randomCerts[i] = random.RandomX509Cert(t, t.Name())
+				}
+				sentCertCount += n
+				return randomCerts,
+					make([][]*ctx509.Certificate, n),
+					nil
+			},
+			onStopFetching: func() {
+				onStopFetchingCalls++
+			},
+		}
+		updater.Fetchers[i] = fetcher
+	}
+
+	err = updater.StartFetchingRemaining()
+	require.NoError(t, err)
+	count := 0
+	for updater.NextBatch(ctx) {
+		n, err := updater.UpdateNextBatch(ctx)
+		require.NoError(t, err)
+		count += n
+	}
+	totalSize := int64(0)
+	for _, s := range fetcherSizes {
+		totalSize += s
+	}
+	require.Equal(t, totalSize, int64(count))
+
+	updater.StopFetching()
+	require.Equal(t, 3, onStopFetchingCalls)
+	// Check the total number of batches:
+	totalSize = 0
+	for _, s := range fetcherSizes {
+		totalSize += (s-1)/batchSize + 1
+	}
+	require.Equal(t, totalSize, onReturnNextBatchCalls)
 }
 
 func glueSortedIDsAndComputeItsID(IDs []*common.SHA256Output) ([]byte, *common.SHA256Output) {

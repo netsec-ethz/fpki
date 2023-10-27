@@ -60,7 +60,7 @@ func writeSampleConfig() error {
 	)
 	config := &Config{
 		DBConfig:           dbConfig,
-		CTLogServerURL:     "https://ct.googleapis.com/logs/xenon2023/",
+		CTLogServerURLs:    []string{"https://ct.googleapis.com/logs/xenon2023/"},
 		CertificatePemFile: "tests/testdata/servercert.pem",
 		PrivateKeyPemFile:  "tests/testdata/serverkey.pem",
 

@@ -53,7 +53,7 @@ func NewMapServer(ctx context.Context, config *Config) (*MapServer, error) {
 	}
 
 	// Create map updater.
-	updater, err := updater.NewMapUpdater(config.DBConfig, config.CTLogServerURL)
+	updater, err := updater.NewMapUpdater(config.DBConfig, config.CTLogServerURLs)
 	if err != nil {
 		return nil, fmt.Errorf("error creating new map updater: %w", err)
 	}
