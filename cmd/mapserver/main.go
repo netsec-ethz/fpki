@@ -10,6 +10,7 @@ import (
 
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
+	"github.com/netsec-ethz/fpki/pkg/mapserver"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/config"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
@@ -97,7 +98,7 @@ func runWithConfig(
 	updateNow bool,
 ) error {
 
-	server, err := NewMapServer(ctx, conf)
+	server, err := mapserver.NewMapServer(ctx, conf)
 	if err != nil {
 		return err
 	}
