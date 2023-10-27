@@ -1,4 +1,4 @@
-package main_test
+package config_test
 
 import (
 	"encoding/json"
@@ -7,23 +7,23 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	main "github.com/netsec-ethz/fpki/cmd/mapserver"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/config"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
 // TestConfigJson checks that the map server configuration can be marshalled to JSON and back.
 func TestConfigJson(t *testing.T) {
-	config := &main.Config{
+	c := &config.Config{
 		UpdateAt: util.NewTimeOfDay(3, 00, 00, 00),
 		UpdateTimer: util.DurationWrap{
 			Duration: 24 * time.Hour,
 		},
 	}
-	t.Logf("time is: %s", config.UpdateAt.Time)
-	data, err := json.Marshal(config)
+	t.Logf("time is: %s", c.UpdateAt.Time)
+	data, err := json.Marshal(c)
 	require.NoError(t, err)
 	t.Logf("JSON is: %s", string(data))
-	copy := &main.Config{}
+	copy := &config.Config{}
 	err = json.Unmarshal(data, &copy)
 	require.NoError(t, err)
 }

@@ -10,6 +10,7 @@ import (
 
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/config"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
@@ -58,7 +59,7 @@ func writeSampleConfig() error {
 		mysql.WithEnvironment(),
 		mysql.WithLocalSocket("/var/run/mysqld/mysqld.sock"),
 	)
-	config := &Config{
+	conf := &config.Config{
 		DBConfig:           dbConfig,
 		CTLogServerURLs:    []string{"https://ct.googleapis.com/logs/xenon2023/"},
 		CertificatePemFile: "tests/testdata/servercert.pem",
@@ -70,7 +71,7 @@ func writeSampleConfig() error {
 		},
 	}
 
-	return WriteConfigurationToFile(flag.Arg(0), config)
+	return config.WriteConfigurationToFile(flag.Arg(0), conf)
 }
 
 func run(updateNow bool) error {
@@ -80,7 +81,7 @@ func run(updateNow bool) error {
 	ctx = util.SetSignalHandler(ctx, waitForExitBeforePanicTime, syscall.SIGTERM, syscall.SIGINT)
 
 	// Load configuration and run with it.
-	config, err := ReadConfigFromFile(flag.Arg(0))
+	config, err := config.ReadConfigFromFile(flag.Arg(0))
 	if err != nil {
 		return err
 	}
@@ -92,11 +93,11 @@ func run(updateNow bool) error {
 // run the update cycle at the corresponding time.
 func runWithConfig(
 	ctx context.Context,
-	config *Config,
+	conf *config.Config,
 	updateNow bool,
 ) error {
 
-	server, err := NewMapServer(ctx, config)
+	server, err := NewMapServer(ctx, conf)
 	if err != nil {
 		return err
 	}
@@ -110,7 +111,7 @@ func runWithConfig(
 	}
 
 	// Set update cycle timer.
-	util.RunWhen(ctx, config.UpdateAt.NextTimeOfDay(), config.UpdateTimer.Duration,
+	util.RunWhen(ctx, conf.UpdateAt.NextTimeOfDay(), conf.UpdateTimer.Duration,
 		func(ctx context.Context) {
 			err := server.PruneAndUpdate(ctx)
 			if err != nil {

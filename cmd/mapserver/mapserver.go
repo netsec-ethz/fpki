@@ -10,6 +10,7 @@ import (
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/config"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/responder"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 	"github.com/netsec-ethz/fpki/pkg/util"
@@ -26,13 +27,13 @@ type MapServer struct {
 	updateErrChan chan error
 }
 
-func NewMapServer(ctx context.Context, config *Config) (*MapServer, error) {
+func NewMapServer(ctx context.Context, conf *config.Config) (*MapServer, error) {
 	// Load cert and key.
-	cert, err := util.CertificateFromPEMFile(config.CertificatePemFile)
+	cert, err := util.CertificateFromPEMFile(conf.CertificatePemFile)
 	if err != nil {
 		return nil, fmt.Errorf("error loading certificate: %w", err)
 	}
-	key, err := util.RSAKeyFromPEMFile(config.PrivateKeyPemFile)
+	key, err := util.RSAKeyFromPEMFile(conf.PrivateKeyPemFile)
 	if err != nil {
 		return nil, fmt.Errorf("error loading private key: %w", err)
 	}
@@ -47,13 +48,13 @@ func NewMapServer(ctx context.Context, config *Config) (*MapServer, error) {
 	}
 
 	// Connect to the DB.
-	conn, err := mysql.Connect(config.DBConfig)
+	conn, err := mysql.Connect(conf.DBConfig)
 	if err != nil {
 		return nil, fmt.Errorf("error connecting to the DB: %w", err)
 	}
 
 	// Create map updater.
-	updater, err := updater.NewMapUpdater(config.DBConfig, config.CTLogServerURLs)
+	updater, err := updater.NewMapUpdater(conf.DBConfig, conf.CTLogServerURLs)
 	if err != nil {
 		return nil, fmt.Errorf("error creating new map updater: %w", err)
 	}
