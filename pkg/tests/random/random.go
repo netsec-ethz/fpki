@@ -43,7 +43,7 @@ func RandomBytesForTest(t tests.T, size int) []byte {
 	return buff
 }
 
-var keyCreatingRandomCerts = RandomRSAPrivateKey(tests.NewTestObject())
+var keyCreatingRandomCerts = RandomRSAPrivateKey(tests.NewTestObject("test_RSA_key"))
 
 // RandomX509Cert creates a random x509 certificate, with correct ASN.1 DER representation.
 func RandomX509Cert(t tests.T, domain string) *ctx509.Certificate {
