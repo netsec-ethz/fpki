@@ -1,12 +1,16 @@
 .PHONY: all clean test policy_log
 
-all: build_policy_log build_integration_test
+all: build_mapserver build_policy_log build_integration_test
 
 clean:
 	@rm -f bin/*
 
 test:
 	@go test ./...
+
+
+build_mapserver:
+	@go build -o bin/mapserver ./cmd/mapserver/
 
 build_policy_log:
 	@go build -o bin/logserver_exec cmd/logserver/logserver_exec.go
