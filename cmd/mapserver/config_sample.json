@@ -1,7 +1,7 @@
 {
-    "UpdateAt": "03:00:00",
-    "UpdateTimer": "1d",
-    "CTLogServerURL": "https://ct.googleapis.com/logs/xenon2023/",
+    "CTLogServerURLs": [
+        "https://ct.googleapis.com/logs/xenon2023/"
+    ],
     "DBConfig": {
         "Dsn": "",
         "DBName": "",
@@ -14,10 +14,13 @@
             "MYSQL_USER": "root",
             "collation": "binary",
             "interpolateParams": "true",
-            "maxAllowedPacket": "1073741824"
+            "maxAllowedPacket": "1073741824",
+            "parseTime": "true"
         },
         "CheckSchema": false
     },
     "CertificatePemFile": "tests/testdata/servercert.pem",
-    "PrivateKeyPemFile": "tests/testdata/serverkey.pem"
+    "PrivateKeyPemFile": "tests/testdata/serverkey.pem",
+    "UpdateAt": "03:00:00",
+    "UpdateTimer": "1d"
 }
