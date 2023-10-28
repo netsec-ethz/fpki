@@ -122,13 +122,20 @@ func NewMapServer(ctx context.Context, conf *config.Config) (*MapServer, error) 
 	return s, nil
 }
 
+// apiRegistered is being used to avoid issues with re-registering handlers in the tests.
+var apiRegistered bool
+
 // Listen is responsible to start the listener for the responder.
 func (s *MapServer) Listen(ctx context.Context) error {
-	http.HandleFunc("/getproof", s.apiGetProof)
-	http.HandleFunc("/getpayloads", s.apiGetPayloads)
+	if !apiRegistered {
+		// Only register in this process if this is the first time.
+		http.HandleFunc("/getproof", s.apiGetProof)
+		http.HandleFunc("/getpayloads", s.apiGetPayloads)
+		apiRegistered = true
+	}
 
 	server := &http.Server{
-		Addr: ":8443",
+		Addr: fmt.Sprintf(":%d", APIPort),
 		TLSConfig: &tls.Config{
 			Certificates: []tls.Certificate{*s.TLS},
 		},

@@ -56,7 +56,7 @@ func mainFunc() int {
 	conf := &config.Config{
 		UpdateTimer:        util.DurationWrap{Duration: 24 * time.Hour},
 		UpdateAt:           util.NewTimeOfDay(3, 0, 0, 0),
-		CTLogServerURLs:    []string{"https://ct.googleapis.com/logs/xenon2023/"},
+		CTLogServerURLs:    []string{"https://invalid.netsec.ethz.ch"},
 		DBConfig:           dbConf,
 		CertificatePemFile: "./tests/testdata/servercert.pem",
 		PrivateKeyPemFile:  "./tests/testdata/serverkey.pem",
@@ -67,7 +67,7 @@ func mainFunc() int {
 	require.NoError(t, err)
 	// Start serving requests.
 	go func() {
-		err = server.Listen(context.Background())
+		err = server.Listen(ctx)
 		require.NoError(t, err)
 	}()
 
