@@ -4,7 +4,10 @@ import (
 	"bytes"
 	"context"
 	"crypto/rsa"
+	"crypto/tls"
 	"fmt"
+	"io/ioutil"
+	"net/http"
 	"time"
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
@@ -22,6 +25,7 @@ type MapServer struct {
 	// Crypto material of this map server.
 	Cert *ctx509.Certificate
 	Key  *rsa.PrivateKey
+	TLS  *tls.Certificate
 
 	updateChan    chan context.Context
 	updateErrChan chan error
@@ -29,11 +33,19 @@ type MapServer struct {
 
 func NewMapServer(ctx context.Context, conf *config.Config) (*MapServer, error) {
 	// Load cert and key.
-	cert, err := util.CertificateFromPEMFile(conf.CertificatePemFile)
+	pemCert, err := ioutil.ReadFile(conf.CertificatePemFile)
 	if err != nil {
 		return nil, fmt.Errorf("error loading certificate: %w", err)
 	}
-	key, err := util.RSAKeyFromPEMFile(conf.PrivateKeyPemFile)
+	cert, err := util.CertificateFromPEMBytes(pemCert)
+	if err != nil {
+		return nil, fmt.Errorf("error loading certificate: %w", err)
+	}
+	pemKey, err := ioutil.ReadFile(conf.PrivateKeyPemFile)
+	if err != nil {
+		return nil, fmt.Errorf("error loading private key: %w", err)
+	}
+	key, err := util.RSAKeyFromPEM(pemKey)
 	if err != nil {
 		return nil, fmt.Errorf("error loading private key: %w", err)
 	}
@@ -45,6 +57,13 @@ func NewMapServer(ctx context.Context, conf *config.Config) (*MapServer, error) 
 	}
 	if !bytes.Equal(derBytes, cert.RawSubjectPublicKeyInfo) {
 		return nil, fmt.Errorf("certificate has different public key than key file")
+	}
+
+	// Create the TLS configuration for the HTTPS API server.
+	// TODO(juagargi) we probably want to use a different certifiate to serve HTTPS.
+	tlsCert, err := tls.X509KeyPair(pemCert, pemKey)
+	if err != nil {
+		return nil, fmt.Errorf("error loading cert/key for TLS: %w", err)
 	}
 
 	// Connect to the DB.
@@ -71,6 +90,7 @@ func NewMapServer(ctx context.Context, conf *config.Config) (*MapServer, error) 
 		Responder: resp,
 		Cert:      cert,
 		Key:       key,
+		TLS:       &tlsCert,
 
 		updateChan:    make(chan context.Context),
 		updateErrChan: make(chan error),
@@ -96,7 +116,30 @@ func NewMapServer(ctx context.Context, conf *config.Config) (*MapServer, error) 
 
 // Listen is responsible to start the listener for the responder.
 func (s *MapServer) Listen(ctx context.Context) error {
+	server := &http.Server{
+		Addr: ":8443",
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprintf(w, "Hello, HTTPS from memory!")
+		}),
+		TLSConfig: &tls.Config{
+			Certificates: []tls.Certificate{*s.TLS},
+		},
+	}
+	var errListen error
+	go func() {
+		errListen = server.ListenAndServeTLS("", "")
+	}()
 	<-ctx.Done()
+
+	if errListen != nil {
+		return fmt.Errorf("error serving API: %w", errListen)
+	}
+	//Shutdown the server
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer shutdownCancel()
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		return fmt.Errorf("error shutting down API server: %w", err)
+	}
 	return nil
 }
 

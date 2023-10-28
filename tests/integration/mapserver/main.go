@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"fmt"
+	"net/http"
 	"os"
 	"time"
 
@@ -63,6 +66,21 @@ func mainFunc() int {
 		err = server.Listen(context.Background())
 		check(err)
 	}()
+
+	// Prepare the client.
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true,
+		},
+	}
+	client := &http.Client{
+		Transport: tr,
+	}
+	resp, err := client.Get("https://localhost:8443/getproof")
+	check(err)
+	defer resp.Body.Close()
+
+	fmt.Println("Response Status:", resp.Status)
 
 	// Request a.com
 

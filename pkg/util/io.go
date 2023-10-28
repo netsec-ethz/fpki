@@ -82,6 +82,18 @@ func CertificateFromPEMFile(filename string) (*ctx509.Certificate, error) {
 	return certs[0], nil
 }
 
+func CertificateFromPEMBytes(pem []byte) (*ctx509.Certificate, error) {
+	f := bytes.NewReader(pem)
+	r := NewCertReader(f)
+	certs := make([]*ctx509.Certificate, 1)
+	_, err := r.Read(certs)
+	if err != nil {
+		return nil, err
+	}
+	// If no certificate was found, certs[0] will be nil.
+	return certs[0], nil
+}
+
 // RSAKeyFromFile loads an RSA private key from file in PEM format.
 func RSAKeyFromPEMFile(keyPath string) (*rsa.PrivateKey, error) {
 	bytes, err := ioutil.ReadFile(keyPath)
