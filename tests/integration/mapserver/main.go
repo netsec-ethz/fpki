@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"time"
@@ -59,12 +60,11 @@ func mainFunc() int {
 
 	// Mapserver:
 	server, err := mapserver.NewMapServer(ctx, conf)
-	check(err)
-
+	require.NoError(t, err)
 	// Start serving requests.
 	go func() {
 		err = server.Listen(context.Background())
-		check(err)
+		require.NoError(t, err)
 	}()
 
 	// Prepare the client.
@@ -76,13 +76,25 @@ func mainFunc() int {
 	client := &http.Client{
 		Transport: tr,
 	}
-	resp, err := client.Get("https://localhost:8443/getproof")
-	check(err)
-	defer resp.Body.Close()
-
-	fmt.Println("Response Status:", resp.Status)
 
 	// Request a.com
+	// 1. Proof
+	resp, err := client.Get(fmt.Sprintf("https://localhost:%d/getproof?domain=a.com",
+		mapserver.APIPort))
+	require.NoError(t, err)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	fmt.Println(string(body))
+	resp.Body.Close()
+	// 2. Payloads
+	resp, err = client.Get(fmt.Sprintf("https://localhost:%d/getpayloads?ids="+
+		"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", // 1 ID
+		mapserver.APIPort))
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+	resp.Body.Close()
 
 	return 0
 }

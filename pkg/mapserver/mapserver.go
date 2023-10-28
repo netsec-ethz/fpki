@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rsa"
 	"crypto/tls"
+	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -12,12 +13,15 @@ import (
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 
+	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/config"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/responder"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
+
+const APIPort = 8443 // TODO: should be a config parameter
 
 type MapServer struct {
 	Updater   *updater.MapUpdater
@@ -116,11 +120,11 @@ func NewMapServer(ctx context.Context, conf *config.Config) (*MapServer, error) 
 
 // Listen is responsible to start the listener for the responder.
 func (s *MapServer) Listen(ctx context.Context) error {
+	http.HandleFunc("/getproof", s.apiGetProof)
+	http.HandleFunc("/getpayloads", s.apiGetPayloads)
+
 	server := &http.Server{
 		Addr: ":8443",
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			fmt.Fprintf(w, "Hello, HTTPS from memory!")
-		}),
 		TLSConfig: &tls.Config{
 			Certificates: []tls.Certificate{*s.TLS},
 		},
@@ -151,6 +155,38 @@ func (s *MapServer) PruneAndUpdate(ctx context.Context) error {
 	// Wait for the answer (in form of an error).
 	err := <-s.updateErrChan
 	return err
+}
+
+// apiGetProof expects one GET parameter "domain" with a string value for the domain name.
+// It returns a json formatted structure with
+func (s *MapServer) apiGetProof(w http.ResponseWriter, r *http.Request) {
+	domain := r.URL.Query().Get("domain")
+	fmt.Fprintf(w, "getproof(%s) called", domain)
+}
+
+// apiGetPaylpads expects one GET parameer "ids" with a string value of the hex representation
+// of all requested IDs.
+// Since each ID is 32 bytes, the hex string will always be a multiple of 64.
+func (s *MapServer) apiGetPayloads(w http.ResponseWriter, r *http.Request) {
+	hexIDs := r.URL.Query().Get("ids")
+	if len(hexIDs)%(common.SHA256Size*2) != 0 {
+		http.Error(w, "parameter \"ids\" length is not a concatenation of 32 char IDs",
+			http.StatusBadRequest)
+		return
+	}
+	ids := make([]*common.SHA256Output, len(hexIDs)/common.SHA256Size/2)
+	for i := 0; i < len(ids); i++ {
+		h := hexIDs[i*common.SHA256Size*2 : (i+1)*common.SHA256Size*2]
+		id, err := hex.DecodeString(h)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("not a hexadecimal ID: %s", h), http.StatusBadRequest)
+			return
+		}
+		ids[i] = (*common.SHA256Output)(id)
+	}
+
+	// Obtain the payloads.
+	// deleteme TODO
 }
 
 func (s *MapServer) pruneAndUpdate(ctx context.Context) {
