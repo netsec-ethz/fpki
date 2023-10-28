@@ -6,6 +6,7 @@ import (
 	"crypto/rsa"
 	"crypto/tls"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/config"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/responder"
@@ -26,6 +28,7 @@ const APIPort = 8443 // TODO: should be a config parameter
 type MapServer struct {
 	Updater   *updater.MapUpdater
 	Responder *responder.MapResponder
+	Conn      db.Conn
 	// Crypto material of this map server.
 	Cert *ctx509.Certificate
 	Key  *rsa.PrivateKey
@@ -92,6 +95,7 @@ func NewMapServer(ctx context.Context, conf *config.Config) (*MapServer, error) 
 	s := &MapServer{
 		Updater:   updater,
 		Responder: resp,
+		Conn:      conn,
 		Cert:      cert,
 		Key:       key,
 		TLS:       &tlsCert,
@@ -161,13 +165,28 @@ func (s *MapServer) PruneAndUpdate(ctx context.Context) error {
 // It returns a json formatted structure with
 func (s *MapServer) apiGetProof(w http.ResponseWriter, r *http.Request) {
 	domain := r.URL.Query().Get("domain")
-	fmt.Fprintf(w, "getproof(%s) called", domain)
+	ctx, cancelF := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancelF()
+	proofChain, err := s.Responder.GetProof(ctx, domain)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("obtaining proof: %s", err), http.StatusBadRequest)
+		return
+	}
+	enc := json.NewEncoder(w)
+	err = enc.Encode(proofChain)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("encoding proof: %s", err), http.StatusInternalServerError)
+		return
+	}
 }
 
 // apiGetPaylpads expects one GET parameer "ids" with a string value of the hex representation
 // of all requested IDs.
 // Since each ID is 32 bytes, the hex string will always be a multiple of 64.
 func (s *MapServer) apiGetPayloads(w http.ResponseWriter, r *http.Request) {
+	ctx, cancelF := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancelF()
+
 	hexIDs := r.URL.Query().Get("ids")
 	if len(hexIDs)%(common.SHA256Size*2) != 0 {
 		http.Error(w, "parameter \"ids\" length is not a concatenation of 32 char IDs",
@@ -186,7 +205,18 @@ func (s *MapServer) apiGetPayloads(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Obtain the payloads.
-	// deleteme TODO
+	payloads, err := s.Conn.RetrieveCertificatePayloads(ctx, ids)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("error obtaining payloads for %s\nError is: %s",
+			hexIDs, err), http.StatusBadRequest)
+		return
+	}
+	enc := json.NewEncoder(w)
+	err = enc.Encode(payloads)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("encoding proof: %s", err), http.StatusInternalServerError)
+		return
+	}
 }
 
 func (s *MapServer) pruneAndUpdate(ctx context.Context) {

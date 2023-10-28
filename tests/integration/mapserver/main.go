@@ -3,14 +3,18 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"time"
 
+	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver"
+	mapcommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/config"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/prover"
 	"github.com/netsec-ethz/fpki/pkg/tests"
 	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
 	tup "github.com/netsec-ethz/fpki/pkg/tests/updater"
@@ -36,7 +40,7 @@ func mainFunc() int {
 	// Connect to the DB.
 	conn := testdb.Connect(t, dbConf)
 	// Insert some mock data.
-	tup.UpdateDBwithRandomCerts(ctx, t, conn, []string{
+	certs, _, _, _, _ := tup.UpdateDBwithRandomCerts(ctx, t, conn, []string{
 		"a.com",
 		"b.com",
 		"c.com"},
@@ -77,30 +81,68 @@ func mainFunc() int {
 		Transport: tr,
 	}
 
-	// Request a.com
+	// Request a.com => it is at certs[2] and certs[3]
+	idA1 := common.SHA256Hash32Bytes(certs[2].Raw)
+	idA2 := common.SHA256Hash32Bytes(certs[3].Raw)
 	// 1. Proof
 	resp, err := client.Get(fmt.Sprintf("https://localhost:%d/getproof?domain=a.com",
 		mapserver.APIPort))
 	require.NoError(t, err)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
-	body, err := io.ReadAll(resp.Body)
+	dec := json.NewDecoder(resp.Body)
+	var proofChain []*mapcommon.MapServerResponse
+	err = dec.Decode(&proofChain)
 	require.NoError(t, err)
-	fmt.Println(string(body))
 	resp.Body.Close()
+	checkProof(t, &idA1, proofChain)
+	checkProof(t, &idA2, proofChain)
+
 	// 2. Payloads
 	resp, err = client.Get(fmt.Sprintf("https://localhost:%d/getpayloads?ids="+
-		"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", // 1 ID
+		hex.EncodeToString(idA1[:])+hex.EncodeToString(idA2[:]),
 		mapserver.APIPort))
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
+	dec = json.NewDecoder(resp.Body)
+	var payloads [][]byte
+	err = dec.Decode(&payloads)
+	require.NoError(t, err)
 	resp.Body.Close()
+	require.Equal(t, 2, len(payloads))
+	// Check they are the same.
+	require.Equal(t, certs[2].Raw, payloads[0])
+	require.Equal(t, certs[3].Raw, payloads[1])
 
+	fmt.Println("OK")
 	return 0
 }
 
-func check(err error) {
-	if err != nil {
-		panic(err)
+// checkProof checks the proof to be correct.
+func checkProof(t tests.T, payloadID *common.SHA256Output, proofs []*mapcommon.MapServerResponse) {
+	t.Helper()
+	// Determine if we are checking an absence or presence.
+	if payloadID == nil {
+		// Absence.
+		require.Equal(t, mapcommon.PoA, proofs[len(proofs)-1].PoI.ProofType, "PoA not found")
+	} else {
+		// Check the last component is present.
+		require.Equal(t, mapcommon.PoP, proofs[len(proofs)-1].PoI.ProofType, "PoP not found")
+	}
+	for _, proof := range proofs {
+		proofType, isCorrect, err := prover.VerifyProofByDomain(proof)
+		require.NoError(t, err)
+		require.True(t, isCorrect)
+
+		if proofType == mapcommon.PoA {
+			require.Empty(t, proof.DomainEntry.CertIDs)
+			require.Empty(t, proof.DomainEntry.PolicyIDs)
+		}
+		if proofType == mapcommon.PoP {
+			// The ID passed as argument must be one of the IDs present in the domain entry.
+			allIDs := append(common.BytesToIDs(proof.DomainEntry.CertIDs),
+				common.BytesToIDs(proof.DomainEntry.PolicyIDs)...)
+			require.Contains(t, allIDs, payloadID)
+		}
 	}
 }
