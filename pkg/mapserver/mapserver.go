@@ -30,12 +30,15 @@ type MapServer struct {
 	Responder *responder.MapResponder
 	Conn      db.Conn
 	// Crypto material of this map server.
-	Cert *ctx509.Certificate
-	Key  *rsa.PrivateKey
-	TLS  *tls.Certificate
+	Cert         *ctx509.Certificate
+	Key          *rsa.PrivateKey
+	TLS          *tls.Certificate
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
 
-	updateChan    chan context.Context
-	updateErrChan chan error
+	apiStopServerChan chan struct{}
+	updateChan        chan context.Context
+	updateErrChan     chan error
 }
 
 func NewMapServer(ctx context.Context, conf *config.Config) (*MapServer, error) {
@@ -93,15 +96,18 @@ func NewMapServer(ctx context.Context, conf *config.Config) (*MapServer, error) 
 
 	// Compose MapServer.
 	s := &MapServer{
-		Updater:   updater,
-		Responder: resp,
-		Conn:      conn,
-		Cert:      cert,
-		Key:       key,
-		TLS:       &tlsCert,
+		Updater:      updater,
+		Responder:    resp,
+		Conn:         conn,
+		Cert:         cert,
+		Key:          key,
+		TLS:          &tlsCert,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 5 * time.Second,
 
-		updateChan:    make(chan context.Context),
-		updateErrChan: make(chan error),
+		apiStopServerChan: make(chan struct{}, 1),
+		updateChan:        make(chan context.Context),
+		updateErrChan:     make(chan error),
 	}
 
 	// Start listening for update requests.
@@ -122,40 +128,47 @@ func NewMapServer(ctx context.Context, conf *config.Config) (*MapServer, error) 
 	return s, nil
 }
 
-// apiRegistered is being used to avoid issues with re-registering handlers in the tests.
-var apiRegistered bool
-
 // Listen is responsible to start the listener for the responder.
 func (s *MapServer) Listen(ctx context.Context) error {
-	if !apiRegistered {
-		// Only register in this process if this is the first time.
-		http.HandleFunc("/getproof", s.apiGetProof)
-		http.HandleFunc("/getpayloads", s.apiGetPayloads)
-		apiRegistered = true
-	}
+	// Reset the default sever mux, to establish the handlers from new.
+	http.DefaultServeMux = &http.ServeMux{}
+	http.HandleFunc("/getproof", s.apiGetProof)
+	http.HandleFunc("/getpayloads", s.apiGetPayloads)
 
 	server := &http.Server{
 		Addr: fmt.Sprintf(":%d", APIPort),
 		TLSConfig: &tls.Config{
 			Certificates: []tls.Certificate{*s.TLS},
 		},
+		ReadTimeout:  s.ReadTimeout,
+		WriteTimeout: s.WriteTimeout,
 	}
-	var errListen error
+	// chanErr will hold the error from the Listen call.
+	chanErr := make(chan error)
 	go func() {
-		errListen = server.ListenAndServeTLS("", "")
-	}()
-	<-ctx.Done()
+		// Spawn a goroutine to shutdown the HTTP server.
+		go func() {
+			<-s.apiStopServerChan
+			server.Shutdown(ctx)
+		}()
+		// This call blocks
+		chanErr <- server.ListenAndServeTLS("", "")
 
-	if errListen != nil {
-		return fmt.Errorf("error serving API: %w", errListen)
+	}()
+	err := <-chanErr
+	// If the error happened because we stopped the server, ignore it.
+	if err == http.ErrServerClosed {
+		err = nil
 	}
-	//Shutdown the server
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer shutdownCancel()
-	if err := server.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("error shutting down API server: %w", err)
+
+	if err != nil {
+		return fmt.Errorf("error serving API: %w", err)
 	}
 	return nil
+}
+
+func (s *MapServer) Shutdown(ctx context.Context) {
+	s.apiStopServerChan <- struct{}{}
 }
 
 // PruneAndUpdate triggers an update. If an ongoing update is still in process, it blocks.
@@ -172,7 +185,7 @@ func (s *MapServer) PruneAndUpdate(ctx context.Context) error {
 // It returns a json formatted structure with
 func (s *MapServer) apiGetProof(w http.ResponseWriter, r *http.Request) {
 	domain := r.URL.Query().Get("domain")
-	ctx, cancelF := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	ctx, cancelF := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelF()
 	proofChain, err := s.Responder.GetProof(ctx, domain)
 	if err != nil {
@@ -191,7 +204,7 @@ func (s *MapServer) apiGetProof(w http.ResponseWriter, r *http.Request) {
 // of all requested IDs.
 // Since each ID is 32 bytes, the hex string will always be a multiple of 64.
 func (s *MapServer) apiGetPayloads(w http.ResponseWriter, r *http.Request) {
-	ctx, cancelF := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	ctx, cancelF := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelF()
 
 	hexIDs := r.URL.Query().Get("ids")
