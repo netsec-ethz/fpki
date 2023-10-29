@@ -7,6 +7,7 @@ clean:
 
 test:
 	@go test ./...
+	@echo "Tests OK"
 
 integration: build_integration_test
 	@# ./bin/test_policylog_interaction

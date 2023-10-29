@@ -1,11 +1,7 @@
 package util
 
 import (
-	"fmt"
-	"strconv"
 	"time"
-
-	"golang.org/x/exp/constraints"
 )
 
 func TimeFromSecs(secs int) time.Time {
@@ -25,20 +21,4 @@ func ParseTimeOfDay(s string) (time.Time, error) {
 	// Because the documentation doesn't specify this as the behavior, there is a test that checks
 	// that this function behaves as expected.
 	return time.Parse(time.TimeOnly, s)
-}
-
-// parseInteger parses a string into a integer. The type can be explicitly indicated or inferred
-// from min and max.
-// Note that with Go 1.20
-func parseInteger[T constraints.Integer](s string, min, max T, name string) (T, error) {
-	var z T // time zero, to be able to return a T value.
-
-	i, err := strconv.ParseInt(s, 10, 64)
-	if err != nil {
-		return z, fmt.Errorf("%s is not a %s", s, name)
-	}
-	if i < int64(min) || i > int64(max) {
-		return z, fmt.Errorf("%v is not between %v and %v", i, min, max)
-	}
-	return T(i), nil
 }

@@ -307,7 +307,7 @@ func TestPruneCerts(t *testing.T) {
 	err = conn.CleanupDirty(ctx)
 	require.NoError(t, err)
 
-	// Now test that prune removes the to leaves from b.com and four certificates from c.com,
+	// Now test that prune removes the two leaves from b.com and four certificates from c.com,
 	// because removing the root certificate triggers removal of all descendants.
 	t.Logf("Using expired time: %s", now)
 	err = conn.PruneCerts(ctx, now)

@@ -242,17 +242,14 @@ func (s *MapServer) apiGetPayloads(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *MapServer) pruneAndUpdate(ctx context.Context) {
-	// prune() and update() both send an answer to the updateErrChan. Refrain from updating if
-	// pruning failed.
-	s.prune(ctx)
-	err := <-s.updateErrChan
+	// Refrain from updating if pruning failed.
+	err := s.prune(ctx)
 	if err != nil {
 		s.updateErrChan <- err
 		return
 	}
 
-	// update() will send its own response to the updateErrChan.
-	s.update(ctx)
+	s.updateErrChan <- s.update(ctx)
 }
 
 // prune only removes the affected certificates from the certs table and adds the affected domains
@@ -260,50 +257,45 @@ func (s *MapServer) pruneAndUpdate(ctx context.Context) {
 // compute the coalesced domains for those dirty domains after prune and before update. It is
 // sufficient to call CoalescePayloadsForDirtyDomains after update and it will take care of all
 // dirty domains, coming from both prune and update.
-func (s *MapServer) prune(ctx context.Context) {
+func (s *MapServer) prune(ctx context.Context) error {
 	fmt.Printf("======== prune started  at %s\n", getTime())
 	defer fmt.Printf("======== prune finished at %s\n\n", getTime())
 
 	err := s.Updater.Conn.PruneCerts(ctx, time.Now())
 	if err != nil {
-		s.updateErrChan <- fmt.Errorf("pruning: %w", err)
+		return fmt.Errorf("pruning: %w", err)
 	}
 
-	s.updateErrChan <- error(nil) // Always answer something.
+	return nil
 }
 
-func (s *MapServer) update(ctx context.Context) {
+func (s *MapServer) update(ctx context.Context) error {
 	fmt.Printf("======== update started  at %s\n", getTime())
 	defer fmt.Printf("======== update finished at %s\n\n", getTime())
 
 	if err := s.updateCerts(ctx); err != nil {
-		s.updateErrChan <- err
-		return
+		return fmt.Errorf("updating certs: %w", err)
 	}
 	// TODO(juagargi) do policy certificates here.
 
 	fmt.Printf("coalescing certificate payloads at %s\n", getTime())
 	if err := s.Updater.CoalescePayloadsForDirtyDomains(ctx); err != nil {
-		s.updateErrChan <- err
-		return
+		return fmt.Errorf("coalescing payloads: %w", err)
 	}
 
 	// Update SMT.
 	fmt.Printf("updating SMT at %s\n", getTime())
 	if err := s.Updater.UpdateSMT(ctx); err != nil {
-		s.updateErrChan <- fmt.Errorf("updating SMT: %w", err)
-		return
+		return fmt.Errorf("updating SMT: %w", err)
 	}
 
 	// Cleanup.
 	fmt.Printf("cleaning up at %s\n", getTime())
 	if err := s.Updater.Conn.CleanupDirty(ctx); err != nil {
-		s.updateErrChan <- fmt.Errorf("cleaning up DB: %w", err)
-		return
+		return fmt.Errorf("cleaning up DB: %w", err)
 	}
 
-	// Always queue answer in form of an error:
-	s.updateErrChan <- error(nil)
+	return nil
 }
 
 func (s *MapServer) updateCerts(ctx context.Context) error {
