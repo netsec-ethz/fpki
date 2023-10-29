@@ -522,7 +522,7 @@ func runWhenFalse(mask []bool, fcn func(to, from int)) int {
 }
 
 // keyValuePairToSMTInput: key value pair -> SMT update input
-// deleteme: this function takes the payload and computes the hash of it. The hash is already
+// deleteme TODO this function takes the payload and computes the hash of it. The hash is already
 // stored in the DB with the new design: change both the function RetrieveDomainEntries and
 // remove the hashing from this keyValuePairToSMTInput function.
 func keyValuePairToSMTInput(keyValuePair []*db.KeyValuePair) ([][]byte, [][]byte, error) {
