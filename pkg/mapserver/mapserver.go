@@ -224,15 +224,17 @@ func (s *MapServer) apiGetPayloads(w http.ResponseWriter, r *http.Request) {
 		ids[i] = (*common.SHA256Output)(id)
 	}
 
-	// Obtain the payloads.
-	payloads, err := s.Conn.RetrieveCertificatePayloads(ctx, ids)
+	// Obtain the bytes.
+	bytes, err := s.Conn.RetrieveCertificatePayloads(ctx, ids)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("error obtaining payloads for %s\nError is: %s",
 			hexIDs, err), http.StatusBadRequest)
 		return
 	}
+
+	// TODO(juagargi) Better encodings such as base64 would reduce bandwidth. Also gzip.
 	enc := json.NewEncoder(w)
-	err = enc.Encode(payloads)
+	err = enc.Encode(bytes)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("encoding proof: %s", err), http.StatusInternalServerError)
 		return
