@@ -114,7 +114,6 @@ func mainFunc() int {
 	require.Equal(t, certs[2].Raw, payloads[0])
 	require.Equal(t, certs[3].Raw, payloads[1])
 
-	fmt.Println("OK")
 	return 0
 }
 
