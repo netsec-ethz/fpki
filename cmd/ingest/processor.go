@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -172,6 +173,22 @@ func (p *Processor) ingestWithCSV(fileReader io.Reader) error {
 	reader.FieldsPerRecord = -1 // don't check number of fields
 
 	parseFunction := func(fields []string, lineNo int) error {
+		// First avoid even parsing already expired certs.
+		exp := strings.Split(fields[ExpirationColumn], ".")
+		if len(exp) != 2 {
+			return fmt.Errorf("unrecognized timestamp in 7th column: %s", fields[ExpirationColumn])
+		}
+		n, err := strconv.ParseInt(exp[0], 10, 64)
+		if err != nil {
+			return fmt.Errorf("parsing the expiration time \"%s\" got: %w",
+				fields[ExpirationColumn], err)
+		}
+		if p.now.After(time.Unix(n, 0)) {
+			// Skip this certificate.
+			return nil
+		}
+
+		// From this point on, we need to parse the certificate.
 		rawBytes, err := base64.StdEncoding.DecodeString(fields[CertificateColumn])
 		if err != nil {
 			return err
