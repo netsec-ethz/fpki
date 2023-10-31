@@ -220,7 +220,9 @@ func (u *MapUpdater) verifyValidity(
 	// TODO(juagargi): for each certificate in the batch, verify its proof of inclusion.
 	// The new STH was consistent with the old one, so here it is enough to verify the inclusion
 	// against the current head.
-	// See certificate-transparency-go/client.GetRawEntries, .GetSTHConsistency, .GetProofByHash
+	// See certificate-transparency-go/client.GetRawEntries, .GetSTHConsistency, .GetProofByHash .
+	// This function should probably accept data structures returned by the CT log server.
+	// See certificate-transparency-go/client .
 	return nil
 }
 
