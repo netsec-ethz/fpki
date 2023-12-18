@@ -133,7 +133,8 @@ func (s *MapServer) Listen(ctx context.Context) error {
 	// Reset the default sever mux, to establish the handlers from new.
 	http.DefaultServeMux = &http.ServeMux{}
 	http.HandleFunc("/getproof", s.apiGetProof)
-	http.HandleFunc("/getpayloads", s.apiGetPayloads)
+	http.HandleFunc("/getcertpayloads", s.apiGetCertPayloads)
+	http.HandleFunc("/getpolicypayloads", s.apiGetPolicyPayloads)
 
 	server := &http.Server{
 		Addr: fmt.Sprintf(":%d", APIPort),
@@ -203,7 +204,7 @@ func (s *MapServer) apiGetProof(w http.ResponseWriter, r *http.Request) {
 // apiGetPaylpads expects one GET parameer "ids" with a string value of the hex representation
 // of all requested IDs.
 // Since each ID is 32 bytes, the hex string will always be a multiple of 64.
-func (s *MapServer) apiGetPayloads(w http.ResponseWriter, r *http.Request) {
+func (s *MapServer) apiGetCertPayloads(w http.ResponseWriter, r *http.Request) {
 	ctx, cancelF := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelF()
 
@@ -226,6 +227,47 @@ func (s *MapServer) apiGetPayloads(w http.ResponseWriter, r *http.Request) {
 
 	// Obtain the bytes.
 	bytes, err := s.Conn.RetrieveCertificatePayloads(ctx, ids)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("error obtaining payloads for %s\nError is: %s",
+			hexIDs, err), http.StatusBadRequest)
+		return
+	}
+
+	// TODO(juagargi) Better encodings such as base64 would reduce bandwidth. Also gzip.
+	enc := json.NewEncoder(w)
+	err = enc.Encode(bytes)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("encoding proof: %s", err), http.StatusInternalServerError)
+		return
+	}
+}
+
+// apiGetPolicyPayloads expects one GET parameer "ids" with a string value of the hex representation
+// of all requested IDs.
+// Since each ID is 32 bytes, the hex string will always be a multiple of 64.
+func (s *MapServer) apiGetPolicyPayloads(w http.ResponseWriter, r *http.Request) {
+	ctx, cancelF := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelF()
+
+	hexIDs := r.URL.Query().Get("ids")
+	if len(hexIDs)%(common.SHA256Size*2) != 0 {
+		http.Error(w, "parameter \"ids\" length is not a concatenation of 32 char IDs",
+			http.StatusBadRequest)
+		return
+	}
+	ids := make([]*common.SHA256Output, len(hexIDs)/common.SHA256Size/2)
+	for i := 0; i < len(ids); i++ {
+		h := hexIDs[i*common.SHA256Size*2 : (i+1)*common.SHA256Size*2]
+		id, err := hex.DecodeString(h)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("not a hexadecimal ID: %s", h), http.StatusBadRequest)
+			return
+		}
+		ids[i] = (*common.SHA256Output)(id)
+	}
+
+	// Obtain the bytes.
+	bytes, err := s.Conn.RetrievePolicyPayloads(ctx, ids)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("error obtaining payloads for %s\nError is: %s",
 			hexIDs, err), http.StatusBadRequest)

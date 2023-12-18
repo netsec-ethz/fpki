@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"time"
@@ -40,7 +42,7 @@ func mainFunc() int {
 	// Connect to the DB.
 	conn := testdb.Connect(t, dbConf)
 	// Insert some mock data.
-	certs, _, _, _, _ := tup.UpdateDBwithRandomCerts(ctx, t, conn, []string{
+	certs, policies, _, _, _ := tup.UpdateDBwithRandomCerts(ctx, t, conn, []string{
 		"a.com",
 		"b.com",
 		"c.com"},
@@ -51,6 +53,9 @@ func mainFunc() int {
 		})
 	err := conn.Close()
 	require.NoError(t, err)
+	// Ancilliary test to check that UpdateDBwithRandomCerts worked as expected.
+	require.Equal(t, 8, len(certs))    // a.com and c.com
+	require.Equal(t, 4, len(policies)) // b.com and c.com
 
 	// Create a test configuration for the mapserver.
 	conf := &config.Config{
@@ -81,12 +86,42 @@ func mainFunc() int {
 		Transport: tr,
 	}
 
-	// Request a.com => it is at certs[2] and certs[3]
-	idA1 := common.SHA256Hash32Bytes(certs[2].Raw)
-	idA2 := common.SHA256Hash32Bytes(certs[3].Raw)
-	// 1. Proof
-	resp, err := client.Get(fmt.Sprintf("https://localhost:%d/getproof?domain=a.com",
-		mapserver.APIPort))
+	// Check responses for a.com, b.com and c.com .
+	checkResponse(t, client, "a.com", []common.SHA256Output{
+		common.SHA256Hash32Bytes(certs[0].Raw),
+		common.SHA256Hash32Bytes(certs[1].Raw),
+		common.SHA256Hash32Bytes(certs[2].Raw),
+		common.SHA256Hash32Bytes(certs[3].Raw),
+	})
+	checkResponse(t, client, "b.com", []common.SHA256Output{
+		common.SHA256Hash32Bytes(policies[0].Raw()),
+		common.SHA256Hash32Bytes(policies[1].Raw()),
+	})
+	checkResponse(t, client, "c.com", []common.SHA256Output{
+		common.SHA256Hash32Bytes(certs[4].Raw),
+		common.SHA256Hash32Bytes(certs[5].Raw),
+		common.SHA256Hash32Bytes(certs[6].Raw),
+		common.SHA256Hash32Bytes(certs[7].Raw),
+		common.SHA256Hash32Bytes(policies[2].Raw()),
+		common.SHA256Hash32Bytes(policies[3].Raw()),
+	})
+
+	return 0
+}
+
+func checkResponse(
+	t tests.T,
+	client *http.Client,
+	domainName string,
+	ids []common.SHA256Output,
+) {
+
+	// Proof of inclusion.
+	t.Logf("verifying inclusion of %s", domainName)
+	resp, err := client.Get(fmt.Sprintf("https://localhost:%d/getproof?domain=%s",
+		mapserver.APIPort,
+		domainName,
+	))
 	require.NoError(t, err)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
@@ -95,26 +130,69 @@ func mainFunc() int {
 	err = dec.Decode(&proofChain)
 	require.NoError(t, err)
 	resp.Body.Close()
-	checkProof(t, &idA1, proofChain)
-	checkProof(t, &idA2, proofChain)
 
-	// 2. Payloads
-	resp, err = client.Get(fmt.Sprintf("https://localhost:%d/getpayloads?ids="+
-		hex.EncodeToString(idA1[:])+hex.EncodeToString(idA2[:]),
-		mapserver.APIPort))
-	require.NoError(t, err)
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-	dec = json.NewDecoder(resp.Body)
-	var payloads [][]byte
-	err = dec.Decode(&payloads)
-	require.NoError(t, err)
-	resp.Body.Close()
-	require.Equal(t, 2, len(payloads))
-	// Check they are the same.
-	require.Equal(t, certs[2].Raw, payloads[0])
-	require.Equal(t, certs[3].Raw, payloads[1])
+	for _, id := range ids {
+		checkProof(t, &id, proofChain)
+	}
+	checkIDsInProof(t, proofChain, ids)
 
-	return 0
+	// Now distinguish between cert and policy IDs before requesting payloads.
+	certIDs := make(map[common.SHA256Output]struct{})
+	policyIDs := make(map[common.SHA256Output]struct{})
+	for _, p := range proofChain {
+		for _, id := range common.BytesToIDs(p.DomainEntry.CertIDs) {
+			certIDs[*id] = struct{}{}
+		}
+		for _, id := range common.BytesToIDs(p.DomainEntry.PolicyIDs) {
+			policyIDs[*id] = struct{}{}
+		}
+	}
+
+	grouping := []struct {
+		fcn string
+		ids map[common.SHA256Output]struct{}
+	}{
+		{
+			fcn: "getcertpayloads",
+			ids: certIDs,
+		},
+		{
+			fcn: "getpolicypayloads",
+			ids: policyIDs,
+		},
+	}
+	// Get all payloads:
+	for _, group := range grouping {
+		if len(group.ids) == 0 {
+			continue
+		}
+		var collatedIDs string
+		for id := range group.ids {
+			collatedIDs += hex.EncodeToString(id[:])
+		}
+		resp, err = client.Get(fmt.Sprintf("https://localhost:%d/%s?ids=%s",
+			mapserver.APIPort,
+			group.fcn,
+			collatedIDs,
+		))
+		require.NoError(t, err)
+		respBytes, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, resp.StatusCode, string(respBytes))
+		dec := json.NewDecoder(bytes.NewReader(respBytes))
+		var payloads [][]byte
+		err = dec.Decode(&payloads)
+		require.NoError(t, err)
+		resp.Body.Close()
+		require.Equal(t, len(group.ids), len(payloads))
+		// Check the payloads by checking their hashes are the same.
+		computedIDs := make(map[common.SHA256Output]struct{})
+		for _, payload := range payloads {
+			id := common.SHA256Hash32Bytes(payload)
+			computedIDs[id] = struct{}{}
+		}
+		require.EqualValues(t, group.ids, computedIDs)
+	}
 }
 
 // checkProof checks the proof to be correct.
@@ -144,4 +222,35 @@ func checkProof(t tests.T, payloadID *common.SHA256Output, proofs []*mapcommon.M
 			require.Contains(t, allIDs, payloadID)
 		}
 	}
+}
+
+// checkIDsInProof verifies that the IDs contained in the proof chain are the same as those
+// expected (not just included, but the same set of IDs).
+func checkIDsInProof(
+	t tests.T,
+	proofChain []*mapcommon.MapServerResponse,
+	IDs []common.SHA256Output) {
+
+	// Extract all IDs from the proof chain.
+	allIDs := make(map[common.SHA256Output]struct{})
+	for i := range proofChain {
+		// Certificates.
+		ids := common.BytesToIDs(proofChain[i].DomainEntry.CertIDs)
+		for _, id := range ids {
+			allIDs[*id] = struct{}{}
+		}
+		// Policies.
+		ids = common.BytesToIDs(proofChain[i].DomainEntry.PolicyIDs)
+		for _, id := range ids {
+			allIDs[*id] = struct{}{}
+		}
+	}
+
+	// Create a set with all the expected IDs.
+	expected := make(map[common.SHA256Output]struct{})
+	for _, id := range IDs {
+		expected[id] = struct{}{}
+	}
+
+	require.EqualValues(t, expected, allIDs)
 }

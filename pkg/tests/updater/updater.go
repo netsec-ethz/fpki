@@ -22,6 +22,9 @@ const (
 	BothCertsAndPolicies
 )
 
+// UpdateDBwithRandomCerts creates in DB four certificates and two policies per domain in domains.
+// The certificates correspond to two different certificate chains: the first chain is
+// domainName->c1.com->c0.com , and the second chain is domainName->c0.com .
 func UpdateDBwithRandomCerts(
 	ctx context.Context,
 	t tests.T,

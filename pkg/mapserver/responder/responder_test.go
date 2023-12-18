@@ -79,7 +79,8 @@ func TestProof(t *testing.T) {
 		tup.UpdateDBwithRandomCerts(ctx, t, conn, []string{
 			"a.com",
 			"b.com",
-			"c.com"},
+			"c.com",
+		},
 			[]tup.CertsPoliciesOrBoth{
 				tup.CertsOnly,
 				tup.PoliciesOnly,

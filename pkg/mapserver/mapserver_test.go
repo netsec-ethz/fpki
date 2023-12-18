@@ -266,7 +266,7 @@ func benchmarkAPIGetPayloads(b *testing.B, numDifferentDomains int) {
 			defer wg.Done()
 
 			ID := hex.EncodeToString(certIDs[rand.Intn(len(certIDs))][:])
-			resp, err := client.Get(fmt.Sprintf("https://localhost:%d/getpayloads?ids=%s",
+			resp, err := client.Get(fmt.Sprintf("https://localhost:%d/getcertpayloads?ids=%s",
 				mapserver.APIPort, ID))
 			b.StopTimer()
 			require.NoError(b, err)

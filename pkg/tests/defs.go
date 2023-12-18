@@ -3,6 +3,7 @@ package tests
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -11,6 +12,7 @@ type T interface {
 	require.TestingT
 	Helper()
 	Name() string
+	Logf(format string, args ...any)
 }
 
 type RuntimeTest struct {
@@ -30,4 +32,8 @@ func (rt RuntimeTest) Name() string { return rt.TestName }
 func (RuntimeTest) FailNow()        { os.Exit(1) }
 func (RuntimeTest) Errorf(format string, args ...interface{}) {
 	fmt.Printf(format, args...)
+}
+func (RuntimeTest) Logf(format string, args ...interface{}) {
+	args = append([]any{time.Now().Format(time.Stamp)}, args...)
+	fmt.Printf("\t%s: "+format+"\n", args...)
 }
