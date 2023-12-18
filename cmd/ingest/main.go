@@ -28,7 +28,6 @@ const (
 const (
 	CertificateColumn = 3
 	CertChainColumn   = 4
-	ExpirationColumn  = 7 // In seconds
 )
 
 // Times gathered at jupiter, 64 gz files, no CSV

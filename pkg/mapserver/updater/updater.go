@@ -104,6 +104,9 @@ func (u *MapUpdater) UpdateNextBatch(ctx context.Context) (int, error) {
 	// intermediate step).
 	// We may want to start a transaction in the DB at the StartFetchingRemaining and commit it
 	// only if the verification of all batches is alright.
+	// Or we may want to insert batches and verify only the last one.
+	// See issue #47
+	// https://github.com/netsec-ethz/fpki/issues/47
 	err = u.verifyValidity(ctx, certs, chains)
 	if err != nil {
 		return 0, fmt.Errorf("validity from CT log server: %w", err)

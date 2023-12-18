@@ -38,7 +38,8 @@ type Fetcher interface {
 
 type State struct {
 	Size uint64
-	STH  []byte
+	// STH is the signed tree head of the server.
+	STH []byte
 }
 
 // LogFetcher is used to download CT TBS certificates. It has state and keeps some routines
@@ -113,7 +114,9 @@ func (f LogFetcher) GetCurrentState(ctx context.Context) (State, error) {
 	}
 	return State{
 		Size: sth.TreeSize,
-		STH:  sth.TreeHeadSignature.Signature,
+		// TODO(juagargi) this STH will probably need the whole SignedTreeHead structure,
+		// not just the signature.
+		STH: sth.TreeHeadSignature.Signature,
 	}, nil
 }
 
