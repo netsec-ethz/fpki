@@ -299,7 +299,7 @@ func getExpiration(fields []string) (int64, error) {
 
 	s := strings.Split(fields[expirationColumn], ".")
 	if len(s) != 2 {
-		return 0, fmt.Errorf("unrecognized timestamp in 7th column: %s", fields[expirationColumn])
+		return 0, fmt.Errorf("unrecognized timestamp in the last column: %s", fields[expirationColumn])
 	}
 	exp, err := strconv.ParseInt(s[0], 10, 64)
 	if err != nil {
