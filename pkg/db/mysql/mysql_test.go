@@ -29,8 +29,7 @@ func TestCheckCertsExist(t *testing.T) {
 	defer removeF()
 
 	// Connect to the DB.
-	conn, err := testdb.Connect(config)
-	require.NoError(t, err)
+	conn := testdb.Connect(t, config)
 	defer conn.Close()
 
 	// Obtain a convenient MysqlDBForTests object (only in tests).
@@ -48,7 +47,7 @@ func TestCheckCertsExist(t *testing.T) {
 	N := 10
 	ids := createIDs(N)
 	presence := make([]bool, N)
-	err = c.DebugCheckCertsExist(ctx, ids, presence)
+	err := c.DebugCheckCertsExist(ctx, ids, presence)
 	require.NoError(t, err)
 
 	// Check now with 10000 elements, will fail.
@@ -80,8 +79,7 @@ func TestCoalesceForDirtyDomains(t *testing.T) {
 	defer removeF()
 
 	// Connect to the DB.
-	conn, err := testdb.Connect(config)
-	require.NoError(t, err)
+	conn := testdb.Connect(t, config)
 	defer conn.Close()
 
 	// Prepare two mock leaf certificates, with their trust chains.
@@ -98,7 +96,7 @@ func TestCoalesceForDirtyDomains(t *testing.T) {
 	pols, polIDs := testPolicyHierarchyForLeafs(t, leafPols)
 
 	// Update with certificates and policies.
-	err = updater.UpdateWithKeepExisting(ctx, conn, certNames, certIDs, parentCertIDs,
+	err := updater.UpdateWithKeepExisting(ctx, conn, certNames, certIDs, parentCertIDs,
 		certs, util.ExtractExpirations(certs), pols)
 	require.NoError(t, err)
 
@@ -150,8 +148,7 @@ func TestRetrieveCertificatePayloads(t *testing.T) {
 	defer removeF()
 
 	// Connect to the DB.
-	conn, err := testdb.Connect(config)
-	require.NoError(t, err)
+	conn := testdb.Connect(t, config)
 	defer conn.Close()
 
 	// Ingest some data.
@@ -161,7 +158,7 @@ func TestRetrieveCertificatePayloads(t *testing.T) {
 	}
 	certs, certIDs, parentCertIDs, certNames := testCertHierarchyForLeafs(t, leafCerts)
 	pols, polIDs := testPolicyHierarchyForLeafs(t, leafCerts)
-	err = updater.UpdateWithKeepExisting(ctx, conn, certNames, certIDs, parentCertIDs,
+	err := updater.UpdateWithKeepExisting(ctx, conn, certNames, certIDs, parentCertIDs,
 		certs, util.ExtractExpirations(certs), pols)
 	require.NoError(t, err)
 	// Coalescing of payloads.
@@ -199,9 +196,160 @@ func TestRetrieveCertificatePayloads(t *testing.T) {
 	}
 }
 
+func TestLastCTlogServerState(t *testing.T) {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	defer cancelF()
+
+	// Configure a test DB.
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	// Connect to the DB.
+	conn := testdb.Connect(t, config)
+	defer conn.Close()
+
+	// Check that querying for an unknown URL doesn't fail and returns 0 as its last size:
+	n, sth, err := conn.LastCTlogServerState(ctx, "doesnt exist")
+	require.NoError(t, err)
+	require.Equal(t, int64(0), n)
+	require.Nil(t, sth)
+
+	// Store values for two urls.
+	url1 := "myurl"
+	err = conn.UpdateLastCTlogServerState(ctx, url1, 42, []byte{4, 2})
+	require.NoError(t, err)
+	url2 := "anotherurl"
+	err = conn.UpdateLastCTlogServerState(ctx, url2, 123, []byte{1, 2, 3})
+	require.NoError(t, err)
+
+	// Check the stored values.
+	n, sth, err = conn.LastCTlogServerState(ctx, url1)
+	require.NoError(t, err)
+	require.Equal(t, int64(42), n)
+	require.Equal(t, sth, []byte{4, 2})
+	n, sth, err = conn.LastCTlogServerState(ctx, url2)
+	require.NoError(t, err)
+	require.Equal(t, int64(123), n)
+	require.Equal(t, sth, []byte{1, 2, 3})
+
+	// Replace one value and check it.
+	err = conn.UpdateLastCTlogServerState(ctx, url2, 222, []byte{2, 2, 2})
+	require.NoError(t, err)
+	n, sth, err = conn.LastCTlogServerState(ctx, url2)
+	require.NoError(t, err)
+	require.Equal(t, int64(222), n)
+	require.Equal(t, sth, []byte{2, 2, 2})
+
+	// Unknown urls still give out -1:
+	n, sth, err = conn.LastCTlogServerState(ctx, "doesnt exist")
+	require.NoError(t, err)
+	require.Equal(t, int64(0), n)
+	require.Nil(t, sth)
+}
+
+func TestPruneCerts(t *testing.T) {
+	rand.Seed(322)
+
+	ctx, cancelF := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancelF()
+
+	// Configure a test DB.
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	// Connect to the DB.
+	conn := testdb.Connect(t, config)
+	defer conn.Close()
+
+	// Prepare test data.
+	// a.com 's chain will not expire.
+	// b.com 's chain will expire at its leaf.
+	// c.com 's chain will expire only its root.
+	expiredTime := util.TimeFromSecs(100)
+	now := expiredTime.Add(time.Hour)
+	leafNames := []string{
+		"a.com",
+		"b.com",
+		"c.com",
+	}
+	certs, certIDs, parentIDs, names := testCertHierarchyForLeafs(t, leafNames)
+	// Check that no certificate is expired yet.
+	for i, cert := range certs {
+		require.False(t, now.After(cert.NotAfter),
+			"failed test data precondition at %d, with value %s",
+			i, cert.NotAfter)
+	}
+	// Check that ensure that the data setup has not changed (leaves at the expected index, etc).
+	require.Equal(t, len(leafNames)*4, len(certs))
+	require.Equal(t, len(certs), len(certIDs))
+	require.Equal(t, len(certs), len(parentIDs))
+	require.Equal(t, len(certs), len(names))
+	// Modify b.com: only the 2 leaf certificates.
+	c := certs[4*1+2]                               // first chain of b.com (b.com->c1->c0)
+	require.Equal(t, "b.com", c.Subject.CommonName) // assert that the test data is still correct.
+	c.NotAfter = expiredTime
+	c = certs[4*1+3]                                // second chain of b.com (b.com->c0)
+	require.Equal(t, "b.com", c.Subject.CommonName) // assert that the test data is still correct.
+	c.NotAfter = expiredTime
+	// Modify c.com: only the single root of its two chains.
+	c = certs[4*2]                                   // root of both chains for c.com
+	require.Equal(t, "c0.com", c.Subject.CommonName) // assert that the test data is still correct.
+	c.NotAfter = expiredTime
+
+	// Ingest data into DB.
+	err := updater.UpdateWithKeepExisting(ctx, conn, names, certIDs, parentIDs,
+		certs, util.ExtractExpirations(certs), nil)
+	require.NoError(t, err)
+	// Coalescing of payloads.
+	err = updater.CoalescePayloadsForDirtyDomains(ctx, conn)
+	require.NoError(t, err)
+
+	err = conn.CleanupDirty(ctx)
+	require.NoError(t, err)
+
+	// Now test that prune removes the two leaves from b.com and four certificates from c.com,
+	// because removing the root certificate triggers removal of all descendants.
+	t.Logf("Using expired time: %s", now)
+	err = conn.PruneCerts(ctx, now)
+	require.NoError(t, err)
+	// Find out how many certs we have now.
+	// We should substract two leafs in b.com + all certs from c.com
+	newCertIDs := getAllCerts(ctx, t, conn)
+	require.Equal(t, len(certs)-((1+1)+(4)), len(newCertIDs))
+	// The certs we still have should correspond to 4 from a.com + 2 from b.com (non leaf certs)
+	// Create a set of IDs and query them.
+	newIDsSet := make(map[common.SHA256Output]struct{})
+	for _, id := range newCertIDs {
+		newIDsSet[*id] = struct{}{}
+	}
+	require.Len(t, newIDsSet, len(newCertIDs)) // check the conversion went okay
+	// a.com certificates
+	require.Contains(t, newIDsSet, *certIDs[4*0+0])
+	require.Contains(t, newIDsSet, *certIDs[4*0+1])
+	require.Contains(t, newIDsSet, *certIDs[4*0+2])
+	require.Contains(t, newIDsSet, *certIDs[4*0+3])
+	// b.com
+	require.Contains(t, newIDsSet, *certIDs[4*1+0])
+	require.Contains(t, newIDsSet, *certIDs[4*1+1])
+	require.NotContains(t, newIDsSet, *certIDs[4*1+2])
+	require.NotContains(t, newIDsSet, *certIDs[4*1+3])
+	// c.com
+	require.NotContains(t, newIDsSet, *certIDs[4*2+0])
+	require.NotContains(t, newIDsSet, *certIDs[4*2+1])
+	require.NotContains(t, newIDsSet, *certIDs[4*2+2])
+	require.NotContains(t, newIDsSet, *certIDs[4*2+3])
+
+	// Test the appropriate entries exist in dirty.
+	dirtyDomains, err := conn.RetrieveDirtyDomains(ctx)
+	require.NoError(t, err)
+	require.Len(t, dirtyDomains, 2) // b.com + c.com
+}
+
 // testCertHierarchyForLeafs returns a hierarchy per leaf certificate. Each certificate is composed
 // of two mock chains, like: leaf->c1.com->c0.com, leaf->c0.com , created using the function
-// BuildTestRandomCertHierarchy.
+// BuildTestRandomCertHierarchy. That function always returns four certificates, in this order:
+// c0.com,c1.com, leaf->c1->c0, leaf->c0
+// Thus it always returns 4*len(leaves) entries.
 func testCertHierarchyForLeafs(t tests.T, leaves []string) (certs []*ctx509.Certificate,
 	certIDs, parentCertIDs []*common.SHA256Output, certNames [][]string) {
 
@@ -239,4 +387,18 @@ func glueSortedIDsAndComputeItsID(IDs []*common.SHA256Output) ([]byte, *common.S
 	// Compute the hash of the glued IDs.
 	id := common.SHA256Hash32Bytes(gluedIDs)
 	return gluedIDs, &id
+}
+
+func getAllCerts(ctx context.Context, t tests.T, conn testdb.Conn) []*common.SHA256Output {
+	rows, err := conn.DB().QueryContext(ctx, "SELECT cert_id FROM certs")
+	require.NoError(t, err)
+	IDs := make([]*common.SHA256Output, 0)
+	for rows.Next() {
+		var data []byte
+		err = rows.Scan(&data)
+		require.NoError(t, err)
+		id := *(*common.SHA256Output)(data)
+		IDs = append(IDs, &id)
+	}
+	return IDs
 }

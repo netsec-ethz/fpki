@@ -2,6 +2,7 @@ package responder
 
 import (
 	"context"
+	"crypto/rsa"
 	"encoding/hex"
 	"math/rand"
 	"testing"
@@ -12,9 +13,9 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/common"
 	mapcommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/prover"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
-	"github.com/netsec-ethz/fpki/pkg/tests/random"
+	"github.com/netsec-ethz/fpki/pkg/tests"
 	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
+	tup "github.com/netsec-ethz/fpki/pkg/tests/updater"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
@@ -27,12 +28,11 @@ func TestNewResponder(t *testing.T) {
 	defer removeF()
 
 	// Connect to the DB.
-	conn, err := testdb.Connect(config)
-	require.NoError(t, err)
+	conn := testdb.Connect(t, config)
 	defer conn.Close()
 
 	// Create a responder (root will be nil).
-	responder, err := NewMapResponder(ctx, "./testdata/mapserver_config.json", conn)
+	responder, err := NewMapResponder(ctx, conn, loadKey(t, "testdata/server_key.pem"))
 	require.NoError(t, err)
 	// Check its tree head is nil.
 	require.Nil(t, responder.smt.Root)
@@ -47,7 +47,7 @@ func TestNewResponder(t *testing.T) {
 	err = conn.SaveRoot(ctx, &root)
 	require.NoError(t, err)
 	// Create a responder (root will NOT be nil).
-	responder, err = NewMapResponder(ctx, "./testdata/mapserver_config.json", conn)
+	responder, err = NewMapResponder(ctx, conn, loadKey(t, "testdata/server_key.pem"))
 	require.NoError(t, err)
 	// Check its tree head is NOT nil.
 	require.NotNil(t, responder.smt.Root)
@@ -72,51 +72,32 @@ func TestProof(t *testing.T) {
 	defer removeF()
 
 	// Connect to the DB.
-	conn, err := testdb.Connect(config)
-	require.NoError(t, err)
+	conn := testdb.Connect(t, config)
 	defer conn.Close()
 
-	// a.com
-	certs, certIDs, parentCertIDs, names := random.BuildTestRandomCertHierarchy(t, "a.com")
-	err = updater.UpdateWithKeepExisting(ctx, conn, names, certIDs, parentCertIDs, certs,
-		util.ExtractExpirations(certs), nil)
-	require.NoError(t, err)
-	certsA := certs
-
-	// b.com
-	policies := random.BuildTestRandomPolicyHierarchy(t, "b.com")
-	err = updater.UpdateWithKeepExisting(ctx, conn, nil, nil, nil, nil, nil, policies)
-	require.NoError(t, err)
-	policiesB := policies
-
-	// c.com
-	certs, certIDs, parentCertIDs, names = random.BuildTestRandomCertHierarchy(t, "c.com")
-	policies = random.BuildTestRandomPolicyHierarchy(t, "c.com")
-	err = updater.UpdateWithKeepExisting(ctx, conn, names, certIDs, parentCertIDs, certs,
-		util.ExtractExpirations(certs), policies)
-	require.NoError(t, err)
-	certsC := certs
-
-	// Coalescing of payloads.
-	err = updater.CoalescePayloadsForDirtyDomains(ctx, conn)
-	require.NoError(t, err)
-
-	// Create/update the SMT.
-	err = updater.UpdateSMT(ctx, conn, 32)
-	require.NoError(t, err)
-
-	// And cleanup dirty, flagging the end of the update cycle.
-	err = conn.CleanupDirty(ctx)
-	require.NoError(t, err)
+	certs, policies, _, _, _ :=
+		tup.UpdateDBwithRandomCerts(ctx, t, conn, []string{
+			"a.com",
+			"b.com",
+			"c.com",
+		},
+			[]tup.CertsPoliciesOrBoth{
+				tup.CertsOnly,
+				tup.PoliciesOnly,
+				tup.BothCertsAndPolicies,
+			})
+	certsA := certs[0:4]
+	policiesB := policies[0:2]
+	certsC := certs[4:8]
 
 	// Create a responder.
-	responder, err := NewMapResponder(ctx, "./testdata/mapserver_config.json", conn)
+	responder, err := NewMapResponder(ctx, conn, loadKey(t, "testdata/server_key.pem"))
 	require.NoError(t, err)
 
 	// Check a.com:
 	proofChain, err := responder.GetProof(ctx, "a.com")
 	require.NoError(t, err)
-	id := common.SHA256Hash32Bytes(certsA[0].Raw)
+	id := common.SHA256Hash32Bytes(certsA[2].Raw)
 	checkProof(t, &id, proofChain)
 
 	// Check b.com:
@@ -128,7 +109,7 @@ func TestProof(t *testing.T) {
 	// Check c.com:
 	proofChain, err = responder.GetProof(ctx, "c.com")
 	require.NoError(t, err)
-	id = common.SHA256Hash32Bytes(certsC[0].Raw)
+	id = common.SHA256Hash32Bytes(certsC[2].Raw)
 	checkProof(t, &id, proofChain)
 
 	// Now check an absent domain.
@@ -164,4 +145,10 @@ func checkProof(t *testing.T, payloadID *common.SHA256Output, proofs []*mapcommo
 			require.Contains(t, allIDs, payloadID)
 		}
 	}
+}
+
+func loadKey(t tests.T, filename string) *rsa.PrivateKey {
+	k, err := util.RSAKeyFromPEMFile(filename)
+	require.NoError(t, err)
+	return k
 }

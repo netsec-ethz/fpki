@@ -64,6 +64,18 @@ type certs interface {
 	// RetrieveCertificatePayloads returns the payload for each of the certificates identified
 	// by the passed ID.
 	RetrieveCertificatePayloads(ctx context.Context, IDs []*common.SHA256Output) ([][]byte, error)
+
+	// LastCTlogServerState returns the last state of the CT log server written into the DB.
+	// The url specifies the CT log server from which this data comes from.
+	LastCTlogServerState(ctx context.Context, url string) (size int64, sth []byte, err error)
+
+	// UpdateLastCTlogServerState updates the last status of the CT log server written into the DB.
+	// The url specifies the CT log server from which this data comes from.
+	UpdateLastCTlogServerState(ctx context.Context, url string, size int64, sth []byte) error
+
+	// PruneCerts removes all certificates that are no longer valid according to the paramter.
+	// I.e. any certificate whose NotAfter date is equal or before the parameter.
+	PruneCerts(ctx context.Context, now time.Time) error
 }
 
 type policies interface {

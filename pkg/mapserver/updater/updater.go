@@ -18,59 +18,129 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
-// MapUpdater: map updater. It is responsible for updating the tree, and writing to db
+// MapUpdater: map updater. It is responsible for downloading certificates from the multiple
+// log servers, updating the tree, and writing to DB.
+// When the MapUpdater is started, it will attempt to download certificartes from tne first
+// URL in a batch.
 type MapUpdater struct {
-	Fetcher logfetcher.LogFetcher
-	smt     *trie.Trie
-	dbConn  db.Conn
+	Fetchers []logfetcher.Fetcher
+	Conn     db.Conn
+
+	currFetcher int              // the fetcher being used once StartFetchingRemaining is called
+	lastState   logfetcher.State // last known server status
+	currState   logfetcher.State // the current status
+	// Don't use a Trie in memory. The updater just creates one when needed and disposes of it
+	// afterwards.
 }
 
 // NewMapUpdater: return a new map updater.
-func NewMapUpdater(config *db.Configuration, url string) (*MapUpdater, error) {
+func NewMapUpdater(config *db.Configuration, urls []string) (*MapUpdater, error) {
+	if len(urls) == 0 {
+		return nil, fmt.Errorf("No URLs")
+	}
 	// db conn for map updater
 	dbConn, err := mysql.Connect(config)
 	if err != nil {
 		return nil, fmt.Errorf("NewMapUpdater | db.Connect | %w", err)
 	}
 
-	// deleteme
-	// SMT
-	smt, err := trie.NewTrie(nil, common.SHA256Hash, dbConn)
-	if err != nil {
-		return nil, fmt.Errorf("NewMapServer | NewTrie | %w", err)
-	}
-	smt.CacheHeightLimit = 32
-
-	fetcher, err := logfetcher.NewLogFetcher(url)
-	if err != nil {
-		return nil, err
+	fetchers := make([]logfetcher.Fetcher, len(urls))
+	alreadyURLs := make(map[string]struct{}, len(urls))
+	for i, url := range urls {
+		// Check if the url is already present.
+		if _, ok := alreadyURLs[url]; ok {
+			return nil, fmt.Errorf("URL %s is duplicated", url)
+		}
+		alreadyURLs[url] = struct{}{}
+		// Keep a new fetcher for the url.
+		fetchers[i], err = logfetcher.NewLogFetcher(url)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &MapUpdater{
-		Fetcher: *fetcher,
-		smt:     smt,
-		dbConn:  dbConn,
+		Fetchers: fetchers,
+		Conn:     dbConn,
 	}, nil
 }
 
-// StartFetching will initiate the CT logs fetching process in the background, trying to
-// obtain the next batch of certificates and have it ready for the next update.
-func (u *MapUpdater) StartFetching(startIndex, endIndex int64) {
-	u.Fetcher.StartFetching(startIndex, endIndex)
+// StartFetchingRemaining retrieves the last stored index number for this CT log server, and the
+// current last index, and uses them to call StartFetching.
+// It returns an error if there was one retrieving the start or end indices.
+func (u *MapUpdater) StartFetchingRemaining() error {
+	u.currFetcher = 0
+	ctx, cancelF := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelF()
+
+	return u.startNextFetcher(ctx)
+}
+
+func (u *MapUpdater) StopFetching() {
+	if u.currFetcher < len(u.Fetchers) {
+		// Stop the previous fetcher.
+		u.Fetchers[u.currFetcher].StopFetching()
+	}
+}
+
+func (u *MapUpdater) NextBatch(ctx context.Context) bool {
+	return u.currFetcher < len(u.Fetchers) && u.Fetchers[u.currFetcher].NextBatch(ctx)
 }
 
 // UpdateNextBatch downloads the next batch from the CT log server and updates the domain and
 // Updates tables. Also the SMT.
+// TODO(juagargi) This can be optimized by having to pipelines: one for downloading and one for
+// inserting into the DB. See also NextBatch.
 func (u *MapUpdater) UpdateNextBatch(ctx context.Context) (int, error) {
-	certs, chains, err := u.Fetcher.NextBatch(ctx)
+	fetcher := u.Fetchers[u.currFetcher]
+	certs, chains, err := fetcher.ReturnNextBatch()
 	if err != nil {
-		return 0, fmt.Errorf("CollectCerts | GetCertMultiThread | %w", err)
+		return 0, fmt.Errorf("fetcher: %w", err)
 	}
-	return len(certs), u.updateCerts(ctx, certs, chains)
+
+	// Verify validity of this batch.
+	// TODO(juagargi) It won't work like this. The only STHs we have are the last one and
+	// the current one, and the batch end doesn't correspond to the current size (but only an
+	// intermediate step).
+	// We may want to start a transaction in the DB at the StartFetchingRemaining and commit it
+	// only if the verification of all batches is alright.
+	// Or we may want to insert batches and verify only the last one.
+	// See issue #47
+	// https://github.com/netsec-ethz/fpki/issues/47
+	err = u.verifyValidity(ctx, certs, chains)
+	if err != nil {
+		return 0, fmt.Errorf("validity from CT log server: %w", err)
+	}
+
+	// Insert into DB.
+	n, err := len(certs), u.updateCertBatch(ctx, certs, chains)
+	if err != nil {
+		return n, err
+	}
+
+	// Store the last status obtained from the fetcher as updated.
+	u.lastState.Size += uint64(n)
+	if u.lastState.Size == u.currState.Size {
+		// Update the DB with all certs collected from this fetcher
+		err = u.Conn.UpdateLastCTlogServerState(ctx, fetcher.URL(),
+			int64(u.currState.Size),
+			u.currState.STH)
+		// Prepare the next fetcher:
+		u.currFetcher++
+		u.startNextFetcher(ctx)
+	}
+
+	return n, err
 }
 
-// UpdateCertsLocally: add certs (in the form of asn.1 encoded byte arrays) directly without querying log
-func (mapUpdater *MapUpdater) UpdateCertsLocally(ctx context.Context, certList [][]byte, certChainList [][][]byte) error {
+// UpdateCertsLocally: add certs (in the form of asn.1 encoded byte arrays) directly
+// without querying log.
+func (u *MapUpdater) UpdateCertsLocally(
+	ctx context.Context,
+	certList [][]byte,
+	certChainList [][][]byte,
+) error {
+
 	expirations := make([]*time.Time, 0, len(certList))
 	certs := make([]*ctx509.Certificate, 0, len(certList))
 	certChains := make([][]*ctx509.Certificate, 0, len(certList))
@@ -92,30 +162,103 @@ func (mapUpdater *MapUpdater) UpdateCertsLocally(ctx context.Context, certList [
 		certChains = append(certChains, chain)
 	}
 	certs, IDs, parentIDs, names := util.UnfoldCerts(certs, certChains)
-	return UpdateWithKeepExisting(ctx, mapUpdater.dbConn, names, IDs, parentIDs, certs, expirations, nil)
+	return UpdateWithKeepExisting(ctx, u.Conn, names, IDs, parentIDs, certs, expirations, nil)
 }
 
 // UpdatePolicyCerts: update RPC and PC from url. Currently just mock PC and RPC
-func (mapUpdater *MapUpdater) UpdatePolicyCerts(ctx context.Context, ctUrl string, startIdx, endIdx int64) error {
+func (u *MapUpdater) UpdatePolicyCerts(ctx context.Context, ctUrl string, startIdx, endIdx int64) error {
 	// get PC and RPC first
 	rpcList, err := logfetcher.GetPCAndRPCs(ctUrl, startIdx, endIdx, 20)
 	if err != nil {
 		return fmt.Errorf("CollectCerts | GetPCAndRPC | %w", err)
 	}
-	return mapUpdater.updatePolicyCerts(ctx, rpcList)
+	return u.updatePolicyCerts(ctx, rpcList)
 }
 
-func (mapUpdater *MapUpdater) updateCerts(
-	ctx context.Context,
-	certs []*ctx509.Certificate,
-	chains [][]*ctx509.Certificate,
-) error {
+func (u *MapUpdater) UpdateSMT(ctx context.Context) error {
+	return UpdateSMT(ctx, u.Conn)
+}
 
-	// TODO(juagargi)
+func (u *MapUpdater) CoalescePayloadsForDirtyDomains(ctx context.Context) error {
+	return CoalescePayloadsForDirtyDomains(ctx, u.Conn)
+}
+
+func (u *MapUpdater) startNextFetcher(ctx context.Context) error {
+	if u.currFetcher > 0 && u.currFetcher-1 < len(u.Fetchers) {
+		// Stop the previous fetcher.
+		u.Fetchers[u.currFetcher-1].StopFetching()
+	}
+	if u.currFetcher >= len(u.Fetchers) {
+		return nil
+	}
+
+	fetcher := u.Fetchers[u.currFetcher]
+	lastSize, lastSTH, err := u.Conn.LastCTlogServerState(ctx, fetcher.URL())
+	if err != nil {
+		return fmt.Errorf("getting the last retrieved index number from DB: %w", err)
+	}
+	// TODO(juagargi): use the fetcher's ctClient to get a new STH, and verify STH consistency
+	// between the new and the old heads.
+
+	u.lastState = logfetcher.State{
+		Size: uint64(lastSize),
+		STH:  lastSTH,
+	}
+
+	u.currState, err = fetcher.GetCurrentState(ctx)
+	if err != nil {
+		return fmt.Errorf("getting the size of the CT log server: %w", err)
+	}
+
+	fetcher.StartFetching(lastSize, int64(u.currState.Size)-1)
 	return nil
 }
 
-func (mapUpdater *MapUpdater) updatePolicyCerts(
+func (u *MapUpdater) verifyValidity(
+	ctx context.Context,
+	leafCerts []*ctx509.Certificate,
+	chains [][]*ctx509.Certificate,
+) error {
+
+	// TODO(juagargi): for each certificate in the batch, verify its proof of inclusion.
+	// The new STH was consistent with the old one, so here it is enough to verify the inclusion
+	// against the current head.
+	// See certificate-transparency-go/client.GetRawEntries, .GetSTHConsistency, .GetProofByHash .
+	// This function should probably accept data structures returned by the CT log server.
+	// See certificate-transparency-go/client .
+	return nil
+}
+
+func (u *MapUpdater) updateCertBatch(
+	ctx context.Context,
+	leafCerts []*ctx509.Certificate,
+	chains [][]*ctx509.Certificate,
+) error {
+
+	if len(leafCerts) != len(chains) {
+		return fmt.Errorf("inconsistent certs and chains count: %d and %d respectively",
+			len(leafCerts), len(chains))
+	}
+
+	certs, certIDs, parentIDs, names := util.UnfoldCerts(leafCerts, chains)
+
+	// Extract expirations.
+	expirations := util.ExtractExpirations(certs)
+
+	// Process whole batch.
+	return UpdateWithKeepExisting(
+		ctx,
+		u.Conn,
+		names,
+		certIDs,
+		parentIDs,
+		certs,
+		expirations,
+		nil, // no policies in this call
+	)
+}
+
+func (u *MapUpdater) updatePolicyCerts(
 	ctx context.Context,
 	rpcs []*common.PolicyCertificate,
 ) error {
@@ -258,21 +401,18 @@ func UpdateSMTfromDomains(
 // UpdateSMT reads all the dirty domains (pending to update their contents in the SMT), creates
 // a SMT Trie, loads it, and updates its entries with the new values.
 // It finally commits the Trie and saves its root in the DB.
-func UpdateSMT(ctx context.Context, conn db.Conn, cacheHeight int) error {
+func UpdateSMT(ctx context.Context, conn db.Conn) error {
 	// Load root.
-	var root []byte
-	if rootID, err := conn.LoadRoot(ctx); err != nil {
+	root, err := loadRoot(ctx, conn)
+	if err != nil {
 		return err
-	} else if rootID != nil {
-		root = rootID[:]
 	}
-
 	// Load SMT.
 	smtTrie, err := trie.NewTrie(root, common.SHA256Hash, conn)
 	if err != nil {
-		err = fmt.Errorf("with root \"%s\", creating NewTrie: %w", hex.EncodeToString(root), err)
-		panic(err)
+		return fmt.Errorf("with root \"%s\", creating NewTrie: %w", hex.EncodeToString(root), err)
 	}
+	// smtTrie.CacheHeightLimit = 32
 
 	// Get the dirty domains.
 	domains, err := conn.RetrieveDirtyDomains(ctx)
@@ -291,6 +431,16 @@ func UpdateSMT(ctx context.Context, conn db.Conn, cacheHeight int) error {
 	}
 
 	return nil
+}
+
+func loadRoot(ctx context.Context, conn db.Conn) ([]byte, error) {
+	var root []byte
+	if rootID, err := conn.LoadRoot(ctx); err != nil {
+		return nil, err
+	} else if rootID != nil {
+		root = rootID[:]
+	}
+	return root, nil
 }
 
 func insertCerts(ctx context.Context, conn db.Conn, names [][]string,
@@ -377,7 +527,7 @@ func runWhenFalse(mask []bool, fcn func(to, from int)) int {
 }
 
 // keyValuePairToSMTInput: key value pair -> SMT update input
-// deleteme: this function takes the payload and computes the hash of it. The hash is already
+// deleteme TODO this function takes the payload and computes the hash of it. The hash is already
 // stored in the DB with the new design: change both the function RetrieveDomainEntries and
 // remove the hashing from this keyValuePairToSMTInput function.
 func keyValuePairToSMTInput(keyValuePair []*db.KeyValuePair) ([][]byte, [][]byte, error) {

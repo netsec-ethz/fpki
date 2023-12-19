@@ -2,6 +2,7 @@ package responder
 
 import (
 	"context"
+	"crypto/rsa"
 	"fmt"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
@@ -10,7 +11,6 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/domain"
 	mapCommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/trie"
-	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
 type MapResponder struct {
@@ -19,7 +19,12 @@ type MapResponder struct {
 	signedTreeHead []byte
 }
 
-func NewMapResponder(ctx context.Context, configFile string, conn db.Conn) (*MapResponder, error) {
+func NewMapResponder(
+	ctx context.Context,
+	conn db.Conn,
+	privateKey *rsa.PrivateKey,
+) (*MapResponder, error) {
+
 	// Load root.
 	var root []byte
 	if rootID, err := conn.LoadRoot(ctx); err != nil {
@@ -39,7 +44,7 @@ func NewMapResponder(ctx context.Context, configFile string, conn db.Conn) (*Map
 		smt:  smt,
 	}
 
-	return r, r.signTreeHead(configFile)
+	return r, r.signTreeHead(privateKey)
 }
 
 func (r *MapResponder) GetProof(ctx context.Context, domainName string,
@@ -109,20 +114,7 @@ func (r *MapResponder) SignedTreeHead() []byte {
 	return append(r.signedTreeHead[:0:0], r.signedTreeHead...)
 }
 
-func (r *MapResponder) signTreeHead(configFile string) error {
-	// Load configuration.
-	config := &MapserverConfig{}
-	err := ReadConfigFromFile(config, configFile)
-	if err != nil {
-		return fmt.Errorf("ReadConfigFromFile | %w", err)
-	}
-
-	// Load private key from configuration.
-	privateKey, err := util.RSAKeyFromPEMFile(config.KeyPath)
-	if err != nil {
-		return fmt.Errorf("LoadRSAKeyPairFromFile | %w", err)
-	}
-
+func (r *MapResponder) signTreeHead(privateKey *rsa.PrivateKey) error {
 	// Sign the tree head.
 	signature, err := crypto.SignBytes(r.smt.Root, privateKey)
 	if err != nil {

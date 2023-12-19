@@ -3,6 +3,7 @@ package random
 import (
 	"crypto/rsa"
 	"io"
+	"math/big"
 	"math/rand"
 	"time"
 
@@ -11,7 +12,6 @@ import (
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/tests"
-	"github.com/netsec-ethz/fpki/pkg/util"
 	"github.com/stretchr/testify/require"
 )
 
@@ -43,16 +43,31 @@ func RandomBytesForTest(t tests.T, size int) []byte {
 	return buff
 }
 
+var keyCreatingRandomCerts = RandomRSAPrivateKey(tests.NewTestObject("test_RSA_key"))
+
+// RandomX509Cert creates a random x509 certificate, with correct ASN.1 DER representation.
 func RandomX509Cert(t tests.T, domain string) *ctx509.Certificate {
-	return &ctx509.Certificate{
-		DNSNames: []string{domain},
+	template := &ctx509.Certificate{
+		SerialNumber: big.NewInt(rand.Int63()),
 		Subject: pkix.Name{
 			CommonName: domain,
 		},
-		NotBefore: util.TimeFromSecs(0),
-		NotAfter:  time.Date(3000, 1, 1, 0, 0, 0, 0, time.UTC),
-		Raw:       RandomBytesForTest(t, 10),
+		DNSNames:  []string{domain},
+		NotBefore: RandomTimeWithoutMonotonicBounded(1900, 2000),
+		NotAfter:  RandomTimeWithoutMonotonicBounded(2200, 2300),
+		KeyUsage:  ctx509.KeyUsageKeyEncipherment | ctx509.KeyUsageDigitalSignature,
 	}
+	derBytes, err := ctx509.CreateCertificate(
+		NewRandReader(),
+		template,
+		template,
+		&keyCreatingRandomCerts.PublicKey,
+		keyCreatingRandomCerts,
+	)
+	require.NoError(t, err)
+	template.Raw = derBytes
+
+	return template
 }
 
 // BuildTestRandomPolicyHierarchy creates two policy certificates for the given name.
@@ -108,9 +123,9 @@ func BuildTestRandomCertHierarchy(t tests.T, domainName string) (
 	return
 }
 
-func RandomTimeWithoutMonotonic() time.Time {
+func RandomTimeWithoutMonotonicBounded(minYear, maxYear int) time.Time {
 	return time.Date(
-		1900+rand.Intn(200),         // 1900-2100
+		minYear+rand.Intn(maxYear-minYear+1),
 		time.Month(1+rand.Intn(12)), // 1-12
 		1+rand.Intn(31),             // 1-31
 		rand.Intn(24),               // 0-23
@@ -119,6 +134,10 @@ func RandomTimeWithoutMonotonic() time.Time {
 		0,
 		time.UTC,
 	)
+}
+
+func RandomTimeWithoutMonotonic() time.Time {
+	return RandomTimeWithoutMonotonicBounded(1900, 2099)
 }
 
 func RandomSignedPolicyCertificateTimestamp(t tests.T) *common.SignedPolicyCertificateTimestamp {

@@ -1,0 +1,26 @@
+{
+    "CTLogServerURLs": [
+        "https://ct.googleapis.com/logs/xenon2023/"
+    ],
+    "DBConfig": {
+        "Dsn": "",
+        "DBName": "",
+        "Values": {
+            "DBNAME": "fpki",
+            "MYSQL_HOST": "127.0.0.1",
+            "MYSQL_LOCALSOCKET": "/var/run/mysqld/mysqld.sock",
+            "MYSQL_PASSWORD": "",
+            "MYSQL_PORT": "",
+            "MYSQL_USER": "root",
+            "collation": "binary",
+            "interpolateParams": "true",
+            "maxAllowedPacket": "1073741824",
+            "parseTime": "true"
+        },
+        "CheckSchema": false
+    },
+    "CertificatePemFile": "tests/testdata/servercert.pem",
+    "PrivateKeyPemFile": "tests/testdata/serverkey.pem",
+    "UpdateAt": "03:00:00",
+    "UpdateTimer": "1d"
+}

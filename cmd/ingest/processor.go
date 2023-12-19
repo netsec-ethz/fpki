@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -172,6 +173,17 @@ func (p *Processor) ingestWithCSV(fileReader io.Reader) error {
 	reader.FieldsPerRecord = -1 // don't check number of fields
 
 	parseFunction := func(fields []string, lineNo int) error {
+		// First avoid even parsing already expired certs.
+		n, err := getExpiration(fields)
+		if err != nil {
+			return err
+		}
+		if p.now.After(time.Unix(n, 0)) {
+			// Skip this certificate.
+			return nil
+		}
+
+		// From this point on, we need to parse the certificate.
 		rawBytes, err := base64.StdEncoding.DecodeString(fields[CertificateColumn])
 		if err != nil {
 			return err
@@ -276,4 +288,23 @@ func (p *Processor) processErrorChannel() error {
 		return fmt.Errorf("errors found while processing. See above")
 	}
 	return nil
+}
+
+// getExpiration returns the expiration time in seconds. It is stored already in seconds on the
+// last column of the CSV entry, usually index 7.
+func getExpiration(fields []string) (int64, error) {
+	// Because some entries in the CSVs are malformed by not escaping their SAN field, we cannot
+	// reliably use a column index, but the last column of the entry.
+	expirationColumn := len(fields) - 1
+
+	s := strings.Split(fields[expirationColumn], ".")
+	if len(s) != 2 {
+		return 0, fmt.Errorf("unrecognized timestamp in the last column: %s", fields[expirationColumn])
+	}
+	exp, err := strconv.ParseInt(s[0], 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parsing the expiration time \"%s\" got: %w",
+			fields[expirationColumn], err)
+	}
+	return exp, nil
 }

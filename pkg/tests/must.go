@@ -3,6 +3,7 @@ package tests
 import (
 	"encoding/base64"
 	"encoding/hex"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -20,4 +21,11 @@ func MustDecodeBase64(t T, s string) []byte {
 	b, err := base64.StdEncoding.DecodeString(s)
 	require.NoError(t, err)
 	return b
+}
+
+// MustParseTime calls time.Parse to parse a time using the arguments.
+func MustParseTime(t T, layout, value string) time.Time {
+	parsed, err := time.Parse(layout, value)
+	require.NoError(t, err)
+	return parsed
 }

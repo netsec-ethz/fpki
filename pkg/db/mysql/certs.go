@@ -137,6 +137,36 @@ func (c *mysqlDB) RetrieveCertificatePayloads(ctx context.Context, IDs []*common
 	return payloads, nil
 }
 
+// LastCTlogServerState returns the last state of the server written into the DB.
+// The url specifies the CT log server from which this data comes from.
+func (c *mysqlDB) LastCTlogServerState(ctx context.Context, url string,
+) (size int64, sth []byte, err error) {
+
+	size = 0
+	str := "SELECT size, sth FROM ctlog_server_last_status WHERE url_hash = ?"
+	err = c.db.QueryRowContext(ctx, str, common.SHA256Hash([]byte(url))).Scan(&size, &sth)
+	if err == sql.ErrNoRows {
+		err = nil
+	}
+	return
+}
+
+// UpdateLastCTlogServerState updates the index of the last certificate written into the DB.
+// The url specifies the CT log server from which this index comes from.
+func (c *mysqlDB) UpdateLastCTlogServerState(ctx context.Context, url string,
+	size int64, sth []byte) error {
+
+	str := "REPLACE INTO ctlog_server_last_status (url_hash, size, sth) VALUES (?,?,?)"
+	_, err := c.db.ExecContext(ctx, str, common.SHA256Hash([]byte(url)), size, sth)
+	return err
+}
+
+// PruneCerts removes all certificates that are no longer valid according to the paramter.
+// I.e. any certificate whose NotAfter date is equal or before the parameter.
+func (c *mysqlDB) PruneCerts(ctx context.Context, now time.Time) error {
+	return c.pruneCerts(ctx, now)
+}
+
 // checkCertsExist should not be called with larger than ~1000 elements, the query being used
 // may fail with a message like:
 // Error 1436 (HY000): Thread stack overrun:  1028624 bytes used of a 1048576 byte stack,
@@ -183,4 +213,13 @@ func (c *mysqlDB) checkCertsExist(ctx context.Context, ids []*common.SHA256Outpu
 	}
 
 	return nil
+}
+
+func (c *mysqlDB) pruneCerts(ctx context.Context, now time.Time) error {
+	// A certificate is valid if its NotAfter is greater or equal than now.
+	// We thus look for certificates with expiration less than now.
+
+	str := "CALL prune_expired(?)"
+	_, err := c.db.ExecContext(ctx, str, now)
+	return err
 }

@@ -2,6 +2,7 @@ package grpcserver
 
 import (
 	"context"
+	"crypto/rsa"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -49,10 +50,13 @@ func (server ResponderServer) QueryMapEntries(ctx context.Context, in *pb.MapCli
 	}, nil
 }
 
-func NewGRPCServer(ctx context.Context, mapserverConfigPath string,
-	conn db.Conn) (*ResponderServer, error) {
+func NewGRPCServer(
+	ctx context.Context,
+	conn db.Conn,
+	privKey *rsa.PrivateKey,
+) (*ResponderServer, error) {
 
-	responder, err := responder.NewMapResponder(ctx, mapserverConfigPath, conn)
+	responder, err := responder.NewMapResponder(ctx, conn, privKey)
 	if err != nil {
 		return nil, err
 	}
