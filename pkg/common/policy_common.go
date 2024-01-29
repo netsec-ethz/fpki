@@ -11,6 +11,8 @@ type MarshallableDocumentBase struct {
 	JSONField []byte `json:"-"` // omit from JSON (un)marshaling
 }
 
+// TODO (cyrill): problem is that JSONField is not properly kept up to date (or may not even be set)
+// we could either replace it with ToJSON(o) or ensure that it is synchronized
 func (o MarshallableDocumentBase) Raw() []byte { return o.JSONField }
 
 // PolicyPart is an interface that is implemented by all objects that are part of the set
