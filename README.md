@@ -1,6 +1,21 @@
 # FPKI
 
-TODO: This information is old and outdated.
+## Setting up local mapserver for testing
+
+- generate test policies:
+  `cd path/to/policy-generator; go run .`
+- clean DB:
+  `./tools/create_schema.sh`
+- ingest certificates (all `.csv` and `.gz` files located within a `bundled` subfolder are ingested):
+  `go run ./cmd/ingest path/to/cert-directory`
+- ingest root policy
+  `go run cmd/mapserver/main.go -policyFile path/to/policy-generator/output/pca.pc config.json`
+- ingest policies one by one
+  `for x in path/to/policy-generator/output/pc_*.pc; do go run cmd/mapserver/main.go -policyFile $x config.json; done`
+- run map server
+  `go run cmd/mapserver/main.go config.json`
+
+TODO: The information below is old and outdated.
 
 ## Features
 
