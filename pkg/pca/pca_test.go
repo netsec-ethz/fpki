@@ -308,23 +308,14 @@ func (m *mockLogServerRequester) ObtainSptFromLogServer(
 	if err := crypto.VerifyIssuerSignature(m.pcaCert, pc); err != nil {
 		return nil, err
 	}
-	serializedPc, err := common.ToJSON(pc)
+
+	// Step 7 create SPT.
+	logID := common.SHA256Hash(m.ctLogServers[url].PublicKeyDER)
+	spt, err := crypto.SignPolicyCertificateTimestamp(pc, 0, logID, m.keys[url])
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error signing SPCT: %w", err)
 	}
 
-	// Step 7 create and add SPT.
-	signature, err := crypto.SignBytes(serializedPc, m.keys[url])
-	if err != nil {
-		return nil, fmt.Errorf("error signing: %w", err)
-	}
-	logID := common.SHA256Hash(m.ctLogServers[url].PublicKeyDER)
-	spt := common.NewSignedPolicyCertificateTimestamp(
-		0,
-		logID,
-		time.Now(),
-		signature,
-	)
 	return spt, nil
 }
 
