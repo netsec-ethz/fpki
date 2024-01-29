@@ -136,8 +136,18 @@ func NewMapServer(ctx context.Context, conf *config.Config) (*MapServer, error) 
 	return s, nil
 }
 
-// Listen is responsible to start the listener for the responder.
+// Start an HTTPS listener for the responder
 func (s *MapServer) Listen(ctx context.Context) error {
+	return s.listen(ctx, true)
+}
+
+// Start an HTTP listener for the responder
+func (s *MapServer) ListenWithoutTLS(ctx context.Context) error {
+	return s.listen(ctx, false)
+}
+
+// Listen is responsible to start an HTTP or HTTPS listener for the responder
+func (s *MapServer) listen(ctx context.Context, useTLS bool) error {
 	// Reset the default sever mux, to establish the handlers from new.
 	http.DefaultServeMux = &http.ServeMux{}
 	http.HandleFunc("/getproof", s.apiGetProof)
@@ -163,8 +173,11 @@ func (s *MapServer) Listen(ctx context.Context) error {
 		}()
 		// This call blocks
 		fmt.Printf("Listening on %d\n", APIPort)
-		chanErr <- server.ListenAndServeTLS("", "")
-
+		if useTLS {
+			chanErr <- server.ListenAndServeTLS("", "")
+		} else {
+			chanErr <- server.ListenAndServe()
+		}
 	}()
 	err := <-chanErr
 	// If the error happened because we stopped the server, ignore it.

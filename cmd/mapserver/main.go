@@ -189,7 +189,7 @@ func runWithConfig(
 		})
 
 	// Listen in responder.
-	err = server.Listen(ctx)
+	err = server.ListenWithoutTLS(ctx)
 
 	// Regardless of the error, clean everything up.
 	cleanUp()
