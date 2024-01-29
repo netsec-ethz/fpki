@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -8,10 +9,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
 	"github.com/netsec-ethz/fpki/pkg/mapserver"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/config"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
@@ -31,9 +34,10 @@ func mainFunc() int {
 		fmt.Fprintf(os.Stderr, "Usage:\n%s configuration_file\n", os.Args[0])
 		flag.PrintDefaults()
 	}
-	updateVar := flag.Bool("updateNow", true, "Immediately trigger an update cycle")
+	updateVar := flag.Bool("updateNow", false, "Immediately trigger an update cycle")
 	createSampleConfig := flag.Bool("createSampleConfig", false,
 		"Create configuration file specified by positional argument")
+	insertPolicyVar := flag.String("policyFile", "", "policy certificate file to be ingested into the mapserver")
 	flag.Parse()
 
 	// We need the configuration file as the first positional argument.
@@ -46,12 +50,71 @@ func mainFunc() int {
 	if *createSampleConfig {
 		err = writeSampleConfig()
 	} else {
-		err = run(*updateVar)
+		if *insertPolicyVar != "" {
+			err = insertPolicyFromFile(*insertPolicyVar)
+		} else {
+			err = run(*updateVar)
+		}
 	}
 
 	// We have finished. Probably the context created in run was been cancelled (exit request).
 	// Print message in case of error.
 	return manageError(err)
+}
+
+func insertPolicyFromFile(policyFile string) error {
+	fmt.Printf("inserting policy from %s\n", policyFile)
+
+	ctx := context.Background()
+	// Load configuration and insert policy with it.
+	conf, err := config.ReadConfigFromFile(flag.Arg(0))
+	if err != nil {
+		return err
+	}
+	server, err := mapserver.NewMapServer(ctx, conf)
+	if err != nil {
+		return err
+	}
+	root, err := server.Conn.LoadRoot(ctx)
+	if err != nil {
+		return err
+	}
+
+	pc, err := util.PolicyCertificateFromFile(policyFile)
+	if err != nil {
+		return err
+	}
+
+	err = updater.UpdateWithKeepExisting(ctx, server.Conn, nil, nil, nil, nil, nil, []common.PolicyDocument{pc})
+	if err != nil {
+		return err
+	}
+
+	if err := server.Updater.CoalescePayloadsForDirtyDomains(ctx); err != nil {
+		return fmt.Errorf("coalescing payloads: %w", err)
+	}
+
+	// Update SMT.
+	if err := server.Updater.UpdateSMT(ctx); err != nil {
+		return fmt.Errorf("updating SMT: %w", err)
+	}
+
+	// Cleanup.
+	if err := server.Updater.Conn.CleanupDirty(ctx); err != nil {
+		return fmt.Errorf("cleaning up DB: %w", err)
+	}
+
+	newRoot, err := server.Conn.LoadRoot(ctx)
+	if err != nil {
+		return err
+	}
+	if bytes.Compare(root[:], newRoot[:]) != 0 {
+		fmt.Printf("MHT root value updated from %v to %v\n", root, newRoot)
+	} else {
+		fmt.Printf("MHT root value was not updated (%v)\n", newRoot)
+	}
+
+	return nil
 }
 
 func writeSampleConfig() error {
@@ -102,6 +165,11 @@ func runWithConfig(
 	if err != nil {
 		return err
 	}
+	root, err := server.Conn.LoadRoot(ctx)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Running map server with root: %v\n", root)
 
 	// Should update now?
 	if updateNow {

@@ -57,6 +57,35 @@ func (s SignedEntryTimestamp) Equal(x SignedEntryTimestamp) bool {
 		bytes.Equal(s.Signature, x.Signature)
 }
 
+type SignedEntryTimestampSignatureInput struct {
+	SignedEntryTimestamp
+	Entry []byte
+}
+
+func NewSignedEntryTimestampSignatureInput(
+	entry []byte,
+	spct *SignedPolicyCertificateTimestamp,
+) *SignedEntryTimestampSignatureInput {
+	return &SignedEntryTimestampSignatureInput{
+		SignedEntryTimestamp: SignedEntryTimestamp{
+			EmbeddedPolicyBase: EmbeddedPolicyBase{
+				PolicyPartBase: PolicyPartBase{
+					Version: spct.Version,
+				},
+			},
+			LogID:     spct.LogID,
+			AddedTS:   spct.AddedTS,
+			Signature: spct.Signature,
+		},
+		Entry: entry,
+	}
+}
+
+func (t SignedEntryTimestampSignatureInput) Equal(x SignedEntryTimestampSignatureInput) bool {
+	return t.SignedEntryTimestamp.Equal(x.SignedEntryTimestamp) &&
+		bytes.Equal(t.Entry, x.Entry)
+}
+
 func NewSignedPolicyCertificateTimestamp(
 	version int,
 	logID []byte,

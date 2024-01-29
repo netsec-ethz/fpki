@@ -153,6 +153,7 @@ func (s *MapServer) Listen(ctx context.Context) error {
 			server.Shutdown(ctx)
 		}()
 		// This call blocks
+		fmt.Printf("Listening on %d\n", APIPort)
 		chanErr <- server.ListenAndServeTLS("", "")
 
 	}()

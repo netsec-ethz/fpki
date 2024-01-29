@@ -77,6 +77,8 @@ func (*serializableObjectBase) marshalJSON(obj any) (string, []byte, error) {
 		T = "trillian.Proof"
 	case trilliantypes.LogRootV1:
 		T = "logrootv1"
+	case SignedEntryTimestampSignatureInput:
+		T = "spctsiginput"
 	default:
 		valOf := reflect.ValueOf(obj)
 		switch valOf.Kind() {
@@ -207,6 +209,8 @@ func (o *serializableObjectBase) unmarshalTypeObject(T string, data []byte) (boo
 		obj, err = inflateObj[trillian.Proof](data)
 	case "logrootv1":
 		obj, err = inflateObj[trilliantypes.LogRootV1](data)
+	case "spctsiginput":
+		obj, err = inflateObj[SignedEntryTimestampSignatureInput](data)
 	default:
 		err = fmt.Errorf("unknown type represented by \"%s\"", T)
 		obj = nil
