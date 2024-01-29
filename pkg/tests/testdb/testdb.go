@@ -26,7 +26,7 @@ func Connect(t tests.T, config *db.Configuration) db.Conn {
 // returns the configuration and the DB removal function that should be called with defer.
 func ConfigureTestDB(t tests.T) (*db.Configuration, func()) {
 	dbName := t.Name()
-	config := db.NewConfig(mysql.WithDefaults(), db.WithDB(dbName))
+	config := db.NewConfig(mysql.WithDefaults(), mysql.WithEnvironment(), db.WithDB(dbName))
 
 	// New context to create the DB.
 	ctx, cancelF := context.WithTimeout(context.Background(), 2*time.Second)

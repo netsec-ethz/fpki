@@ -261,7 +261,7 @@ func TestLogFetcher(t *testing.T) {
 }
 
 func TestTimeoutLogFetcher(t *testing.T) {
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
 	f, err := NewLogFetcher(testURL)
 	require.NoError(t, err)

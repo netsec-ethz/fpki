@@ -123,7 +123,6 @@ func checkResponse(
 		domainName,
 	))
 	require.NoError(t, err)
-	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	dec := json.NewDecoder(resp.Body)
 	var proofChain []*mapcommon.MapServerResponse

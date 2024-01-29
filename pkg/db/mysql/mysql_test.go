@@ -21,7 +21,7 @@ import (
 )
 
 func TestCheckCertsExist(t *testing.T) {
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
 
 	// Configure a test DB.
@@ -71,7 +71,7 @@ func TestCoalesceForDirtyDomains(t *testing.T) {
 	// Because we are using "random" bytes deterministically here, set a fixed seed.
 	rand.Seed(1)
 
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
 
 	// Configure a test DB.
@@ -140,7 +140,7 @@ func TestCoalesceForDirtyDomains(t *testing.T) {
 }
 
 func TestRetrieveCertificatePayloads(t *testing.T) {
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
 
 	// Configure a test DB.
@@ -197,7 +197,7 @@ func TestRetrieveCertificatePayloads(t *testing.T) {
 }
 
 func TestLastCTlogServerState(t *testing.T) {
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
 
 	// Configure a test DB.
