@@ -22,6 +22,7 @@ func SignPolicyCertificateTimestamp(
 	logId []byte,
 	key *rsa.PrivateKey,
 ) (*common.SignedPolicyCertificateTimestamp, error) {
+
 	serializedPc, err := common.ToJSON(pc)
 	if err != nil {
 		return nil, fmt.Errorf("SignSPT | SerializePC | %w", err)
@@ -211,11 +212,13 @@ func SignPolicyCertificateAsIssuer(
 	return nil
 }
 
-// verifies various constraints given by the issuer policy certificate and returns the first violated constraint, or nil if no constraints were violated
+// VerifyIssuerConstraints verifies various constraints given by the issuer policy certificate
+// and returns the first violated constraint, or nil if no constraints were violated.
 func VerifyIssuerConstraints(
 	issuerPolCert *common.PolicyCertificate,
 	childPolCert *common.PolicyCertificate,
 ) error {
+
 	// check validity period
 	if childPolCert.NotBefore.Before(issuerPolCert.NotBefore) {
 		return fmt.Errorf("policy certificate is valid before its issuer certificate (%v < %v)", childPolCert.NotBefore, issuerPolCert.NotBefore)
