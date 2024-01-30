@@ -34,6 +34,8 @@ func mainFunc() int {
 		fmt.Fprintf(os.Stderr, "Usage:\n%s configuration_file\n", os.Args[0])
 		flag.PrintDefaults()
 	}
+	flag.CommandLine.Usage = flag.Usage
+
 	updateVar := flag.Bool("updateNow", false, "Immediately trigger an update cycle")
 	createSampleConfig := flag.Bool("createSampleConfig", false,
 		"Create configuration file specified by positional argument")
