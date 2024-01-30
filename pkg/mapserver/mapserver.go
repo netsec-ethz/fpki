@@ -136,17 +136,17 @@ func NewMapServer(ctx context.Context, conf *config.Config) (*MapServer, error) 
 	return s, nil
 }
 
-// Start an HTTPS listener for the responder
+// Listen starts an HTTPS listener for the responder.
 func (s *MapServer) Listen(ctx context.Context) error {
 	return s.listen(ctx, true)
 }
 
-// Start an HTTP listener for the responder
+// ListenWithoutTLS starts an HTTP listener for the responder.
 func (s *MapServer) ListenWithoutTLS(ctx context.Context) error {
 	return s.listen(ctx, false)
 }
 
-// Listen is responsible to start an HTTP or HTTPS listener for the responder
+// listen is responsible to start an HTTP or HTTPS listener for the responder
 func (s *MapServer) listen(ctx context.Context, useTLS bool) error {
 	// Reset the default sever mux, to establish the handlers from new.
 	http.DefaultServeMux = &http.ServeMux{}
