@@ -66,17 +66,14 @@ func NewSignedEntryTimestampSignatureInput(
 	entry []byte,
 	spct *SignedPolicyCertificateTimestamp,
 ) *SignedEntryTimestampSignatureInput {
+
 	return &SignedEntryTimestampSignatureInput{
-		SignedEntryTimestamp: SignedEntryTimestamp{
-			EmbeddedPolicyBase: EmbeddedPolicyBase{
-				PolicyPartBase: PolicyPartBase{
-					Version: spct.Version,
-				},
-			},
-			LogID:     spct.LogID,
-			AddedTS:   spct.AddedTS,
-			Signature: spct.Signature,
-		},
+		SignedEntryTimestamp: *NewSignedEntryTimestamp(
+			spct.Version,
+			spct.LogID,
+			spct.AddedTS,
+			spct.Signature,
+		),
 		Entry: entry,
 	}
 }
