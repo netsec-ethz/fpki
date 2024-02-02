@@ -49,14 +49,13 @@ func mainFunc() int {
 	}
 
 	var err error
-	if *createSampleConfig {
+	switch {
+	case *createSampleConfig:
 		err = writeSampleConfig()
-	} else {
-		if *insertPolicyVar != "" {
-			err = insertPolicyFromFile(*insertPolicyVar)
-		} else {
-			err = run(*updateVar)
-		}
+	case *insertPolicyVar != "":
+		err = insertPolicyFromFile(*insertPolicyVar)
+	default:
+		err = run(*updateVar)
 	}
 
 	// We have finished. Probably the context created in run was been cancelled (exit request).
