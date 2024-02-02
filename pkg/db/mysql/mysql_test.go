@@ -194,6 +194,35 @@ func TestRetrieveCertificatePayloads(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, expectedPols[i:i+1], gotPols)
 	}
+
+	// Do the same for combined retrieval of certificate and policies.
+	// prepare test data
+	certOrPolIDs := make([]*common.SHA256Output, len(certs)+len(pols))
+	for i, certID := range certIDs {
+		certOrPolIDs[i] = certID
+	}
+	for i, polID := range polIDs {
+		certOrPolIDs[len(certIDs)+i] = polID
+	}
+	expectedCertsOrPols := make([][]byte, len(certs)+len(pols))
+	for i, cert := range certs {
+		expectedCertsOrPols[i] = cert.Raw
+	}
+	for i, pol := range pols {
+		expectedCertsOrPols[len(certs)+i], err = pol.Raw()
+		require.NoError(t, err)
+	}
+
+	// check results
+	gotCertsOrPols, err := conn.RetrieveCertificateOrPolicyPayloads(ctx, certOrPolIDs)
+	require.NoError(t, err)
+	require.ElementsMatch(t, expectedCertsOrPols, gotCertsOrPols)
+	// Do the same one by one:
+	for i := range expectedCertsOrPols {
+		gotCertsOrPols, err := conn.RetrieveCertificateOrPolicyPayloads(ctx, certOrPolIDs[i:i+1])
+		require.NoError(t, err)
+		require.ElementsMatch(t, expectedCertsOrPols[i:i+1], gotCertsOrPols)
+	}
 }
 
 func TestLastCTlogServerState(t *testing.T) {
