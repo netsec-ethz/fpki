@@ -10,6 +10,10 @@ type PolicyCertificateSigningRequest struct {
 	PolicyCertificateFields
 }
 
+func (o PolicyCertificateSigningRequest) Raw() ([]byte, error) {
+	return rawTemplate(o)
+}
+
 // PolicyCertificateRevocationSigningRequest is a request to prepare a revocation.
 // The hash of the certificate intended to be revoked must be computed without any SPCT and
 // issuer signature (i.e. SPCT independent).

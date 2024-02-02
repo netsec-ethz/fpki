@@ -26,9 +26,17 @@ type SignedPolicyCertificateTimestamp struct {
 	SignedEntryTimestamp
 }
 
+func (o SignedPolicyCertificateTimestamp) Raw() ([]byte, error) {
+	return rawTemplate(o)
+}
+
 // SignedPolicyCertificateRevocationTimestamp is a signed policy certificate revocation timestamp.
 type SignedPolicyCertificateRevocationTimestamp struct {
 	SignedEntryTimestamp
+}
+
+func (o SignedPolicyCertificateRevocationTimestamp) Raw() ([]byte, error) {
+	return rawTemplate(o)
 }
 
 func NewSignedEntryTimestamp(

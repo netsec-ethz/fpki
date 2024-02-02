@@ -170,3 +170,65 @@ func TestPolicyObjectBaseRaw(t *testing.T) {
 		})
 	}
 }
+
+// TestPolicyObjectBaseRaw checks that the Raw field of the PolicyObjectBase for any PolicyObject
+// that is rebuilt using our functions contains the original JSON.
+func TestPolicyObjectsRawImplementation(t *testing.T) {
+	testCases := map[string]struct {
+		obj any // Thing to serialize and deserialize and check Raw.
+		cmp func(obj1 any, obj2 any) bool
+	}{
+		"pc": {
+			obj: random.RandomPolicyCertificate(t),
+			cmp: func(obj1 any, obj2 any) bool {
+				obj2T := obj2.(*common.PolicyCertificate)
+				return obj1.(*common.PolicyCertificate).Equal(*obj2T)
+			},
+		},
+		"spct": {
+			obj: random.RandomSignedPolicyCertificateTimestamp(t),
+			cmp: func(obj1 any, obj2 any) bool {
+				obj2T := obj2.(*common.SignedPolicyCertificateTimestamp)
+				return obj1.(*common.SignedPolicyCertificateTimestamp).Equal(*obj2T)
+			},
+		},
+		"pcr": {
+			obj: random.RandomPolicyCertificateRevocation(t),
+			cmp: func(obj1 any, obj2 any) bool {
+				obj2T := obj2.(*common.PolicyCertificateRevocation)
+				return obj1.(*common.PolicyCertificateRevocation).Equal(*obj2T)
+			},
+		},
+		"spcrt": {
+			obj: random.RandomSignedPolicyCertificateRevocationTimestamp(t),
+			cmp: func(obj1 any, obj2 any) bool {
+				obj2T := obj2.(*common.SignedPolicyCertificateRevocationTimestamp)
+				return obj1.(*common.SignedPolicyCertificateRevocationTimestamp).Equal(*obj2T)
+			},
+		},
+		"pcsr": {
+			obj: random.RandomPolCertSignRequest(t),
+			cmp: func(obj1 any, obj2 any) bool {
+				// no comparison operator
+				return true
+				// return obj1.(common.PolicyCertificateSigningRequest).Equal(obj2.(common.PolicyCertificateSigningRequest))
+			},
+		},
+	}
+	for name, tc := range testCases {
+		name, tc := name, tc
+		t.Run(name, func(t *testing.T) {
+			// t.Parallel()
+			raw, err := tc.obj.(common.MarshallableDocument).Raw()
+			require.NoError(t, err)
+			// Serialize.
+			data, err := common.ToJSON(tc.obj)
+			require.NoError(t, err)
+			require.Equal(t, raw, data)
+			// Deserialize.
+			obj, err := common.FromJSON(data)
+			require.NoError(t, err)
+			require.True(t, tc.cmp(tc.obj, obj))
+		})
+	}
+}

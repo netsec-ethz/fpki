@@ -185,7 +185,8 @@ func TestRetrieveCertificatePayloads(t *testing.T) {
 	require.NoError(t, err)
 	expectedPols := make([][]byte, len(pols))
 	for i, pol := range pols {
-		expectedPols[i] = pol.Raw()
+		expectedPols[i], err = pol.Raw()
+		require.NoError(t, err)
 	}
 	require.Equal(t, expectedPols, gotPols)
 	// Do the same one by one:
@@ -405,7 +406,9 @@ func testPolicyHierarchyForLeafs(t tests.T, leaves []string) (pols []common.Poli
 
 	polIDs = make([]*common.SHA256Output, len(pols))
 	for i, pol := range pols {
-		id := common.SHA256Hash32Bytes(pol.Raw())
+		raw, err := pol.Raw()
+		require.NoError(t, err)
+		id := common.SHA256Hash32Bytes(raw)
 		polIDs[i] = &id
 	}
 	return

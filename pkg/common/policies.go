@@ -81,6 +81,10 @@ type PolicyCertificate struct {
 	SPCTs           []SignedPolicyCertificateTimestamp `json:",omitempty"`
 }
 
+func (o PolicyCertificate) Raw() ([]byte, error) {
+	return rawTemplate(o)
+}
+
 // PolicyAttributes is a domain policy that specifies what is or not acceptable for a domain.
 type PolicyAttributes struct {
 	TrustedCA         []string `json:",omitempty"`
@@ -100,6 +104,10 @@ type PolicyCertificateRevocation struct {
 	// Hash of the issuer's cert w/out SPCTs:
 	IssuerHash []byte                                       `json:",omitempty"`
 	SPCRTs     []SignedPolicyCertificateRevocationTimestamp `json:",omitempty"`
+}
+
+func (o PolicyCertificateRevocation) Raw() ([]byte, error) {
+	return rawTemplate(o)
 }
 
 func NewPolicyCertificateFields(

@@ -340,7 +340,7 @@ func UpdateWithKeepExisting(ctx context.Context, conn db.Conn, domainNames [][]s
 	policyIDs := make([]*common.SHA256Output, len(policies))
 	policySubjects := make([]string, len(policies))
 	for i, pol := range policies {
-		payload, err := common.ToJSON(pol)
+		payload, err := pol.Raw()
 		if err != nil {
 			return err
 		}

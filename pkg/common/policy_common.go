@@ -2,7 +2,8 @@ package common
 
 // MarshallableDocument is an object that can be marshalled and unmarshalled to and from JSON.
 type MarshallableDocument interface {
-	Raw() []byte // Returns the Raw JSON this object was unmarshaled from (nil if none).
+	Raw() ([]byte, error) // Returns the Raw JSON this object was unmarshaled from or marshals this object into a json objects
+	getJSONField() []byte // Returns the Raw JSON this object was unmarshaled from (nil if none).
 }
 
 // MarshallableDocumentBase is used to read and write document from and to json files.
@@ -11,9 +12,21 @@ type MarshallableDocumentBase struct {
 	JSONField []byte `json:"-"` // omit from JSON (un)marshaling
 }
 
-// TODO (cyrill): problem is that JSONField is not properly kept up to date (or may not even be set)
-// we could either replace it with ToJSON(o) or ensure that it is synchronized
-func (o MarshallableDocumentBase) Raw() []byte { return o.JSONField }
+func (o MarshallableDocumentBase) Raw() ([]byte, error) {
+	panic("MarshallableDocument interface not fully implemented [missing func Raw() ([]byte, error)]")
+}
+
+func (o MarshallableDocumentBase) getJSONField() []byte {
+	return o.JSONField
+}
+
+func rawTemplate[T MarshallableDocument](o T) ([]byte, error) {
+	if o.getJSONField() == nil {
+		return ToJSON(&o)
+	} else {
+		return o.getJSONField(), nil
+	}
+}
 
 // PolicyPart is an interface that is implemented by all objects that are part of the set
 // of "policy objects". A policy object is that one that represents functionality of policies
