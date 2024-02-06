@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rsa"
 	"flag"
 	"fmt"
 	"os"
@@ -170,7 +171,11 @@ func runWithConfig(
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Running map server with root: %v\n", root)
+	base64PublicKey, err := util.RSAPublicToDERBase64(server.Cert.PublicKey.(*rsa.PublicKey))
+	if err != nil {
+		return fmt.Errorf("error converting public key to DER base64: %w", err)
+	}
+	fmt.Printf("Running map server with root: %x and public key: %s\n", *root, base64PublicKey)
 
 	// Should update now?
 	if updateNow {
