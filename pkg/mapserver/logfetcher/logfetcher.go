@@ -233,7 +233,7 @@ func (f *LogFetcher) fetch() {
 			}
 			// Certificate.
 			cert, err := ctx509.ParseCertificate(raw.Cert.Data)
-			if err != nil {
+			if ctx509.IsFatal(err) {
 				f.chanResults <- &result{
 					err: err,
 				}
