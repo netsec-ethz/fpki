@@ -341,6 +341,13 @@ func (s *MapServer) updateCerts(ctx context.Context) error {
 
 	// Main update loop.
 	for s.Updater.NextBatch(ctx) {
+		// print progress information
+		logUrl, currentIndex, maxIndex, err := s.Updater.GetProgress()
+		if err != nil {
+			return fmt.Errorf("retrieve progress: %s", err)
+		}
+		fmt.Printf("Running updater for log %s in range (%d, %d)\n", logUrl, currentIndex, maxIndex)
+
 		n, err := s.Updater.UpdateNextBatch(ctx)
 
 		fmt.Printf("updated %5d certs batch at %s\n", n, getTime())

@@ -65,6 +65,10 @@ func NewMapUpdater(config *db.Configuration, urls []string) (*MapUpdater, error)
 	}, nil
 }
 
+func (u *MapUpdater) GetProgress() (string, int, int, error) {
+	return u.Fetchers[u.currFetcher].URL(), int(u.lastState.Size), int(u.currState.Size), nil
+}
+
 // StartFetchingRemaining retrieves the last stored index number for this CT log server, and the
 // current last index, and uses them to call StartFetching.
 // It returns an error if there was one retrieving the start or end indices.
