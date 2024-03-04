@@ -110,7 +110,9 @@ func insertPolicyFromFile(policyFile string) error {
 	if err != nil {
 		return err
 	}
-	if bytes.Equal(root[:], newRoot[:]) {
+	if root == nil {
+		fmt.Printf("MHT root value initially set to %v\n", newRoot)
+	} else if bytes.Equal(root[:], newRoot[:]) {
 		fmt.Printf("MHT root value was not updated (%v)\n", newRoot)
 	} else {
 		fmt.Printf("MHT root value updated from %v to %v\n", root, newRoot)
