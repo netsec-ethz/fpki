@@ -132,6 +132,7 @@ func writeSampleConfig() error {
 		CTLogServerURLs:    []string{"https://ct.googleapis.com/logs/xenon2023/"},
 		CertificatePemFile: "tests/testdata/servercert.pem",
 		PrivateKeyPemFile:  "tests/testdata/serverkey.pem",
+		HttpAPIPort:        8443,
 
 		UpdateAt: util.NewTimeOfDay(3, 00, 00, 00),
 		UpdateTimer: util.DurationWrap{

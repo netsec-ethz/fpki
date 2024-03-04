@@ -13,6 +13,7 @@ type Config struct {
 	DBConfig           *db.Configuration
 	CertificatePemFile string // A X509 pem certificate
 	PrivateKeyPemFile  string // A RSA pem key
+	HttpAPIPort        int
 
 	UpdateAt    util.TimeOfDayWrap
 	UpdateTimer util.DurationWrap

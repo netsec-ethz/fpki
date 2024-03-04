@@ -23,8 +23,6 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
-const APIPort = 8443 // TODO: should be a config parameter
-
 type PayloadReturnType int
 
 const (
@@ -43,6 +41,7 @@ type MapServer struct {
 	TLS          *tls.Certificate
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
+	HttpAPIPort  int
 
 	apiStopServerChan chan struct{}
 	updateChan        chan context.Context
@@ -112,6 +111,7 @@ func NewMapServer(ctx context.Context, conf *config.Config) (*MapServer, error) 
 		TLS:          &tlsCert,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 5 * time.Second,
+		HttpAPIPort:  conf.HttpAPIPort,
 
 		apiStopServerChan: make(chan struct{}, 1),
 		updateChan:        make(chan context.Context),
@@ -156,7 +156,7 @@ func (s *MapServer) listen(ctx context.Context, useTLS bool) error {
 	http.HandleFunc("/getpolicypayloads", func(w http.ResponseWriter, r *http.Request) { s.apiGetPayloads(w, r, Policies) })
 
 	server := &http.Server{
-		Addr: fmt.Sprintf(":%d", APIPort),
+		Addr: fmt.Sprintf(":%d", s.HttpAPIPort),
 		TLSConfig: &tls.Config{
 			Certificates: []tls.Certificate{*s.TLS},
 		},
@@ -172,7 +172,7 @@ func (s *MapServer) listen(ctx context.Context, useTLS bool) error {
 			server.Shutdown(ctx)
 		}()
 		// This call blocks
-		fmt.Printf("Listening on %d\n", APIPort)
+		fmt.Printf("Listening on %d\n", s.HttpAPIPort)
 		if useTLS {
 			chanErr <- server.ListenAndServeTLS("", "")
 		} else {
