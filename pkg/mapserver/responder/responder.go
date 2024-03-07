@@ -29,15 +29,18 @@ func NewMapResponder(
 		conn: conn,
 		smt:  nil,
 	}
-	err := r.ReloadRoot(ctx)
+	err := r.ReloadRootAndSignTreeHead(ctx, privateKey)
 	if err != nil {
 		return nil, err
 	}
 
-	return r, r.signTreeHead(privateKey)
+	return r, nil
 }
 
-func (r *MapResponder) ReloadRoot(ctx context.Context) error {
+func (r *MapResponder) ReloadRootAndSignTreeHead(
+	ctx context.Context,
+	privateKey *rsa.PrivateKey,
+) error {
 	// Load root.
 	var root []byte
 	if rootID, err := r.conn.LoadRoot(ctx); err != nil {
@@ -54,7 +57,9 @@ func (r *MapResponder) ReloadRoot(ctx context.Context) error {
 
 	// Use the new SMT
 	r.smt = smt
-	return nil
+
+	// sign the SMT root
+	return r.signTreeHead(privateKey)
 }
 
 func (r *MapResponder) GetProof(ctx context.Context, domainName string,

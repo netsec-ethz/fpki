@@ -126,7 +126,10 @@ func NewMapServer(ctx context.Context, conf *config.Config) (*MapServer, error) 
 			case c := <-s.updateChan:
 				// TODO: ensure that the Mapserver is never in an inconsistent state. Currently, if the new SMT is applied but the responder does not yet use the updated SMT root value, queries will fail
 				s.pruneAndUpdate(c)
-				resp.ReloadRoot(ctx)
+				err := s.Responder.ReloadRootAndSignTreeHead(c, s.Key)
+				if err != nil {
+					s.updateErrChan <- err
+				}
 			case <-ctx.Done():
 				// Requested to exit.
 				close(s.updateChan)
