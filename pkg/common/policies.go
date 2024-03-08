@@ -2,6 +2,9 @@ package common
 
 import (
 	"bytes"
+	"fmt"
+	"slices"
+	"strings"
 	"time"
 )
 
@@ -87,8 +90,19 @@ func (o PolicyCertificate) Raw() ([]byte, error) {
 
 // PolicyAttributes is a domain policy that specifies what is or not acceptable for a domain.
 type PolicyAttributes struct {
-	TrustedCA         []string `json:",omitempty"`
+	// List of CA subject names allowed to issue certificates for this domain and subdomains. The string representation is according to the golang x509 library golang.org/x/crypto v0.0.0-20220411220226-7b82a4e95df4
+	AllowedCAs []string `json:",omitempty"`
+
+	// The following three attributes specify which subdomains are allowed and which are excluded (i.e., policies do not apply to these subdomains). Only one of these attributes is allowed to be set to the wildcard value "*" and covers all domains that are not covered by other attributes. No subdomain name can be covered by more than one attribute (including the wildcard value). Only single labels without "." can be specified.
+
+	// This attribute lists subdomains that are allowed
 	AllowedSubdomains []string `json:",omitempty"`
+
+	// This attribute lists subdomains that are not allowed
+	DisallowedSubdomains []string `json:",omitempty"`
+
+	// This attribute lists sudomains for which no policy applies
+	ExcludedSubdomains []string `json:",omitempty"`
 }
 
 type PolicyCertificateRevocationFields struct {
@@ -108,6 +122,79 @@ type PolicyCertificateRevocation struct {
 
 func (o PolicyCertificateRevocation) Raw() ([]byte, error) {
 	return rawTemplate(o)
+}
+
+type PolicyAttributeDomainValidityResult int
+
+const (
+	PolicyAttributeDomainAllowed       PolicyAttributeDomainValidityResult = iota
+	PolicyAttributeDomainDisallowed                                        = iota
+	PolicyAttributeDomainExcluded                                          = iota
+	PolicyAttributeDomainNotApplicable                                     = iota
+)
+
+func (a PolicyAttributes) ValidateAttributes() error {
+	caMap := map[string]struct{}{}
+	for _, caName := range a.AllowedCAs {
+		caMap[caName] = struct{}{}
+	}
+	if len(caMap) < len(a.AllowedCAs) {
+		return fmt.Errorf("Allowed CA attribute contains %d duplicate CAs", len(caMap)-len(a.AllowedCAs))
+	}
+
+	// TODO: could also check CA subject name formatting
+
+	labelMap := map[string]struct{}{}
+	for _, label := range a.AllowedSubdomains {
+		labelMap[label] = struct{}{}
+	}
+	for _, label := range a.DisallowedSubdomains {
+		labelMap[label] = struct{}{}
+	}
+	for _, label := range a.ExcludedSubdomains {
+		labelMap[label] = struct{}{}
+	}
+	nLabels := len(a.AllowedSubdomains) + len(a.DisallowedSubdomains) + len(a.ExcludedSubdomains)
+	if len(labelMap) < nLabels {
+		return fmt.Errorf("Subdomain attributes contain %d duplicate labels", nLabels-len(labelMap))
+	}
+	return nil
+}
+
+func (a PolicyAttributes) CheckDomainValidity(policyAttributeDomain, domain string) PolicyAttributeDomainValidityResult {
+	policyAttributeDomain, _ = strings.CutSuffix(policyAttributeDomain, ".")
+	domain, _ = strings.CutSuffix(domain, ".")
+	targetSubdomain, ok := strings.CutSuffix(domain, "."+policyAttributeDomain)
+	if !ok {
+		return PolicyAttributeDomainNotApplicable
+	}
+	targetSubdomainLabels := strings.Split(targetSubdomain, ".")
+	targetSubdomainLabel := targetSubdomainLabels[len(targetSubdomainLabels)-1]
+
+	// check for exact match
+	if slices.Contains(a.AllowedSubdomains, targetSubdomainLabel) {
+		return PolicyAttributeDomainAllowed
+	}
+	if slices.Contains(a.DisallowedSubdomains, targetSubdomainLabel) {
+		return PolicyAttributeDomainDisallowed
+	}
+	if slices.Contains(a.ExcludedSubdomains, targetSubdomainLabel) {
+		return PolicyAttributeDomainExcluded
+	}
+
+	// check for wildcards
+	if slices.Contains(a.AllowedSubdomains, "*") {
+		return PolicyAttributeDomainAllowed
+	}
+	if slices.Contains(a.DisallowedSubdomains, "*") {
+		return PolicyAttributeDomainDisallowed
+	}
+	if slices.Contains(a.ExcludedSubdomains, "*") {
+		return PolicyAttributeDomainExcluded
+	}
+
+	// default is to allow any subdomain
+	return PolicyAttributeDomainAllowed
 }
 
 func NewPolicyCertificateFields(
@@ -237,8 +324,10 @@ func (c PolicyCertificate) Equal(x PolicyCertificate) bool {
 
 func (s PolicyAttributes) Equal(o PolicyAttributes) bool {
 	return true &&
-		equalStringSlices(s.TrustedCA, o.TrustedCA) &&
-		equalStringSlices(s.AllowedSubdomains, o.AllowedSubdomains)
+		equalStringSlices(s.AllowedCAs, o.AllowedCAs) &&
+		equalStringSlices(s.AllowedSubdomains, o.AllowedSubdomains) &&
+		equalStringSlices(s.DisallowedSubdomains, o.DisallowedSubdomains) &&
+		equalStringSlices(s.ExcludedSubdomains, o.ExcludedSubdomains)
 }
 
 func NewPolicyCertificateRevocationFields(
