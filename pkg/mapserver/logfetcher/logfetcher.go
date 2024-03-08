@@ -99,7 +99,7 @@ func NewLogFetcher(url string) (*LogFetcher, error) {
 		serverBatchSize:  defaultServerBatchSize,
 		processBatchSize: defaultProcessBatchSize,
 		ctClient:         ctClient,
-		chanResults:      make(chan *result, preloadCount),
+		chanResults:      nil,
 	}, nil
 }
 
@@ -123,6 +123,7 @@ func (f LogFetcher) GetCurrentState(ctx context.Context) (State, error) {
 // StartFetching will start fetching certificates in the background, so that there is
 // at most two batches ready to be immediately read by NextBatch.
 func (f *LogFetcher) StartFetching(start, end int64) {
+	f.chanResults = make(chan *result, preloadCount)
 	f.start = start
 	f.end = end
 	go f.fetch()
