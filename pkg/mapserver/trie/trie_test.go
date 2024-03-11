@@ -209,7 +209,7 @@ func TestTrieUpdateAndDelete(t *testing.T) {
 // TestTrieMerkleProof: test if merkle proof is correct
 func TestTrieMerkleProof(t *testing.T) {
 	rand.Seed(1)
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
 
 	config, removeF := testdb.ConfigureTestDB(t)

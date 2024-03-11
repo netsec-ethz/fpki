@@ -99,11 +99,17 @@ type policies interface {
 	RetrievePolicyPayloads(ctx context.Context, IDs []*common.SHA256Output) ([][]byte, error)
 }
 
+type certsAndPolicies interface {
+	// RetrieveCertificateOrPolicyPayloads returns the payloads for each identifier regardless whether it is a certificate or a policy
+	RetrieveCertificateOrPolicyPayloads(ctx context.Context, IDs []*common.SHA256Output) ([][]byte, error)
+}
+
 type Conn interface {
 	smt
 	dirty
 	certs
 	policies
+	certsAndPolicies
 
 	// TODO(juagargi) remove the temporary access to the sql.DB object
 	DB() *sql.DB

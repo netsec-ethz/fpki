@@ -91,14 +91,14 @@ func (c *mysqlDB) UpdatePolicies(ctx context.Context, ids, parents []*common.SHA
 	return nil
 }
 
-// UpdateDomainPolicies updates the domain_certs table.
+// UpdateDomainPolicies updates the domain_policies table.
 func (c *mysqlDB) UpdateDomainPolicies(ctx context.Context,
 	domainIDs, policyIDs []*common.SHA256Output) error {
 
 	if len(domainIDs) == 0 {
 		return nil
 	}
-	// Insert into domain_certs:
+	// Insert into domain_policies:
 	str := "INSERT IGNORE INTO domain_policies (domain_id,policy_id) VALUES " +
 		repeatStmt(len(policyIDs), 2)
 	data := make([]interface{}, 2*len(policyIDs))

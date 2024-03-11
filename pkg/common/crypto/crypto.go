@@ -8,10 +8,41 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
+	"regexp"
+	"strings"
+	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
+
+func SignPolicyCertificateTimestamp(
+	pc *common.PolicyCertificate,
+	version int,
+	logId []byte,
+	key *rsa.PrivateKey,
+) (*common.SignedPolicyCertificateTimestamp, error) {
+
+	serializedPc, err := common.ToJSON(pc)
+	if err != nil {
+		return nil, fmt.Errorf("SignSPT | SerializePC | %w", err)
+	}
+
+	spt := common.NewSignedPolicyCertificateTimestamp(version, logId, time.Now(), nil)
+	signatureInput := common.NewSignedEntryTimestampSignatureInput(serializedPc, spt)
+	serializedSpt, err := common.ToJSON(signatureInput)
+	if err != nil {
+		return nil, fmt.Errorf("SignSPT | SerializeSPTInput | %w", err)
+	}
+
+	signature, err := SignBytes(serializedSpt, key)
+	if err != nil {
+		return nil, fmt.Errorf("SignSPT | Sign | %w", err)
+	}
+
+	spt.Signature = signature
+	return spt, nil
+}
 
 func SignBytes(b []byte, key *rsa.PrivateKey) ([]byte, error) {
 	hashOutput := sha256.Sum256(b)
@@ -177,6 +208,45 @@ func SignPolicyCertificateAsIssuer(
 
 	// No errors: modify the child policy certificate in-place.
 	childPolCert.IssuerSignature = signature
+
+	return nil
+}
+
+// VerifyIssuerConstraints verifies various constraints given by the issuer policy certificate
+// and returns the first violated constraint, or nil if no constraints were violated.
+func VerifyIssuerConstraints(
+	issuerPolCert *common.PolicyCertificate,
+	childPolCert *common.PolicyCertificate,
+) error {
+
+	// check validity period
+	if childPolCert.NotBefore.Before(issuerPolCert.NotBefore) {
+		return fmt.Errorf("policy certificate is valid before its issuer certificate (%v < %v)", childPolCert.NotBefore, issuerPolCert.NotBefore)
+	}
+	if issuerPolCert.NotAfter.Before(childPolCert.NotAfter) {
+		return fmt.Errorf("policy certificate is valid after its issuer certificate (%v > %v)", childPolCert.NotAfter, issuerPolCert.NotAfter)
+	}
+
+	// check domain constraint
+	// TODO (cyrill): could also check with public suffix list
+	validDomainName := regexp.MustCompile("([^.]+\\.)*([^.]+\\.?)?")
+	if !validDomainName.Match([]byte(childPolCert.DomainField)) {
+		return fmt.Errorf("Policy Certificate does not have a valid domain name: %s", childPolCert.DomainField)
+	}
+	if !validDomainName.Match([]byte(issuerPolCert.DomainField)) {
+		return fmt.Errorf("Issuer Policy Certificate does not have a valid domain name: %s", issuerPolCert.DomainField)
+	}
+	if issuerPolCert.DomainField != "" {
+		// all domain fields are accepted
+	} else if issuerPolCert.DomainField == childPolCert.DomainField {
+		// identical domain fields are accepted
+	} else {
+		if !strings.HasSuffix(childPolCert.DomainField, "."+issuerPolCert.DomainField) {
+			return fmt.Errorf("Policy certificate is not a subdomain of the issuer policy certificate")
+		} else {
+			// is valid subdomain
+		}
+	}
 
 	return nil
 }

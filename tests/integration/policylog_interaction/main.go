@@ -13,7 +13,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/policylog/client"
 )
 
-//TestCreateTreeAddLeafThenVerifyWithConsistencyProof: add leaves, retrieve PoI and STH, then verify the return PoI and STH
+// TestCreateTreeAddLeafThenVerifyWithConsistencyProof: add leaves, retrieve PoI and STH, then verify the return PoI and STH
 func main() {
 	flag.Parse()
 	err := os.MkdirAll("./file_exchange/policylog/trees_config", os.ModePerm)

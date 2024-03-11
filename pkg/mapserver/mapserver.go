@@ -25,6 +25,14 @@ import (
 
 const APIPort = 8443 // TODO: should be a config parameter
 
+type PayloadReturnType int
+
+const (
+	Certificates PayloadReturnType = iota
+	Policies
+	CertificatesAndPolicies
+)
+
 type MapServer struct {
 	Updater   *updater.MapUpdater
 	Responder *responder.MapResponder
@@ -128,13 +136,24 @@ func NewMapServer(ctx context.Context, conf *config.Config) (*MapServer, error) 
 	return s, nil
 }
 
-// Listen is responsible to start the listener for the responder.
+// Listen starts an HTTPS listener for the responder.
 func (s *MapServer) Listen(ctx context.Context) error {
+	return s.listen(ctx, true)
+}
+
+// ListenWithoutTLS starts an HTTP listener for the responder.
+func (s *MapServer) ListenWithoutTLS(ctx context.Context) error {
+	return s.listen(ctx, false)
+}
+
+// listen is responsible to start an HTTP or HTTPS listener for the responder
+func (s *MapServer) listen(ctx context.Context, useTLS bool) error {
 	// Reset the default sever mux, to establish the handlers from new.
 	http.DefaultServeMux = &http.ServeMux{}
 	http.HandleFunc("/getproof", s.apiGetProof)
-	http.HandleFunc("/getcertpayloads", s.apiGetCertPayloads)
-	http.HandleFunc("/getpolicypayloads", s.apiGetPolicyPayloads)
+	http.HandleFunc("/getpayloads", func(w http.ResponseWriter, r *http.Request) { s.apiGetPayloads(w, r, CertificatesAndPolicies) })
+	http.HandleFunc("/getcertpayloads", func(w http.ResponseWriter, r *http.Request) { s.apiGetPayloads(w, r, Certificates) })
+	http.HandleFunc("/getpolicypayloads", func(w http.ResponseWriter, r *http.Request) { s.apiGetPayloads(w, r, Policies) })
 
 	server := &http.Server{
 		Addr: fmt.Sprintf(":%d", APIPort),
@@ -153,8 +172,12 @@ func (s *MapServer) Listen(ctx context.Context) error {
 			server.Shutdown(ctx)
 		}()
 		// This call blocks
-		chanErr <- server.ListenAndServeTLS("", "")
-
+		fmt.Printf("Listening on %d\n", APIPort)
+		if useTLS {
+			chanErr <- server.ListenAndServeTLS("", "")
+		} else {
+			chanErr <- server.ListenAndServe()
+		}
 	}()
 	err := <-chanErr
 	// If the error happened because we stopped the server, ignore it.
@@ -201,10 +224,12 @@ func (s *MapServer) apiGetProof(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// apiGetPaylpads expects one GET parameer "ids" with a string value of the hex representation
+// apiGetPaylpads expects one GET parameter "ids" with a string value of the hex representation
 // of all requested IDs.
 // Since each ID is 32 bytes, the hex string will always be a multiple of 64.
-func (s *MapServer) apiGetCertPayloads(w http.ResponseWriter, r *http.Request) {
+// The function then returns all fitting certificates, policies, or both certificates and policies
+// based on the provided payload return type
+func (s *MapServer) apiGetPayloads(w http.ResponseWriter, r *http.Request, returnType PayloadReturnType) {
 	ctx, cancelF := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancelF()
 
@@ -226,48 +251,16 @@ func (s *MapServer) apiGetCertPayloads(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Obtain the bytes.
-	bytes, err := s.Conn.RetrieveCertificatePayloads(ctx, ids)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("error obtaining payloads for %s\nError is: %s",
-			hexIDs, err), http.StatusBadRequest)
-		return
+	var bytes [][]byte
+	var err error
+	switch returnType {
+	case Certificates:
+		bytes, err = s.Conn.RetrieveCertificatePayloads(ctx, ids)
+	case Policies:
+		bytes, err = s.Conn.RetrievePolicyPayloads(ctx, ids)
+	case CertificatesAndPolicies:
+		bytes, err = s.Conn.RetrieveCertificateOrPolicyPayloads(ctx, ids)
 	}
-
-	// TODO(juagargi) Better encodings such as base64 would reduce bandwidth. Also gzip.
-	enc := json.NewEncoder(w)
-	err = enc.Encode(bytes)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("encoding proof: %s", err), http.StatusInternalServerError)
-		return
-	}
-}
-
-// apiGetPolicyPayloads expects one GET parameer "ids" with a string value of the hex representation
-// of all requested IDs.
-// Since each ID is 32 bytes, the hex string will always be a multiple of 64.
-func (s *MapServer) apiGetPolicyPayloads(w http.ResponseWriter, r *http.Request) {
-	ctx, cancelF := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancelF()
-
-	hexIDs := r.URL.Query().Get("ids")
-	if len(hexIDs)%(common.SHA256Size*2) != 0 {
-		http.Error(w, "parameter \"ids\" length is not a concatenation of 32 char IDs",
-			http.StatusBadRequest)
-		return
-	}
-	ids := make([]*common.SHA256Output, len(hexIDs)/common.SHA256Size/2)
-	for i := 0; i < len(ids); i++ {
-		h := hexIDs[i*common.SHA256Size*2 : (i+1)*common.SHA256Size*2]
-		id, err := hex.DecodeString(h)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("not a hexadecimal ID: %s", h), http.StatusBadRequest)
-			return
-		}
-		ids[i] = (*common.SHA256Output)(id)
-	}
-
-	// Obtain the bytes.
-	bytes, err := s.Conn.RetrievePolicyPayloads(ctx, ids)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("error obtaining payloads for %s\nError is: %s",
 			hexIDs, err), http.StatusBadRequest)

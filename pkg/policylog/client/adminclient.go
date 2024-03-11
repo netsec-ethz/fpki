@@ -25,7 +25,7 @@ type AdminClient struct {
 	conn       *grpc.ClientConn
 }
 
-//GetAdminClient: get a new admin client
+// GetAdminClient: get a new admin client
 func GetAdminClient(configPath string) (*AdminClient, error) {
 	// read the config file
 	config := &AdminClientConfig{}

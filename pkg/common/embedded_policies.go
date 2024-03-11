@@ -26,9 +26,17 @@ type SignedPolicyCertificateTimestamp struct {
 	SignedEntryTimestamp
 }
 
+func (o SignedPolicyCertificateTimestamp) Raw() ([]byte, error) {
+	return rawTemplate(o)
+}
+
 // SignedPolicyCertificateRevocationTimestamp is a signed policy certificate revocation timestamp.
 type SignedPolicyCertificateRevocationTimestamp struct {
 	SignedEntryTimestamp
+}
+
+func (o SignedPolicyCertificateRevocationTimestamp) Raw() ([]byte, error) {
+	return rawTemplate(o)
 }
 
 func NewSignedEntryTimestamp(
@@ -55,6 +63,32 @@ func (s SignedEntryTimestamp) Equal(x SignedEntryTimestamp) bool {
 		bytes.Equal(s.LogID, x.LogID) &&
 		s.AddedTS.Equal(x.AddedTS) &&
 		bytes.Equal(s.Signature, x.Signature)
+}
+
+type SignedEntryTimestampSignatureInput struct {
+	SignedEntryTimestamp
+	Entry []byte
+}
+
+func NewSignedEntryTimestampSignatureInput(
+	entry []byte,
+	spct *SignedPolicyCertificateTimestamp,
+) *SignedEntryTimestampSignatureInput {
+
+	return &SignedEntryTimestampSignatureInput{
+		SignedEntryTimestamp: *NewSignedEntryTimestamp(
+			spct.Version,
+			spct.LogID,
+			spct.AddedTS,
+			spct.Signature,
+		),
+		Entry: entry,
+	}
+}
+
+func (t SignedEntryTimestampSignatureInput) Equal(x SignedEntryTimestampSignatureInput) bool {
+	return t.SignedEntryTimestamp.Equal(x.SignedEntryTimestamp) &&
+		bytes.Equal(t.Entry, x.Entry)
 }
 
 func NewSignedPolicyCertificateTimestamp(

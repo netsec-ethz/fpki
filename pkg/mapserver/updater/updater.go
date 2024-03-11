@@ -289,8 +289,12 @@ func UpdateWithOverwrite(ctx context.Context, conn db.Conn, domainNames [][]stri
 	policyIDs := make([]*common.SHA256Output, len(policies))
 	policySubjects := make([]string, len(policies))
 	for i, pol := range policies {
-		payloads[i] = pol.Raw()
-		id := common.SHA256Hash32Bytes(pol.Raw())
+		payload, err := common.ToJSON(pol)
+		if err != nil {
+			return err
+		}
+		payloads[i] = payload
+		id := common.SHA256Hash32Bytes(payload)
 		policyIDs[i] = &id
 		policySubjects[i] = pol.Domain()
 	}
@@ -336,8 +340,12 @@ func UpdateWithKeepExisting(ctx context.Context, conn db.Conn, domainNames [][]s
 	policyIDs := make([]*common.SHA256Output, len(policies))
 	policySubjects := make([]string, len(policies))
 	for i, pol := range policies {
-		payloads[i] = pol.Raw()
-		id := common.SHA256Hash32Bytes(pol.Raw())
+		payload, err := pol.Raw()
+		if err != nil {
+			return err
+		}
+		payloads[i] = payload
+		id := common.SHA256Hash32Bytes(payload)
 		policyIDs[i] = &id
 		policySubjects[i] = pol.Domain()
 	}

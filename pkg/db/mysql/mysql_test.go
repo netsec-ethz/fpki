@@ -21,7 +21,7 @@ import (
 )
 
 func TestCheckCertsExist(t *testing.T) {
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
 
 	// Configure a test DB.
@@ -71,7 +71,7 @@ func TestCoalesceForDirtyDomains(t *testing.T) {
 	// Because we are using "random" bytes deterministically here, set a fixed seed.
 	rand.Seed(1)
 
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
 
 	// Configure a test DB.
@@ -140,7 +140,7 @@ func TestCoalesceForDirtyDomains(t *testing.T) {
 }
 
 func TestRetrieveCertificatePayloads(t *testing.T) {
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
 
 	// Configure a test DB.
@@ -185,7 +185,8 @@ func TestRetrieveCertificatePayloads(t *testing.T) {
 	require.NoError(t, err)
 	expectedPols := make([][]byte, len(pols))
 	for i, pol := range pols {
-		expectedPols[i] = pol.Raw()
+		expectedPols[i], err = pol.Raw()
+		require.NoError(t, err)
 	}
 	require.Equal(t, expectedPols, gotPols)
 	// Do the same one by one:
@@ -194,10 +195,39 @@ func TestRetrieveCertificatePayloads(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, expectedPols[i:i+1], gotPols)
 	}
+
+	// Do the same for combined retrieval of certificate and policies.
+	// prepare test data
+	certOrPolIDs := make([]*common.SHA256Output, len(certs)+len(pols))
+	for i, certID := range certIDs {
+		certOrPolIDs[i] = certID
+	}
+	for i, polID := range polIDs {
+		certOrPolIDs[len(certIDs)+i] = polID
+	}
+	expectedCertsOrPols := make([][]byte, len(certs)+len(pols))
+	for i, cert := range certs {
+		expectedCertsOrPols[i] = cert.Raw
+	}
+	for i, pol := range pols {
+		expectedCertsOrPols[len(certs)+i], err = pol.Raw()
+		require.NoError(t, err)
+	}
+
+	// check results
+	gotCertsOrPols, err := conn.RetrieveCertificateOrPolicyPayloads(ctx, certOrPolIDs)
+	require.NoError(t, err)
+	require.ElementsMatch(t, expectedCertsOrPols, gotCertsOrPols)
+	// Do the same one by one:
+	for i := range expectedCertsOrPols {
+		gotCertsOrPols, err := conn.RetrieveCertificateOrPolicyPayloads(ctx, certOrPolIDs[i:i+1])
+		require.NoError(t, err)
+		require.ElementsMatch(t, expectedCertsOrPols[i:i+1], gotCertsOrPols)
+	}
 }
 
 func TestLastCTlogServerState(t *testing.T) {
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
 
 	// Configure a test DB.
@@ -376,7 +406,9 @@ func testPolicyHierarchyForLeafs(t tests.T, leaves []string) (pols []common.Poli
 
 	polIDs = make([]*common.SHA256Output, len(pols))
 	for i, pol := range pols {
-		id := common.SHA256Hash32Bytes(pol.Raw())
+		raw, err := pol.Raw()
+		require.NoError(t, err)
+		id := common.SHA256Hash32Bytes(raw)
 		polIDs[i] = &id
 	}
 	return

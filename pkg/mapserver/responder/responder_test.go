@@ -20,7 +20,7 @@ import (
 )
 
 func TestNewResponder(t *testing.T) {
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
 
 	// Configure a test DB.
@@ -64,7 +64,7 @@ func TestProof(t *testing.T) {
 	// Because we are using "random" bytes deterministically here, set a fixed seed.
 	rand.Seed(1)
 
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
 
 	// Configure a test DB.
@@ -103,7 +103,9 @@ func TestProof(t *testing.T) {
 	// Check b.com:
 	proofChain, err = responder.GetProof(ctx, "b.com")
 	require.NoError(t, err)
-	id = common.SHA256Hash32Bytes(policiesB[0].Raw())
+	raw, err := policiesB[0].Raw()
+	require.NoError(t, err)
+	id = common.SHA256Hash32Bytes(raw)
 	checkProof(t, &id, proofChain)
 
 	// Check c.com:

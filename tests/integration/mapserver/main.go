@@ -86,6 +86,12 @@ func mainFunc() int {
 		Transport: tr,
 	}
 
+	rawPolicies := make([][]byte, len(policies))
+	for i, p := range policies {
+		raw, err := p.Raw()
+		require.NoError(t, err)
+		rawPolicies[i] = raw
+	}
 	// Check responses for a.com, b.com and c.com .
 	checkResponse(t, client, "a.com", []common.SHA256Output{
 		common.SHA256Hash32Bytes(certs[0].Raw),
@@ -94,16 +100,16 @@ func mainFunc() int {
 		common.SHA256Hash32Bytes(certs[3].Raw),
 	})
 	checkResponse(t, client, "b.com", []common.SHA256Output{
-		common.SHA256Hash32Bytes(policies[0].Raw()),
-		common.SHA256Hash32Bytes(policies[1].Raw()),
+		common.SHA256Hash32Bytes(rawPolicies[0]),
+		common.SHA256Hash32Bytes(rawPolicies[1]),
 	})
 	checkResponse(t, client, "c.com", []common.SHA256Output{
 		common.SHA256Hash32Bytes(certs[4].Raw),
 		common.SHA256Hash32Bytes(certs[5].Raw),
 		common.SHA256Hash32Bytes(certs[6].Raw),
 		common.SHA256Hash32Bytes(certs[7].Raw),
-		common.SHA256Hash32Bytes(policies[2].Raw()),
-		common.SHA256Hash32Bytes(policies[3].Raw()),
+		common.SHA256Hash32Bytes(rawPolicies[2]),
+		common.SHA256Hash32Bytes(rawPolicies[3]),
 	})
 
 	return 0
@@ -122,7 +128,6 @@ func checkResponse(
 		mapserver.APIPort,
 		domainName,
 	))
-	require.NoError(t, err)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	dec := json.NewDecoder(resp.Body)

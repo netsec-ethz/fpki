@@ -202,7 +202,7 @@ func (p *CertificateProcessor) ConsolidateDB() {
 		if _, err := p.conn.DB().Exec(str); err != nil {
 			panic(fmt.Errorf("reenabling keys: %s", err))
 		}
-		str = "ALTER TABLE certs_aux_tmp ADD PRIMARY KEY (id)"
+		str = "ALTER TABLE certs_aux_tmp ADD PRIMARY KEY (cert_id)"
 		if _, err := p.conn.DB().Exec(str); err != nil {
 			panic(fmt.Errorf("reenabling keys: %s", err))
 		}

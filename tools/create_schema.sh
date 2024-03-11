@@ -6,7 +6,14 @@ create_new_db() {
 set -e
 
 DBNAME=$1
-MYSQLCMD="mysql -u root"
+
+MYSQLCMD="mysql -u ${MYSQL_USER:-root}"
+if [ -n "${MYSQL_PASSWORD}" ]; then
+    MYSQLCMD="${MYSQLCMD} -p${MYSQL_PASSWORD}"
+fi
+if [ -n "${MYSQL_HOST}" ] || [ -n "${MYSQL_PORT}" ]; then
+    MYSQLCMD="${MYSQLCMD} -h ${MYSQL_HOST:-localhost} -P ${MYSQL_PORT:-3306} --protocol TCP"
+fi
 
 
 CMD=$(cat <<EOF
@@ -124,9 +131,10 @@ EOF
 CMD=$(cat <<EOF
 USE $DBNAME;
 CREATE TABLE root (
-  key32 VARBINARY(32) NOT NULL,
+    key32 VARBINARY(32) NOT NULL,
 
-  PRIMARY KEY (key32)
+    -- constraints to ensure that only a single root value exists at any time by having a single possible value for the primary key
+    single_row_pk char(25) NOT NULL PRIMARY KEY DEFAULT 'PK_RestrictToOneRootValue' CHECK (single_row_pk='PK_RestrictToOneRootValue')
 ) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
 EOF
   )

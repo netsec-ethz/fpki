@@ -95,7 +95,7 @@ func TestUpdateWithKeepExisting(t *testing.T) {
 		gotPolIDsID, gotPolIDs, err := conn.RetrieveDomainPoliciesIDs(ctx, id)
 		require.NoError(t, err)
 		// For each sequence of policies, compute the ID of their JSON.
-		polIDs := computeIDsOfPolicies(policies)
+		polIDs := computeIDsOfPolicies(t, policies)
 		expectedPolIDs, expectedPolIDsID := glueSortedIDsAndComputeItsID(polIDs)
 		t.Logf("expectedPolIDs: %s\n", hex.EncodeToString(expectedPolIDs))
 		require.Equal(t, expectedPolIDs, gotPolIDs)
@@ -455,10 +455,12 @@ func glueSortedIDsAndComputeItsID(IDs []*common.SHA256Output) ([]byte, *common.S
 	return gluedIDs, &id
 }
 
-func computeIDsOfPolicies(policies []common.PolicyDocument) []*common.SHA256Output {
+func computeIDsOfPolicies(t *testing.T, policies []common.PolicyDocument) []*common.SHA256Output {
 	set := make(map[common.SHA256Output]struct{}, len(policies))
 	for _, pol := range policies {
-		id := common.SHA256Hash32Bytes(pol.Raw())
+		raw, err := pol.Raw()
+		require.NoError(t, err)
+		id := common.SHA256Hash32Bytes(raw)
 		set[id] = struct{}{}
 	}
 
