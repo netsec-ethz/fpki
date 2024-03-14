@@ -345,6 +345,7 @@ func (s *MapServer) updateCerts(ctx context.Context) error {
 	defer s.Updater.StopFetching()
 
 	// Main update loop.
+	start := time.Now()
 	for s.Updater.NextBatch(ctx) {
 		// print progress information
 		logUrl, currentIndex, maxIndex, err := s.Updater.GetProgress()
@@ -353,9 +354,11 @@ func (s *MapServer) updateCerts(ctx context.Context) error {
 		}
 		fmt.Printf("Running updater for log %s in range (%d, %d)\n", logUrl, currentIndex, maxIndex)
 
-		n, err := s.Updater.UpdateNextBatch(ctx)
+		fetchDuration := time.Now().Sub(start)
+		start = time.Now()
 
-		fmt.Printf("updated %5d certs batch at %s\n", n, getTime())
+		n, err := s.Updater.UpdateNextBatch(ctx)
+		fmt.Printf("Fetched %d certs in %.2f seconds at %s\n", n, fetchDuration.Seconds(), getTime())
 		if err != nil {
 			// We stop the loop here, as probably requires manual inspection of the logs, etc.
 			return fmt.Errorf("updating next batch of x509 certificates: %w", err)

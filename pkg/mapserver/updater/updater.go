@@ -111,19 +111,24 @@ func (u *MapUpdater) UpdateNextBatch(ctx context.Context) (int, error) {
 	// Or we may want to insert batches and verify only the last one.
 	// See issue #47
 	// https://github.com/netsec-ethz/fpki/issues/47
+	start := time.Now()
 	err = u.verifyValidity(ctx, certs, chains)
 	if err != nil {
 		return 0, fmt.Errorf("validity from CT log server: %w", err)
 	}
+	fmt.Printf("Verified validity of %d certs in %.2f seconds at %s\n", len(certs), time.Now().Sub(start).Seconds(), getTime())
 
 	// Insert into DB.
+	start = time.Now()
 	n, err := len(certs), u.updateCertBatch(ctx, certs, chains)
 	if err != nil {
 		return n, err
 	}
+	fmt.Printf("Inserted %d certs into DB in %.2f seconds at %s\n", len(certs), time.Now().Sub(start).Seconds(), getTime())
 
 	// Store the last status obtained from the fetcher as updated.
 	u.lastState.Size += uint64(n)
+	fmt.Printf("Storing new last status: %+v\n", u.lastState.Size)
 	if u.lastState.Size == u.currState.Size {
 		// Update the DB with all certs collected from this fetcher
 		err = u.Conn.UpdateLastCTlogServerState(ctx, fetcher.URL(),
@@ -577,4 +582,8 @@ func keyValuePairToSMTInput(keyValuePair []*db.KeyValuePair) ([][]byte, [][]byte
 	}
 
 	return keyResult, valueResult, nil
+}
+
+func getTime() string {
+	return time.Now().UTC().Format(time.RFC3339)
 }
