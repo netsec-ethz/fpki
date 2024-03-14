@@ -205,9 +205,12 @@ func runWithConfig(
 	// Set update cycle timer.
 	util.RunWhen(ctx, conf.UpdateAt.NextTimeOfDay(), conf.UpdateTimer.Duration,
 		func(ctx context.Context) {
-			err := server.PruneAndUpdate(ctx)
+			updatePossible, err := server.PruneAndUpdateIfPossible(ctx)
 			if err != nil {
 				fmt.Printf("ERROR: update returned %s\n", err)
+			}
+			if !updatePossible {
+				fmt.Printf("WARNING: Unable to schedule update due to currently running update (CT log fetching and map server ingestion speed may be too low) at %s\n", time.Now().UTC().Format(time.RFC3339))
 			}
 		})
 

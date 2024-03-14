@@ -203,6 +203,19 @@ func (s *MapServer) Shutdown(ctx context.Context) {
 }
 
 // PruneAndUpdate triggers an update. If an ongoing update is still in process, it blocks.
+func (s *MapServer) PruneAndUpdateIfPossible(ctx context.Context) (bool, error) {
+	select {
+	// Signal we want an update.
+	case s.updateChan <- ctx:
+		// Wait for the answer (in form of an error).
+		err := <-s.updateErrChan
+		return true, err
+	default:
+		return false, nil
+	}
+}
+
+// PruneAndUpdate triggers an update. If an ongoing update is still in process, it blocks.
 func (s *MapServer) PruneAndUpdate(ctx context.Context) error {
 	// Signal we want an update.
 	s.updateChan <- ctx
