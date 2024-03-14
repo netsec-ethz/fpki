@@ -90,10 +90,16 @@ func (o PolicyCertificate) Raw() ([]byte, error) {
 
 // PolicyAttributes is a domain policy that specifies what is or not acceptable for a domain.
 type PolicyAttributes struct {
-	// List of CA subject names allowed to issue certificates for this domain and subdomains. The string representation is according to the golang x509 library golang.org/x/crypto v0.0.0-20220411220226-7b82a4e95df4
+	// List of CA subject names allowed to issue certificates for this domain and subdomains. The
+	// string representation is according to the golang x509 library
+	// golang.org/x/crypto v0.0.0-20220411220226-7b82a4e95df4
 	AllowedCAs []string `json:",omitempty"`
 
-	// The following three attributes specify which subdomains are allowed and which are excluded (i.e., policies do not apply to these subdomains). Only one of these attributes is allowed to be set to the wildcard value "*" and covers all domains that are not covered by other attributes. No subdomain name can be covered by more than one attribute (including the wildcard value). Only single labels without "." can be specified.
+	// The following three attributes specify which subdomains are allowed and which are excluded
+	// (i.e., policies do not apply to these subdomains). Only one of these attributes is allowed to
+	// be set to the wildcard value "*" and covers all domains that are not covered by other
+	// attributes. No subdomain name can be covered by more than one attribute (including the
+	// wildcard value). Only single labels without "." can be specified.
 
 	// This attribute lists subdomains that are allowed
 	AllowedSubdomains []string `json:",omitempty"`
@@ -162,12 +168,17 @@ func (a PolicyAttributes) ValidateAttributes() error {
 }
 
 func (a PolicyAttributes) CheckDomainValidity(policyAttributeDomain, domain string) PolicyAttributeDomainValidityResult {
+	// remove trailing dot if present (example.com. -> example.com)
 	policyAttributeDomain, _ = strings.CutSuffix(policyAttributeDomain, ".")
 	domain, _ = strings.CutSuffix(domain, ".")
+
+	// get relative domain path compared to the policy attribute's domain (www.test.example.com -> www.test
 	targetSubdomain, ok := strings.CutSuffix(domain, "."+policyAttributeDomain)
 	if !ok {
 		return PolicyAttributeDomainNotApplicable
 	}
+
+	// get the relevant subdomain label on which the domain validity is evaluated on (www.test.example.com -> test)
 	targetSubdomainLabels := strings.Split(targetSubdomain, ".")
 	targetSubdomainLabel := targetSubdomainLabels[len(targetSubdomainLabels)-1]
 

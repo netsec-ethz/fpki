@@ -234,6 +234,8 @@ func (f *LogFetcher) fetch() {
 			}
 			// Certificate.
 			cert, err := ctx509.ParseCertificate(raw.Cert.Data)
+			// Accept the same certificates as CT logs, i.e., don't be too restrictive in terms of
+			// which certificates to reject (i.e., allow for non-fatal parsing/validation errors)
 			if ctx509.IsFatal(err) {
 				f.chanResults <- &result{
 					err: err,
