@@ -202,7 +202,9 @@ func (s *MapServer) Shutdown(ctx context.Context) {
 	s.apiStopServerChan <- struct{}{}
 }
 
-// PruneAndUpdate triggers an update. If an ongoing update is still in process, it blocks.
+// PruneAndUpdateIfPossible tries to trigger an update if no update is currently running.
+// If an ongoing update is still in process, it returns false. Returns true if a new update was
+// triggered.
 func (s *MapServer) PruneAndUpdateIfPossible(ctx context.Context) (bool, error) {
 	select {
 	// Signal we want an update.
