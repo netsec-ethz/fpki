@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/rsa"
 	"flag"
 	"fmt"
 	"os"
@@ -17,6 +18,8 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
+
+const VERSION = "0.1.0"
 
 const waitForExitBeforePanicTime = 10 * time.Second
 
@@ -36,11 +39,19 @@ func mainFunc() int {
 	}
 	flag.CommandLine.Usage = flag.Usage
 
+	var showVersion bool
+	flag.BoolVar(&showVersion, "version", false, "Print map server version")
+	flag.BoolVar(&showVersion, "v", false, "Print map server version")
 	updateVar := flag.Bool("updateNow", false, "Immediately trigger an update cycle")
 	createSampleConfig := flag.Bool("createSampleConfig", false,
 		"Create configuration file specified by positional argument")
 	insertPolicyVar := flag.String("policyFile", "", "policy certificate file to be ingested into the mapserver")
 	flag.Parse()
+
+	if showVersion {
+		fmt.Printf("FP-PKI Map Server %s\n", VERSION)
+		return 0
+	}
 
 	// We need the configuration file as the first positional argument.
 	if flag.NArg() != 1 {
@@ -109,7 +120,9 @@ func insertPolicyFromFile(policyFile string) error {
 	if err != nil {
 		return err
 	}
-	if bytes.Equal(root[:], newRoot[:]) {
+	if root == nil {
+		fmt.Printf("MHT root value initially set to %v\n", newRoot)
+	} else if bytes.Equal(root[:], newRoot[:]) {
 		fmt.Printf("MHT root value was not updated (%v)\n", newRoot)
 	} else {
 		fmt.Printf("MHT root value updated from %v to %v\n", root, newRoot)
@@ -129,6 +142,7 @@ func writeSampleConfig() error {
 		CTLogServerURLs:    []string{"https://ct.googleapis.com/logs/xenon2023/"},
 		CertificatePemFile: "tests/testdata/servercert.pem",
 		PrivateKeyPemFile:  "tests/testdata/serverkey.pem",
+		HttpAPIPort:        8443,
 
 		UpdateAt: util.NewTimeOfDay(3, 00, 00, 00),
 		UpdateTimer: util.DurationWrap{
@@ -170,7 +184,15 @@ func runWithConfig(
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Running map server with root: %v\n", root)
+	base64PublicKey, err := util.RSAPublicToDERBase64(server.Cert.PublicKey.(*rsa.PublicKey))
+	if err != nil {
+		return fmt.Errorf("error converting public key to DER base64: %w", err)
+	}
+	if root == nil {
+		fmt.Printf("Running empy map server (%s) with public key: %s\n", VERSION, base64PublicKey)
+	} else {
+		fmt.Printf("Running map server (%s) with root: %x and public key: %s\n", VERSION, *root, base64PublicKey)
+	}
 
 	// Should update now?
 	if updateNow {
@@ -183,9 +205,12 @@ func runWithConfig(
 	// Set update cycle timer.
 	util.RunWhen(ctx, conf.UpdateAt.NextTimeOfDay(), conf.UpdateTimer.Duration,
 		func(ctx context.Context) {
-			err := server.PruneAndUpdate(ctx)
+			updatePossible, err := server.PruneAndUpdateIfPossible(ctx)
 			if err != nil {
 				fmt.Printf("ERROR: update returned %s\n", err)
+			}
+			if !updatePossible {
+				fmt.Printf("WARNING: Unable to schedule update due to currently running update (CT log fetching and map server ingestion speed may be too low) at %s\n", time.Now().UTC().Format(time.RFC3339))
 			}
 		})
 

@@ -53,6 +53,15 @@ func SignBytes(b []byte, key *rsa.PrivateKey) ([]byte, error) {
 	return signature, nil
 }
 
+func VerifySignedBytes(b []byte, signature []byte, key *rsa.PublicKey) error {
+	hashOutput := sha256.Sum256(b)
+	err := rsa.VerifyPKCS1v15(key, crypto.SHA256, hashOutput[:], signature)
+	if err != nil {
+		return fmt.Errorf("VerifySignature | VerifyPKCS1V15 | %w", err)
+	}
+	return nil
+}
+
 // SignAsOwner generates a signature using the owner's key, and fills the owner signature in
 // the policy certificate signing request.
 //

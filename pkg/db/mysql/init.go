@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/url"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 
@@ -32,6 +33,11 @@ func Connect(config *db.Configuration) (db.Conn, error) {
 	// DB connections complete their work.
 	maxConnections := 8
 	db.SetMaxOpenConns(maxConnections)
+
+	// Set the maximum idle connection time to a lower value than the mysql wait_timeout (8h) to
+	// ensure that idle connections that are closed by the mysql DB are not reused
+	connMaxIdleTime := 1 * time.Hour
+	db.SetConnMaxIdleTime(connMaxIdleTime)
 
 	// check schema
 	if config.CheckSchema {

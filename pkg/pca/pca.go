@@ -154,7 +154,10 @@ func (pca *PCA) SignAndLogRequest(
 	if err != nil {
 		return nil, err
 	}
-	if !skip {
+	// TODO (cyrill): I think the cool off period should be enforced on the client and not the
+	// PCA. Unless the PCA performs additional verification if no signature from a valid policy
+	// certificate exists. For now, always skip the cooloff period
+	if false && !skip {
 		return nil, fmt.Errorf("for now we don't support cool off periods; all requests must " +
 			"be signed by the owner")
 	}
@@ -184,7 +187,6 @@ func (pca *PCA) SignAndLogRequest(
 // canSkipCoolOffPeriod verifies that the owner's signature is correct, if there is an owner's
 // signature in the request, and this PCA has the policy certificate used to signed said request.
 // It returns true if this PCA can skip the cool off period, false otherwise.
-// TODO (cyrill): I think the cool off period should be enforced on the client and not the PCA. Unless the PCA performs additional verification if no signature from a valid policy certificate exists
 func (pca *PCA) canSkipCoolOffPeriod(req *common.PolicyCertificateSigningRequest) (bool, error) {
 	// Owner's signature?
 	if len(req.OwnerSignature) == 0 {

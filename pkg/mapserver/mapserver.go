@@ -23,8 +23,6 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
-const APIPort = 8443 // TODO: should be a config parameter
-
 type PayloadReturnType int
 
 const (
@@ -43,6 +41,7 @@ type MapServer struct {
 	TLS          *tls.Certificate
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
+	HttpAPIPort  int
 
 	apiStopServerChan chan struct{}
 	updateChan        chan context.Context
@@ -112,6 +111,7 @@ func NewMapServer(ctx context.Context, conf *config.Config) (*MapServer, error) 
 		TLS:          &tlsCert,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 5 * time.Second,
+		HttpAPIPort:  conf.HttpAPIPort,
 
 		apiStopServerChan: make(chan struct{}, 1),
 		updateChan:        make(chan context.Context),
@@ -124,7 +124,14 @@ func NewMapServer(ctx context.Context, conf *config.Config) (*MapServer, error) 
 		for {
 			select {
 			case c := <-s.updateChan:
+				// TODO: ensure that the Mapserver is never in an inconsistent state. Currently, if
+				// the new SMT is applied but the responder does not yet use the updated SMT root
+				// value, queries will fail
 				s.pruneAndUpdate(c)
+				err := s.Responder.ReloadRootAndSignTreeHead(c, s.Key)
+				if err != nil {
+					s.updateErrChan <- err
+				}
 			case <-ctx.Done():
 				// Requested to exit.
 				close(s.updateChan)
@@ -156,7 +163,7 @@ func (s *MapServer) listen(ctx context.Context, useTLS bool) error {
 	http.HandleFunc("/getpolicypayloads", func(w http.ResponseWriter, r *http.Request) { s.apiGetPayloads(w, r, Policies) })
 
 	server := &http.Server{
-		Addr: fmt.Sprintf(":%d", APIPort),
+		Addr: fmt.Sprintf(":%d", s.HttpAPIPort),
 		TLSConfig: &tls.Config{
 			Certificates: []tls.Certificate{*s.TLS},
 		},
@@ -172,7 +179,7 @@ func (s *MapServer) listen(ctx context.Context, useTLS bool) error {
 			server.Shutdown(ctx)
 		}()
 		// This call blocks
-		fmt.Printf("Listening on %d\n", APIPort)
+		fmt.Printf("Listening on %d\n", s.HttpAPIPort)
 		if useTLS {
 			chanErr <- server.ListenAndServeTLS("", "")
 		} else {
@@ -193,6 +200,21 @@ func (s *MapServer) listen(ctx context.Context, useTLS bool) error {
 
 func (s *MapServer) Shutdown(ctx context.Context) {
 	s.apiStopServerChan <- struct{}{}
+}
+
+// PruneAndUpdateIfPossible tries to trigger an update if no update is currently running.
+// If an ongoing update is still in process, it returns false. Returns true if a new update was
+// triggered.
+func (s *MapServer) PruneAndUpdateIfPossible(ctx context.Context) (bool, error) {
+	select {
+	// Signal we want an update.
+	case s.updateChan <- ctx:
+		// Wait for the answer (in form of an error).
+		err := <-s.updateErrChan
+		return true, err
+	default:
+		return false, nil
+	}
 }
 
 // PruneAndUpdate triggers an update. If an ongoing update is still in process, it blocks.
@@ -340,10 +362,20 @@ func (s *MapServer) updateCerts(ctx context.Context) error {
 	defer s.Updater.StopFetching()
 
 	// Main update loop.
+	start := time.Now()
 	for s.Updater.NextBatch(ctx) {
-		n, err := s.Updater.UpdateNextBatch(ctx)
+		// print progress information
+		logUrl, currentIndex, maxIndex, err := s.Updater.GetProgress()
+		if err != nil {
+			return fmt.Errorf("retrieve progress: %s", err)
+		}
+		fmt.Printf("Running updater for log %s in range (%d, %d)\n", logUrl, currentIndex, maxIndex)
 
-		fmt.Printf("updated %5d certs batch at %s\n", n, getTime())
+		fetchDuration := time.Now().Sub(start)
+		start = time.Now()
+
+		n, err := s.Updater.UpdateNextBatch(ctx)
+		fmt.Printf("Fetched %d certs in %.2f seconds at %s\n", n, fetchDuration.Seconds(), getTime())
 		if err != nil {
 			// We stop the loop here, as probably requires manual inspection of the logs, etc.
 			return fmt.Errorf("updating next batch of x509 certificates: %w", err)

@@ -54,6 +54,7 @@ func TestServer(t *testing.T) {
 		DBConfig:           dbConf,
 		CertificatePemFile: "../../tests/testdata/servercert.pem",
 		PrivateKeyPemFile:  "../../tests/testdata/serverkey.pem",
+		HttpAPIPort:        8443,
 	}
 
 	// Run mapserver:
@@ -97,7 +98,7 @@ func TestServer(t *testing.T) {
 			defer wgClients.Done()
 
 			resp, err := client.Get(fmt.Sprintf("https://localhost:%d/getproof?domain=%s",
-				mapserver.APIPort, domains[rand.Intn(len(domains))]))
+				server.HttpAPIPort, domains[rand.Intn(len(domains))]))
 			require.NoError(t, err)
 			body, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
@@ -186,7 +187,7 @@ func benchmarkAPIGetProof(b *testing.B, numDifferentDomains int) {
 			defer wg.Done()
 
 			resp, err := client.Get(fmt.Sprintf("https://localhost:%d/getproof?domain=%s",
-				mapserver.APIPort, domains[rand.Intn(len(domains))]))
+				server.HttpAPIPort, domains[rand.Intn(len(domains))]))
 			b.StopTimer()
 			require.NoError(b, err)
 			body, err := io.ReadAll(resp.Body)
@@ -267,7 +268,7 @@ func benchmarkAPIGetPayloads(b *testing.B, numDifferentDomains int) {
 
 			ID := hex.EncodeToString(certIDs[rand.Intn(len(certIDs))][:])
 			resp, err := client.Get(fmt.Sprintf("https://localhost:%d/getcertpayloads?ids=%s",
-				mapserver.APIPort, ID))
+				server.HttpAPIPort, ID))
 			b.StopTimer()
 			require.NoError(b, err)
 			body, err := io.ReadAll(resp.Body)

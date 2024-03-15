@@ -65,6 +65,7 @@ func mainFunc() int {
 		DBConfig:           dbConf,
 		CertificatePemFile: "./tests/testdata/servercert.pem",
 		PrivateKeyPemFile:  "./tests/testdata/serverkey.pem",
+		HttpAPIPort:        8443,
 	}
 
 	// Mapserver:
@@ -93,17 +94,17 @@ func mainFunc() int {
 		rawPolicies[i] = raw
 	}
 	// Check responses for a.com, b.com and c.com .
-	checkResponse(t, client, "a.com", []common.SHA256Output{
+	checkResponse(t, server.HttpAPIPort, client, "a.com", []common.SHA256Output{
 		common.SHA256Hash32Bytes(certs[0].Raw),
 		common.SHA256Hash32Bytes(certs[1].Raw),
 		common.SHA256Hash32Bytes(certs[2].Raw),
 		common.SHA256Hash32Bytes(certs[3].Raw),
 	})
-	checkResponse(t, client, "b.com", []common.SHA256Output{
+	checkResponse(t, server.HttpAPIPort, client, "b.com", []common.SHA256Output{
 		common.SHA256Hash32Bytes(rawPolicies[0]),
 		common.SHA256Hash32Bytes(rawPolicies[1]),
 	})
-	checkResponse(t, client, "c.com", []common.SHA256Output{
+	checkResponse(t, server.HttpAPIPort, client, "c.com", []common.SHA256Output{
 		common.SHA256Hash32Bytes(certs[4].Raw),
 		common.SHA256Hash32Bytes(certs[5].Raw),
 		common.SHA256Hash32Bytes(certs[6].Raw),
@@ -117,6 +118,7 @@ func mainFunc() int {
 
 func checkResponse(
 	t tests.T,
+	APIPort int,
 	client *http.Client,
 	domainName string,
 	ids []common.SHA256Output,
@@ -125,7 +127,7 @@ func checkResponse(
 	// Proof of inclusion.
 	t.Logf("verifying inclusion of %s", domainName)
 	resp, err := client.Get(fmt.Sprintf("https://localhost:%d/getproof?domain=%s",
-		mapserver.APIPort,
+		APIPort,
 		domainName,
 	))
 	require.NoError(t, err)
@@ -176,7 +178,7 @@ func checkResponse(
 			collatedIDs += hex.EncodeToString(id[:])
 		}
 		resp, err = client.Get(fmt.Sprintf("https://localhost:%d/%s?ids=%s",
-			mapserver.APIPort,
+			APIPort,
 			group.fcn,
 			collatedIDs,
 		))

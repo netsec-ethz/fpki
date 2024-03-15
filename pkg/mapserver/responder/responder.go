@@ -25,26 +25,41 @@ func NewMapResponder(
 	privateKey *rsa.PrivateKey,
 ) (*MapResponder, error) {
 
+	r := &MapResponder{
+		conn: conn,
+		smt:  nil,
+	}
+	err := r.ReloadRootAndSignTreeHead(ctx, privateKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return r, nil
+}
+
+func (r *MapResponder) ReloadRootAndSignTreeHead(
+	ctx context.Context,
+	privateKey *rsa.PrivateKey,
+) error {
 	// Load root.
 	var root []byte
-	if rootID, err := conn.LoadRoot(ctx); err != nil {
-		return nil, err
+	if rootID, err := r.conn.LoadRoot(ctx); err != nil {
+		return err
 	} else if rootID != nil {
 		root = rootID[:]
 	}
 
 	// Build the Sparse Merkle Tree (SMT).
-	smt, err := trie.NewTrie(root, common.SHA256Hash, conn)
+	smt, err := trie.NewTrie(root, common.SHA256Hash, r.conn)
 	if err != nil {
-		return nil, fmt.Errorf("error loading SMT: %w", err)
+		return fmt.Errorf("error loading SMT: %w", err)
 	}
 
-	r := &MapResponder{
-		conn: conn,
-		smt:  smt,
-	}
+	// Use the new SMT
+	r.smt = smt
 
-	return r, r.signTreeHead(privateKey)
+	// sign the SMT root
+	return r.signTreeHead(privateKey)
 }
 
 func (r *MapResponder) GetProof(ctx context.Context, domainName string,
