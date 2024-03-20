@@ -26,15 +26,20 @@ type MapUpdater struct {
 	Fetchers []logfetcher.Fetcher
 	Conn     db.Conn
 
-	currFetcher int              // the fetcher being used once StartFetchingRemaining is called
-	lastState   logfetcher.State // last known server status
-	currState   logfetcher.State // the current status
+	updateStartTime        time.Time        // the time when the update process was started (used to decide whether to consider a certificate expired or not)
+	currFetcher            int              // the fetcher being used once StartFetchingRemaining is called
+	currFetcherInitialized bool             // false if the current fetcher has not yet been initialized by calling startNextFetcher()
+	origState              logfetcher.State // server status before starting the update process
+	lastState              logfetcher.State // the current DB status (tracking the current number of inserted certs)
+	targetState            logfetcher.State // the target status (tracking the maximum index of certs that we want to get from the fetcher)
 	// Don't use a Trie in memory. The updater just creates one when needed and disposes of it
 	// afterwards.
+
+	lastBatchFinished time.Time // the time when the last batch finished processing (only used for debugging/logging)
 }
 
 // NewMapUpdater: return a new map updater.
-func NewMapUpdater(config *db.Configuration, urls []string) (*MapUpdater, error) {
+func NewMapUpdater(config *db.Configuration, urls []string, localCertificateFolders map[string]string) (*MapUpdater, error) {
 	if len(urls) == 0 {
 		return nil, fmt.Errorf("No URLs")
 	}
@@ -53,7 +58,11 @@ func NewMapUpdater(config *db.Configuration, urls []string) (*MapUpdater, error)
 		}
 		alreadyURLs[url] = struct{}{}
 		// Keep a new fetcher for the url.
-		fetchers[i], err = logfetcher.NewLogFetcher(url)
+		if folder, ok := localCertificateFolders[url]; ok {
+			fetchers[i], err = logfetcher.NewLocalLogFetcher(url, folder)
+		} else {
+			fetchers[i], err = logfetcher.NewHttpLogFetcher(url)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -65,30 +74,46 @@ func NewMapUpdater(config *db.Configuration, urls []string) (*MapUpdater, error)
 	}, nil
 }
 
-func (u *MapUpdater) GetProgress() (string, int, int, error) {
-	return u.Fetchers[u.currFetcher].URL(), int(u.lastState.Size), int(u.currState.Size), nil
+func (u *MapUpdater) GetProgress(ctx context.Context) (string, int, int, int, int, error) {
+	if u.currFetcher >= len(u.Fetchers) {
+		return "", 0, 0, 0, 0, nil
+	}
+	realState, err := u.Fetchers[u.currFetcher].GetCurrentState(ctx, u.origState)
+	if err != nil {
+		return "", 0, 0, 0, 0, err
+	}
+	return u.Fetchers[u.currFetcher].URL(), int(u.origState.Size), int(u.lastState.Size), int(u.targetState.Size), int(realState.Size), nil
 }
 
-// StartFetchingRemaining retrieves the last stored index number for this CT log server, and the
-// current last index, and uses them to call StartFetching.
-// It returns an error if there was one retrieving the start or end indices.
+// StartFetchingRemaining resets updater to the current fetcher and restarts the fetching process
 func (u *MapUpdater) StartFetchingRemaining() error {
 	u.currFetcher = 0
-	ctx, cancelF := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancelF()
-
-	return u.startNextFetcher(ctx)
+	u.currFetcherInitialized = false
+	u.updateStartTime = time.Now()
+	fmt.Printf("Starting new update cycle at %s\n", u.updateStartTime.UTC().Format(time.RFC3339))
+	return nil
 }
 
-func (u *MapUpdater) StopFetching() {
-	if u.currFetcher < len(u.Fetchers) {
-		// Stop the previous fetcher.
+func (u *MapUpdater) NextBatch(ctx context.Context) (bool, error) {
+	// find next fetcher that has a batch available
+	for u.currFetcher < len(u.Fetchers) {
+		if !u.currFetcherInitialized {
+			err := u.startNextFetcher(ctx, u.updateStartTime)
+			if err != nil {
+				return false, err
+			}
+			u.currFetcherInitialized = true
+		}
+		if u.Fetchers[u.currFetcher].NextBatch(ctx) {
+			// if a next batch exists, return true
+			return true, nil
+		}
+		// otherwise stop the fetcher and prepare the next fetcher
 		u.Fetchers[u.currFetcher].StopFetching()
+		u.currFetcher++
+		u.currFetcherInitialized = false
 	}
-}
-
-func (u *MapUpdater) NextBatch(ctx context.Context) bool {
-	return u.currFetcher < len(u.Fetchers) && u.Fetchers[u.currFetcher].NextBatch(ctx)
+	return false, nil
 }
 
 // UpdateNextBatch downloads the next batch from the CT log server and updates the domain and
@@ -97,7 +122,7 @@ func (u *MapUpdater) NextBatch(ctx context.Context) bool {
 // inserting into the DB. See also NextBatch.
 func (u *MapUpdater) UpdateNextBatch(ctx context.Context) (int, error) {
 	fetcher := u.Fetchers[u.currFetcher]
-	certs, chains, err := fetcher.ReturnNextBatch()
+	certs, chains, excludedCerts, err := fetcher.ReturnNextBatch()
 	if err != nil {
 		return 0, fmt.Errorf("fetcher: %w", err)
 	}
@@ -116,7 +141,7 @@ func (u *MapUpdater) UpdateNextBatch(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("validity from CT log server: %w", err)
 	}
-	fmt.Printf("Verified validity of %d certs in %.2f seconds at %s\n", len(certs), time.Now().Sub(start).Seconds(), getTime())
+	verificationTime := time.Now().Sub(start).Seconds()
 
 	// Insert into DB.
 	start = time.Now()
@@ -124,19 +149,28 @@ func (u *MapUpdater) UpdateNextBatch(ctx context.Context) (int, error) {
 	if err != nil {
 		return n, err
 	}
-	fmt.Printf("Inserted %d certs into DB in %.2f seconds at %s\n", len(certs), time.Now().Sub(start).Seconds(), getTime())
+	insertionTime := time.Now().Sub(start).Seconds()
 
 	// Store the last status obtained from the fetcher as updated.
-	u.lastState.Size += uint64(n)
-	fmt.Printf("Storing new last status: %+v\n", u.lastState.Size)
-	if u.lastState.Size == u.currState.Size {
+	u.lastState.Size += uint64(n) + uint64(excludedCerts)
+
+	// print some debug information
+	if err == nil {
+		// print progress information
+		totalTime := time.Now().Sub(u.lastBatchFinished).Seconds()
+		u.lastBatchFinished = time.Now()
+		logUrl, origIndex, currentIndex, maxIndex, realMaxIndex, progressErr := u.GetProgress(ctx)
+		if progressErr != nil {
+			err = fmt.Errorf("error printing progress information: %s", err)
+		} else {
+			fmt.Printf("Batch with size %d (%d excluded) updated in %.2fs (%.2fs verifying, %.2fs inserting); log %s progress: (current %d [%.0f%%], target %d, real %d) at %s\n", n, excludedCerts, totalTime, verificationTime, insertionTime, logUrl, currentIndex, 100.0*(float64(currentIndex)-float64(origIndex))/(float64(maxIndex)-float64(origIndex)), maxIndex, realMaxIndex, getTime())
+		}
+	}
+	if u.lastState.Size == u.targetState.Size {
 		// Update the DB with all certs collected from this fetcher
 		err = u.Conn.UpdateLastCTlogServerState(ctx, fetcher.URL(),
-			int64(u.currState.Size),
-			u.currState.STH)
-		// Prepare the next fetcher:
-		u.currFetcher++
-		u.startNextFetcher(ctx)
+			int64(u.targetState.Size),
+			u.targetState.STH)
 	}
 
 	return n, err
@@ -192,16 +226,17 @@ func (u *MapUpdater) CoalescePayloadsForDirtyDomains(ctx context.Context) error 
 	return CoalescePayloadsForDirtyDomains(ctx, u.Conn)
 }
 
-func (u *MapUpdater) startNextFetcher(ctx context.Context) error {
-	if u.currFetcher > 0 && u.currFetcher-1 < len(u.Fetchers) {
-		// Stop the previous fetcher.
-		u.Fetchers[u.currFetcher-1].StopFetching()
-	}
+func (u *MapUpdater) startNextFetcher(ctx context.Context, updateStartTime time.Time) error {
 	if u.currFetcher >= len(u.Fetchers) {
 		return nil
 	}
 
 	fetcher := u.Fetchers[u.currFetcher]
+	err := fetcher.Initialize(updateStartTime)
+	if err != nil {
+		return fmt.Errorf("Error while initializing fetcher %+v: %s", fetcher, err)
+	}
+
 	lastSize, lastSTH, err := u.Conn.LastCTlogServerState(ctx, fetcher.URL())
 	if err != nil {
 		return fmt.Errorf("getting the last retrieved index number from DB: %w", err)
@@ -209,17 +244,20 @@ func (u *MapUpdater) startNextFetcher(ctx context.Context) error {
 	// TODO(juagargi): use the fetcher's ctClient to get a new STH, and verify STH consistency
 	// between the new and the old heads.
 
-	u.lastState = logfetcher.State{
+	u.origState = logfetcher.State{
 		Size: uint64(lastSize),
 		STH:  lastSTH,
 	}
 
-	u.currState, err = fetcher.GetCurrentState(ctx)
+	u.lastState = u.origState
+
+	u.targetState, err = fetcher.GetCurrentState(ctx, u.origState)
 	if err != nil {
 		return fmt.Errorf("getting the size of the CT log server: %w", err)
 	}
 
-	fetcher.StartFetching(lastSize, int64(u.currState.Size)-1)
+	u.lastBatchFinished = time.Now()
+	fetcher.StartFetching(lastSize, int64(u.targetState.Size)-1)
 	return nil
 }
 

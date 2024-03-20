@@ -156,7 +156,7 @@ func TestMapUpdaterStartFetchingRemaining(t *testing.T) {
 	defer removeF()
 
 	url := "myURL"
-	updater, err := NewMapUpdater(config, []string{url})
+	updater, err := NewMapUpdater(config, []string{url}, map[string]string{})
 	require.NoError(t, err)
 
 	// Replace fetcher with a mock one.
@@ -175,6 +175,7 @@ func TestMapUpdaterStartFetchingRemaining(t *testing.T) {
 		onReturnNextBatch: func() (
 			[]*ctx509.Certificate, // certs
 			[][]*ctx509.Certificate, // chains
+			int,
 			error,
 		) {
 			// Return a slice of nil certs and chains, with the correct size.
@@ -190,6 +191,7 @@ func TestMapUpdaterStartFetchingRemaining(t *testing.T) {
 			}
 			return randomCerts,
 				make([][]*ctx509.Certificate, n),
+				0,
 				nil
 		},
 		onStopFetching: func() {
@@ -203,7 +205,9 @@ func TestMapUpdaterStartFetchingRemaining(t *testing.T) {
 	nextBatch := func() bool {
 		res := make(chan bool)
 		go func() {
-			res <- updater.NextBatch(ctx)
+			r, err := updater.NextBatch(ctx)
+			require.NoError(t, err)
+			res <- r
 		}()
 		select {
 		case <-ctx.Done():
@@ -226,9 +230,8 @@ func TestMapUpdaterStartFetchingRemaining(t *testing.T) {
 	for nextBatch() {
 		require.FailNow(t, "there should not be any iteration")
 	}
-	// Check that the StopFetching method has not been called yet.
-	require.Equal(t, 0, onStopFetchingCalls)
-	updater.StopFetching()
+	// Check that the StopFetching method has been once in the NextBatch() function.
+	require.Equal(t, 1, onStopFetchingCalls)
 	fetcher.onStopFetching = nil // Remove the hook
 
 	// Check number of calls to ReturnNextBatch.
@@ -253,10 +256,9 @@ func TestMapUpdaterStartFetchingRemaining(t *testing.T) {
 		if batchSize*onReturnNextBatchCalls < int64(i) {
 			// Check that at every batch, we don't modify the last state.
 			require.Equal(t, originalState, updater.lastState, "at iteration %d", i)
-			require.Equal(t, originalState, updater.currState)
+			require.Equal(t, originalState, updater.targetState)
 		}
 	}
-	updater.StopFetching()
 	// Check number of calls to ReturnNextBatch.
 	require.Equal(t, fetcher.size, min(fetcher.size, onReturnNextBatchCalls*batchSize))
 	// Check that we stored the current size.
@@ -281,10 +283,9 @@ func TestMapUpdaterStartFetchingRemaining(t *testing.T) {
 		if batchSize*onReturnNextBatchCalls < int64(i) {
 			// Check that at every batch, we don't modify the last state.
 			require.Equal(t, originalState, updater.lastState, "at iteration %d", i)
-			require.Equal(t, originalState, updater.currState)
+			require.Equal(t, originalState, updater.targetState)
 		}
 	}
-	updater.StopFetching()
 	// Check number of calls to ReturnNextBatch.
 	require.Equal(t, fetcher.size, min(fetcher.size, onReturnNextBatchCalls*batchSize))
 	// Check that we stored the current size.
@@ -305,7 +306,7 @@ func TestMapUpdaterStartFetchingRemainingNextDay(t *testing.T) {
 	defer removeF()
 
 	url := "myURL_" + t.Name()
-	updater, err := NewMapUpdater(config, []string{url})
+	updater, err := NewMapUpdater(config, []string{url}, map[string]string{})
 	require.NoError(t, err)
 
 	// Replace fetcher with a mock one.
@@ -323,11 +324,11 @@ func TestMapUpdaterStartFetchingRemainingNextDay(t *testing.T) {
 			// Returns elements in batchSize: still something to return if size not reached.
 			return fetcher.size-onReturnNextBatchCalls > 0
 		},
-		onReturnNextBatch: func() ([]*ctx509.Certificate, [][]*ctx509.Certificate, error) {
+		onReturnNextBatch: func() ([]*ctx509.Certificate, [][]*ctx509.Certificate, int, error) {
 			// Return one cert and chain with no parents.
 			onReturnNextBatchCalls++
 			return []*ctx509.Certificate{random.RandomX509Cert(t, "a.com")},
-				make([][]*ctx509.Certificate, 1), nil
+				make([][]*ctx509.Certificate, 1), 0, nil
 		},
 	}
 	updater.Fetchers = []logfetcher.Fetcher{fetcher}
@@ -335,7 +336,12 @@ func TestMapUpdaterStartFetchingRemainingNextDay(t *testing.T) {
 	// Start fetching remaining. Because this is the first time, it should fetch them all.
 	err = updater.StartFetchingRemaining()
 	require.NoError(t, err)
-	for updater.NextBatch(ctx) {
+	for {
+		hasBatch, err := updater.NextBatch(ctx)
+		require.NoError(t, err)
+		if !hasBatch {
+			break
+		}
 		_, err = updater.UpdateNextBatch(ctx)
 		require.NoError(t, err)
 	}
@@ -344,14 +350,18 @@ func TestMapUpdaterStartFetchingRemainingNextDay(t *testing.T) {
 	require.Equal(t, fetcher.size-1, gotEnd)
 	require.Equal(t, fetcher.size, onReturnNextBatchCalls)
 	lastEntry := fetcher.size - 1
-	updater.StopFetching()
 
 	// After e.g. a day, the sie of the CT log has increased.
 	fetcher.size += 5
 	err = updater.StartFetchingRemaining()
 	require.NoError(t, err)
 	extraTimes := 0
-	for ; updater.NextBatch(ctx); extraTimes++ {
+	for ; ; extraTimes++ {
+		hasBatch, err := updater.NextBatch(ctx)
+		require.NoError(t, err)
+		if !hasBatch {
+			break
+		}
 		_, err = updater.UpdateNextBatch(ctx)
 		require.NoError(t, err)
 	}
@@ -361,7 +371,6 @@ func TestMapUpdaterStartFetchingRemainingNextDay(t *testing.T) {
 	require.Equal(t, lastEntry+1, gotStart)
 	require.Equal(t, fetcher.size-1, gotEnd)
 	require.Equal(t, fetcher.size, onReturnNextBatchCalls)
-	updater.StopFetching()
 }
 
 func TestMultipleFetchers(t *testing.T) {
@@ -377,7 +386,7 @@ func TestMultipleFetchers(t *testing.T) {
 		t.Name() + "_2",
 		t.Name() + "_3",
 	}
-	updater, err := NewMapUpdater(config, urls)
+	updater, err := NewMapUpdater(config, urls, map[string]string{})
 	require.NoError(t, err)
 
 	// Replace fetchers with mock ones.
@@ -399,6 +408,7 @@ func TestMultipleFetchers(t *testing.T) {
 			onReturnNextBatch: func() (
 				[]*ctx509.Certificate, // certs
 				[][]*ctx509.Certificate, // chains
+				int,
 				error,
 			) {
 				// Return a slice of nil certs and chains, with the correct size.
@@ -415,6 +425,7 @@ func TestMultipleFetchers(t *testing.T) {
 				sentCertCount += n
 				return randomCerts,
 					make([][]*ctx509.Certificate, n),
+					0,
 					nil
 			},
 			onStopFetching: func() {
@@ -427,7 +438,12 @@ func TestMultipleFetchers(t *testing.T) {
 	err = updater.StartFetchingRemaining()
 	require.NoError(t, err)
 	count := 0
-	for updater.NextBatch(ctx) {
+	for {
+		hasBatch, err := updater.NextBatch(ctx)
+		require.NoError(t, err)
+		if !hasBatch {
+			break
+		}
 		n, err := updater.UpdateNextBatch(ctx)
 		require.NoError(t, err)
 		count += n
@@ -438,7 +454,6 @@ func TestMultipleFetchers(t *testing.T) {
 	}
 	require.Equal(t, totalSize, int64(count))
 
-	updater.StopFetching()
 	require.Equal(t, 3, onStopFetchingCalls)
 	// Check the total number of batches:
 	totalSize = 0
@@ -479,14 +494,18 @@ type mockFetcher struct {
 	onStartFetching   func(startIndex, endIndex int64)
 	onStopFetching    func()
 	onNextBatch       func(ctx context.Context) bool
-	onReturnNextBatch func() ([]*ctx509.Certificate, [][]*ctx509.Certificate, error)
+	onReturnNextBatch func() ([]*ctx509.Certificate, [][]*ctx509.Certificate, int, error)
+}
+
+func (f *mockFetcher) Initialize(updateStartTime time.Time) error {
+	return nil
 }
 
 func (f *mockFetcher) URL() string {
 	return f.url
 }
 
-func (f *mockFetcher) GetCurrentState(ctx context.Context) (logfetcher.State, error) {
+func (f *mockFetcher) GetCurrentState(ctx context.Context, origState logfetcher.State) (logfetcher.State, error) {
 	return logfetcher.State{
 		Size: uint64(f.size),
 		STH:  f.STH,
@@ -509,7 +528,7 @@ func (f *mockFetcher) NextBatch(ctx context.Context) bool {
 	return f.onNextBatch(ctx)
 }
 
-func (f *mockFetcher) ReturnNextBatch() ([]*ctx509.Certificate, [][]*ctx509.Certificate, error) {
+func (f *mockFetcher) ReturnNextBatch() ([]*ctx509.Certificate, [][]*ctx509.Certificate, int, error) {
 	return f.onReturnNextBatch()
 }
 

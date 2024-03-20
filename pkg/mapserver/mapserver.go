@@ -90,7 +90,7 @@ func NewMapServer(ctx context.Context, conf *config.Config) (*MapServer, error) 
 	}
 
 	// Create map updater.
-	updater, err := updater.NewMapUpdater(conf.DBConfig, conf.CTLogServerURLs)
+	updater, err := updater.NewMapUpdater(conf.DBConfig, conf.CTLogServerURLs, conf.CertificateFolders)
 	if err != nil {
 		return nil, fmt.Errorf("error creating new map updater: %w", err)
 	}
@@ -356,26 +356,20 @@ func (s *MapServer) update(ctx context.Context) error {
 }
 
 func (s *MapServer) updateCerts(ctx context.Context) error {
-	if err := s.Updater.StartFetchingRemaining(); err != nil {
-		return fmt.Errorf("retrieving start and end indices: %w", err)
-	}
-	defer s.Updater.StopFetching()
+	// restart updater
+	s.Updater.StartFetchingRemaining()
 
 	// Main update loop.
-	start := time.Now()
-	for s.Updater.NextBatch(ctx) {
-		// print progress information
-		logUrl, currentIndex, maxIndex, err := s.Updater.GetProgress()
+	for {
+		hasBatch, err := s.Updater.NextBatch(ctx)
 		if err != nil {
-			return fmt.Errorf("retrieve progress: %s", err)
+			return fmt.Errorf("waiting for next batch of x509 certificates: %w", err)
 		}
-		fmt.Printf("Running updater for log %s in range (%d, %d)\n", logUrl, currentIndex, maxIndex)
+		if !hasBatch {
+			break
+		}
 
-		fetchDuration := time.Now().Sub(start)
-		start = time.Now()
-
-		n, err := s.Updater.UpdateNextBatch(ctx)
-		fmt.Printf("Fetched %d certs in %.2f seconds at %s\n", n, fetchDuration.Seconds(), getTime())
+		_, err = s.Updater.UpdateNextBatch(ctx)
 		if err != nil {
 			// We stop the loop here, as probably requires manual inspection of the logs, etc.
 			return fmt.Errorf("updating next batch of x509 certificates: %w", err)

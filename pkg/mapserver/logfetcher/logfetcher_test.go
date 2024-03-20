@@ -52,7 +52,7 @@ func TestGetRawEntries(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			f, err := NewLogFetcher(testURL)
+			f, err := NewHttpLogFetcher(testURL)
 			require.NoError(t, err)
 			rawEntries := make([]*ct.LeafEntry, tc.end-tc.start+1)
 			n, err := f.getRawEntries(rawEntries, tc.start, tc.end)
@@ -63,7 +63,7 @@ func TestGetRawEntries(t *testing.T) {
 }
 
 func TestStoppingGetRawEntries(t *testing.T) {
-	f, err := NewLogFetcher(testURL)
+	f, err := NewHttpLogFetcher(testURL)
 	require.NoError(t, err)
 	f.start = 3000
 	f.end = f.start + 10000
@@ -130,7 +130,7 @@ func TestGetRawEntriesInBatches(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			f, err := NewLogFetcher(testURL)
+			f, err := NewHttpLogFetcher(testURL)
 			require.NoError(t, err)
 			if tc.batchSize != 0 {
 				f.serverBatchSize = tc.batchSize
@@ -151,7 +151,7 @@ func TestStoppingGetRawEntriesInBatches(t *testing.T) {
 	// element, and we process in batches of 100K.
 	// This means that getRawEntriesInBatches will have to make 100K calls to getRawEntries,
 	// and in the middle of them, we will request to stop the fetcher.
-	f, err := NewLogFetcher(testURL)
+	f, err := NewHttpLogFetcher(testURL)
 	require.NoError(t, err)
 	f.serverBatchSize = 1
 	f.processBatchSize = 100000
@@ -226,7 +226,7 @@ func TestLogFetcher(t *testing.T) {
 
 			ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancelF()
-			f, err := NewLogFetcher(testURL)
+			f, err := NewHttpLogFetcher(testURL)
 			require.NoError(t, err)
 			if tc.batchSize > 0 {
 				f.serverBatchSize = int64(tc.batchSize)
@@ -237,7 +237,7 @@ func TestLogFetcher(t *testing.T) {
 			allCerts := make([]*ctx509.Certificate, 0)
 			allChains := make([][]*ctx509.Certificate, 0)
 			for f.NextBatch(ctx) {
-				certs, chains, err := f.ReturnNextBatch()
+				certs, chains, _, err := f.ReturnNextBatch()
 				require.NoError(t, err)
 				require.LessOrEqual(t, len(certs), int(f.processBatchSize),
 					"%d is not <= than %d", len(certs), f.processBatchSize)
@@ -263,11 +263,11 @@ func TestLogFetcher(t *testing.T) {
 func TestTimeoutLogFetcher(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
-	f, err := NewLogFetcher(testURL)
+	f, err := NewHttpLogFetcher(testURL)
 	require.NoError(t, err)
 
 	// Attempt to fetch something really big that would need more than 1 sec.
-	certs, chains, err := f.FetchAllCertificates(ctx, 2000, 666000000)
+	certs, chains, _, err := f.FetchAllCertificates(ctx, 2000, 666000000)
 	require.Error(t, err)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.Len(t, certs, 0)
@@ -279,12 +279,12 @@ func TestSpeed(t *testing.T) {
 
 	ctx, cancelF := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancelF()
-	f, err := NewLogFetcher(testURL)
+	f, err := NewHttpLogFetcher(testURL)
 	require.NoError(t, err)
 	t0 := time.Now()
 	start := int64(18000)
 	end := start + 10000 - 1
-	_, _, err = f.FetchAllCertificates(ctx, start, end)
+	_, _, _, err = f.FetchAllCertificates(ctx, start, end)
 	t1 := time.Now()
 	elapsed := t1.Sub(t0)
 	fmt.Printf("Elapsed: %s, %f certs / minute\n",
@@ -325,9 +325,9 @@ func TestGetSize(t *testing.T) {
 	t.Logf("timestamp raw: %d parsed: %s", sth.Timestamp, util.TimeFromSecs(int(sth.Timestamp/1000)))
 
 	// Check that the size returned by the GetSize method is the same.
-	f, err := NewLogFetcher(testURL)
+	f, err := NewHttpLogFetcher(testURL)
 	require.NoError(t, err)
-	s, err := f.GetCurrentState(ctx)
+	s, err := f.GetCurrentState(ctx, State{})
 	require.NoError(t, err)
 	require.Equal(t, sth.TreeSize, s.Size)
 
