@@ -316,7 +316,9 @@ func (s *MapServer) pruneAndUpdate(ctx context.Context) {
 // dirty domains, coming from both prune and update.
 func (s *MapServer) prune(ctx context.Context) error {
 	fmt.Printf("======== prune started  at %s\n", getTime())
-	defer fmt.Printf("======== prune finished at %s\n\n", getTime())
+	defer func() {
+		fmt.Printf("======== prune finished at %s\n\n", getTime())
+	}()
 
 	err := s.Updater.Conn.PruneCerts(ctx, time.Now())
 	if err != nil {
@@ -328,7 +330,9 @@ func (s *MapServer) prune(ctx context.Context) error {
 
 func (s *MapServer) update(ctx context.Context) error {
 	fmt.Printf("======== update started  at %s\n", getTime())
-	defer fmt.Printf("======== update finished at %s\n\n", getTime())
+	defer func() {
+		fmt.Printf("======== update finished at %s\n\n", getTime())
+	}()
 
 	if err := s.updateCerts(ctx); err != nil {
 		return fmt.Errorf("updating certs: %w", err)
