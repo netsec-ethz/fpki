@@ -189,7 +189,7 @@ func runWithConfig(
 		return fmt.Errorf("error converting public key to DER base64: %w", err)
 	}
 	if root == nil {
-		fmt.Printf("Running empy map server (%s) with public key: %s\n", VERSION, base64PublicKey)
+		fmt.Printf("Running empty map server (%s) with public key: %s\n", VERSION, base64PublicKey)
 	} else {
 		fmt.Printf("Running map server (%s) with root: %x and public key: %s\n", VERSION, *root, base64PublicKey)
 	}
