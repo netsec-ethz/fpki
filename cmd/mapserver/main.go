@@ -138,11 +138,12 @@ func writeSampleConfig() error {
 		mysql.WithLocalSocket("/var/run/mysqld/mysqld.sock"),
 	)
 	conf := &config.Config{
-		DBConfig:           dbConfig,
-		CTLogServerURLs:    []string{"https://ct.googleapis.com/logs/xenon2023/"},
-		CertificatePemFile: "tests/testdata/servercert.pem",
-		PrivateKeyPemFile:  "tests/testdata/serverkey.pem",
-		HttpAPIPort:        8443,
+		DBConfig:            dbConfig,
+		CTLogServerURLs:     []string{"https://ct.googleapis.com/logs/xenon2023/"},
+		CertificatePemFile:  "tests/testdata/servercert.pem",
+		PrivateKeyPemFile:   "tests/testdata/serverkey.pem",
+		HttpAPIPort:         8443,
+		CsvIngestionMaxRows: 1000 * 1000,
 
 		UpdateAt: util.NewTimeOfDay(3, 00, 00, 00),
 		UpdateTimer: util.DurationWrap{

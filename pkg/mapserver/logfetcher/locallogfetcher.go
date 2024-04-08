@@ -26,10 +26,6 @@ const (
 const (
 	CertificateColumn = 3
 	CertChainColumn   = 4
-	// This variable restricts the number of batches that are processed per log fetcher by limiting
-	// the maximum number of csv rows (note that this limit may be exceeded since at least a single
-	// batch must be processed)
-	MaxIngestionSize = 10 * 1000 * 1000
 )
 
 // LocalLogFetcher is used to fetch CT TBS certificates from locally stored (gzipped) csv files
@@ -53,8 +49,14 @@ type LocalLogFetcher struct {
 	errorCh           chan error // Errors accumulate here
 
 	processBatchSize int64 // We unblock NextBatch in batches of this size.
-	chanResults      chan *result
-	stopping         bool // Set to request the LogFetcher to stop fetching.
+
+	// This variable restricts the number of batches that are processed per log fetcher by limiting
+	// the maximum number of csv rows (note that this limit may be exceeded since at least a single
+	// batch must be processed)
+	maxIngestionSize uint64
+
+	chanResults chan *result
+	stopping    bool // Set to request the LogFetcher to stop fetching.
 
 	inputFiles []*CsvFileInfo
 
@@ -79,12 +81,13 @@ type CsvFileInfo struct {
 	end       int64
 }
 
-func NewLocalLogFetcher(url, folder string) (*LocalLogFetcher, error) {
+func NewLocalLogFetcher(url, folder string, csvIngestionMaxRows uint64) (*LocalLogFetcher, error) {
 	fetcher := &LocalLogFetcher{
 		url:    url,
 		folder: folder,
 
 		processBatchSize: defaultProcessBatchSize,
+		maxIngestionSize: csvIngestionMaxRows,
 	}
 	return fetcher, nil
 }
@@ -140,7 +143,7 @@ func (f *LocalLogFetcher) GetCurrentState(ctx context.Context, lastState State) 
 		var targetSize uint64
 		for i, entry := range entries {
 			// always process at least one entry
-			if i > 0 && entry.end-int64(lastState.Size)+1 > MaxIngestionSize {
+			if i > 0 && entry.end-int64(lastState.Size)+1 > int64(f.maxIngestionSize) {
 				break
 			}
 			targetSize = uint64(entry.end) + 1

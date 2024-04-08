@@ -39,7 +39,7 @@ type MapUpdater struct {
 }
 
 // NewMapUpdater: return a new map updater.
-func NewMapUpdater(config *db.Configuration, urls []string, localCertificateFolders map[string]string) (*MapUpdater, error) {
+func NewMapUpdater(config *db.Configuration, urls []string, localCertificateFolders map[string]string, csvIngestionMaxRows uint64) (*MapUpdater, error) {
 	if len(urls) == 0 {
 		return nil, fmt.Errorf("No URLs")
 	}
@@ -59,7 +59,7 @@ func NewMapUpdater(config *db.Configuration, urls []string, localCertificateFold
 		alreadyURLs[url] = struct{}{}
 		// Keep a new fetcher for the url.
 		if folder, ok := localCertificateFolders[url]; ok {
-			fetchers[i], err = logfetcher.NewLocalLogFetcher(url, folder)
+			fetchers[i], err = logfetcher.NewLocalLogFetcher(url, folder, csvIngestionMaxRows)
 		} else {
 			fetchers[i], err = logfetcher.NewHttpLogFetcher(url)
 		}
