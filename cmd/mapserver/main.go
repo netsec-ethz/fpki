@@ -19,7 +19,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
-const VERSION = "0.2.0"
+const VERSION = "0.2.1"
 
 const waitForExitBeforePanicTime = 10 * time.Second
 
