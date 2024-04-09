@@ -16,6 +16,7 @@ import (
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
 const (
@@ -45,8 +46,8 @@ type LocalLogFetcher struct {
 
 	// reading cvs files
 	certWithChainChan chan *CertWithChainData
-	incomingFileCh    chan File  // New files with certificates to be ingested
-	errorCh           chan error // Errors accumulate here
+	incomingFileCh    chan util.CsvFile // New files with certificates to be ingested
+	errorCh           chan error        // Errors accumulate here
 
 	processBatchSize int64 // We unblock NextBatch in batches of this size.
 
@@ -98,7 +99,7 @@ func (f *LocalLogFetcher) Initialize(updateStartTime time.Time) error {
 
 	// reset values
 	f.chanResults = make(chan *result, preloadCount)
-	f.incomingFileCh = make(chan File)
+	f.incomingFileCh = make(chan util.CsvFile)
 	f.certWithChainChan = make(chan *CertWithChainData)
 	f.errorCh = make(chan error)
 
@@ -236,7 +237,7 @@ func (f *LocalLogFetcher) ReturnNextBatch() (
 // It blocks until it is accepted.
 func (p *LocalLogFetcher) addGzFiles(fileNames []string) {
 	for _, filename := range fileNames {
-		p.incomingFileCh <- (&GzFile{}).WithFile(filename)
+		p.incomingFileCh <- (&util.GzFile{}).WithFile(filename)
 	}
 }
 
@@ -244,13 +245,13 @@ func (p *LocalLogFetcher) addGzFiles(fileNames []string) {
 // It blocks until it is accepted.
 func (p *LocalLogFetcher) addCsvFiles(fileNames []string) {
 	for _, filename := range fileNames {
-		p.incomingFileCh <- (&CsvFile{}).WithFile(filename)
+		p.incomingFileCh <- (&util.UncompressedFile{}).WithFile(filename)
 	}
 }
 
 // processFile processes any File.
 // This stage is responsible of parsing the data into X509 certificates and chains.
-func (p *LocalLogFetcher) processFile(f File) {
+func (p *LocalLogFetcher) processFile(f util.CsvFile) {
 	r, err := f.Open()
 	if err != nil {
 		p.errorCh <- err

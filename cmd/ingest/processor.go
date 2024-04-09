@@ -27,7 +27,7 @@ type Processor struct {
 	cache cache.Cache // IDs of certificates pushed to DB.
 	now   time.Time
 
-	incomingFileCh    chan File               // New files with certificates to be ingested
+	incomingFileCh    chan util.CsvFile       // New files with certificates to be ingested
 	certWithChainChan chan *CertWithChainData // After parsing files
 	nodeChan          chan *CertificateNode   // After finding parents, to be sent to DB and SMT
 	batchProcessor    *CertificateProcessor   // Processes certificate nodes (with parent pointer)
@@ -49,7 +49,7 @@ func NewProcessor(conn db.Conn, certUpdateStrategy CertificateUpdateStrategy) *P
 		Conn:              conn,
 		cache:             cache.NewNoCache(),
 		now:               time.Now(),
-		incomingFileCh:    make(chan File),
+		incomingFileCh:    make(chan util.CsvFile),
 		certWithChainChan: make(chan *CertWithChainData),
 		nodeChan:          nodeChan,
 		batchProcessor:    NewCertProcessor(conn, nodeChan, certUpdateStrategy),
@@ -133,7 +133,7 @@ func (p *Processor) Wait() error {
 // It blocks until it is accepted.
 func (p *Processor) AddGzFiles(fileNames []string) {
 	for _, filename := range fileNames {
-		p.incomingFileCh <- (&GzFile{}).WithFile(filename)
+		p.incomingFileCh <- (&util.GzFile{}).WithFile(filename)
 	}
 }
 
@@ -141,13 +141,13 @@ func (p *Processor) AddGzFiles(fileNames []string) {
 // It blocks until it is accepted.
 func (p *Processor) AddCsvFiles(fileNames []string) {
 	for _, filename := range fileNames {
-		p.incomingFileCh <- (&CsvFile{}).WithFile(filename)
+		p.incomingFileCh <- (&util.UncompressedFile{}).WithFile(filename)
 	}
 }
 
 // processFile processes any File.
 // This stage is responsible of parsing the data into X509 certificates and chains.
-func (p *Processor) processFile(f File) {
+func (p *Processor) processFile(f util.CsvFile) {
 	r, err := f.Open()
 	if err != nil {
 		p.errorCh <- err

@@ -1,4 +1,4 @@
-package main
+package util
 
 import (
 	"compress/gzip"
@@ -6,8 +6,8 @@ import (
 	"os"
 )
 
-type File interface {
-	WithFile(string) File
+type CsvFile interface {
+	WithFile(string) CsvFile
 	Filename() string
 	Open() (io.Reader, error)
 	Close() error
@@ -32,7 +32,7 @@ type GzFile struct {
 	gzReader *gzip.Reader
 }
 
-func (f *GzFile) WithFile(fn string) File {
+func (f *GzFile) WithFile(fn string) CsvFile {
 	f.FileName = fn
 	return f
 }
@@ -57,16 +57,17 @@ func (f *GzFile) Close() error {
 	return f.reader.Close()
 }
 
-type CsvFile struct {
+// TODO: rename
+type UncompressedFile struct {
 	baseFile
 }
 
-func (f *CsvFile) WithFile(fn string) File {
+func (f *UncompressedFile) WithFile(fn string) CsvFile {
 	f.FileName = fn
 	return f
 }
 
-func (f *CsvFile) Open() (io.Reader, error) {
+func (f *UncompressedFile) Open() (io.Reader, error) {
 	var err error
 	f.reader, err = os.Open(f.FileName)
 	if err != nil {
