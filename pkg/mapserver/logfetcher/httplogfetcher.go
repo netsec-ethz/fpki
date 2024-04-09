@@ -48,6 +48,8 @@ type HttpLogFetcher struct {
 	currentResult *result // The last result from the batch.
 }
 
+var _ Fetcher = (*HttpLogFetcher)(nil)
+
 func NewHttpLogFetcher(url string) (*HttpLogFetcher, error) {
 	httpClient := &http.Client{
 		Timeout: 10 * time.Second,

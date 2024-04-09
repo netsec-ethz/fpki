@@ -67,6 +67,8 @@ type LocalLogFetcher struct {
 	currentResult *result // The last result from the batch.
 }
 
+var _ Fetcher = (*LocalLogFetcher)(nil)
+
 type CertWithChainData struct {
 	CertID        *common.SHA256Output   // The ID (the SHA256) of the certificate.
 	Cert          *ctx509.Certificate    // The payload of the certificate.
