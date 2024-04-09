@@ -90,7 +90,8 @@ func NewMapServer(ctx context.Context, conf *config.Config) (*MapServer, error) 
 	}
 
 	// Create map updater.
-	updater, err := updater.NewMapUpdater(conf.DBConfig, conf.CTLogServerURLs, conf.CertificateFolders, conf.CsvIngestionMaxRows)
+	updater, err := updater.NewMapUpdater(conf.DBConfig, conf.CTLogServerURLs,
+		conf.CertificateFolders, conf.CsvIngestionMaxRows)
 	if err != nil {
 		return nil, fmt.Errorf("error creating new map updater: %w", err)
 	}

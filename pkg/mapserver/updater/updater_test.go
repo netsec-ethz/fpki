@@ -156,7 +156,7 @@ func TestMapUpdaterStartFetchingRemaining(t *testing.T) {
 	defer removeF()
 
 	url := "myURL"
-	updater, err := NewMapUpdater(config, []string{url}, map[string]string{})
+	updater, err := NewMapUpdater(config, []string{url}, map[string]string{}, 0)
 	require.NoError(t, err)
 
 	// Replace fetcher with a mock one.
@@ -306,7 +306,7 @@ func TestMapUpdaterStartFetchingRemainingNextDay(t *testing.T) {
 	defer removeF()
 
 	url := "myURL_" + t.Name()
-	updater, err := NewMapUpdater(config, []string{url}, map[string]string{})
+	updater, err := NewMapUpdater(config, []string{url}, map[string]string{}, 0)
 	require.NoError(t, err)
 
 	// Replace fetcher with a mock one.
@@ -386,7 +386,7 @@ func TestMultipleFetchers(t *testing.T) {
 		t.Name() + "_2",
 		t.Name() + "_3",
 	}
-	updater, err := NewMapUpdater(config, urls, map[string]string{})
+	updater, err := NewMapUpdater(config, urls, map[string]string{}, 0)
 	require.NoError(t, err)
 
 	// Replace fetchers with mock ones.
