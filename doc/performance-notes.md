@@ -28,6 +28,35 @@ Current USB size:
 1.8T	https:__ct.googleapis.com_logs_eu1_xenon2024
 ```
 
+#### xenon2025h1
+Path: `/mnt/data/certificatestore/https:__ct.googleapis.com_logs_eu1_xenon2025h1`.
+
+Contains 83031345 unique certificates:
+```
+select count(*) from dirty;
++----------+
+| count(*) |
++----------+
+| 83031345 |
++----------+
+1 row in set (0.00 sec)
+```
+
+Ingestion of certificates and coalescing:
+343m51s
+
+Coalescing alone:
+178m30s
+
+SMT Update fails
+
+|               |      |
+----------------|-------
+| Certificates  | 166m |
+| Coalescing    | 179m |
+| SMT update    | ??   |
+------------------------
+
 ### TODO
 1. Disable Mapserver systemd service
 <!-- 1. Reset DB with `./create_schema.sh` -->
