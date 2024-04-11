@@ -140,13 +140,27 @@ func mainFunction() int {
 		gzFiles, csvFiles := listOurFiles(flag.Arg(0))
 		fmt.Printf("# gzFiles: %d, # csvFiles: %d\n", len(gzFiles), len(csvFiles))
 
-		// Update certificates and chains.
 		proc := NewProcessor(conn, strategy)
+		// Set parameters to the processor.
+		proc.BundleMaxSize = *bundleSize
+		proc.OnBundleFinished = func() {
+			// Called for intermediate bundles. Need to coalesce, update SMT and clean dirty.
+			fmt.Println("Bundle ingestion finished.")
+			coalescePayloadsForDirtyDomains(ctx, conn)
+			updateSMT(ctx, conn)
+			cleanupDirty(ctx, conn)
+		}
+
+		// Add the files to the processor.
 		proc.AddGzFiles(gzFiles)
 		proc.AddCsvFiles(csvFiles)
+
+		// Update certificates and chains, and wait until finished.
 		exitIfError(proc.Wait())
 	}
 
+	// The certificates had been ingested. If we had set a bundle size, we still need to process
+	// the last bundle. If we hadn't, we will process it all.
 	if !smtUpdateOnly {
 		// Coalesce the payloads of all modified domains.
 		coalescePayloadsForDirtyDomains(ctx, conn)

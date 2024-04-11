@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -32,6 +33,9 @@ type Processor struct {
 	nodeChan          chan *CertificateNode   // After finding parents, to be sent to DB and SMT
 	batchProcessor    *CertificateProcessor   // Processes certificate nodes (with parent pointer)
 
+	BundleMaxSize    uint64 // Max # of certs before calling OnBundle
+	OnBundleFinished func()
+
 	errorCh chan error // Errors accumulate here
 	doneCh  chan error // Signals Processor is done
 }
@@ -53,6 +57,9 @@ func NewProcessor(conn db.Conn, certUpdateStrategy CertificateUpdateStrategy) *P
 		certWithChainChan: make(chan *CertWithChainData),
 		nodeChan:          nodeChan,
 		batchProcessor:    NewCertProcessor(conn, nodeChan, certUpdateStrategy),
+
+		BundleMaxSize:    math.MaxUint64, // originally set to "no limit"
+		OnBundleFinished: func() {},      // originally set to noop
 
 		errorCh: make(chan error),
 		doneCh:  make(chan error),
@@ -92,15 +99,26 @@ func (p *Processor) start() {
 
 	// Process the parsed content into the DB, and from DB into SMT:
 	go func() {
+		var flyingCertCount uint64
 		for data := range p.certWithChainChan {
 			certs, certIDs, parentIDs, names := util.UnfoldCert(data.Cert, data.CertID,
 				data.ChainPayloads, data.ChainIDs)
 			for i := range certs {
+				// Add the certificate.
 				p.nodeChan <- &CertificateNode{
 					CertID:   certIDs[i],
 					Cert:     certs[i],
 					ParentID: parentIDs[i],
 					Names:    names[i],
+				}
+				flyingCertCount++
+
+				// Check that if by adding this certificate we exceed the maximum amount of
+				// "flying" certificates (not coalesced and whose SMT is not updated).
+				// If so, we need to call the OnBundleFinished callback.
+				if flyingCertCount == p.BundleMaxSize {
+					p.OnBundleFinished()
+					flyingCertCount = 0
 				}
 			}
 		}
