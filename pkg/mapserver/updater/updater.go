@@ -41,7 +41,7 @@ type MapUpdater struct {
 // NewMapUpdater: return a new map updater.
 func NewMapUpdater(config *db.Configuration, urls []string, localCertificateFolders map[string]string, csvIngestionMaxRows uint64) (*MapUpdater, error) {
 	if len(urls) == 0 {
-		return nil, fmt.Errorf("No URLs")
+		return nil, fmt.Errorf("no URLs")
 	}
 	// db conn for map updater
 	dbConn, err := mysql.Connect(config)
@@ -74,6 +74,8 @@ func NewMapUpdater(config *db.Configuration, urls []string, localCertificateFold
 	}, nil
 }
 
+// GetProgress returns the URL of the current fetcher, four sizes for the log (those being
+// original, in DB, target and real sizes), and error.
 func (u *MapUpdater) GetProgress(ctx context.Context) (string, int, int, int, int, error) {
 	if u.currFetcher >= len(u.Fetchers) {
 		return "", 0, 0, 0, 0, nil
@@ -82,7 +84,12 @@ func (u *MapUpdater) GetProgress(ctx context.Context) (string, int, int, int, in
 	if err != nil {
 		return "", 0, 0, 0, 0, err
 	}
-	return u.Fetchers[u.currFetcher].URL(), int(u.origState.Size), int(u.lastState.Size), int(u.targetState.Size), int(realState.Size), nil
+	return u.Fetchers[u.currFetcher].URL(),
+		int(u.origState.Size),
+		int(u.lastState.Size),
+		int(u.targetState.Size),
+		int(realState.Size),
+		nil
 }
 
 // StartFetchingRemaining resets updater to the current fetcher and restarts the fetching process
@@ -234,7 +241,7 @@ func (u *MapUpdater) startNextFetcher(ctx context.Context, updateStartTime time.
 	fetcher := u.Fetchers[u.currFetcher]
 	err := fetcher.Initialize(updateStartTime)
 	if err != nil {
-		return fmt.Errorf("Error while initializing fetcher %+v: %s", fetcher, err)
+		return fmt.Errorf("initializing fetcher %+v: %s", fetcher, err)
 	}
 
 	lastSize, lastSTH, err := u.Conn.LastCTlogServerState(ctx, fetcher.URL())

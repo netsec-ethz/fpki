@@ -20,10 +20,11 @@ type Fetcher interface {
 	ReturnNextBatch() ([]*ctx509.Certificate, [][]*ctx509.Certificate, int, error)
 }
 
+// State represents the state of a log (in a server) at a given point in time.
+// The time point is represented by the Size (logs are append-only).
 type State struct {
-	Size uint64
-	// STH is the signed tree head of the server.
-	STH []byte
+	Size uint64 // The size of the log.
+	STH  []byte // The signed tree head of the server.
 }
 
 type result struct {
