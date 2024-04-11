@@ -4,16 +4,17 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"runtime/pprof"
+	"sort"
+	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 )
 
 const (
@@ -48,29 +49,45 @@ func mainFunction() int {
 	}
 	cpuProfile := flag.String("cpuprofile", "", "write a CPU profile to file")
 	memProfile := flag.String("memprofile", "", "write a memory profile to file")
+	bundleSize := flag.Uint64("bundlesize", 0, "number of certificates after which a coalesce and "+
+		"SMT update must occur. If 0, no limit, meaning coalescing and SMT updating is done once")
 	certUpdateStrategy := flag.String("strategy", "keep", "strategy to update certificates\n"+
 		"\"overwrite\": always send certificates to DB, even if they exist already.\n"+
 		"\"keep\": first check if each certificate exists already in DB before sending it.\n"+
-		"\"coalesce\": only coalesce payloads of domains in the dirty table.\n"+
+		"\"skipingest\": only coalesce payloads of domains in the dirty table and update SMT.\n"+
+		"\"smtupdate\": only update the SMT.\n"+
 		`If data transfer to DB is expensive, "keep" is recommended.`)
 	flag.Parse()
 
 	// Update strategy.
 	var strategy CertificateUpdateStrategy
-	var coalesceOnly bool
+	var skipIngest bool
+	var smtUpdateOnly bool
 	switch *certUpdateStrategy {
 	case "overwrite":
 		strategy = CertificateUpdateOverwrite
 	case "keep":
 		strategy = CertificateUpdateKeepExisting
-	case "coalesce":
-		coalesceOnly = true
+	case "skipingest":
+		skipIngest = true
+	case "smtupdate":
+		smtUpdateOnly = true
 	default:
 		panic(fmt.Errorf("bad update strategy: %v", *certUpdateStrategy))
 	}
-	if !coalesceOnly && flag.NArg() != 1 {
+
+	// Do we have to ingest certificates?
+	ingestCerts := !skipIngest && !smtUpdateOnly
+
+	// If we will ingest certificates, we need a path.
+	if ingestCerts && flag.NArg() != 1 {
 		flag.Usage()
 		return 1
+	}
+
+	// Check that we are not using bundles if we are just coalescing or updating the SMT.
+	if *bundleSize != 0 && !ingestCerts {
+		exitIfError(fmt.Errorf("cannot use bundlesize if strategy is not keep or overwrite"))
 	}
 
 	// Profiling:
@@ -114,11 +131,11 @@ func mainFunction() int {
 	root, err := conn.LoadRoot(ctx)
 	exitIfError(err)
 	if root == nil {
-		fmt.Print("Empty root!!. DB should be empty, but not checking.\n\n")
+		fmt.Print("SMT root node is empty. DB should be empty, but not checking.\n\n")
 		// TODO(juagargi) check that DB is empty if root is empty.
 	}
 
-	if !coalesceOnly {
+	if ingestCerts {
 		// All GZ and CSV files found under the directory of the argument.
 		gzFiles, csvFiles := listOurFiles(flag.Arg(0))
 		fmt.Printf("# gzFiles: %d, # csvFiles: %d\n", len(gzFiles), len(csvFiles))
@@ -129,18 +146,17 @@ func mainFunction() int {
 		proc.AddCsvFiles(csvFiles)
 		exitIfError(proc.Wait())
 	}
-	// Coalesce the payloads of all modified domains.
-	CoalescePayloadsForDirtyDomains(ctx, conn)
+
+	if !smtUpdateOnly {
+		// Coalesce the payloads of all modified domains.
+		coalescePayloadsForDirtyDomains(ctx, conn)
+	}
 
 	// Now update the SMT Trie with the changed domains:
-	fmt.Println("Starting SMT update ...")
-	err = updater.UpdateSMT(ctx, conn)
-	exitIfError(err)
-	fmt.Println("Done SMT update.")
+	updateSMT(ctx, conn)
 
 	// Cleanup dirty entries.
-	err = conn.CleanupDirty(ctx)
-	exitIfError(err)
+	cleanupDirty(ctx, conn)
 
 	// Close DB.
 	err = conn.Close()
@@ -149,7 +165,7 @@ func mainFunction() int {
 }
 
 func listOurFiles(dir string) (gzFiles, csvFiles []string) {
-	entries, err := ioutil.ReadDir(dir)
+	entries, err := os.ReadDir(dir)
 	exitIfError(err)
 	for _, e := range entries {
 		if !e.IsDir() {
@@ -168,7 +184,33 @@ func listOurFiles(dir string) (gzFiles, csvFiles []string) {
 			csvFiles = append(csvFiles, csvs...)
 		}
 	}
+
+	// Sort the files according to their node number.
+	sortByBundleName(gzFiles)
+	sortByBundleName(csvFiles)
+
 	return
+}
+
+// sortByBundleName expects a slice of filenames of the form X-Y.{csv,gz}.
+// After it returns, the slice is sorted according to uint(X).
+func sortByBundleName(names []string) {
+	sort.Slice(names, func(i, j int) bool {
+		a := filenameToFirstSize(names[i])
+		b := filenameToFirstSize(names[j])
+		return a < b
+	})
+}
+
+func filenameToFirstSize(name string) uint64 {
+	name = filepath.Base(name)
+	tokens := strings.Split(name, "-")
+	if len(tokens) != 2 {
+		exitIfError(fmt.Errorf("filename doesn't follow convention: %s", name))
+	}
+	n, err := strconv.ParseUint(tokens[0], 10, 64)
+	exitIfError(err)
+	return n
 }
 
 func exitIfError(err error) {
