@@ -16,7 +16,7 @@ We need to ingest all log server, like:
 
 ### Numbers
 
-It takes 5m28s to copy 59G from USB to RAID0
+It takes 5m28s to copy 59G from USB to RAID0. That yields a speed of 184 Mb/s.
 
 Current USB size:
 ```

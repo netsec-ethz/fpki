@@ -430,7 +430,7 @@ func CoalescePayloadsForDirtyDomains(ctx context.Context, conn db.Conn) error {
 	return nil
 }
 
-func UpdateSMTfromDomains(
+func updateSMTfromDomains(
 	ctx context.Context,
 	conn db.Conn,
 	smtTrie *trie.Trie,
@@ -438,25 +438,32 @@ func UpdateSMTfromDomains(
 ) error {
 
 	// Read those certificates:
+	fmt.Printf("smt.updateSMTfromDomains [%s]: retrieving certs from DB\n", time.Now().Format(time.Stamp))
 	entries, err := conn.RetrieveDomainEntries(ctx, domainIDs)
 	if err != nil {
 		return err
 	}
+	fmt.Printf("smt.updateSMTfromDomains [%s]: got certs from DB\n", time.Now().Format(time.Stamp))
 	keys, values, err := keyValuePairToSMTInput(entries)
 	if err != nil {
 		return err
 	}
+	fmt.Printf("smt.updateSMTfromDomains [%s]: keys and values obtained\n", time.Now().Format(time.Stamp))
 
 	// Update the tree.
 	_, err = smtTrie.Update(ctx, keys, values)
 	if err != nil {
 		return err
 	}
+	fmt.Printf("smt.updateSMTfromDomains [%s]: in-memory tree updated\n", time.Now().Format(time.Stamp))
+
 	// And update the tree in the DB.
 	err = smtTrie.Commit(ctx)
 	if err != nil {
 		return err
 	}
+	fmt.Printf("smt.updateSMTfromDomains [%s]: tree committed to DB\n", time.Now().Format(time.Stamp))
+
 	return nil
 }
 
@@ -469,28 +476,35 @@ func UpdateSMT(ctx context.Context, conn db.Conn) error {
 	if err != nil {
 		return err
 	}
+	fmt.Printf("smt [%s]: root loaded\n", time.Now().Format(time.Stamp))
+
 	// Load SMT.
 	smtTrie, err := trie.NewTrie(root, common.SHA256Hash, conn)
 	if err != nil {
 		return fmt.Errorf("with root \"%s\", creating NewTrie: %w", hex.EncodeToString(root), err)
 	}
 	// smtTrie.CacheHeightLimit = 32
+	fmt.Printf("smt [%s]: tree created\n", time.Now().Format(time.Stamp))
 
 	// Get the dirty domains.
 	domains, err := conn.RetrieveDirtyDomains(ctx)
 	if err != nil {
 		return err
 	}
-	err = UpdateSMTfromDomains(ctx, conn, smtTrie, domains)
+	fmt.Printf("smt [%s]: dirty domains loaded\n", time.Now().Format(time.Stamp))
+
+	err = updateSMTfromDomains(ctx, conn, smtTrie, domains)
 	if err != nil {
 		return err
 	}
+	fmt.Printf("smt [%s]: SMT updated\n", time.Now().Format(time.Stamp))
 
 	// Save root value:
 	err = conn.SaveRoot(ctx, (*common.SHA256Output)(smtTrie.Root))
 	if err != nil {
 		return err
 	}
+	fmt.Printf("smt [%s]: new root saved\n", time.Now().Format(time.Stamp))
 
 	return nil
 }
