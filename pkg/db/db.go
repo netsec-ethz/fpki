@@ -27,6 +27,7 @@ type smt interface {
 }
 
 type dirty interface {
+	DirtyCount(ctx context.Context) (uint64, error)
 
 	// RetrieveDirtyDomains returns a channel of batches of updated domains.
 	// A batch will have a implementation dependent size.
@@ -124,4 +125,8 @@ type Conn interface {
 
 	// RetrieveDomainEntries: Retrieve a list of domain entries table
 	RetrieveDomainEntries(ctx context.Context, ids []*common.SHA256Output) ([]*KeyValuePair, error)
+
+	// RetrieveDomainEntriesDirtyOnes returns a list of key-values whose domain IDs are specified
+	// by the dirty table entries starting from `start` and not including `end`.
+	RetrieveDomainEntriesDirtyOnes(ctx context.Context, start, end uint64) ([]*KeyValuePair, error)
 }

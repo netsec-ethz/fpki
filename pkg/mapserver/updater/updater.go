@@ -430,6 +430,40 @@ func CoalescePayloadsForDirtyDomains(ctx context.Context, conn db.Conn) error {
 	return nil
 }
 
+// updateSMTfromDirty updates the SMT splitting the dirty domain IDs in bundles, whose size
+// is controlled by the max_bundle_size argument.
+// Each one of the updates to obtain the IDs, update SMT and commit tree is done SEQUENTIALLY.
+func updateSMTfromDirty(
+	ctx context.Context,
+	conn db.Conn,
+	smtTrie *trie.Trie,
+	max_bundle_size uint64,
+) error {
+
+	// We split the certificates into bundles.
+	count, err := conn.DirtyCount(ctx)
+	if err != nil {
+		return fmt.Errorf("obtaining dirty domains count: %w", err)
+	}
+	bundleCount := count / max_bundle_size
+	for i := uint64(0); i <= bundleCount; i++ {
+		// Read those certificates:
+		s := i * max_bundle_size
+		e := min(s+max_bundle_size, count)
+		fmt.Printf("smt.updateSMTfromDirty [%s]: retrieving certs from DB\n"+
+			"\t\t[%8d,%8d) %3d/%3d\n", time.Now().Format(time.Stamp), s, e, i+1, bundleCount+1)
+		entries, err := conn.RetrieveDomainEntriesDirtyOnes(ctx, s, e)
+		if err != nil {
+			return err
+		}
+		err = updateSMTfromKeyValues(ctx, smtTrie, entries)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func updateSMTfromDomains(
 	ctx context.Context,
 	conn db.Conn,
@@ -439,7 +473,6 @@ func updateSMTfromDomains(
 ) error {
 
 	// We split the certificates into bundles.
-	// original_domainIDs := domainIDs
 	bundleCount := len(domainIDs) / max_bundle_size
 	for i := 0; i <= bundleCount; i++ {
 		// Read those certificates:
@@ -453,29 +486,42 @@ func updateSMTfromDomains(
 		}
 		fmt.Printf("smt.updateSMTfromDomains [%s]: got certs from DB\n", time.Now().Format(time.Stamp))
 
-		// Adapt data type.
-		keys, values, err := keyValuePairToSMTInput(entries)
+		err = updateSMTfromKeyValues(ctx, smtTrie, entries)
 		if err != nil {
 			return err
 		}
-		fmt.Printf("smt.updateSMTfromDomains [%s]: keys and values obtained\n", time.Now().Format(time.Stamp))
-
-		// Update the tree.
-		_, err = smtTrie.Update(ctx, keys, values)
-		if err != nil {
-			return err
-		}
-		fmt.Printf("smt.updateSMTfromDomains [%s]: in-memory tree updated\n", time.Now().Format(time.Stamp))
 	}
 
+	return nil
+}
+
+func updateSMTfromKeyValues(
+	ctx context.Context,
+	smtTrie *trie.Trie,
+	entries []*db.KeyValuePair,
+) error {
+
+	// Adapt data type.
+	keys, values, err := keyValuePairToSMTInput(entries)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("smt.updateSMTfromDomains [%s]: keys and values obtained\n", time.Now().Format(time.Stamp))
+
+	// Update the tree.
+	_, err = smtTrie.Update(ctx, keys, values)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("smt.updateSMTfromDomains [%s]: in-memory tree updated\n", time.Now().Format(time.Stamp))
+
 	// And update the tree in the DB.
-	err := smtTrie.Commit(ctx)
+	err = smtTrie.Commit(ctx)
 	// TODO: clean records on the `dirty` table that correspond to [s:e]
 	if err != nil {
 		return err
 	}
 	fmt.Printf("smt.updateSMTfromDomains [%s]: tree committed to DB\n", time.Now().Format(time.Stamp))
-
 	return nil
 }
 
@@ -498,17 +544,26 @@ func UpdateSMT(ctx context.Context, conn db.Conn) error {
 	// smtTrie.CacheHeightLimit = 32
 	fmt.Printf("smt [%s]: tree created\n", time.Now().Format(time.Stamp))
 
-	// Get the dirty domains.
-	domains, err := conn.RetrieveDirtyDomains(ctx)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("smt [%s]: dirty domains loaded\n", time.Now().Format(time.Stamp))
+	// Commented out: testing if the in-db join-with-dirty table is faster.
 
-	err = updateSMTfromDomains(ctx, conn, smtTrie, domains, 1_000_000)
+	// // Get the dirty domains.
+	// domains, err := conn.RetrieveDirtyDomains(ctx)
+	// if err != nil {
+	// 	return err
+	// }
+	// fmt.Printf("smt [%s]: dirty domains loaded\n", time.Now().Format(time.Stamp))
+
+	// err = updateSMTfromDomains(ctx, conn, smtTrie, domains, 1_000_000)
+	// if err != nil {
+	// 	return err
+	// }
+
+	// Updating SMT directly from dirty table.
+	err = updateSMTfromDirty(ctx, conn, smtTrie, 1_000_000)
 	if err != nil {
 		return err
 	}
+
 	fmt.Printf("smt [%s]: SMT updated\n", time.Now().Format(time.Stamp))
 
 	// Save root value:

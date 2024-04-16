@@ -26,7 +26,7 @@ func Connect(t tests.T, config *db.Configuration) db.Conn {
 // returns the configuration and the DB removal function that should be called with defer.
 func ConfigureTestDB(t tests.T) (*db.Configuration, func()) {
 	dbName := t.Name()
-	config := db.NewConfig(mysql.WithDefaults(), mysql.WithEnvironment(), db.WithDB(dbName))
+	config := ConfigureTestDBOnly(t)
 
 	// New context to create the DB.
 	ctx, cancelF := context.WithTimeout(context.Background(), 2*time.Second)
@@ -45,6 +45,17 @@ func ConfigureTestDB(t tests.T) (*db.Configuration, func()) {
 	}
 
 	return config, removeFunc
+}
+
+func ConfigureTestDBOnly(t tests.T) *db.Configuration {
+	dbName := t.Name()
+	config := db.NewConfig(
+		mysql.WithDefaults(),
+		mysql.WithLocalSocket("/var/run/mysqld/mysqld.sock"),
+		mysql.WithEnvironment(),
+		db.WithDB(dbName))
+
+	return config
 }
 
 // createTestDB creates a new and ready test DB with the same structure as the F-PKI one.

@@ -123,6 +123,7 @@ func mainFunction() int {
 	config := db.NewConfig(
 		mysql.WithDefaults(),
 		mysql.WithEnvironment(),
+		mysql.WithLocalSocket("/var/run/mysqld/mysqld.sock"),
 	)
 	conn, err := mysql.Connect(config)
 	exitIfError(err)

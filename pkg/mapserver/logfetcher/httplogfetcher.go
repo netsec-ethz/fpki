@@ -393,13 +393,6 @@ func generateRandomBytes() []byte {
 	return token
 }
 
-func min(a, b int64) int64 {
-	if b < a {
-		return b
-	}
-	return a
-}
-
 func assert(cond bool, format string, params ...any) {
 	if !cond {
 		panic(fmt.Errorf(format, params...))

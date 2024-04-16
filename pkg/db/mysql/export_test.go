@@ -22,3 +22,27 @@ func (c *MysqlDBForTests) DebugCheckCertsExist(ctx context.Context, ids []*commo
 
 	return c.checkCertsExist(ctx, ids, present)
 }
+
+func (c *MysqlDBForTests) RetrieveDomainEntriesInDBJoin(
+	ctx context.Context,
+	start, end uint64,
+) ([]*db.KeyValuePair, error) {
+
+	return c.retrieveDomainEntriesInDBJoin(ctx, start, end)
+}
+
+func (c *MysqlDBForTests) RetrieveDomainEntriesParallel(
+	ctx context.Context,
+	domainIDs []*common.SHA256Output,
+) ([]*db.KeyValuePair, error) {
+
+	return c.retrieveDomainEntriesParallel(ctx, domainIDs)
+}
+
+func (c *MysqlDBForTests) RetrieveDomainEntriesSequential(
+	ctx context.Context,
+	domainIDs []*common.SHA256Output,
+) ([]*db.KeyValuePair, error) {
+
+	return c.retrieveDomainEntriesSequential(ctx, domainIDs)
+}

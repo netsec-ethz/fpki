@@ -1,8 +1,11 @@
 package mysql_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/hex"
+	"fmt"
 	"math/rand"
 	"testing"
 	"time"
@@ -12,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 	"github.com/netsec-ethz/fpki/pkg/tests"
@@ -375,6 +379,182 @@ func TestPruneCerts(t *testing.T) {
 	require.Len(t, dirtyDomains, 2) // b.com + c.com
 }
 
+func TestRetrieveDomainEntries(t *testing.T) {
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancelF()
+
+	// Configure a test DB.
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	// Connect to the DB.
+	conn := testdb.Connect(t, config)
+	defer conn.Close()
+
+	c := mysql.NewMysqlDBForTests(conn)
+
+	// Add a bunch of entries into the `domains` table.
+	// The domain_id will start at 1, the cert_id at 1_000_000 + 1, and the policy at 2_000_000.
+	N := 100_000
+	domainIDs := make([]*common.SHA256Output, N)
+	for i := uint64(0); i < uint64(N); i++ {
+		domainID := new(common.SHA256Output)
+		binary.LittleEndian.PutUint64(domainID[:], i)
+		domainIDs[i] = domainID
+
+		certID := new(common.SHA256Output)
+		binary.LittleEndian.PutUint64(certID[:], i+1_000_000)
+		polID := new(common.SHA256Output)
+		binary.LittleEndian.PutUint64(polID[:], i+2_000_000)
+		res, err := c.DB().ExecContext(ctx,
+			"INSERT INTO domain_payloads (domain_id,cert_ids,policy_ids) VALUES (?,?,?)",
+			domainID[:], certID[:], polID[:])
+		require.NoError(t, err)
+		n, err := res.RowsAffected()
+		require.NoError(t, err)
+		require.Equal(t, int64(1), n)
+		// Insert into dirty to use the in-DB-join functionality.
+		res, err = conn.DB().ExecContext(ctx,
+			"INSERT INTO dirty (domain_id) VALUES (?)",
+			domainID[:])
+		require.NoError(t, err)
+		n, err = res.RowsAffected()
+		require.NoError(t, err)
+		require.Equal(t, int64(1), n)
+	}
+	t.Logf("Added mock data to domain_payloads at %s", time.Now().Format(time.StampMilli))
+
+	// Retrieve them using the concurrent RetrieveDomainEntries.
+	parallel, err := c.RetrieveDomainEntriesParallel(ctx, domainIDs)
+	require.NoError(t, err)
+	t.Logf("Got data from parallel retrieve at %s", time.Now().Format(time.StampMilli))
+
+	joined, err := c.RetrieveDomainEntriesInDBJoin(ctx, 0, uint64(len(domainIDs)))
+	require.NoError(t, err)
+	t.Logf("Got data from db join retrieve at %s", time.Now().Format(time.StampMilli))
+
+	// Check against domains from the sequential retrieveDomainEntries function.
+	expected, err := c.RetrieveDomainEntriesSequential(ctx, domainIDs)
+	require.NoError(t, err)
+	t.Logf("Got data from serial retrieve at %s", time.Now().Format(time.StampMilli))
+
+	kvElementsMatch(t, expected, parallel, "len(expected)=%d,len(got)=%d",
+		len(expected), len(parallel))
+	require.NotSame(t, expected, parallel)
+	kvElementsMatch(t, expected, joined, "len(expected)=%d,len(got)=%d",
+		len(expected), len(parallel))
+	require.NotSame(t, expected, joined)
+}
+
+func BenchmarkRetrieveDomainEntries(b *testing.B) {
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancelF()
+
+	N := 1_000_000
+	domainIDs := make([]*common.SHA256Output, N)
+	insert := func(pushToDB bool) {
+		var conn db.Conn
+		if pushToDB {
+			// Configure a test DB.
+			config, removeF := testdb.ConfigureTestDB(b)
+			// defer removeF()
+			_ = removeF
+			// Connect to the DB.
+			conn = testdb.Connect(b, config)
+		}
+
+		// Add a bunch of entries into the `domains` table.
+		// The domain_id will start at 1, the cert_id at 1_000_000 + 1, and the policy at 2_000_000.
+		for i := uint64(0); i < uint64(N); i++ {
+			domainID := new(common.SHA256Output)
+			binary.LittleEndian.PutUint64(domainID[:], i)
+			domainIDs[i] = domainID
+
+			certID := new(common.SHA256Output)
+			binary.LittleEndian.PutUint64(certID[:], i+1_000_000)
+			polID := new(common.SHA256Output)
+			binary.LittleEndian.PutUint64(polID[:], i+2_000_000)
+			// Insert into domain_payloads
+			if pushToDB {
+				res, err := conn.DB().ExecContext(ctx,
+					"INSERT INTO domain_payloads (domain_id,cert_ids,policy_ids) VALUES (?,?,?)",
+					domainID[:], certID[:], polID[:])
+				require.NoError(b, err)
+				n, err := res.RowsAffected()
+				require.NoError(b, err)
+				require.Equal(b, int64(1), n)
+				// Insert into dirty to use the in-DB-join functionality.
+				res, err = conn.DB().ExecContext(ctx,
+					"INSERT INTO dirty (domain_id) VALUES (?)",
+					domainID[:])
+				require.NoError(b, err)
+				n, err = res.RowsAffected()
+				require.NoError(b, err)
+				require.Equal(b, int64(1), n)
+			}
+		}
+		if pushToDB {
+			conn.Close()
+		}
+		b.Logf("Added mock data to domain_payloads at %s", time.Now().Format(time.StampMilli))
+	}
+	insert(false)
+
+	c := mysql.NewMysqlDBForTests(testdb.Connect(b, testdb.ConfigureTestDBOnly(b)))
+	defer c.Close()
+
+	bdr := benchDomainRetrieval{
+		b:   b,
+		ctx: ctx,
+	}
+	for i := 600_000; i <= 1_000_000; i += 100_000 {
+		str := fmt.Sprintf("querying-%d00K-", i/100_000)
+		b.Run(str+"parallel", func(b *testing.B) {
+			bdr.run(func(ctx context.Context) ([]*db.KeyValuePair, error) {
+				return c.RetrieveDomainEntriesParallel(ctx, domainIDs[:i])
+			})
+		})
+		require.Greater(b, bdr.count, 0)
+
+		b.Run(str+"sequential", func(b *testing.B) {
+			bdr.run(func(ctx context.Context) ([]*db.KeyValuePair, error) {
+				return c.RetrieveDomainEntriesParallel(ctx, domainIDs[:i])
+			})
+		})
+		require.Greater(b, bdr.count, 0)
+
+		b.Run(str+"dirty-join", func(b *testing.B) {
+			bdr.run(func(ctx context.Context) ([]*db.KeyValuePair, error) {
+				return c.RetrieveDomainEntriesInDBJoin(ctx, 0, uint64(i))
+			})
+		})
+		require.Greater(b, bdr.count, 0)
+	}
+}
+
+type benchDomainRetrieval struct {
+	b     *testing.B
+	ctx   context.Context
+	count int
+}
+
+func (b *benchDomainRetrieval) run(
+	fcn func(context.Context) ([]*db.KeyValuePair, error),
+) {
+	b.b.ResetTimer()
+	count := 0
+	for i := 0; i < b.b.N; i++ {
+		kv, err := fcn(b.ctx)
+		require.NoError(b.b, err)
+		require.NotEmpty(b.b, kv)
+		// Do something with the key values to avoid compiler dead code optimization.
+		for _, kv := range kv {
+			count += len(kv.Value)
+		}
+	}
+	b.count = count
+}
+
 // testCertHierarchyForLeafs returns a hierarchy per leaf certificate. Each certificate is composed
 // of two mock chains, like: leaf->c1.com->c0.com, leaf->c0.com , created using the function
 // BuildTestRandomCertHierarchy. That function always returns four certificates, in this order:
@@ -433,4 +613,32 @@ func getAllCerts(ctx context.Context, t tests.T, conn testdb.Conn) []*common.SHA
 		IDs = append(IDs, &id)
 	}
 	return IDs
+}
+
+// kvElementsMatch acts as require.ElementsMatch, but faster (no reflection).
+func kvElementsMatch(t tests.T, expected, got []*db.KeyValuePair, args ...any) {
+	t.Helper()
+	A := make(map[common.SHA256Output][]byte)
+	for _, x := range expected {
+		A[x.Key] = x.Value
+	}
+	B := make(map[common.SHA256Output][]byte)
+	for _, x := range got {
+		B[x.Key] = x.Value
+	}
+
+	if len(A) != len(B) {
+		require.FailNow(t, fmt.Sprintf("different lengths expected=%d, got=%d", len(A), len(B)),
+			args...)
+	}
+	for k, a := range A {
+		b, ok := B[k]
+		if !ok {
+			require.FailNow(t, "different keys", args...)
+		}
+		if !bytes.Equal(a, b) {
+			require.FailNow(t, fmt.Sprintf("different value for key %s", hex.EncodeToString(k[:])),
+				args...)
+		}
+	}
 }

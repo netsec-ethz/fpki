@@ -7,6 +7,20 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/common"
 )
 
+func (c *mysqlDB) DirtyCount(ctx context.Context) (uint64, error) {
+	str := "SELECT COUNT(*) FROM dirty"
+	row := c.db.QueryRowContext(ctx, str)
+	if err := row.Err(); err != nil {
+		return 0, fmt.Errorf("error querying dirty domains count: %w", err)
+	}
+
+	var count uint64
+	if err := row.Scan(&count); err != nil {
+		return 0, fmt.Errorf("error querying dirty domains count: %w", err)
+	}
+	return count, nil
+}
+
 // RetrieveDirtyDomains returns the domain IDs that are still dirty, i.e. modified certificates for
 // that domain, but not yet coalesced and ingested by the SMT.
 func (c *mysqlDB) RetrieveDirtyDomains(ctx context.Context) ([]*common.SHA256Output, error) {
