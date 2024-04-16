@@ -450,6 +450,12 @@ func BenchmarkRetrieveDomainEntries(b *testing.B) {
 	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancelF()
 
+	noop := func() {}
+	removeTestDB := &noop
+	defer func() {
+		(*removeTestDB)()
+	}()
+
 	N := 1_000_000
 	domainIDs := make([]*common.SHA256Output, N)
 	insert := func(pushToDB bool) {
@@ -457,8 +463,7 @@ func BenchmarkRetrieveDomainEntries(b *testing.B) {
 		if pushToDB {
 			// Configure a test DB.
 			config, removeF := testdb.ConfigureTestDB(b)
-			// defer removeF()
-			_ = removeF
+			*removeTestDB = removeF // comment out to leave the DB in place
 			// Connect to the DB.
 			conn = testdb.Connect(b, config)
 		}
