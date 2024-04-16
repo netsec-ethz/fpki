@@ -59,3 +59,17 @@ END;
 
 CALL doWhile(); 
 ```
+
+To rename a DB in MySQL, RENAME doesn't work. We have to create a new empty DB and move each one of the tables there.
+
+
+```bash
+mysql -u root -s -e 'DROP DATABASE IF EXISTS fpki_bak; CREATE DATABASE fpki_bak /*!40100 DEFAULT CHARACTER SET binary */ /*!80016 DEFAULT ENCRYPTION='N' */;'
+
+# -s (silent)
+# -N skip column names
+# -e "execute SQL"
+for table in `mysql -u root -s -N -e "use fpki;show tables from fpki;"`; do
+  mysql -u root -s -N -e "use fpki;rename table fpki.$table to fpki_bak.$table;";
+done;
+```
