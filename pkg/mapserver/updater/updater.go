@@ -435,30 +435,42 @@ func updateSMTfromDomains(
 	conn db.Conn,
 	smtTrie *trie.Trie,
 	domainIDs []*common.SHA256Output,
+	max_bundle_size int,
 ) error {
 
-	// Read those certificates:
-	fmt.Printf("smt.updateSMTfromDomains [%s]: retrieving certs from DB\n", time.Now().Format(time.Stamp))
-	entries, err := conn.RetrieveDomainEntries(ctx, domainIDs)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("smt.updateSMTfromDomains [%s]: got certs from DB\n", time.Now().Format(time.Stamp))
-	keys, values, err := keyValuePairToSMTInput(entries)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("smt.updateSMTfromDomains [%s]: keys and values obtained\n", time.Now().Format(time.Stamp))
+	// We split the certificates into bundles.
+	// original_domainIDs := domainIDs
+	bundleCount := len(domainIDs) / max_bundle_size
+	for i := 0; i <= bundleCount; i++ {
+		// Read those certificates:
+		s := i * max_bundle_size
+		e := min(s+max_bundle_size, len(domainIDs))
+		fmt.Printf("smt.updateSMTfromDomains [%s]: retrieving certs from DB\n"+
+			"\t\t[%8d,%8d) %3d/%3d\n", time.Now().Format(time.Stamp), s, e, i+1, bundleCount+1)
+		entries, err := conn.RetrieveDomainEntries(ctx, domainIDs[s:e])
+		if err != nil {
+			return err
+		}
+		fmt.Printf("smt.updateSMTfromDomains [%s]: got certs from DB\n", time.Now().Format(time.Stamp))
 
-	// Update the tree.
-	_, err = smtTrie.Update(ctx, keys, values)
-	if err != nil {
-		return err
+		// Adapt data type.
+		keys, values, err := keyValuePairToSMTInput(entries)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("smt.updateSMTfromDomains [%s]: keys and values obtained\n", time.Now().Format(time.Stamp))
+
+		// Update the tree.
+		_, err = smtTrie.Update(ctx, keys, values)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("smt.updateSMTfromDomains [%s]: in-memory tree updated\n", time.Now().Format(time.Stamp))
 	}
-	fmt.Printf("smt.updateSMTfromDomains [%s]: in-memory tree updated\n", time.Now().Format(time.Stamp))
 
 	// And update the tree in the DB.
-	err = smtTrie.Commit(ctx)
+	err := smtTrie.Commit(ctx)
+	// TODO: clean records on the `dirty` table that correspond to [s:e]
 	if err != nil {
 		return err
 	}
@@ -493,7 +505,7 @@ func UpdateSMT(ctx context.Context, conn db.Conn) error {
 	}
 	fmt.Printf("smt [%s]: dirty domains loaded\n", time.Now().Format(time.Stamp))
 
-	err = updateSMTfromDomains(ctx, conn, smtTrie, domains)
+	err = updateSMTfromDomains(ctx, conn, smtTrie, domains, 1_000_000)
 	if err != nil {
 		return err
 	}

@@ -531,10 +531,3 @@ func (f *mockFetcher) NextBatch(ctx context.Context) bool {
 func (f *mockFetcher) ReturnNextBatch() ([]*ctx509.Certificate, [][]*ctx509.Certificate, int, error) {
 	return f.onReturnNextBatch()
 }
-
-func min(a, b int64) int64 {
-	if a < b {
-		return a
-	}
-	return b
-}

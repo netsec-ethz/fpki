@@ -60,7 +60,8 @@ func NewTrie(root []byte, hash func(data ...[]byte) []byte, store DBConn) (*Trie
 	}
 
 	// don't store any cache by default (contracts state don't use cache)
-	s.CacheHeightLimit = s.TrieHeight + 1
+	// s.CacheHeightLimit = s.TrieHeight + 1
+	s.CacheHeightLimit = 32 // deleteme check how it performs
 	s.Root = root
 	return s, nil
 }

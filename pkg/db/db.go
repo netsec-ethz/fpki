@@ -123,5 +123,5 @@ type Conn interface {
 	UpdateDomains(ctx context.Context, domainIDs []*common.SHA256Output, domainNames []string) error
 
 	// RetrieveDomainEntries: Retrieve a list of domain entries table
-	RetrieveDomainEntries(ctx context.Context, id []*common.SHA256Output) ([]*KeyValuePair, error)
+	RetrieveDomainEntries(ctx context.Context, ids []*common.SHA256Output) ([]*KeyValuePair, error)
 }
