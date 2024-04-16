@@ -71,9 +71,10 @@ Script to copy USB to RAID0:
 
 set -e
 
-SERVERS="https:__ct.googleapis.com_logs_eu1_xenon2025h2
-https:__ct.googleapis.com_logs_us1_argon2025h2
-https:__ct.googleapis.com_logs_eu1_xenon2025h1
+# https:__ct.googleapis.com_logs_eu1_xenon2025h2  and
+# https:__ct.googleapis.com_logs_us1_argon2025h2
+# have no files inside "bundled". Skipping.
+SERVERS="https:__ct.googleapis.com_logs_eu1_xenon2025h1
 https:__ct.googleapis.com_logs_us1_argon2025h1
 https:__ct.googleapis.com_logs_us1_argon2024
 https:__ct.googleapis.com_logs_eu1_xenon2024"
