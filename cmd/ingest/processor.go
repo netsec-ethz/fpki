@@ -122,6 +122,10 @@ func (p *Processor) start() {
 				}
 			}
 		}
+		if flyingCertCount > 0 {
+			p.OnBundleFinished()
+			flyingCertCount = 0
+		}
 		// This stage has finished, close the output channel:
 		close(p.nodeChan)
 
