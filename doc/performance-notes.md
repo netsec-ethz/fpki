@@ -28,6 +28,50 @@ Current USB size:
 1.8T	https:__ct.googleapis.com_logs_eu1_xenon2024
 ```
 
+#### RAID0 performance
+Clean cache, dentries and inodes:
+```
+echo 3 | sudo tee /proc/sys/vm/drop_caches
+```
+
+Measurement
+- Read:  2.2 GB/s
+```bash
+$ dd of=/dev/null if=test bs=1M
+10000+0 records in
+10000+0 records out
+10485760000 bytes (10 GB, 9.8 GiB) copied, 4.74762 s, 2.2 GB/s
+```
+
+- Write: ~~134 MB/s~~ 1.11 GB/s
+
+```diff
++ # Left here for reference. Below is a more accurate measurement.
+- $ dd if=/dev/zero of=test bs=1M count=10000 oflag=dsync
+- 10000+0 records in
+- 10000+0 records out
+- 10485760000 bytes (10 GB, 9.8 GiB) copied, 78.5443 s, 134 MB/s
+```
+```bash
+$ sync; time { dd if=/dev/zero of=test bs=1M count=10000 && sync; }
+10000+0 records in
+10000+0 records out
+10485760000 bytes (10 GB, 9.8 GiB) copied, 7.39969 s, 1.4 GB/s
+
+real	0m8.989s
+user	0m0.001s
+sys	0m8.967s
+```
+
+- With `hdparm`: read is ~ 2.2 GB/s (no cache)
+```bash
+$ sudo hdparm -tT /dev/md0
+
+/dev/md0:
+ Timing cached reads:   21778 MB in  2.00 seconds = 10901.08 MB/sec
+ Timing buffered disk reads: 6588 MB in  3.00 seconds = 2195.60 MB/sec
+```
+
 #### xenon2025h1
 Path: `/mnt/data/certificatestore/https:__ct.googleapis.com_logs_eu1_xenon2025h1`.
 
