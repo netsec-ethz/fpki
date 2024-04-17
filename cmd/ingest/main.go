@@ -147,7 +147,7 @@ func mainFunction() int {
 		proc.BundleMaxSize = *bundleSize
 		proc.OnBundleFinished = func() {
 			// Called for intermediate bundles. Need to coalesce, update SMT and clean dirty.
-			fmt.Println("Bundle ingestion finished.")
+			fmt.Println("Another bundle ingestion finished.")
 			coalescePayloadsForDirtyDomains(ctx, conn)
 			updateSMT(ctx, conn)
 			cleanupDirty(ctx, conn)

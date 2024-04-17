@@ -61,10 +61,11 @@ type CertificateProcessor struct {
 	updateCertBatch UpdateCertificateFunction // update strategy dependent method
 	strategy        CertificateUpdateStrategy
 
-	incomingCh    chan *CertificateNode // From the previous processor
-	incomingBatch chan *CertBatch       // Ready to be inserted
-	doneCh        chan struct{}
+	incomingCh chan *CertificateNode // From the previous processor
+	batchCh    chan *CertBatch       // Ready to be inserted
+	doneCh     chan struct{}
 	// Statistics:
+	statsTicker    *time.Ticker
 	ReadCerts      atomic.Int64
 	ReadBytes      atomic.Int64
 	UncachedCerts  atomic.Int64
@@ -101,36 +102,42 @@ func NewCertProcessor(conn db.Conn, incoming chan *CertificateNode,
 		conn:            conn,
 		updateCertBatch: updateFcn,
 		strategy:        strategy,
-		incomingCh:      incoming,
-		incomingBatch:   make(chan *CertBatch),
-		doneCh:          make(chan struct{}),
+		statsTicker:     time.NewTicker(2 * time.Second),
 	}
 
-	p.start()
+	p.Resume(incoming)
 	return p
 }
 
-// start starts the pipeline.
+// Resume starts or continues the pipeline.
 // Two stages in this processor: from certificate node to batch, and from batch to DB.
-func (p *CertificateProcessor) start() {
+func (p *CertificateProcessor) Resume(incoming chan *CertificateNode) {
 	// Prepare DB for certificate update.
 	p.PrepareDB()
 
-	// Start pipeline.
+	// Prepare pipeline structure.
+	// Incoming receives the parsed certificates from the previous pipeline (Processor).
+	p.incomingCh = incoming
+	// batchCh receives batches of certificates from the previous channel.
+	p.batchCh = make(chan *CertBatch)
+	// doneCh indicates all the batches are updated in DB.
+	p.doneCh = make(chan struct{})
+
+	// Create batches. Two workers are enough.
 	go func() {
+		const numWorkers = 2
 		wg := sync.WaitGroup{}
-		wg.Add(NumDBWriters)
-		for w := 0; w < NumDBWriters; w++ {
+		wg.Add(numWorkers)
+		for w := 0; w < numWorkers; w++ {
 			go func() {
 				defer wg.Done()
-				p.createBatches()
+				p.createBatches() // from incomingCh -> batchCh
 			}()
 		}
 		wg.Wait()
-		// Because the stage is finished, close the output channel:
-		close(p.incomingBatch)
 	}()
 
+	// Read batches and call the DB update method. Run NumDBWriters workers.
 	go func() {
 		wg := sync.WaitGroup{}
 		wg.Add(NumDBWriters)
@@ -138,29 +145,28 @@ func (p *CertificateProcessor) start() {
 			w := w
 			go func() {
 				defer wg.Done()
-				for batch := range p.incomingBatch {
-					p.processBatch(w, batch)
+				for batch := range p.batchCh {
+					p.processBatch(w, batch) // from batchCh
 				}
 			}()
 		}
 		wg.Wait()
 		// Leave the DB ready again.
 		p.ConsolidateDB()
+
+		// Stop printing the stats.
+		p.statsTicker.Stop()
+
 		// This pipeline is finished, signal it.
 		p.doneCh <- struct{}{}
 	}()
 
 	// Statistics.
-	ticker := time.NewTicker(2 * time.Second)
 	startTime := time.Now()
 	go func() {
 		for {
-			select {
-			case <-ticker.C:
-			case <-p.doneCh:
-				p.doneCh <- struct{}{} // signal again
-				return
-			}
+			<-p.statsTicker.C
+
 			writtenCerts := p.ReadCerts.Load()
 			writtenBytes := p.ReadBytes.Load()
 			uncachedCerts := p.UncachedCerts.Load()
@@ -232,12 +238,15 @@ func (p *CertificateProcessor) createBatches() {
 	for c := range p.incomingCh {
 		batch.AddCertificate(c)
 		if batch.IsFull() {
-			p.incomingBatch <- batch
+			p.batchCh <- batch
 			batch = NewCertificateBatch()
 		}
 	}
 	// Last batch (might be empty).
-	p.incomingBatch <- batch
+	p.batchCh <- batch
+
+	// Because the stage is finished, close the output channel:
+	close(p.batchCh)
 }
 
 func (p *CertificateProcessor) processBatch(workerID int, batch *CertBatch) {

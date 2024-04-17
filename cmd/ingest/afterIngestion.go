@@ -3,18 +3,20 @@ package main
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 )
 
 func coalescePayloadsForDirtyDomains(ctx context.Context, conn db.Conn) {
-	fmt.Println("Starting coalescing payloads for modified domains ...")
+	fmt.Printf("[%s] Starting coalescing payloads for modified domains ...\n",
+		time.Now().Format(time.StampMilli))
 	// Use NumDBWriters.
 	err := updater.CoalescePayloadsForDirtyDomains(ctx, conn)
 	exitIfError(err)
 
-	fmt.Println("Done coalescing.")
+	fmt.Printf("[%s] Done coalescing.\n", time.Now().Format(time.StampMilli))
 }
 
 func updateSMT(ctx context.Context, conn db.Conn) {

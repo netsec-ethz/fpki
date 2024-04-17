@@ -30,8 +30,8 @@ type Processor struct {
 
 	incomingFileCh    chan util.CsvFile       // New files with certificates to be ingested
 	certWithChainChan chan *CertWithChainData // After parsing files
-	nodeChan          chan *CertificateNode   // After finding parents, to be sent to DB and SMT
-	batchProcessor    *CertificateProcessor   // Processes certificate nodes (with parent pointer)
+	parsedCertCh      chan *CertificateNode   // After finding parents, to be sent to DB and SMT
+	certProcessor     *CertificateProcessor   // Processes certificate nodes (with parent pointer)
 
 	BundleMaxSize    uint64 // Max # of certs before calling OnBundle
 	OnBundleFinished func()
@@ -48,15 +48,15 @@ type CertWithChainData struct {
 }
 
 func NewProcessor(conn db.Conn, certUpdateStrategy CertificateUpdateStrategy) *Processor {
-	nodeChan := make(chan *CertificateNode)
+	parsedCertCh := make(chan *CertificateNode)
 	p := &Processor{
 		Conn:              conn,
 		cache:             cache.NewNoCache(),
 		now:               time.Now(),
 		incomingFileCh:    make(chan util.CsvFile),
 		certWithChainChan: make(chan *CertWithChainData),
-		nodeChan:          nodeChan,
-		batchProcessor:    NewCertProcessor(conn, nodeChan, certUpdateStrategy),
+		parsedCertCh:      parsedCertCh,
+		certProcessor:     NewCertProcessor(conn, parsedCertCh, certUpdateStrategy),
 
 		BundleMaxSize:    math.MaxUint64, // originally set to "no limit"
 		OnBundleFinished: func() {},      // originally set to noop
@@ -97,7 +97,8 @@ func (p *Processor) start() {
 		close(p.certWithChainChan)
 	}()
 
-	// Process the parsed content into the DB, and from DB into SMT:
+	// Process the parsed content into the DB.
+	// OnBundleFinished, called from callForEachBundle, would coalesce certs and update the SMT.
 	go func() {
 		var flyingCertCount uint64
 		for data := range p.certWithChainChan {
@@ -105,7 +106,7 @@ func (p *Processor) start() {
 				data.ChainPayloads, data.ChainIDs)
 			for i := range certs {
 				// Add the certificate.
-				p.nodeChan <- &CertificateNode{
+				p.parsedCertCh <- &CertificateNode{
 					CertID:   certIDs[i],
 					Cert:     certs[i],
 					ParentID: parentIDs[i],
@@ -117,20 +118,18 @@ func (p *Processor) start() {
 				// "flying" certificates (not coalesced and whose SMT is not updated).
 				// If so, we need to call the OnBundleFinished callback.
 				if flyingCertCount == p.BundleMaxSize {
-					p.OnBundleFinished()
+					p.callForEachBundle(true)
 					flyingCertCount = 0
 				}
 			}
 		}
-		if flyingCertCount > 0 {
-			p.OnBundleFinished()
-			flyingCertCount = 0
-		}
-		// This stage has finished, close the output channel:
-		close(p.nodeChan)
 
-		// Wait for the next stage to finish
-		p.batchProcessor.Wait()
+		resume := false
+		if flyingCertCount > 0 {
+			resume = true
+		}
+
+		p.callForEachBundle(resume)
 
 		// There is no more processing to do, close the errors channel and allow the
 		// error processor to finish.
@@ -141,6 +140,22 @@ func (p *Processor) start() {
 		// Print errors and return error if there was any error printed:
 		p.doneCh <- p.processErrorChannel()
 	}()
+}
+
+// callForEachBundle waits until all certificates have been updated in the DB.
+// If the parameter resume is true, it will prepare the certificate processor for more bundles.
+func (p *Processor) callForEachBundle(resume bool) {
+	// Signal the cert processor that we don't send more certificates.
+	close(p.parsedCertCh)
+	// Wait for the cert processor to finish.
+	p.certProcessor.Wait()
+	// Actual call per bundle.
+	p.OnBundleFinished()
+	if resume {
+		p.parsedCertCh = make(chan *CertificateNode)
+		p.certProcessor.Resume(p.parsedCertCh)
+		// p.certProcessor = NewCertProcessor(p.Conn, p.parsedCertCh, p.certProcessor.strategy)
+	}
 }
 
 func (p *Processor) Wait() error {
@@ -155,7 +170,7 @@ func (p *Processor) Wait() error {
 // It blocks until it is accepted.
 func (p *Processor) AddGzFiles(fileNames []string) {
 	// Tell the certificate processor that we have these new files.
-	p.batchProcessor.TotalFiles.Add(int64(len(fileNames)))
+	p.certProcessor.TotalFiles.Add(int64(len(fileNames)))
 	// Parse the file and send it to the CSV parser.
 	for _, filename := range fileNames {
 		p.incomingFileCh <- (&util.GzFile{}).WithFile(filename)
@@ -166,7 +181,7 @@ func (p *Processor) AddGzFiles(fileNames []string) {
 // It blocks until it is accepted.
 func (p *Processor) AddCsvFiles(fileNames []string) {
 	// Tell the certificate processor that we have these new files.
-	p.batchProcessor.TotalFiles.Add(int64(len(fileNames)))
+	p.certProcessor.TotalFiles.Add(int64(len(fileNames)))
 	// Parse the file and send it to the CSV parser.
 	for _, filename := range fileNames {
 		p.incomingFileCh <- (&util.UncompressedFile{}).WithFile(filename)
@@ -223,9 +238,9 @@ func (p *Processor) ingestWithCSV(fileReader io.Reader) error {
 		}
 
 		// Update statistics.
-		p.batchProcessor.ReadBytes.Add(int64(len(rawBytes)))
-		p.batchProcessor.ReadCerts.Inc()
-		p.batchProcessor.UncachedCerts.Inc()
+		p.certProcessor.ReadBytes.Add(int64(len(rawBytes)))
+		p.certProcessor.ReadCerts.Inc()
+		p.certProcessor.UncachedCerts.Inc()
 
 		if p.now.After(cert.NotAfter) {
 			return nil
@@ -241,8 +256,8 @@ func (p *Processor) ingestWithCSV(fileReader io.Reader) error {
 				return fmt.Errorf("at line %d: %s\n%s", lineNo, err, fields[CertChainColumn])
 			}
 			// Update statistics.
-			p.batchProcessor.ReadBytes.Add(int64(len(rawBytes)))
-			p.batchProcessor.ReadCerts.Inc()
+			p.certProcessor.ReadBytes.Add(int64(len(rawBytes)))
+			p.certProcessor.ReadCerts.Inc()
 			// Check if the parent certificate is in the cache.
 			id := common.SHA256Hash32Bytes(rawBytes)
 			if !p.cache.Contains(&id) {
@@ -252,7 +267,7 @@ func (p *Processor) ingestWithCSV(fileReader io.Reader) error {
 					return fmt.Errorf("at line %d: %s\n%s", lineNo, err, fields[CertChainColumn])
 				}
 				p.cache.AddIDs([]*common.SHA256Output{&id})
-				p.batchProcessor.UncachedCerts.Inc()
+				p.certProcessor.UncachedCerts.Inc()
 			}
 			chainIDs[i] = &id
 		}
@@ -298,7 +313,7 @@ func (p *Processor) ingestWithCSV(fileReader io.Reader) error {
 	}
 	close(recordsChan)
 	wg.Wait()
-	p.batchProcessor.TotalFilesRead.Add(1) // one more file had been read
+	p.certProcessor.TotalFilesRead.Add(1) // one more file had been read
 
 	return nil
 }
