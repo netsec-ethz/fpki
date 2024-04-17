@@ -588,9 +588,12 @@ func insertCerts(ctx context.Context, conn db.Conn, names [][]string,
 	ids, parentIDs []*common.SHA256Output, expirations []*time.Time, payloads [][]byte) error {
 
 	// Send hash, parent hash, expiration and payload to the certs table.
+	fmt.Printf("deleteme insertCerts [%s] inserting certificates ...\n", time.Now().Format(time.StampMilli))
 	if err := conn.UpdateCerts(ctx, ids, parentIDs, expirations, payloads); err != nil {
 		return fmt.Errorf("inserting certificates: %w", err)
 	}
+	fmt.Printf("deleteme insertCerts [%s] certificates inserted.\n", time.Now().Format(time.StampMilli))
+	// around 3 seconds for this ^^ (100K certs)
 
 	// Add new entries from names into the domains table iff they are leaves.
 	estimatedSize := len(ids) * 2 // Number of IDs / 3 ~~ is the number of leaves. 6 names per leaf.
@@ -608,12 +611,16 @@ func insertCerts(ctx context.Context, conn db.Conn, names [][]string,
 		}
 	}
 	// Push the changes of the domains to the DB.
+	fmt.Printf("deleteme insertCerts [%s] updating domains ...\n", time.Now().Format(time.StampMilli))
 	if err := conn.UpdateDomains(ctx, domainIDs, newNames); err != nil {
 		return fmt.Errorf("updating domains: %w", err)
 	}
+	fmt.Printf("deleteme insertCerts [%s] updating domain_certs ...\n", time.Now().Format(time.StampMilli))
 	if err := conn.UpdateDomainCerts(ctx, domainIDs, newIDs); err != nil {
 		return fmt.Errorf("updating domain_certs: %w", err)
 	}
+	fmt.Printf("deleteme insertCerts [%s] domains updated\n", time.Now().Format(time.StampMilli))
+	// around 8 seconds for this ^^ (100K certs)
 
 	return nil
 }
