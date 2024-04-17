@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
@@ -137,19 +136,6 @@ func mainFunction() int {
 		fmt.Print("SMT root node is empty. DB should be empty, but not checking.\n\n")
 		// TODO(juagargi) check that DB is empty if root is empty.
 	}
-
-	// DB statistics
-	go func() {
-		stats := conn.DB().Stats()
-		for {
-			time.Sleep(2 * time.Second)
-
-			msg := fmt.Sprintf("idle=%d,inUse=%d,open=%d,wait=%s",
-				stats.Idle, stats.InUse, stats.OpenConnections, stats.WaitDuration)
-			fmt.Printf("------------------------------ DB STATS -------------\n"+
-				"%s\n"+"-----------------------------------------------------\n", msg)
-		}
-	}()
 
 	if ingestCerts {
 		// All GZ and CSV files found under the directory of the argument.
