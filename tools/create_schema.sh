@@ -342,6 +342,39 @@ EOF
   )
   echo "$CMD" | $MYSQLCMD
 
+
+CMD=$(cat <<EOF
+USE $DBNAME;
+DROP PROCEDURE IF EXISTS drop_pk_if_exists;
+DELIMITER $$
+CREATE PROCEDURE drop_pk_if_exists (IN tablename VARCHAR(255))
+BEGIN
+  -- If my_table has a primary key
+  SET @q1 = CONCAT("
+              SELECT COUNT(*) INTO @pkCount FROM \`information_schema\`.\`table_constraints\`
+              WHERE \`constraint_schema\` = DATABASE()
+              AND \`constraint_type\` = \"PRIMARY KEY\"
+              AND \`table_name\` = '", tablename, "'");
+  -- Need to use a prepared statement, since table names cannot be parameters
+  PREPARE st1 FROM @q1;
+  EXECUTE st1;
+  IF @pkCount = 1 THEN
+    BEGIN
+      -- Drop the primary key
+      SET @q2 = CONCAT("
+      ALTER TABLE \`",tablename,"\` DROP PRIMARY KEY");
+      PREPARE st2 FROM @q2;
+      EXECUTE st2;
+    END;
+  END IF;
+END $$
+
+DELIMITER ;
+EOF
+  )
+  echo "$CMD" | $MYSQLCMD
+
+
 } # end of `create_new_db` function
 
 

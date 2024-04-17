@@ -186,7 +186,7 @@ func (p *CertificateProcessor) PrepareDB() {
 	switch p.strategy {
 	case CertificateUpdateOverwrite:
 		// Try to remove unique index `id` and primary key. They may not exist.
-		if _, err := p.conn.DB().Exec("ALTER TABLE certs DROP PRIMARY KEY"); err != nil {
+		if _, err := p.conn.DB().Exec("CALL drop_pk_if_exists(\"certs\")"); err != nil {
 			panic(fmt.Errorf("disabling keys: %s", err))
 		}
 	}
