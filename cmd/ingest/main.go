@@ -20,9 +20,10 @@ import (
 const (
 	NumFileReaders = 8
 	NumParsers     = 64
-	NumDBWriters   = 32
+	// NumDBWriters   = 32
+	NumDBWriters = 16
 
-	BatchSize    = 1000             // # of certificates inserted at once.
+	BatchSize    = 100000           // # of certificates inserted at once.
 	LruCacheSize = 10 * 1000 * 1000 // Keep track of the 10 million most seen certificates.
 )
 

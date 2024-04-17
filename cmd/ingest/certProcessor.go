@@ -65,9 +65,11 @@ type CertificateProcessor struct {
 	incomingBatch chan *CertBatch       // Ready to be inserted
 	doneCh        chan struct{}
 	// Statistics:
-	ReadCerts     atomic.Int64
-	ReadBytes     atomic.Int64
-	UncachedCerts atomic.Int64
+	ReadCerts      atomic.Int64
+	ReadBytes      atomic.Int64
+	UncachedCerts  atomic.Int64
+	TotalFiles     atomic.Int64
+	TotalFilesRead atomic.Int64
 }
 
 type CertificateUpdateStrategy int
@@ -133,10 +135,11 @@ func (p *CertificateProcessor) start() {
 		wg := sync.WaitGroup{}
 		wg.Add(NumDBWriters)
 		for w := 0; w < NumDBWriters; w++ {
+			w := w
 			go func() {
 				defer wg.Done()
 				for batch := range p.incomingBatch {
-					p.processBatch(batch)
+					p.processBatch(w, batch)
 				}
 			}()
 		}
@@ -162,7 +165,8 @@ func (p *CertificateProcessor) start() {
 			writtenBytes := p.ReadBytes.Load()
 			uncachedCerts := p.UncachedCerts.Load()
 			secondsSinceStart := float64(time.Since(startTime).Seconds())
-			fmt.Printf("%.0f Certs/s (%.0f%% uncached), %.1f Mb/s\n",
+			fmt.Printf("%.1f%% files completed %.0f Certs/s (%.0f%% uncached), %.1f Mb/s\n",
+				float64(p.TotalFilesRead.Load())*100.0/float64(p.TotalFiles.Load()),
 				float64(writtenCerts)/secondsSinceStart,
 				float64(uncachedCerts)*100./float64(writtenCerts),
 				float64(writtenBytes)/1024./1024./secondsSinceStart,
@@ -236,11 +240,15 @@ func (p *CertificateProcessor) createBatches() {
 	p.incomingBatch <- batch
 }
 
-func (p *CertificateProcessor) processBatch(batch *CertBatch) {
+func (p *CertificateProcessor) processBatch(workerID int, batch *CertBatch) {
 	// Store certificates in DB:
+	fmt.Printf("DB: [worker %d][%s] processing batch (len=%d)...\n",
+		workerID, time.Now().Format(time.StampMilli), len(batch.CertIDs))
 	err := p.updateCertBatch(context.Background(), p.conn, batch.Names,
 		batch.CertIDs, batch.ParentIDs, batch.Certs, batch.Expirations, nil)
 	if err != nil {
 		panic(err)
 	}
+	fmt.Printf("DB: [worker %d][%s] finished batch.\n",
+		workerID, time.Now().Format(time.StampMilli))
 }

@@ -161,17 +161,15 @@ func (u *MapUpdater) UpdateNextBatch(ctx context.Context) (int, error) {
 	// Store the last status obtained from the fetcher as updated.
 	u.lastState.Size += uint64(n) + uint64(excludedCerts)
 
-	// print some debug information
-	if err == nil {
-		// print progress information
-		totalTime := time.Now().Sub(u.lastBatchFinished).Seconds()
-		u.lastBatchFinished = time.Now()
-		logUrl, origIndex, currentIndex, maxIndex, realMaxIndex, progressErr := u.GetProgress(ctx)
-		if progressErr != nil {
-			err = fmt.Errorf("error printing progress information: %s", err)
-		} else {
-			fmt.Printf("Batch with size %d (%d excluded) updated in %.2fs (%.2fs verifying, %.2fs inserting); log %s progress: (current %d [%.0f%%], target %d, real %d) at %s\n", n, excludedCerts, totalTime, verificationTime, insertionTime, logUrl, currentIndex, 100.0*(float64(currentIndex)-float64(origIndex))/(float64(maxIndex)-float64(origIndex)), maxIndex, realMaxIndex, getTime())
-		}
+	// print progress information
+	totalTime := time.Now().Sub(u.lastBatchFinished).Seconds()
+	u.lastBatchFinished = time.Now()
+	logUrl, origIndex, currentIndex, maxIndex, realMaxIndex, progressErr := u.GetProgress(ctx)
+
+	if progressErr != nil {
+		err = fmt.Errorf("error printing progress information: %s", err)
+	} else {
+		fmt.Printf("Batch with size %d (%d excluded) updated in %.2fs (%.2fs verifying, %.2fs inserting); log %s progress: (current %d [%.0f%%], target %d, real %d) at %s\n", n, excludedCerts, totalTime, verificationTime, insertionTime, logUrl, currentIndex, 100.0*(float64(currentIndex)-float64(origIndex))/(float64(maxIndex)-float64(origIndex)), maxIndex, realMaxIndex, getTime())
 	}
 	if u.lastState.Size == u.targetState.Size {
 		// Update the DB with all certs collected from this fetcher

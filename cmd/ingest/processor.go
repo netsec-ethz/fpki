@@ -154,6 +154,9 @@ func (p *Processor) Wait() error {
 // AddGzFiles adds a CSV .gz file to the initial stage.
 // It blocks until it is accepted.
 func (p *Processor) AddGzFiles(fileNames []string) {
+	// Tell the certificate processor that we have these new files.
+	p.batchProcessor.TotalFiles.Add(int64(len(fileNames)))
+	// Parse the file and send it to the CSV parser.
 	for _, filename := range fileNames {
 		p.incomingFileCh <- (&util.GzFile{}).WithFile(filename)
 	}
@@ -162,6 +165,9 @@ func (p *Processor) AddGzFiles(fileNames []string) {
 // AddGzFiles adds a .csv file to the initial stage.
 // It blocks until it is accepted.
 func (p *Processor) AddCsvFiles(fileNames []string) {
+	// Tell the certificate processor that we have these new files.
+	p.batchProcessor.TotalFiles.Add(int64(len(fileNames)))
+	// Parse the file and send it to the CSV parser.
 	for _, filename := range fileNames {
 		p.incomingFileCh <- (&util.UncompressedFile{}).WithFile(filename)
 	}
@@ -292,6 +298,8 @@ func (p *Processor) ingestWithCSV(fileReader io.Reader) error {
 	}
 	close(recordsChan)
 	wg.Wait()
+	p.batchProcessor.TotalFilesRead.Add(1) // one more file had been read
+
 	return nil
 }
 
