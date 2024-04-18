@@ -6,7 +6,3 @@ type Cache interface {
 	Contains(*common.SHA256Output) bool
 	AddIDs([]*common.SHA256Output)
 }
-
-func NewNoCache() NoCache {
-	return NoCache{}
-}

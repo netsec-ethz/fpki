@@ -4,6 +4,10 @@ import "github.com/netsec-ethz/fpki/pkg/common"
 
 type NoCache struct{}
 
+func NewNoCache() NoCache {
+	return NoCache{}
+}
+
 // Contains always returns false (the item is never in cache).
 func (NoCache) Contains(*common.SHA256Output) bool {
 	return false
