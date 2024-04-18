@@ -135,6 +135,8 @@ func (p *CertificateProcessor) Resume(incoming chan *CertificateNode) {
 			}()
 		}
 		wg.Wait()
+		// Because the stage is finished, close the output channel:
+		close(p.batchCh)
 	}()
 
 	// Read batches and call the DB update method. Run NumDBWriters workers.
@@ -191,10 +193,9 @@ func (p *CertificateProcessor) Wait() {
 func (p *CertificateProcessor) PrepareDB() {
 	switch p.strategy {
 	case CertificateUpdateOverwrite:
-		// Try to remove unique index `id` and primary key. They may not exist.
-		if _, err := p.conn.DB().Exec("CALL drop_pk_if_exists(\"certs\")"); err != nil {
-			panic(fmt.Errorf("disabling keys: %s", err))
-		}
+		p.disableKeys("certs")
+		p.disableKeys("dirty")
+		p.disableKeys("domains")
 	}
 }
 
@@ -202,32 +203,46 @@ func (p *CertificateProcessor) PrepareDB() {
 func (p *CertificateProcessor) ConsolidateDB() {
 	switch p.strategy {
 	case CertificateUpdateOverwrite:
-		// Reenable keys:
-		fmt.Println("Reenabling keys in DB.certs ... ")
-		str := "DROP TABLE IF EXISTS certs_aux_tmp"
-		if _, err := p.conn.DB().Exec(str); err != nil {
-			panic(fmt.Errorf("reenabling keys: %s", err))
-		}
-		str = "CREATE TABLE certs_aux_tmp LIKE certs;"
-		if _, err := p.conn.DB().Exec(str); err != nil {
-			panic(fmt.Errorf("reenabling keys: %s", err))
-		}
-		str = "ALTER TABLE certs_aux_tmp ADD PRIMARY KEY (cert_id)"
-		if _, err := p.conn.DB().Exec(str); err != nil {
-			panic(fmt.Errorf("reenabling keys: %s", err))
-		}
-		str = "INSERT IGNORE INTO certs_aux_tmp SELECT * FROM certs"
-		if _, err := p.conn.DB().Exec(str); err != nil {
-			panic(fmt.Errorf("reenabling keys: %s", err))
-		}
-		str = "DROP TABLE certs"
-		if _, err := p.conn.DB().Exec(str); err != nil {
-			panic(fmt.Errorf("reenabling keys: %s", err))
-		}
-		str = "ALTER TABLE certs_aux_tmp RENAME TO certs"
-		if _, err := p.conn.DB().Exec(str); err != nil {
-			panic(fmt.Errorf("reenabling keys: %s", err))
-		}
+		p.reenableKeys("certs")
+		p.reenableKeys("dirty")
+		p.reenableKeys("domains")
+	}
+}
+
+func (p *CertificateProcessor) disableKeys(tableName string) {
+	// Try to remove unique index `id` and primary key. They may not exist.
+	// if _, err := p.conn.DB().Exec("CALL drop_pk_if_exists(\"certs\")"); err != nil {
+	if _, err := p.conn.DB().Exec(
+		fmt.Sprintf("ALTER TABLE `%s` DROP PRIMARY KEY", tableName)); err != nil {
+		panic(fmt.Errorf("disabling keys on %s: %s", tableName, err))
+	}
+}
+
+func (p *CertificateProcessor) reenableKeys(tableName string) {
+	fmt.Printf("Reenabling keys in DB.%s ...", tableName)
+	str := fmt.Sprintf("DROP TABLE IF EXISTS %s_aux_tmp", tableName)
+	if _, err := p.conn.DB().Exec(str); err != nil {
+		panic(fmt.Errorf("reenabling keys on %s: %s", tableName, err))
+	}
+	str = fmt.Sprintf("CREATE TABLE %s_aux_tmp LIKE %[1]s;", tableName)
+	if _, err := p.conn.DB().Exec(str); err != nil {
+		panic(fmt.Errorf("reenabling keys on %s: %s", tableName, err))
+	}
+	str = fmt.Sprintf("ALTER TABLE %s_aux_tmp ADD PRIMARY KEY (domain_id)", tableName)
+	if _, err := p.conn.DB().Exec(str); err != nil {
+		panic(fmt.Errorf("reenabling keys on %s: %s", tableName, err))
+	}
+	str = fmt.Sprintf("INSERT IGNORE INTO %s SELECT * FROM %[1]s", tableName)
+	if _, err := p.conn.DB().Exec(str); err != nil {
+		panic(fmt.Errorf("reenabling keys on %s: %s", tableName, err))
+	}
+	str = fmt.Sprintf("DROP TABLE %s", tableName)
+	if _, err := p.conn.DB().Exec(str); err != nil {
+		panic(fmt.Errorf("reenabling keys on %s: %s", tableName, err))
+	}
+	str = fmt.Sprintf("ALTER TABLE %s_aux_tmp RENAME TO %[1]s", tableName)
+	if _, err := p.conn.DB().Exec(str); err != nil {
+		panic(fmt.Errorf("reenabling keys on %s: %s", tableName, err))
 	}
 }
 
@@ -244,9 +259,6 @@ func (p *CertificateProcessor) createBatches() {
 	}
 	// Last batch (might be empty).
 	p.batchCh <- batch
-
-	// Because the stage is finished, close the output channel:
-	close(p.batchCh)
 }
 
 func (p *CertificateProcessor) processBatch(workerID int, batch *CertBatch) {
