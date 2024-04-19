@@ -68,12 +68,17 @@ func TestConcurrentInsert(t *testing.T) {
 	conn := testdb.Connect(t, config)
 	defer conn.Close()
 
-	// Create lots of data to insert e.g. in the `certs` table.
-	N := 1000
+	N := 10000
+	WorkerCount := 10
+	require.Equal(t, 0, N%WorkerCount) // simplify the test and make N a multiple of the # workers
+	batchSize := N / WorkerCount
+
+	// Create lots of data to insert into the `certs` table.
 	allCerts := make([]common.SHA256Output, N)
 	for i := 0; i < N; i++ {
 		binary.LittleEndian.PutUint64(allCerts[i][:], uint64(i))
 	}
+	t.Log("Mock data ready in memory")
 
 	// Function that inserts certificates and payload.
 	mockPayload := make([]byte, 1_000_000)
@@ -89,11 +94,11 @@ func TestConcurrentInsert(t *testing.T) {
 		}
 	}
 
-	// Check how long it takes to insert half of it sequentially.
+	// Check how long it takes to insert one batch sequentially.
 	t0 := time.Now()
-	insertFcn(allCerts[:N/2])
+	insertFcn(allCerts[:N/WorkerCount])
 	tSeq := time.Since(t0).Seconds()
-	t.Logf("took %fs to insert half", tSeq)
+	t.Logf("took %fs to insert one batch", tSeq)
 
 	// Run in parallel
 	wg := sync.WaitGroup{}
@@ -101,15 +106,22 @@ func TestConcurrentInsert(t *testing.T) {
 		defer wg.Done()
 		insertFcn(certs)
 	}
-	wg.Add(2)
+	wg.Add(WorkerCount)
 	t0 = time.Now()
-	go parallel(allCerts[:N/2])
-	go parallel(allCerts[N/2:])
+	for i := 0; i < WorkerCount; i++ {
+		go parallel(allCerts[i*batchSize : (i+1)*batchSize])
+	}
+	//
+	// go parallel(allCerts[N/2:])
 	wg.Wait()
 	tPara := time.Since(t0).Seconds()
 	t.Logf("took %fs to insert concurrently all", tPara)
-	// We expect the 2 calls to parallel() to need similar to one call to parallel.
-	epsilon := tSeq / 10.0
+	// The time to finish all of the concurrent calls to the DB depends on:
+	// IO Speed (which we don't control)
+	// Engine in use for the certs table:
+	// - MyISAM will not be able to insert in parallel, as it locks the table.
+	// - InnoDB should insert in parallel.
+	epsilon := tSeq / 10.0 // A 10%
 	require.Greater(t, tPara, tSeq+epsilon)
 	require.Less(t, tPara, tSeq*2) // But much faster than two calls to sequential.
 }
