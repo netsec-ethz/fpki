@@ -188,65 +188,11 @@ func (p *CertificateProcessor) Wait() {
 	<-p.doneCh
 }
 
-// PrepareDB prepares the DB for certificate insertion. This could imply dropping keys,
-// disabling indices, etc. depending on the update strategy.
-// Before the DB is functional again, it needs a call to ConsolidateDB.
-func (p *CertificateProcessor) PrepareDB() {
-	switch p.strategy {
-	case CertificateUpdateOverwrite:
-		p.disableKeys("certs")
-		p.disableKeys("dirty")
-		p.disableKeys("domains")
-	}
-}
+// PrepareDB is a noop (for InnoDB).
+func (p *CertificateProcessor) PrepareDB() {}
 
-// ConsolidateDB finishes the certificate update process and leaves the DB ready again.
-func (p *CertificateProcessor) ConsolidateDB() {
-	switch p.strategy {
-	case CertificateUpdateOverwrite:
-		p.reenableKeys("certs", "cert_id")
-		p.reenableKeys("dirty", "domain_id")
-		p.reenableKeys("domains", "domain_id")
-	}
-}
-
-func (p *CertificateProcessor) disableKeys(tableName string) {
-	// Try to remove unique index `id` and primary key. They may not exist.
-	// if _, err := p.conn.DB().Exec("CALL drop_pk_if_exists(\"certs\")"); err != nil {
-	if _, err := p.conn.DB().Exec(
-		fmt.Sprintf("ALTER TABLE `%s` DROP PRIMARY KEY", tableName)); err != nil {
-		panic(fmt.Errorf("disabling keys on %s: %s", tableName, err))
-	}
-}
-
-func (p *CertificateProcessor) reenableKeys(tableName, primaryKeyName string) {
-	fmt.Printf("Reenabling keys in DB.%s at %s ...\n",
-		tableName, time.Now().Format(time.StampMilli))
-	str := fmt.Sprintf("DROP TABLE IF EXISTS %s_aux_tmp", tableName)
-	if _, err := p.conn.DB().Exec(str); err != nil {
-		panic(fmt.Errorf("reenabling keys on %s: %s", tableName, err))
-	}
-	str = fmt.Sprintf("CREATE TABLE %s_aux_tmp LIKE %[1]s;", tableName)
-	if _, err := p.conn.DB().Exec(str); err != nil {
-		panic(fmt.Errorf("reenabling keys on %s: %s", tableName, err))
-	}
-	str = fmt.Sprintf("ALTER TABLE %s_aux_tmp ADD PRIMARY KEY (%s)", tableName, primaryKeyName)
-	if _, err := p.conn.DB().Exec(str); err != nil {
-		panic(fmt.Errorf("reenabling keys on %s: %s", tableName, err))
-	}
-	str = fmt.Sprintf("INSERT IGNORE INTO %s_aux_tmp SELECT * FROM %[1]s", tableName)
-	if _, err := p.conn.DB().Exec(str); err != nil {
-		panic(fmt.Errorf("reenabling keys on %s: %s", tableName, err))
-	}
-	str = fmt.Sprintf("DROP TABLE %s", tableName)
-	if _, err := p.conn.DB().Exec(str); err != nil {
-		panic(fmt.Errorf("reenabling keys on %s: %s", tableName, err))
-	}
-	str = fmt.Sprintf("ALTER TABLE %s_aux_tmp RENAME TO %[1]s", tableName)
-	if _, err := p.conn.DB().Exec(str); err != nil {
-		panic(fmt.Errorf("reenabling keys on %s: %s", tableName, err))
-	}
-}
+// ConsolidateDB is a noop (for InnoDB).
+func (p *CertificateProcessor) ConsolidateDB() {}
 
 // createBatches reads CertificateNodes from the incoming channel and sends them in batches
 // to processing.

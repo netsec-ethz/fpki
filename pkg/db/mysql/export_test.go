@@ -46,3 +46,7 @@ func (c *MysqlDBForTests) RetrieveDomainEntriesSequential(
 
 	return c.retrieveDomainEntriesSequential(ctx, domainIDs)
 }
+
+func RepeatStmt(elemCount int, dimensions int) string {
+	return repeatStmt(elemCount, dimensions)
+}

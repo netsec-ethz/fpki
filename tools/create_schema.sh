@@ -5,6 +5,7 @@ create_new_db() {
 
 set -e
 
+
 DBNAME=$1
 
 MYSQLCMD="mysql -u ${MYSQL_USER:-root}"
@@ -28,10 +29,12 @@ EOF
 CMD=$(cat <<EOF
 USE $DBNAME;
 CREATE TABLE domains (
+  auto_id BIGINT NOT NULL AUTO_INCREMENT,
   domain_id VARBINARY(32) NOT NULL,
   domain_name VARCHAR(300) COLLATE ascii_bin DEFAULT NULL,
 
-  PRIMARY KEY (domain_id),
+  PRIMARY KEY (auto_id),
+  UNIQUE KEY(domain_id),
   INDEX domain_name (domain_name)
 ) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
 EOF
@@ -42,12 +45,14 @@ EOF
 CMD=$(cat <<EOF
 USE $DBNAME;
 CREATE TABLE certs (
+  auto_id BIGINT NOT NULL AUTO_INCREMENT,
   cert_id VARBINARY(32) NOT NULL,
   parent_id VARBINARY(32) DEFAULT NULL,
   expiration DATETIME NOT NULL,
   payload LONGBLOB,
 
-  PRIMARY KEY(cert_id)
+  PRIMARY KEY(auto_id),
+  UNIQUE KEY(cert_id)
 ) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
 EOF
   )
@@ -57,10 +62,12 @@ EOF
 CMD=$(cat <<EOF
 USE $DBNAME;
 CREATE TABLE domain_certs (
+  auto_id BIGINT NOT NULL AUTO_INCREMENT,
   domain_id VARBINARY(32) NOT NULL,
   cert_id VARBINARY(32) NOT NULL,
 
-  PRIMARY KEY (domain_id,cert_id),
+  PRIMARY KEY(auto_id),
+  UNIQUE KEY domain_cert (domain_id,cert_id),
   INDEX domain_id (domain_id)
 ) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
 EOF
@@ -71,12 +78,14 @@ EOF
 CMD=$(cat <<EOF
 USE $DBNAME;
 CREATE TABLE policies (
+  auto_id BIGINT NOT NULL AUTO_INCREMENT,
   policy_id VARBINARY(32) NOT NULL,
   parent_id VARBINARY(32) DEFAULT NULL,
   expiration DATETIME NOT NULL,
   payload LONGBLOB,
 
-  PRIMARY KEY(policy_id)
+  PRIMARY KEY(auto_id),
+  UNIQUE KEY(policy_id)
 ) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
 EOF
   )
@@ -86,10 +95,12 @@ EOF
 CMD=$(cat <<EOF
 USE $DBNAME;
 CREATE TABLE domain_policies (
+  auto_id BIGINT NOT NULL AUTO_INCREMENT,
   domain_id VARBINARY(32) NOT NULL,
   policy_id VARBINARY(32) NOT NULL,
 
-  PRIMARY KEY (domain_id,policy_id),
+  PRIMARY KEY(auto_id),
+  UNIQUE KEY domain_pol (domain_id,policy_id),
   INDEX domain_id (domain_id)
 ) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
 EOF
@@ -118,9 +129,11 @@ EOF
 CMD=$(cat <<EOF
 USE $DBNAME;
 CREATE TABLE dirty (
+  auto_id BIGINT NOT NULL AUTO_INCREMENT,
   domain_id VARBINARY(32) NOT NULL,
 
-  PRIMARY KEY (domain_id)
+  PRIMARY KEY (auto_id),
+  UNIQUE KEY(domain_id)
 ) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
 EOF
   )
@@ -295,11 +308,11 @@ CMD=$(cat <<EOF
 USE $DBNAME;
 DROP PROCEDURE IF EXISTS prune_expired;
 DELIMITER $$
--- The procedure has one parameter, the time considered "now".
+-- The procedure has one parameter, the time considered "cut".
 -- Any x509 certificate that expires before that time will be removed.
 -- Any removed certificate will also trigger the removal of its descendants.
 -- Any domain which had a certificate pruned will be added to the "dirty" list.
-CREATE PROCEDURE prune_expired(IN now DATETIME)
+CREATE PROCEDURE prune_expired(IN cut DATETIME)
 BEGIN
 
 	-- Create a temporary table to hold the IDs of all the expired certs or descendants.
@@ -315,7 +328,7 @@ BEGIN
 			-- Base case: Select all expired certificates
 			SELECT cert_id
 			FROM certs
-			WHERE expiration < '1971-01-01 00:01:40'
+			WHERE expiration < cut
 			UNION ALL
 			-- Recursive case: Join the above result with certs on parent_id to get descendants
 			SELECT c.cert_id
@@ -326,7 +339,7 @@ BEGIN
 	) AS exp_certs;
 
 	-- Insert the domain IDs that had a certificate in the temporary table.
-	INSERT INTO dirty
+	REPLACE INTO dirty(domain_id)
 	SELECT DISTINCT domain_id FROM domain_certs WHERE cert_id IN (SELECT cert_id FROM temp_cert_ids);
 
 	-- Remove expired certificates
@@ -336,38 +349,6 @@ BEGIN
 	DROP TEMPORARY TABLE temp_cert_ids;
 
 END$$
-DELIMITER ;
-EOF
-  )
-  echo "$CMD" | $MYSQLCMD
-
-
-CMD=$(cat <<EOF
-USE $DBNAME;
-DROP PROCEDURE IF EXISTS drop_pk_if_exists;
-DELIMITER $$
-CREATE PROCEDURE drop_pk_if_exists (IN tablename VARCHAR(255))
-BEGIN
-  -- If my_table has a primary key
-  SET @q1 = CONCAT("
-              SELECT COUNT(*) INTO @pkCount FROM \`information_schema\`.\`table_constraints\`
-              WHERE \`constraint_schema\` = DATABASE()
-              AND \`constraint_type\` = \"PRIMARY KEY\"
-              AND \`table_name\` = '", tablename, "'");
-  -- Need to use a prepared statement, since table names cannot be parameters
-  PREPARE st1 FROM @q1;
-  EXECUTE st1;
-  IF @pkCount = 1 THEN
-    BEGIN
-      -- Drop the primary key
-      SET @q2 = CONCAT("
-      ALTER TABLE \`",tablename,"\` DROP PRIMARY KEY");
-      PREPARE st2 FROM @q2;
-      EXECUTE st2;
-    END;
-  END IF;
-END $$
-
 DELIMITER ;
 EOF
   )
