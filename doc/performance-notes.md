@@ -72,10 +72,14 @@ $ sudo hdparm -tT /dev/md0
  Timing buffered disk reads: 6588 MB in  3.00 seconds = 2195.60 MB/sec
 ```
 
-#### xenon2025h1
+## Ingest
+
+### xenon2025h1
 Path: `/mnt/data/certificatestore/https:__ct.googleapis.com_logs_eu1_xenon2025h1`.
 
-Contains 83031345 unique certificates:
+Contains:
+- 480 bundle files
+- 83031345 unique certificates:
 ```
 select count(*) from dirty;
 +----------+
@@ -100,6 +104,29 @@ SMT Update fails
 | Coalescing    | 179m |
 | SMT update    | ??   |
 ------------------------
+
+### Test Set
+
+Path: `/mnt/data/certificatestore/test`
+Contains:
+- 10 bundle files
+- 1000865 unique certificates
+
+
+#### InnoDB
+
+Ingestion (total)
+- InnoDB (keep): 4m 8s
+    - Note that "keep" triggers an error with many DB workers. Using 2 for this.
+- InnoDB (overwrite):
+    - 6m 2s (2 DB workers)
+    - 5m 21s (32 DB workers)
+
+Note that reenabling keys and coalescing run in a single thread.
+CPU bounds these steps, particularly coalescing, where there is not a lot of IO.
+
+The SMT update seems to be bounded by CPU as well.
+
 
 ### TODO
 1. Disable Mapserver systemd service

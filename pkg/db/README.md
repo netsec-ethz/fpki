@@ -66,3 +66,11 @@ to the table.
 6. Update the SMT with the material from (4), and using the domains in `dirty`.
 7. Store the `tree` table in DB.
 8. Truncate the `dirty` table.
+
+
+# Notes
+
+List last deadlock in mysql:
+```sql
+SHOW ENGINE INNODB STATUS \G
+```

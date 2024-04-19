@@ -125,7 +125,7 @@ func (p *CertificateProcessor) Resume(incoming chan *CertificateNode) {
 
 	// Create batches. Two workers are enough.
 	go func() {
-		const numWorkers = 2
+		const numWorkers = 1
 		wg := sync.WaitGroup{}
 		wg.Add(numWorkers)
 		for w := 0; w < numWorkers; w++ {
@@ -153,11 +153,12 @@ func (p *CertificateProcessor) Resume(incoming chan *CertificateNode) {
 			}()
 		}
 		wg.Wait()
-		// Leave the DB ready again.
-		p.ConsolidateDB()
 
 		// Stop printing the stats.
 		p.statsTicker.Stop()
+
+		// Leave the DB ready again.
+		p.ConsolidateDB()
 
 		// This pipeline is finished, signal it.
 		p.doneCh <- struct{}{}
@@ -203,9 +204,9 @@ func (p *CertificateProcessor) PrepareDB() {
 func (p *CertificateProcessor) ConsolidateDB() {
 	switch p.strategy {
 	case CertificateUpdateOverwrite:
-		p.reenableKeys("certs")
-		p.reenableKeys("dirty")
-		p.reenableKeys("domains")
+		p.reenableKeys("certs", "cert_id")
+		p.reenableKeys("dirty", "domain_id")
+		p.reenableKeys("domains", "domain_id")
 	}
 }
 
@@ -218,8 +219,9 @@ func (p *CertificateProcessor) disableKeys(tableName string) {
 	}
 }
 
-func (p *CertificateProcessor) reenableKeys(tableName string) {
-	fmt.Printf("Reenabling keys in DB.%s ...", tableName)
+func (p *CertificateProcessor) reenableKeys(tableName, primaryKeyName string) {
+	fmt.Printf("Reenabling keys in DB.%s at %s ...\n",
+		tableName, time.Now().Format(time.StampMilli))
 	str := fmt.Sprintf("DROP TABLE IF EXISTS %s_aux_tmp", tableName)
 	if _, err := p.conn.DB().Exec(str); err != nil {
 		panic(fmt.Errorf("reenabling keys on %s: %s", tableName, err))
@@ -228,11 +230,11 @@ func (p *CertificateProcessor) reenableKeys(tableName string) {
 	if _, err := p.conn.DB().Exec(str); err != nil {
 		panic(fmt.Errorf("reenabling keys on %s: %s", tableName, err))
 	}
-	str = fmt.Sprintf("ALTER TABLE %s_aux_tmp ADD PRIMARY KEY (domain_id)", tableName)
+	str = fmt.Sprintf("ALTER TABLE %s_aux_tmp ADD PRIMARY KEY (%s)", tableName, primaryKeyName)
 	if _, err := p.conn.DB().Exec(str); err != nil {
 		panic(fmt.Errorf("reenabling keys on %s: %s", tableName, err))
 	}
-	str = fmt.Sprintf("INSERT IGNORE INTO %s SELECT * FROM %[1]s", tableName)
+	str = fmt.Sprintf("INSERT IGNORE INTO %s_aux_tmp SELECT * FROM %[1]s", tableName)
 	if _, err := p.conn.DB().Exec(str); err != nil {
 		panic(fmt.Errorf("reenabling keys on %s: %s", tableName, err))
 	}

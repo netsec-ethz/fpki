@@ -31,7 +31,8 @@ func Connect(config *db.Configuration) (db.Conn, error) {
 	// This avoids routines creating connections to the DB and holding vast amounts of
 	// data (which impact the heap), and forcing to slow down the pipelines until the existing
 	// DB connections complete their work.
-	maxConnections := 8
+	// maxConnections := 8
+	maxConnections := 64 // deleteme ?
 	db.SetMaxOpenConns(maxConnections)
 
 	// Set the maximum idle connection time to a lower value than the mysql wait_timeout (8h) to

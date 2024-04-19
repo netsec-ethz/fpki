@@ -504,14 +504,14 @@ func updateSMTfromKeyValues(
 	if err != nil {
 		return err
 	}
-	fmt.Printf("smt.updateSMTfromDomains [%s]: keys and values obtained\n", time.Now().Format(time.Stamp))
+	fmt.Printf("smt.updateSMTfromKeyValues [%s]: keys and values obtained\n", time.Now().Format(time.Stamp))
 
 	// Update the tree.
 	_, err = smtTrie.Update(ctx, keys, values)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("smt.updateSMTfromDomains [%s]: in-memory tree updated\n", time.Now().Format(time.Stamp))
+	fmt.Printf("smt.updateSMTfromKeyValues [%s]: in-memory tree updated\n", time.Now().Format(time.Stamp))
 
 	// And update the tree in the DB.
 	err = smtTrie.Commit(ctx)
@@ -519,7 +519,7 @@ func updateSMTfromKeyValues(
 	if err != nil {
 		return err
 	}
-	fmt.Printf("smt.updateSMTfromDomains [%s]: tree committed to DB\n", time.Now().Format(time.Stamp))
+	fmt.Printf("smt.updateSMTfromKeyValues [%s]: tree committed to DB\n", time.Now().Format(time.Stamp))
 	return nil
 }
 

@@ -7,8 +7,6 @@ import (
 	"go.uber.org/atomic"
 )
 
-const initialNumberOfElements = 1000000 // 1 million
-
 // PresenceCache is, for now, just a set. It will consume memory unstoppably.
 type PresenceCache struct {
 	sets        [2]set          // A regular set and its "shadow" (always a copy)
@@ -20,11 +18,11 @@ type PresenceCache struct {
 
 type set map[common.SHA256Output]struct{}
 
-func NewPresenceCache() *PresenceCache {
+func NewPresenceCache(initialSize int) *PresenceCache {
 
 	sets := [...]set{
-		make(set, initialNumberOfElements),
-		make(set, initialNumberOfElements),
+		make(set, initialSize),
+		make(set, initialSize),
 	}
 	return &PresenceCache{
 		sets: sets,
@@ -39,7 +37,7 @@ func (c *PresenceCache) Contains(id *common.SHA256Output) bool {
 		idx := c.currentIdx.Load()
 		c.readerCount[idx].Inc()
 		if c.currentIdx.Load() != idx {
-			// The writting routine won the race: unroll increment and repeat operation.
+			// The writing routine won the race: unroll increment and repeat operation.
 			c.readerCount[idx].Dec()
 			continue
 		}

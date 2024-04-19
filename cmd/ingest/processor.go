@@ -51,7 +51,7 @@ func NewProcessor(conn db.Conn, certUpdateStrategy CertificateUpdateStrategy) *P
 	parsedCertCh := make(chan *CertificateNode)
 	p := &Processor{
 		Conn:              conn,
-		cache:             cache.NewNoCache(),
+		cache:             cache.NewPresenceCache(LruCacheSize),
 		now:               time.Now(),
 		incomingFileCh:    make(chan util.CsvFile),
 		certWithChainChan: make(chan *CertWithChainData),
@@ -231,18 +231,24 @@ func (p *Processor) ingestWithCSV(fileReader io.Reader) error {
 		if err != nil {
 			return err
 		}
-		certID := common.SHA256Hash32Bytes(rawBytes)
-		cert, err := ctx509.ParseCertificate(rawBytes)
-		if err != nil {
-			return err
-		}
-
 		// Update statistics.
 		p.certProcessor.ReadBytes.Add(int64(len(rawBytes)))
 		p.certProcessor.ReadCerts.Inc()
 		p.certProcessor.UncachedCerts.Inc()
 
+		// Get the leaf certificate ID.
+		certID := common.SHA256Hash32Bytes(rawBytes)
+		if p.cache.Contains(&certID) {
+			// For some reason this leaf certificate has been ingested already. Skip.
+			return nil
+		}
+		cert, err := ctx509.ParseCertificate(rawBytes)
+		if err != nil {
+			return err
+		}
+
 		if p.now.After(cert.NotAfter) {
+			// Don't ingest already expired certificates.
 			return nil
 		}
 
