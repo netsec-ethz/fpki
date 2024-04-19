@@ -113,6 +113,17 @@ Contains:
 - 1000865 unique certificates
 
 
+#### MyISAM
+
+Ingestion (total)
+- With overwrite using 32 DB workers: 5m 26s
+- With keep using 32 DB workers: 5m 10s
+
+Note that although MyISAM locks the table per operation, reenabling keys (and maybe coalescing)
+could be done in parallel for different tables. Coalescing is bounded by CPU usage (1 core).
+
+The SMT update seems to be bounded by CPU as well.
+
 #### InnoDB
 
 Ingestion (total)
