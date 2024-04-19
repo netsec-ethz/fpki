@@ -32,9 +32,8 @@ CREATE TABLE domains (
   domain_name VARCHAR(300) COLLATE ascii_bin DEFAULT NULL,
 
   PRIMARY KEY (domain_id),
-  INDEX domain_id (domain_id),
   INDEX domain_name (domain_name)
-) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
+) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
 EOF
   )
   echo "$CMD" | $MYSQLCMD
@@ -49,7 +48,7 @@ CREATE TABLE certs (
   payload LONGBLOB,
 
   PRIMARY KEY(cert_id)
-) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
+) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
 EOF
   )
   echo "$CMD" | $MYSQLCMD
@@ -63,7 +62,7 @@ CREATE TABLE domain_certs (
 
   PRIMARY KEY (domain_id,cert_id),
   INDEX domain_id (domain_id)
-) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
+) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
 EOF
   )
   echo "$CMD" | $MYSQLCMD
@@ -78,7 +77,7 @@ CREATE TABLE policies (
   payload LONGBLOB,
 
   PRIMARY KEY(policy_id)
-) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
+) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
 EOF
   )
   echo "$CMD" | $MYSQLCMD
@@ -92,7 +91,7 @@ CREATE TABLE domain_policies (
 
   PRIMARY KEY (domain_id,policy_id),
   INDEX domain_id (domain_id)
-) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
+) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
 EOF
   )
   echo "$CMD" | $MYSQLCMD
@@ -110,7 +109,7 @@ CREATE TABLE domain_payloads (
   policy_ids_id VARBINARY(32) DEFAULT NULL,     -- ID of cert_ids (above).
 
   PRIMARY KEY (domain_id)
-) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
+) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
 EOF
   )
   echo "$CMD" | $MYSQLCMD
@@ -122,7 +121,7 @@ CREATE TABLE dirty (
   domain_id VARBINARY(32) NOT NULL,
 
   PRIMARY KEY (domain_id)
-) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
+) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
 EOF
   )
   echo "$CMD" | $MYSQLCMD
@@ -135,7 +134,7 @@ CREATE TABLE root (
 
     -- constraints to ensure that only a single root value exists at any time by having a single possible value for the primary key
     single_row_pk char(25) NOT NULL PRIMARY KEY DEFAULT 'PK_RestrictToOneRootValue' CHECK (single_row_pk='PK_RestrictToOneRootValue')
-) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
+) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
 EOF
   )
   echo "$CMD" | $MYSQLCMD
@@ -150,7 +149,7 @@ CREATE TABLE ctlog_server_last_status (
   sth BLOB,
 
   PRIMARY KEY (url_hash)
-) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
+) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
 EOF
   )
   echo "$CMD" | $MYSQLCMD
@@ -165,7 +164,7 @@ CREATE TABLE tree (
 
   PRIMARY KEY (id),
   UNIQUE KEY key_UNIQUE (key32)
-) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
+) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
 EOF
   )
   echo "$CMD" | $MYSQLCMD
