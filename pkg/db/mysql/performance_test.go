@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/binary"
+	"encoding/csv"
 	"fmt"
 	"math/rand"
 	"os"
@@ -22,18 +23,16 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
 )
 
-// TestInsertPerformance tests the insert performance using different approaches, in articuno.
-// With MyISAM we finish the 5M certs in 100s
-// With InnoDB it takes > 400s
+// TestInsertPerformance tests the insert performance using different approaches, in articuno:
+// TestInsertPerformance/MyISAM (58.31s)
+// TestInsertPerformance/InnoDB (54.51s)
 func TestInsertPerformance(t *testing.T) {
-	// ctx, cancelF := context.WithTimeout(context.Background(), 200*time.Second)
 	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancelF()
 
 	// Configure a test DB.
 	config, removeF := testdb.ConfigureTestDB(t)
-	// defer removeF()
-	_ = removeF
+	defer removeF()
 
 	// Connect to the DB.
 	conn := testdb.Connect(t, config)
@@ -62,14 +61,13 @@ func TestInsertPerformance(t *testing.T) {
 	rand.Shuffle(len(allCertIDs), func(i, j int) {
 		allCertIDs[i], allCertIDs[j] = allCertIDs[j], allCertIDs[i]
 	})
-	t.Log("Mock data ready in memory")
-
-	// Function that inserts certificates and payload.
 	mockExp := time.Unix(42, 0)
 	mockPayload := make([]byte, PayloadSize)
+	t.Log("Mock data ready in memory")
 
 	// Note that InnoDB works much faster with insertions with AUTO INCREMENT.
 	t.Run("InnoDB", func(t *testing.T) {
+		tests.SkipExpensiveTest(t)
 		// Create a certs-like table using MyISAM.
 		str := "DROP TABLE IF EXISTS `insert_test`"
 		_, err := conn.DB().ExecContext(ctx, str)
@@ -104,7 +102,6 @@ func TestInsertPerformance(t *testing.T) {
 		require.NoError(t, err)
 
 		callFuncPerIDBatch(NWorkers, BatchSize, allCertIDs, func(workerID int, IDs []*common.SHA256Output) {
-			// insertCerts(ctx, t, conns[workerID], "insert_test", IDs, mockExp, mockPayload)
 			insertCerts(ctx, t, conn, "insert_test", IDs, mockExp, mockPayload)
 		})
 
@@ -115,25 +112,6 @@ func TestInsertPerformance(t *testing.T) {
 		str = "SET unique_checks=1;"
 		_, err = conn.DB().ExecContext(ctx, str)
 		require.NoError(t, err)
-
-		// //
-		// // Reconstruct the unique index.
-		// str = "CREATE TABLE insert_test_aux_tmp LIKE insert_test;"
-		// _, err = conn.DB().ExecContext(ctx, str)
-		// require.NoError(t, err)
-		// str = "ALTER TABLE certs ADD UNIQUE INDEX(cert_id);"
-		// _, err = conn.DB().ExecContext(ctx, str)
-		// require.NoError(t, err)
-		// str = "INSERT IGNORE INTO insert_test_aux_tmp SELECT * FROM insert_test"
-		// _, err = conn.DB().ExecContext(ctx, str)
-		// require.NoError(t, err)
-		// str = "DROP TABLE insert_test"
-		// _, err = conn.DB().ExecContext(ctx, str)
-		// require.NoError(t, err)
-		// str = "ALTER TABLE insert_test_aux_tmp RENAME TO insert_test"
-		// _, err = conn.DB().ExecContext(ctx, str)
-		// require.NoError(t, err)
-		// //
 
 		str = "ALTER INSTANCE DISABLE INNODB REDO_LOG;"
 		_, err = conn.DB().ExecContext(ctx, str)
@@ -180,7 +158,8 @@ func TestInsertPerformance(t *testing.T) {
 		err = f.Close()
 		require.NoError(t, err)
 	})
-	t.Run("save_data_to_csv", func(t *testing.T) {
+	t.Run("save_table_to_csv", func(t *testing.T) {
+		tests.SkipExpensiveTest(t)
 		str := "DROP TABLE IF EXISTS `insert_test`"
 		_, err := conn.DB().ExecContext(ctx, str)
 		require.NoError(t, err)
@@ -229,6 +208,196 @@ func TestInsertPerformance(t *testing.T) {
 			`payload = FROM_BASE64(@payload);`
 		_, err = conn.DB().ExecContext(ctx, str, CSVFilePath)
 		require.NoError(t, err)
+	})
+}
+
+// TestPartitionInsert tests the performance of inserting data into a certs-like table,
+// using different approaches, in particular, partitioning the CSV file and table as well.
+// Preliminary results: (running in local computer, with -short, that is, 800K certs)
+// TestPartitionInsert/load_data/myisam (13.25s)
+// TestPartitionInsert/load_data/innodb/single (16.68s)
+// TestPartitionInsert/load_data/innodb/parallel/load (7.90s)
+//
+// Results at articuno (with -short):
+// TestPartitionInsert/load_data/myisam (11.56s)
+// TestPartitionInsert/load_data/innodb/single (22.29s)
+// TestPartitionInsert/load_data/innodb/parallel/load (8.37s)
+
+// Results at articuno long test:
+// TestPartitionInsert/load_data/innodb/parallel/load (57.92s)
+func TestPartitionInsert(t *testing.T) {
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancelF()
+
+	// Configure a test DB.
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	// Connect to the DB.
+	conn := testdb.Connect(t, config)
+	defer conn.Close()
+
+	exec := func(t *testing.T, query string, args ...any) {
+		_, err := conn.DB().ExecContext(ctx, query, args...)
+		require.NoError(t, err)
+	}
+
+	// Create lots of data to insert into the `certs` table.
+	// NCerts := 10_000_000
+	NCerts := 5_000_000
+	BatchSize := 10_000
+	NWorkers := 64
+	if testing.Short() {
+		// Make the test much shorter.
+		BatchSize = 10_000
+		NWorkers = 8
+		NCerts = 10 * NWorkers * BatchSize
+	}
+	require.Equal(t, 0, NCerts%BatchSize, "there is an error in the test setup. NCerts must be a "+
+		"multiple of BatchSize, modify either of them")
+	// From xenon2025h1 we have an average of 1100b/cert
+	PayloadSize := 1_100
+	allCertIDs := make([]*common.SHA256Output, NCerts)
+	for i := 0; i < NCerts; i++ {
+		allCertIDs[i] = new(common.SHA256Output)
+		binary.LittleEndian.PutUint64(allCertIDs[i][:], uint64(i))
+	}
+	rand.Shuffle(len(allCertIDs), func(i, j int) {
+		allCertIDs[i], allCertIDs[j] = allCertIDs[j], allCertIDs[i]
+	})
+	mockExp := time.Unix(42, 0)
+	mockPayload := make([]byte, PayloadSize)
+	t.Log("Mock data ready in memory")
+
+	CSVFilePath := "/mnt/data/tmp/insert_test_data.dat"
+	t.Run("create_data_to_csv", func(t *testing.T) {
+		// Create the file manually.
+		f, err := os.Create(CSVFilePath)
+		require.NoError(t, err)
+		w := bufio.NewWriterSize(f, 1024*1024*1024) // 1GB buffer
+		exp := mockExp.Format(time.DateTime)
+		payload := base64.StdEncoding.EncodeToString(mockPayload)
+		for _, id := range allCertIDs {
+			id := base64.StdEncoding.EncodeToString(id[:])
+			_, err := w.WriteString(fmt.Sprintf("\"%s\",\"%s\",\"%s\"\n", id, exp, payload))
+			require.NoError(t, err)
+		}
+		err = w.Flush()
+		require.NoError(t, err)
+		err = f.Close()
+		require.NoError(t, err)
+	})
+
+	// Load a file directly.
+	t.Run("load_data", func(t *testing.T) {
+		dropTable := func(t *testing.T) {
+			exec(t, "DROP TABLE IF EXISTS `insert_test`")
+		}
+		loadCSV := func(t *testing.T, filepath string) {
+			exec(t, `LOAD DATA CONCURRENT INFILE ? IGNORE INTO TABLE insert_test `+
+				`FIELDS TERMINATED BY ',' ENCLOSED BY '"' LINES TERMINATED BY '\n' `+
+				`(@cert_id,expiration,@payload) SET `+
+				`cert_id = FROM_BASE64(@cert_id),`+
+				`payload = FROM_BASE64(@payload);`, filepath)
+		}
+		t.Run("myisam", func(t *testing.T) {
+			dropTable(t)
+			exec(t, `CREATE TABLE insert_test (
+				cert_id VARBINARY(32) NOT NULL,
+				parent_id VARBINARY(32) DEFAULT NULL,
+				expiration DATETIME NOT NULL,
+				payload LONGBLOB,
+				PRIMARY KEY(cert_id)
+			) ENGINE=MyISAM CHARSET=binary COLLATE=binary;`)
+			loadCSV(t, CSVFilePath)
+		})
+		t.Run("innodb", func(t *testing.T) {
+			dropTable(t)
+			exec(t, `CREATE TABLE insert_test (
+				auto_id BIGINT NOT NULL AUTO_INCREMENT,
+				cert_id VARBINARY(32) NOT NULL,
+				parent_id VARBINARY(32) DEFAULT NULL,
+				expiration DATETIME NOT NULL,
+				payload LONGBLOB,
+				PRIMARY KEY(auto_id),
+				UNIQUE KEY(cert_id)
+			) ENGINE=InnoDB CHARSET=binary COLLATE=binary;`)
+
+			t.Run("single", func(t *testing.T) {
+				// // Before loading the CSV, disable keys.
+				// exec(t, "SET autocommit=0")
+				// exec(t, "SET unique_checks=0")
+				// exec(t, "ALTER INSTANCE DISABLE INNODB REDO_LOG;")
+				loadCSV(t, CSVFilePath)
+				// exec(t, "ALTER INSTANCE ENABLE INNODB REDO_LOG;")
+				// exec(t, "SET unique_checks=1")
+				// exec(t, "SET autocommit=1")
+			})
+			t.Run("parallel", func(t *testing.T) {
+				NWorkers := NWorkers // Use the same value
+				chunkFilePath := func(workerIndex int) string {
+					return fmt.Sprintf("%s.%d", CSVFilePath, workerIndex+1)
+				}
+				t.Run("split_file", func(t *testing.T) {
+					// We have NCert records in the csv, read them all
+					f, err := os.Open(CSVFilePath)
+					require.NoError(t, err)
+					defer f.Close()
+					r := csv.NewReader(f)
+					records, err := r.ReadAll()
+					require.NoError(t, err)
+					require.Equal(t, NCerts, len(records))
+					// Split in NWorkers chunks (spread remainder)
+					chunkSize := NCerts / NWorkers
+					createChunksFunc := func(begin, end int) {
+						chunkSize := chunkSize
+						if begin == 0 && NCerts%NWorkers != 0 {
+							// Spread remainder (e.g. 32 bytes among 10 workers -> 4 bytes for 2
+							// first workers, 3 for the rest).
+							chunkSize = chunkSize + 1
+						}
+						for w := begin; w < end; w++ {
+							s := w * chunkSize
+							e := (w + 1) * chunkSize
+							records := records[s:e]
+
+							chunkFile, err := os.Create(chunkFilePath(w))
+							require.NoError(t, err)
+							chunkWriter := csv.NewWriter(chunkFile)
+							err = chunkWriter.WriteAll(records)
+							fmt.Printf("[%2d] wrote %d records\n", w, len(records))
+							require.NoError(t, err)
+							chunkWriter.Flush()
+							err = chunkFile.Close()
+							require.NoError(t, err)
+						}
+					}
+					createChunksFunc(0, NCerts%NWorkers)
+					createChunksFunc(NCerts%NWorkers, NWorkers)
+				})
+				t.Run("load", func(t *testing.T) {
+					// exec(t, "SET unique_checks=0")
+					// exec(t, "SET autocommit=0")
+					// exec(t, "ALTER INSTANCE DISABLE INNODB REDO_LOG;")
+
+					// There are NWorkers files. Load them in parallel.
+					wg := sync.WaitGroup{}
+					wg.Add(NWorkers)
+					for w := 0; w < NWorkers; w++ {
+						w := w
+						go func() {
+							defer wg.Done()
+
+							loadCSV(t, chunkFilePath(w))
+						}()
+					}
+					wg.Wait()
+					// exec(t, "ALTER INSTANCE ENABLE INNODB REDO_LOG;")
+					// exec(t, "SET unique_checks=1")
+					// exec(t, "SET autocommit=1")
+				})
+			})
+		})
 	})
 }
 
