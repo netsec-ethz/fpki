@@ -14,6 +14,7 @@ import (
 	"github.com/google/certificate-transparency-go/client"
 	"github.com/google/certificate-transparency-go/jsonclient"
 	ctx509 "github.com/google/certificate-transparency-go/x509"
+	"github.com/netsec-ethz/fpki/pkg/tests"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
@@ -275,7 +276,7 @@ func TestTimeoutLogFetcher(t *testing.T) {
 }
 
 func TestSpeed(t *testing.T) {
-	t.Skip("Enable to measure speed of the log fetcher")
+	tests.SkipExpensiveTest(t)
 
 	ctx, cancelF := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancelF()
