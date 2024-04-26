@@ -74,3 +74,20 @@ List last deadlock in mysql:
 ```sql
 SHOW ENGINE INNODB STATUS \G
 ```
+
+In Ubuntu, in order to be able to read files (necessary for LOAD DATA INFILE), we have to modify
+the apparmor configuration for the mysql daemon.
+
+```bash
+echo "# Site-specific additions and overrides for usr.sbin.mysqld.
+# For more details, please see /etc/apparmor.d/local/README.
+
+# Allow MySQL to read files from /tmp/ and /mnt/data/tmp/
+  /tmp/ r,
+  /tmp/** rw,
+  /mnt/data/tmp/ r,
+  /mnt/data/tmp/**  rw,
+" | sudo tee /etc/apparmor.d/local/usr.sbin.mysqld
+sudo sed -i 's/#include <local\/usr.sbin.mysqld>/include <local\/usr.sbin.mysqld>/' /etc/apparmor.d/usr.sbin.mysqld
+sudo systemctl restart apparmor.service
+```

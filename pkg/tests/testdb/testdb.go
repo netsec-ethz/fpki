@@ -38,7 +38,7 @@ func ConfigureTestDB(t tests.T) (*db.Configuration, func()) {
 
 	// Return the configuration and removal function.
 	removeFunc := func() {
-		ctx, cancelF := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancelF := context.WithTimeout(context.Background(), 30*time.Second)
 		err = removeTestDB(ctx, t, config)
 		require.NoError(t, err)
 		cancelF()
