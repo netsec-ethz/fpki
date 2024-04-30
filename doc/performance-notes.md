@@ -1,3 +1,60 @@
+# RAID0 Creation in Articuno
+
+Optimal parameters for the RAID and filesystem appear to be critical.
+References:
+- https://erikugel.wordpress.com/tag/raid0/
+- https://planet.mysql.com/entry/?id=29095
+
+Chosen parameters for RAID:
+- Stripe unit: 4Kb
+- RAID0 stripe size (chunk): 4x4Kb = 64Kb
+
+```bash
+# Create RAID0. If a RAID exists already, follow steps to deactivate and erase superblocks.
+sudo mdadm --create /dev/md0  --level=0 --chunk=64 --raid-devices=4 /dev/nvme[0123]n1
+# Should have output:
+#mdadm: Defaulting to version 1.2 metadata
+#mdadm: array /dev/md0 started.
+
+# Check RAID status:
+cat /proc/mdstat
+# Should have output:
+#Personalities : [raid0] [linear] [multipath] [raid1] [raid6] [raid5] [raid4] [raid10]
+#md0 : active raid0 nvme3n1[3] nvme2n1[2] nvme1n1[1] nvme0n1[0]
+#      7813529856 blocks super 1.2 64k chunks
+#
+#unused devices: <none>
+
+# Save raid configuration:
+sudo mdadm --detail --scan | sudo tee -a /etc/mdadm/mdadm.conf
+
+# Update initram to make raid available at early boot:
+sudo update-initramfs -u
+```
+
+
+## Filesystem
+
+Option between ext4 and XFS. Since (from benchmarks for MySQL) XFS is only just a bit faster, choose ext4.
+
+```bash
+# Filesystem parameters:
+sudo mkfs.ext4 -b 4096 -E stride=16,stripe-width=64 /dev/md0
+
+# Tune journal for fastest write:
+sudo tune2fs -O has_journal -o journal_data_writeback /dev/md0
+
+# Turn on directory indexing:
+sudo tune2fs -O dir_index /dev/md0
+# And optimize directories:
+sudo e2fsck -D /dev/md0
+```
+
+Add the following entry to `fstab`:
+```
+/dev/md0         /                ext4        noatime,nodiratime,data=writeback,stripe=64,barrier=0,errors=remount-ro      1   1
+```
+
 # Performance of Mapserver in our systems (Articuno)
 
 Two modes of operation
@@ -106,6 +163,13 @@ SMT Update fails
 ------------------------
 
 ### Test Set
+
+Create with:
+```bash
+mkdir -p /mnt/data/certificatestore/test/bundled
+FILES=$(ls /mnt/data/certificatestore/https\:__ct.googleapis.com_logs_eu1_xenon2025h1/bundled/  | sort -n | head -n 10)
+echo cp $FILES /mnt/data/certificatestore/test/bundled
+```
 
 Path: `/mnt/data/certificatestore/test`
 Contains:

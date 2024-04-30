@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
 	"github.com/netsec-ethz/fpki/pkg/tests"
+	"github.com/netsec-ethz/fpki/pkg/tests/random"
 	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
 )
 
@@ -216,22 +218,32 @@ func TestInsertPerformance(t *testing.T) {
 // Preliminary results: (running in local computer, with -short, that is, 800K certs)
 // TestPartitionInsert/load_data/myisam (13.25s)
 // TestPartitionInsert/load_data/innodb/single (16.68s)
-// TestPartitionInsert/load_data/innodb/parallel/load (7.90s)
+// TestPartitionInsert/load_data/innodb/parallel/load (10.81s)
 //
 // Results at articuno (with -short):
 // TestPartitionInsert/load_data/myisam (11.56s)
 // TestPartitionInsert/load_data/innodb/single (22.29s)
 // TestPartitionInsert/load_data/innodb/parallel/load (8.37s)
-
+//
 // Results at articuno long test:
 // TestPartitionInsert/load_data/innodb/parallel/load (57.92s)
+//
+// Results at articuno, long test with innodb_page_size = 64K :
+// TestPartitionInsert/load_data/innodb/parallel/load (29.05s)
+//
+// Results at articuno, long test with innodb_page_size = 64K and new RAID0 chunk of 64Kb:
+// TestPartitionInsert/load_data/myisam (78.28s)
+// TestPartitionInsert/load_data/innodb/parallel/load_0_partitions (16.99s)
+// TestPartitionInsert/load_data/innodb/parallel/partitioned/16 (12.32s)
+// TestPartitionInsert/load_data/innodb/parallel/partitioned/32 (11.82s)
 func TestPartitionInsert(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancelF()
 
 	// Configure a test DB.
 	config, removeF := testdb.ConfigureTestDB(t)
-	defer removeF()
+	// defer removeF()
+	_ = removeF
 
 	// Connect to the DB.
 	conn := testdb.Connect(t, config)
@@ -242,35 +254,38 @@ func TestPartitionInsert(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	// Create lots of data to insert into the `certs` table.
 	// NCerts := 10_000_000
 	NCerts := 5_000_000
 	BatchSize := 10_000
 	NWorkers := 64
 	if testing.Short() {
-		// Make the test much shorter.
+		// Make the test much shorter, 80K certs only.
 		BatchSize = 10_000
 		NWorkers = 8
 		NCerts = 10 * NWorkers * BatchSize
 	}
 	require.Equal(t, 0, NCerts%BatchSize, "there is an error in the test setup. NCerts must be a "+
 		"multiple of BatchSize, modify either of them")
-	// From xenon2025h1 we have an average of 1100b/cert
-	PayloadSize := 1_100
-	allCertIDs := make([]*common.SHA256Output, NCerts)
-	for i := 0; i < NCerts; i++ {
-		allCertIDs[i] = new(common.SHA256Output)
-		binary.LittleEndian.PutUint64(allCertIDs[i][:], uint64(i))
-	}
-	rand.Shuffle(len(allCertIDs), func(i, j int) {
-		allCertIDs[i], allCertIDs[j] = allCertIDs[j], allCertIDs[i]
-	})
-	mockExp := time.Unix(42, 0)
-	mockPayload := make([]byte, PayloadSize)
-	t.Log("Mock data ready in memory")
 
 	CSVFilePath := "/mnt/data/tmp/insert_test_data.dat"
 	t.Run("create_data_to_csv", func(t *testing.T) {
+		// Create lots of data to insert into the `certs` table.
+		// From xenon2025h1 we have an average of 1100b/cert
+		PayloadSize := 1_100
+		allCertIDs := make([]*common.SHA256Output, NCerts)
+		for i := 0; i < NCerts; i++ {
+			allCertIDs[i] = new(common.SHA256Output)
+			// Random, valid IDs.
+			copy(allCertIDs[i][:], random.RandomBytesForTest(t, 32))
+		}
+		// Shuffle the order of certificates.
+		rand.Shuffle(len(allCertIDs), func(i, j int) {
+			allCertIDs[i], allCertIDs[j] = allCertIDs[j], allCertIDs[i]
+		})
+		mockExp := time.Unix(42, 0)
+		mockPayload := make([]byte, PayloadSize)
+		t.Log("Mock data ready in memory")
+
 		// Create the file manually.
 		f, err := os.Create(CSVFilePath)
 		require.NoError(t, err)
@@ -325,13 +340,9 @@ func TestPartitionInsert(t *testing.T) {
 
 			t.Run("single", func(t *testing.T) {
 				// // Before loading the CSV, disable keys.
-				// exec(t, "SET autocommit=0")
-				// exec(t, "SET unique_checks=0")
-				// exec(t, "ALTER INSTANCE DISABLE INNODB REDO_LOG;")
+				// For better performance with InnoDB while loading bulk data, TAL:
+				// https://dev.mysql.com/doc/refman/8.3/en/optimizing-innodb-bulk-data-loading.html
 				loadCSV(t, CSVFilePath)
-				// exec(t, "ALTER INSTANCE ENABLE INNODB REDO_LOG;")
-				// exec(t, "SET unique_checks=1")
-				// exec(t, "SET autocommit=1")
 			})
 			t.Run("parallel", func(t *testing.T) {
 				NWorkers := NWorkers // Use the same value
@@ -375,11 +386,7 @@ func TestPartitionInsert(t *testing.T) {
 					createChunksFunc(0, NCerts%NWorkers)
 					createChunksFunc(NCerts%NWorkers, NWorkers)
 				})
-				t.Run("load", func(t *testing.T) {
-					// exec(t, "SET unique_checks=0")
-					// exec(t, "SET autocommit=0")
-					// exec(t, "ALTER INSTANCE DISABLE INNODB REDO_LOG;")
-
+				t.Run("load_0_partitions", func(t *testing.T) {
 					// There are NWorkers files. Load them in parallel.
 					wg := sync.WaitGroup{}
 					wg.Add(NWorkers)
@@ -392,9 +399,68 @@ func TestPartitionInsert(t *testing.T) {
 						}()
 					}
 					wg.Wait()
-					// exec(t, "ALTER INSTANCE ENABLE INNODB REDO_LOG;")
-					// exec(t, "SET unique_checks=1")
-					// exec(t, "SET autocommit=1")
+				})
+				t.Run("partitioned", func(t *testing.T) {
+					createTable := func(t *testing.T, numPartitions int) {
+						str := "CREATE TABLE insert_test ( " +
+							"cert_id VARBINARY(32) NOT NULL," +
+							"parent_id VARBINARY(32) DEFAULT NULL," +
+							"expiration DATETIME NOT NULL," +
+							"payload LONGBLOB," +
+							"PRIMARY KEY(cert_id)" +
+							") ENGINE=InnoDB CHARSET=binary COLLATE=binary " +
+							"partition by range columns (cert_id) (\n" + "%s" + "\n);"
+
+						perPartition := make([]string, numPartitions)
+						// Each partition splits the range in 256 / numParts
+						for i := 0; i < numPartitions; i++ {
+							perPartition[i] =
+								fmt.Sprintf("partition p%02d values less than (x'%02x%s')",
+									i,
+									(i+1)*256/numPartitions,
+									strings.Repeat("00", 31))
+						}
+						perPartition[numPartitions-1] =
+							fmt.Sprintf("partition p%d values less than (maxvalue)", numPartitions-1)
+						str = fmt.Sprintf(str, strings.Join(perPartition, ",\n"))
+
+						fmt.Printf("%s\n\n", str) // deleteme
+
+						dropTable(t)
+						exec(t, str)
+					}
+					runPartitionTest := func(t *testing.T, numPartitions int) {
+						// Recreate table, but with partitions.
+						createTable(t, numPartitions)
+
+						// There are NWorkers files. Load them in parallel.
+						wg := sync.WaitGroup{}
+						wg.Add(NWorkers)
+						for w := 0; w < NWorkers; w++ {
+							w := w
+							go func() {
+								defer wg.Done()
+
+								loadCSV(t, chunkFilePath(w))
+							}()
+						}
+						wg.Wait()
+					}
+					t.Run("2", func(t *testing.T) {
+						runPartitionTest(t, 2)
+					})
+					t.Run("4", func(t *testing.T) {
+						runPartitionTest(t, 4)
+					})
+					t.Run("8", func(t *testing.T) {
+						runPartitionTest(t, 8)
+					})
+					t.Run("16", func(t *testing.T) {
+						runPartitionTest(t, 16)
+					})
+					t.Run("32", func(t *testing.T) {
+						runPartitionTest(t, 32)
+					})
 				})
 			})
 		})
