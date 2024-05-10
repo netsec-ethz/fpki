@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -215,35 +216,55 @@ func TestInsertPerformance(t *testing.T) {
 
 // TestPartitionInsert tests the performance of inserting data into a certs-like table,
 // using different approaches, in particular, partitioning the CSV file and table as well.
+//
 // Preliminary results: (running in local computer, with -short, that is, 800K certs)
-// TestPartitionInsert/load_data/myisam (13.25s)
-// TestPartitionInsert/load_data/innodb/single (16.68s)
-// TestPartitionInsert/load_data/innodb/parallel/load (10.81s)
+// TestPartitionInsert/load_data/myisam (13.94s)
+// TestPartitionInsert/load_data/innodb/single (21.36s)
+// TestPartitionInsert/load_data/innodb/parallel/load_0_partitions (15.30s)
 //
 // Results at articuno (with -short):
 // TestPartitionInsert/load_data/myisam (11.56s)
-// TestPartitionInsert/load_data/innodb/single (22.29s)
-// TestPartitionInsert/load_data/innodb/parallel/load (8.37s)
+// TestPartitionInsert/load_data/innodb/single (14.15s)
+// TestPartitionInsert/load_data/innodb/parallel/load_0_partitions (3.92s)
 //
+// ------------------------  [OBSOLETE] --------------------------
 // Results at articuno long test:
-// TestPartitionInsert/load_data/innodb/parallel/load (57.92s)
+// TestPartitionInsert/load_data/innodb/parallel/load_0_partitions (57.92s)
 //
-// Results at articuno, long test with innodb_page_size = 64K :
-// TestPartitionInsert/load_data/innodb/parallel/load (29.05s)
+// ------------------------  [OBSOLETE] --------------------------
+// Results at articuno, long test with innodb_page_size = 64K:
+// TestPartitionInsert/load_data/innodb/parallel/load_0_partitions (29.05s)
 //
+// ------------------------  [CURRENT STATUS] --------------------------
 // Results at articuno, long test with innodb_page_size = 64K and new RAID0 chunk of 64Kb:
-// TestPartitionInsert/load_data/myisam (78.28s)
-// TestPartitionInsert/load_data/innodb/parallel/load_0_partitions (16.99s)
-// TestPartitionInsert/load_data/innodb/parallel/partitioned/16 (12.32s)
-// TestPartitionInsert/load_data/innodb/parallel/partitioned/32 (11.82s)
+// TestPartitionInsert/load_data/myisam (77.64s)
+// TestPartitionInsert/load_data/innodb/single (89.92s)
+// TestPartitionInsert/load_data/innodb/parallel/load_0_partitions (17.03s)
+// TestPartitionInsert/load_data/innodb/parallel/partitioned/16 (13.46s)
+// TestPartitionInsert/load_data/innodb/parallel/partitioned/32 (12.33s)
+// TestPartitionInsert/load_data/innodb/parallel/partitioned/64 (11.96s)
+// TestPartitionInsert/load_data/innodb/parallel/partitioned/sorted16 (13.46s)
+// TestPartitionInsert/load_data/innodb/parallel/partitioned/sorted32 (11.28s)
+// TestPartitionInsert/load_data/innodb/parallel/partitioned/sorted64 (11.57s)
+//
+// Summary:
+// - The page size was extremely important.
+// - Reconfiguring the RAID with an appropriate chunk of 64Kb was extremely important.
+// - Inserting in parallel with InnoDB is faster than MyISAM
+// - Partitioning does not hurt, even with a large number of them.
+// - Sorting the entries, so that each thread always cares about the same range, helps performance
+// by a very small amount. We can use sorting to assign IDs to different workers, to avoid
+// dead-locks for large multi-inserts.
+//
+// We decide to use 32 partitions, sorted data, as there is not much benefit going
+// higher number of partitions than that.
 func TestPartitionInsert(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancelF()
 
 	// Configure a test DB.
 	config, removeF := testdb.ConfigureTestDB(t)
-	// defer removeF()
-	_ = removeF
+	defer removeF()
 
 	// Connect to the DB.
 	conn := testdb.Connect(t, config)
@@ -349,7 +370,12 @@ func TestPartitionInsert(t *testing.T) {
 				chunkFilePath := func(workerIndex int) string {
 					return fmt.Sprintf("%s.%d", CSVFilePath, workerIndex+1)
 				}
-				t.Run("split_file", func(t *testing.T) {
+				chunkFilePathSorted := func(workerIndex int) string {
+					return fmt.Sprintf("%s.sorted.%d", CSVFilePath, workerIndex+1)
+				}
+
+				// Function to split all the data in N CSV files.
+				splitFile := func(t *testing.T, N int) {
 					// We have NCert records in the csv, read them all
 					f, err := os.Open(CSVFilePath)
 					require.NoError(t, err)
@@ -358,11 +384,11 @@ func TestPartitionInsert(t *testing.T) {
 					records, err := r.ReadAll()
 					require.NoError(t, err)
 					require.Equal(t, NCerts, len(records))
-					// Split in NWorkers chunks (spread remainder)
-					chunkSize := NCerts / NWorkers
+					// Split in N chunks (spread remainder)
+					chunkSize := NCerts / N
 					createChunksFunc := func(begin, end int) {
 						chunkSize := chunkSize
-						if begin == 0 && NCerts%NWorkers != 0 {
+						if begin == 0 && NCerts%N != 0 {
 							// Spread remainder (e.g. 32 bytes among 10 workers -> 4 bytes for 2
 							// first workers, 3 for the rest).
 							chunkSize = chunkSize + 1
@@ -383,22 +409,92 @@ func TestPartitionInsert(t *testing.T) {
 							require.NoError(t, err)
 						}
 					}
-					createChunksFunc(0, NCerts%NWorkers)
-					createChunksFunc(NCerts%NWorkers, NWorkers)
-				})
-				t.Run("load_0_partitions", func(t *testing.T) {
-					// There are NWorkers files. Load them in parallel.
-					wg := sync.WaitGroup{}
-					wg.Add(NWorkers)
-					for w := 0; w < NWorkers; w++ {
-						w := w
-						go func() {
-							defer wg.Done()
+					createChunksFunc(0, NCerts%N)
+					createChunksFunc(NCerts%N, N)
+				}
 
-							loadCSV(t, chunkFilePath(w))
-						}()
+				// Function to split all the data in N CSV files, where each file contains
+				// records sorted by cert_id, so that for file w all cert IDs are in the
+				// range 256*w/N .
+				splitFileSorted := func(t *testing.T, N int) {
+					// We have NCert records in the csv, read them all
+					f, err := os.Open(CSVFilePath)
+					require.NoError(t, err)
+					defer f.Close()
+					r := csv.NewReader(f)
+					records, err := r.ReadAll()
+					require.NoError(t, err)
+					require.Equal(t, NCerts, len(records))
+					// Parse the cert ID and store everything as it was in a new type.
+					type Parsed struct {
+						id     uint
+						fields []string
 					}
-					wg.Wait()
+					// parsed has the same size as records.
+					parsed := make([]Parsed, len(records))
+					for i, r := range records {
+						// First column is cert_id, in base64.
+						id, err := base64.StdEncoding.DecodeString(r[0])
+						require.NoError(t, err)
+						parsed[i].id = uint(id[0])
+						parsed[i].fields = r
+					}
+					// Sort them according to cert_id.
+					sort.Slice(parsed, func(i, j int) bool {
+						return parsed[i].id < parsed[j].id
+					})
+
+					// Split in N chunks. Each chunk takes all records from last index
+					// until 256*w/N , 1<=w<=N .
+					for w := 1; w <= N; w++ {
+						chunkFile, err := os.Create(chunkFilePathSorted(w - 1))
+						require.NoError(t, err)
+						chunkWriter := csv.NewWriter(chunkFile)
+						// This worker takes all values if less than nextValue.
+						nextValue := uint(256 * w / N)
+						for i := 0; i < len(parsed); i++ {
+							r := parsed[i]
+
+							// Find out if this worker should take the record or not.
+							if r.id < nextValue {
+								err = chunkWriter.Write(r.fields)
+								require.NoError(t, err)
+							} else {
+								// Report progress.
+								fmt.Printf("[%2d] wrote %d records [:%d]\n", w, i, nextValue)
+								// Jump to the next worker.
+								parsed = parsed[i:]
+								break
+							}
+						}
+						// We are done with this worker.
+						chunkWriter.Flush()
+						err = chunkFile.Close()
+						require.NoError(t, err)
+					}
+				}
+
+				t.Run("load_0_partitions", func(t *testing.T) {
+					splitFile(t, NWorkers)
+					t.Run("load_only", func(t *testing.T) {
+						// There are NWorkers files. Load them in parallel.
+						wg := sync.WaitGroup{}
+						wg.Add(NWorkers)
+						for w := 0; w < NWorkers; w++ {
+							w := w
+							go func() {
+								defer wg.Done()
+
+								loadCSV(t, chunkFilePath(w))
+							}()
+						}
+						wg.Wait()
+					})
+					// Remove leftover CSV files.
+					for w := 0; w < NWorkers; w++ {
+						err := os.Remove(chunkFilePath(w))
+						require.NoError(t, err)
+					}
 				})
 				t.Run("partitioned", func(t *testing.T) {
 					createTable := func(t *testing.T, numPartitions int) {
@@ -429,23 +525,39 @@ func TestPartitionInsert(t *testing.T) {
 						dropTable(t)
 						exec(t, str)
 					}
-					runPartitionTest := func(t *testing.T, numPartitions int) {
+
+					runWithCsvFile := func(t *testing.T, N int, fName func(int) string) {
 						// Recreate table, but with partitions.
-						createTable(t, numPartitions)
-
-						// There are NWorkers files. Load them in parallel.
-						wg := sync.WaitGroup{}
-						wg.Add(NWorkers)
-						for w := 0; w < NWorkers; w++ {
-							w := w
-							go func() {
-								defer wg.Done()
-
-								loadCSV(t, chunkFilePath(w))
-							}()
+						createTable(t, N)
+						t.Run("load_only", func(t *testing.T) {
+							// There are N files. Load them in parallel.
+							wg := sync.WaitGroup{}
+							wg.Add(N)
+							for w := 0; w < N; w++ {
+								w := w
+								go func() {
+									defer wg.Done()
+									loadCSV(t, fName(w))
+								}()
+							}
+							wg.Wait()
+						})
+						// Remove leftover CSV files.
+						for w := 0; w < N; w++ {
+							err := os.Remove(fName(w))
+							require.NoError(t, err)
 						}
-						wg.Wait()
 					}
+
+					runPartitionTest := func(t *testing.T, numPartitions int) {
+						splitFile(t, numPartitions)
+						runWithCsvFile(t, numPartitions, chunkFilePath)
+					}
+					runSortedPartitionTest := func(t *testing.T, numPartitions int) {
+						splitFileSorted(t, numPartitions)
+						runWithCsvFile(t, numPartitions, chunkFilePathSorted)
+					}
+
 					t.Run("2", func(t *testing.T) {
 						runPartitionTest(t, 2)
 					})
@@ -460,6 +572,22 @@ func TestPartitionInsert(t *testing.T) {
 					})
 					t.Run("32", func(t *testing.T) {
 						runPartitionTest(t, 32)
+					})
+					t.Run("64", func(t *testing.T) {
+						runPartitionTest(t, 64)
+					})
+					// Sorted data tests.
+					t.Run("sorted8", func(t *testing.T) {
+						runSortedPartitionTest(t, 8)
+					})
+					t.Run("sorted16", func(t *testing.T) {
+						runSortedPartitionTest(t, 16)
+					})
+					t.Run("sorted32", func(t *testing.T) {
+						runSortedPartitionTest(t, 32)
+					})
+					t.Run("sorted64", func(t *testing.T) {
+						runSortedPartitionTest(t, 64)
 					})
 				})
 			})
