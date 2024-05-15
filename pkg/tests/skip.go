@@ -1,6 +1,9 @@
 package tests
 
-import "os"
+import (
+	"os"
+	"testing"
+)
 
 // SkipUnless skips a test if the environment variable envVar not is defined
 func SkipUnless(t T, envVar string) {
@@ -11,5 +14,7 @@ func SkipUnless(t T, envVar string) {
 }
 
 func SkipExpensiveTest(t T) {
-	SkipUnless(t, "EXPENSIVE_TEST")
+	if !testing.Short() {
+		SkipUnless(t, "EXPENSIVE_TEST")
+	}
 }
