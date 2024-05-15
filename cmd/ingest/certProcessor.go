@@ -32,11 +32,11 @@ type CertBatch struct {
 
 func NewCertificateBatch() *CertBatch {
 	return &CertBatch{
-		Names:       make([][]string, 0, BatchSize),
-		Expirations: make([]*time.Time, 0, BatchSize),
-		Certs:       make([]*ctx509.Certificate, 0, BatchSize),
-		CertIDs:     make([]*common.SHA256Output, 0, BatchSize),
-		ParentIDs:   make([]*common.SHA256Output, 0, BatchSize),
+		Names:       make([][]string, 0, MultiInsertSize),
+		Expirations: make([]*time.Time, 0, MultiInsertSize),
+		Certs:       make([]*ctx509.Certificate, 0, MultiInsertSize),
+		CertIDs:     make([]*common.SHA256Output, 0, MultiInsertSize),
+		ParentIDs:   make([]*common.SHA256Output, 0, MultiInsertSize),
 	}
 }
 
@@ -49,7 +49,7 @@ func (b *CertBatch) AddCertificate(c *CertificateNode) {
 }
 
 func (b *CertBatch) IsFull() bool {
-	return len(b.Certs) == BatchSize
+	return len(b.Certs) == MultiInsertSize
 }
 
 // CertificateProcessor processes the insertion of certificate nodes into the DB.

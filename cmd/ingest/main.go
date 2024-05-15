@@ -22,8 +22,8 @@ const (
 	NumParsers     = 32
 	NumDBWriters   = 32
 
-	BatchSize    = 100000           // # of certificates inserted at once.
-	LruCacheSize = 10 * 1000 * 1000 // Keep track of the 10 million most seen certificates.
+	MultiInsertSize = 10_000     // # of certificates, domains, etc inserted at once.
+	LruCacheSize    = 10_000_000 // Keep track of the 10 million most seen certificates.
 )
 
 const (
