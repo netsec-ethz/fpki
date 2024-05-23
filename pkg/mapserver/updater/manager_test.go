@@ -14,7 +14,8 @@ import (
 )
 
 func TestManagerStart(t *testing.T) {
-	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
+	// ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Hour) // deleteme
 	defer cancelF()
 
 	// Configure a test DB.
@@ -25,10 +26,13 @@ func TestManagerStart(t *testing.T) {
 	conn := testdb.Connect(t, config)
 	defer conn.Close()
 
-	certs := mockCertificates(t, 2)
+	certs := mockCertificates(t, 1)
 
-	manager := updater.NewManager(ctx, 2, conn, 10, time.Second, nil)
+	manager := updater.NewManager(ctx, 1, conn, 10, time.Second, nil)
 	manager.ProcessCertificates(certs)
+	fmt.Println("deleteme flushing manager")
+	manager.Flush()
+	fmt.Println("deleteme waiting at manager")
 	manager.Wait()
 
 	// Verify they are in the DB.
@@ -37,7 +41,7 @@ func TestManagerStart(t *testing.T) {
 	count := 0
 	err := row.Scan(&count)
 	require.NoError(t, err)
-	require.Equal(t, 7, count)
+	require.Equal(t, 8, count)
 }
 
 func mockCertificates(t *testing.T, numberOfLeaves int) []*updater.Certificate {

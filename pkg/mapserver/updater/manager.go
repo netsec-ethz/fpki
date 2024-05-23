@@ -2,12 +2,14 @@ package updater
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
+	"github.com/netsec-ethz/fpki/pkg/db/mysql"
 )
 
 // Manager contains multiple db.Conn objects. It is able to work with several of them concurrently.
@@ -18,7 +20,8 @@ type Manager struct {
 	Conn            db.Conn                         // DB
 	MultiInsertSize int                             // amount of entries before calling the DB
 	Stats           *Stats                          // Statistics about the update
-	Workers         []*Worker                       // sharding ends up picking one of these
+	CertWorkers     []*WorkerCerts                  // sharding ends up picking one of these
+	DomainWorkers   []*WorkerDomains                // shards for domains
 	ShardFuncCert   func(*common.SHA256Output) uint // select cert worker index from ID
 	ShardFuncDomain func(*common.SHA256Output) uint // select the domain worker from domain ID
 
@@ -38,16 +41,33 @@ func NewManager(
 	statsUpdateFreq time.Duration,
 	statsUpdateFunc func(*Stats),
 ) *Manager {
+	// Compute how many bits we need to cover N partitions (i.e. ceil(log2(N-1)),
+	// doable by computing the bit length of N-1 even if not a power of 2.
+	nBits := 0
+	for n := workerCount - 1; n > 0; n >>= 1 {
+		nBits++
+	}
+
+	selectPartition := func(id *common.SHA256Output) uint {
+		return mysql.PartitionByIdMSB(id, nBits)
+	}
+
 	m := &Manager{
 		MultiInsertSize:    multiInsertSize,
 		Stats:              NewStatistics(statsUpdateFreq, statsUpdateFunc),
+		ShardFuncCert:      selectPartition,
+		ShardFuncDomain:    selectPartition,
 		IncomingCertChan:   make(chan *Certificate),
 		IncomingDomainChan: make(chan *DirtyDomain),
 		doneChan:           make(chan struct{}),
 	}
-	m.Workers = make([]*Worker, workerCount)
+	m.CertWorkers = make([]*WorkerCerts, workerCount)
 	for i := 0; i < workerCount; i++ {
-		m.Workers[i] = NewWorker(ctx, m, conn)
+		m.CertWorkers[i] = NewWorkerCerts(ctx, i, m, conn)
+	}
+	m.DomainWorkers = make([]*WorkerDomains, workerCount)
+	for i := 0; i < workerCount; i++ {
+		m.DomainWorkers[i] = NewWorkerDomains(ctx, i, m, conn)
 	}
 	m.Resume()
 
@@ -58,9 +78,15 @@ func (m *Manager) ProcessCertificates(certs []*Certificate) {
 	for _, c := range certs {
 		m.IncomingCertChan <- c
 	}
+	close(m.IncomingCertChan)
+	// go m.resume()
 }
 
 func (m *Manager) Resume() {
+	go m.resume()
+}
+
+func (m *Manager) resume() {
 	m.Stats.Start()
 
 	// The manager controls two pipelines:
@@ -86,13 +112,15 @@ func (m *Manager) Resume() {
 		for c := range m.IncomingCertChan {
 			// Determine worker for the certificate.
 			w := m.ShardFuncCert(c.CertID)
-			m.Workers[w].IncomingCert <- c
+			m.CertWorkers[w].IncomingCert <- c
 		}
 		m.stopping.Store(true) // Whenever the workers check, tell them we are stopping now.
+		fmt.Printf("deleteme stopping manager now: %v\n", m.stopping.Load())
 		m.waitForAllCertificates()
 		// Since all certificates have been processed already, no worker will send a domain
 		// to the manager's incoming domain channel. We can close it now.
 		// Closing it will trigger the shutdown of the second pipeline in this manager.
+		fmt.Println("deleteme about to close domain dispatch")
 		close(m.IncomingDomainChan)
 	}()
 
@@ -103,7 +131,7 @@ func (m *Manager) Resume() {
 		for d := range m.IncomingDomainChan {
 			// Determine worker for the domain.
 			w := m.ShardFuncDomain(d.DomainID)
-			m.Workers[w].IncomingDomain <- d
+			m.DomainWorkers[w].IncomingDomain <- d
 		}
 		// After closing the incoming domain channel, flush all domains in all workers,
 		// and wait for all domains to be processed.
@@ -125,9 +153,9 @@ func (m *Manager) Flush() {
 
 func (m *Manager) flushAllWorkers() {
 	wg := sync.WaitGroup{}
-	wg.Add(len(m.Workers))
+	wg.Add(len(m.CertWorkers))
 
-	for _, w := range m.Workers {
+	for _, w := range m.CertWorkers {
 		w := w
 		go func() {
 			defer wg.Done()
@@ -142,10 +170,11 @@ func (m *Manager) flushAllWorkers() {
 // reading their incoming certificate pipeline.
 // After all certificates have been processed, it closes the workers' incoming certificate channel.
 func (m *Manager) waitForAllCertificates() {
+	fmt.Println("deleteme waiting for all certificates")
 	wg := sync.WaitGroup{}
-	wg.Add(len(m.Workers))
+	wg.Add(len(m.CertWorkers))
 
-	for _, w := range m.Workers {
+	for _, w := range m.CertWorkers {
 		w := w
 		go func() {
 			defer wg.Done()
@@ -156,16 +185,16 @@ func (m *Manager) waitForAllCertificates() {
 	wg.Wait() // until all workers have processed all certs
 
 	// Now the workers are not reading from their incoming certs channel. Close them.
-	for _, w := range m.Workers {
+	for _, w := range m.CertWorkers {
 		close(w.IncomingCert)
 	}
 }
 
 func (m *Manager) waitForAllDomains() {
 	wg := sync.WaitGroup{}
-	wg.Add(len(m.Workers))
+	wg.Add(len(m.DomainWorkers))
 
-	for _, w := range m.Workers {
+	for _, w := range m.DomainWorkers {
 		w := w
 		go func() {
 			defer wg.Done()
@@ -176,7 +205,7 @@ func (m *Manager) waitForAllDomains() {
 	wg.Wait() // until all workers have processed all certs
 
 	// Workers are not reading from their incoming domains channel. Close them.
-	for _, w := range m.Workers {
+	for _, w := range m.DomainWorkers {
 		close(w.IncomingDomain)
 	}
 }
