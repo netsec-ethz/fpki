@@ -31,8 +31,14 @@ func UpdateDBwithRandomCerts(
 	conn db.Conn,
 	domains []string,
 	certsOrPolicies []CertsPoliciesOrBoth,
-) (certs []*ctx509.Certificate, policies []common.PolicyDocument,
-	IDs, parentIDs []*common.SHA256Output, names [][]string) {
+) (
+	// returns:
+	certs []*ctx509.Certificate,
+	policies []common.PolicyDocument,
+	IDs []*common.SHA256Output,
+	parentIDs []*common.SHA256Output,
+	names [][]string,
+) {
 
 	// Prepare the return variables.
 	certs = make([]*ctx509.Certificate, 0, 4*len(domains))

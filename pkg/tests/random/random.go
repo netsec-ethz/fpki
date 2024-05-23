@@ -43,6 +43,16 @@ func RandomBytesForTest(t tests.T, size int) []byte {
 	return buff
 }
 
+func RandomIDsForTest(t tests.T, size int) []*common.SHA256Output {
+	IDs := make([]*common.SHA256Output, size)
+	for i := 0; i < size; i++ {
+		IDs[i] = new(common.SHA256Output)
+		// Random, valid IDs.
+		copy(IDs[i][:], RandomBytesForTest(t, common.SHA256Size))
+	}
+	return IDs
+}
+
 var keyCreatingRandomCerts = RandomRSAPrivateKey(tests.NewTestObject("test_RSA_key"))
 
 // RandomX509Cert creates a random x509 certificate, with correct ASN.1 DER representation.
@@ -106,11 +116,12 @@ func BuildTestRandomCertHierarchy(t tests.T, domainName string) (
 		id := common.SHA256Hash32Bytes(c.Raw)
 		IDs[i] = &id
 	}
-
-	// Names: only c2 and c3 are leaves, the rest should be nil.
-	names = make([][]string, len(certs))
-	names[2] = certs[2].DNSNames
-	names[3] = certs[3].DNSNames
+	names = [][]string{
+		{"c0.com"},
+		{"c1.com"},
+		certs[2].DNSNames,
+		certs[3].DNSNames,
+	}
 
 	// Parent IDs.
 	parentIDs = make([]*common.SHA256Output, len(certs))
