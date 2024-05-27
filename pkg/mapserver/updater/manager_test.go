@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"math/rand"
 	"strings"
 	"testing"
 	"time"
@@ -37,10 +36,10 @@ func TestManagerStart(t *testing.T) {
 			NWorkers:         4,
 			MultiInsertSize:  16,
 		},
-		"deleteme1": {
-			// Will duplicate certs
+		"different_mult2": {
+			// Will duplicate certs by x2.
 			NLeafDomains:     4,
-			certGenerator:    diffAncestryHierarchyDeletemeMult(2), // duplicates entries
+			certGenerator:    generatorCertCloner(diffAncestryHierarchy, 2),
 			expectedNCerts:   4 * 4,
 			expectedNDomains: 2 + 4,
 			NWorkers:         2,
@@ -53,70 +52,27 @@ func TestManagerStart(t *testing.T) {
 			expectedNDomains: 2 + 4,
 			NWorkers:         4,
 			MultiInsertSize:  1,
-			// deleteme debug notes:
-			/*
-				1. With this test case I sometimes get a deadlock in mysql.
-
-
-				2. And also a dead lock in the process, as the manager is not finishing.
-					Correction: the dead lock in the manager is due to errors being thrown (deadlock in DB).
-					Let's fix this first.
-					FIXED
-
-				3. Playing with transactions, sometimes I get less entries in certs or domains than expected.
-					It seems that the last SQL statement is, for some reason, not really committed.
-					The call to COMMIT does not fail, though.
-					Actually, one SQL statement seems not to commit, not always the last one, although most
-					frequently it is the last one.
-
-					It fails regardless of autocommit or the transaction isolation level,
-					at least using insert ignore. [3min to fail]
-
-					So far it seems to work with:
-					- autocommit=0
-					- no BEGIN or START TRANSACTION
-					- COMMIT at the end of inserting in dirty
-					||||||||||||||||||||||||||||||||||||
-					Nope, it also failed [9min to fail]
-
-				4. Enabled general query logging. Now removing the DB is locked-wait forever.
-				5. With autocommit==1, no explicit transactions and repeatable read it works.
-					MultiInsertSize == 1, 4 workers, 4 leafs.
-			*/
 		},
-		"deleteme2": {
-			// Will duplicate certs
-			NLeafDomains:     2,
-			certGenerator:    diffAncestryHierarchyDeletemeMult(16), // x16 the original certs
-			expectedNCerts:   4 * 2,
-			expectedNDomains: 2 + 2,
-			NWorkers:         2,
+		"same_mult3": {
+			// Will replicate certs by x3.
+			NLeafDomains:     4,
+			certGenerator:    generatorCertCloner(sameAncestryHierarchy, 3),
+			expectedNCerts:   2 + 4,
+			expectedNDomains: 2 + 4,
+			NWorkers:         4,
 			MultiInsertSize:  2,
 		},
 	}
 
-	// deleteme debug with these:
-	// SET GLOBAL general_log = 'ON';
-	// SET GLOBAL general_log_file = '/tmp/query.log';
-
-	// SET GLOBAL innodb_status_output = 'ON';
-	// SET GLOBAL innodb_status_output_locks = 'ON';
-
-	// SHOW PROCESSLIST;
-
 	for name, tc := range testCases {
 		name, tc := name, tc
 		t.Run(name, func(t *testing.T) {
-			// t.Parallel()
+			t.Parallel()
 
-			// ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
-			ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Hour) // deleteme
+			ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancelF()
 
 			// Configure a test DB.
-			// tt := NewTT(t)
-			// t.Logf("Running with special name: %s", tt.Name())
-			// config, removeF := testdb.ConfigureTestDB(tt)
 			config, removeF := testdb.ConfigureTestDB(t)
 			defer removeF()
 
@@ -124,35 +80,20 @@ func TestManagerStart(t *testing.T) {
 			conn := testdb.Connect(t, config)
 			defer conn.Close()
 
-			// deleteme
-			conn2 := testdb.Connect(t, config)
-			defer conn2.Close()
-			conn3 := testdb.Connect(t, config)
-			defer conn3.Close()
-
-			// deleteme:
-			// str := "SELECT 'deleteme';"
-			// str := "SET autocommit=0;"
+			// The default behavior is autocommit=1. We want this, as it prevents the start of
+			// a new transaction on every new connection, and the need to COMMIT.
 			str := "SET autocommit=1;"
 			_, err := conn.DB().ExecContext(ctx, str)
 			require.NoError(t, err)
 
-			// str = "SET GLOBAL innodb_lock_wait_timeout = 1;" // trying to catch bugs
-			// _, err = conn.DB().ExecContext(ctx, str)
-			// require.NoError(t, err)
-
-			str = "SET GLOBAL TRANSACTION ISOLATION LEVEL REPEATABLE READ"
-			// str = "SET GLOBAL TRANSACTION ISOLATION LEVEL READ UNCOMMITTED"
-			_, err = conn.DB().ExecContext(ctx, str)
-			require.NoError(t, err)
-
-			str = "COMMIT"
+			// We will want to have READ UNCOMMITTED or REPEATABLE READ.
+			str = "SET GLOBAL TRANSACTION ISOLATION LEVEL READ UNCOMMITTED"
 			_, err = conn.DB().ExecContext(ctx, str)
 			require.NoError(t, err)
 
 			certs := tc.certGenerator(t, mockLeaves(tc.NLeafDomains)...)
 
-			manager := updater.NewManager(ctx, tc.NWorkers, conn2, tc.MultiInsertSize, time.Second, nil)
+			manager := updater.NewManager(ctx, tc.NWorkers, conn, tc.MultiInsertSize, time.Second, nil)
 
 			t.Logf("Manager: %p number of certs: %d", manager, len(certs))
 			// Log their IDs, for debugging purposes.
@@ -166,7 +107,7 @@ func TestManagerStart(t *testing.T) {
 			manager.Stop()
 			err = manager.Wait()
 			require.NoError(t, err)
-			verifyDB(ctx, t, conn3, tc.expectedNCerts, tc.expectedNDomains)
+			verifyDB(ctx, t, conn, tc.expectedNCerts, tc.expectedNDomains)
 		})
 	}
 }
@@ -188,8 +129,22 @@ func diffAncestryHierarchy(t tests.T, leaves ...string) []*updater.Certificate {
 	return toCertificates(payloads, IDs, parentIDs, names)
 }
 
-// deletemeDuplicateCerts clones certs `multiplier` times. If multiplier is 1, no cloning is done.
-func deletemeDuplicateCerts(certs []*updater.Certificate, multiplier int) []*updater.Certificate {
+func sameAncestryHierarchy(t tests.T, leaves ...string) []*updater.Certificate {
+	return toCertificates(random.BuildTestRandomCertTree(t, leaves...))
+}
+
+func generatorCertCloner(
+	generator func(tests.T, ...string) []*updater.Certificate,
+	multiplier int,
+) func(tests.T, ...string) []*updater.Certificate {
+
+	return func(t tests.T, leaves ...string) []*updater.Certificate {
+		return cloneCertSlice(generator(t, leaves...), multiplier)
+	}
+}
+
+// cloneCertSlice clones certs `multiplier` times. If multiplier is 1, no cloning is done.
+func cloneCertSlice(certs []*updater.Certificate, multiplier int) []*updater.Certificate {
 	// Duplicate all entries.
 	duplicated := certs
 	for i := 1; i < multiplier; i++ {
@@ -213,16 +168,6 @@ func deletemeDuplicateCerts(certs []*updater.Certificate, multiplier int) []*upd
 		}
 	}
 	return duplicated
-}
-
-func diffAncestryHierarchyDeletemeMult(multiplier int) func(tests.T, ...string) []*updater.Certificate {
-	return func(t tests.T, leaves ...string) []*updater.Certificate {
-		return deletemeDuplicateCerts(diffAncestryHierarchy(t, leaves...), multiplier)
-	}
-}
-
-func sameAncestryHierarchy(t tests.T, leaves ...string) []*updater.Certificate {
-	return toCertificates(random.BuildTestRandomCertTree(t, leaves...))
 }
 
 func toCertificates(
@@ -287,8 +232,8 @@ func verifyDB(ctx context.Context, t tests.T, conn db.Conn,
 		require.Equal(t, n, len(ids), str)
 	}
 
-	// // Check number of certificates.
-	// checkTable("cert_id", "certs", ncerts)
+	// Check number of certificates.
+	checkTable("cert_id", "certs", ncerts)
 
 	// Check number of domains.
 	checkTable("domain_id", "domains", ndomains)
@@ -296,22 +241,6 @@ func verifyDB(ctx context.Context, t tests.T, conn db.Conn,
 	// Check number of dirty domains.
 	checkTable("domain_id", "dirty", ndomains)
 
-	// // Check number of cert-domains.
-	// checkTable("cert_id", "domain_certs", ncerts)
-}
-
-type TT struct {
-	*testing.T
-	rn int
-}
-
-func NewTT(t *testing.T) *TT {
-	return &TT{
-		T:  t,
-		rn: rand.Intn(1000000),
-	}
-}
-
-func (t *TT) Name() string {
-	return fmt.Sprintf("%s_%06d", t.T.Name(), t.rn)
+	// Check number of cert-domains.
+	checkTable("cert_id", "domain_certs", ncerts)
 }

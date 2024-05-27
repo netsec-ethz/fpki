@@ -91,3 +91,21 @@ echo "# Site-specific additions and overrides for usr.sbin.mysqld.
 sudo sed -i 's/#include <local\/usr.sbin.mysqld>/include <local\/usr.sbin.mysqld>/' /etc/apparmor.d/usr.sbin.mysqld
 sudo systemctl restart apparmor.service
 ```
+
+Some useful SQL to debug, etc:
+```sql
+-- Enable the general query log to capture all SQL statements sent to the MySQL server.
+-- This can be useful for identifying what queries are running at any given time,
+-- but it can also generate a lot of data.
+SET GLOBAL general_log = 'ON';
+SET GLOBAL general_log_file = '/tmp/query.log';
+
+-- Enable InnoDB monitors to get more detailed information about InnoDB's internal operations.
+-- This includes details about transactions and locks.
+SET GLOBAL innodb_status_output = 'ON';
+SET GLOBAL innodb_status_output_locks = 'ON';
+
+-- See currently running queries. This can help you identify long-running
+-- transactions and the queries they're executing.
+SHOW PROCESSLIST;
+```
