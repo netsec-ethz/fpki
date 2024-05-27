@@ -380,7 +380,7 @@ func TestPruneCerts(t *testing.T) {
 }
 
 func TestRetrieveDomainEntries(t *testing.T) {
-	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
 
 	// Configure a test DB.
@@ -444,6 +444,45 @@ func TestRetrieveDomainEntries(t *testing.T) {
 	kvElementsMatch(t, expected, joined, "len(expected)=%d,len(got)=%d",
 		len(expected), len(parallel))
 	require.NotSame(t, expected, joined)
+}
+
+func TestInsertDomainsIntoDirty(t *testing.T) {
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelF()
+
+	// Configure a test DB.
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	// Connect to the DB.
+	conn := testdb.Connect(t, config)
+	defer conn.Close()
+
+	c := mysql.NewMysqlDBForTests(conn)
+
+	// Create a bunch of mock domain IDs, and insert them into the dirty table.
+	N := 1_000
+	domainIds := random.RandomIDsForTest(t, N)
+	err := c.InsertDomainsIntoDirty(ctx, domainIds)
+	require.NoError(t, err)
+
+	// Check they were inserted correctly.
+	// 1. Retrieve.
+	str := "SELECT domain_id FROM dirty"
+	rows, err := c.DB().QueryContext(ctx, str)
+	require.NoError(t, err)
+	require.NoError(t, rows.Err())
+	// Each ID.
+	gotIds := make([]*common.SHA256Output, 0)
+	for rows.Next() {
+		var id []byte
+		err := rows.Scan(&id)
+		require.NoError(t, err)
+		require.Equal(t, common.SHA256Size, len(id))
+		gotIds = append(gotIds, (*common.SHA256Output)(id))
+	}
+	// 2. Compare them.
+	require.Equal(t, len(domainIds), len(gotIds))
 }
 
 func BenchmarkRetrieveDomainEntries(b *testing.B) {

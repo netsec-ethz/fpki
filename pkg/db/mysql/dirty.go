@@ -2,9 +2,7 @@ package mysql
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
-	"strings"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 )
@@ -51,42 +49,22 @@ func (c *mysqlDB) InsertDomainsIntoDirty(ctx context.Context, domainIDs []*commo
 		domainIDsSet[*id] = struct{}{}
 	}
 
-	// // deleteme
-	// if _, err := c.db.ExecContext(ctx, "START TRANSACTION"); err != nil {
-	// 	panic(err)
-	// }
-
-	// deleteme: we should be using insert ignore.
-	// // str := "REPLACE INTO dirty (domain_id) VALUES " + repeatStmt(len(domainIDsSet), 1)
-	// str := "INSERT IGNORE INTO dirty (domain_id) VALUES " + repeatStmt(len(domainIDsSet), 1)
-	// data := make([]any, len(domainIDsSet))
-	// i := 0
-	// for k := range domainIDsSet {
-	// 	k := k // Because k changes during the loop, we need a local copy that doesn't.
-	// 	data[i] = k[:]
-	// 	i++
-	// 	fmt.Printf("DB insert into dirty: %s\n", hex.EncodeToString(k[:]))
-	// }
-
-	// deleteme
-	var data []any
-	str := "INSERT IGNORE INTO dirty (domain_id) VALUES "
-	ids := make([]string, 0)
+	str := "INSERT IGNORE INTO dirty (domain_id) VALUES " + repeatStmt(len(domainIDsSet), 1)
+	data := make([]any, len(domainIDsSet))
+	i := 0
 	for k := range domainIDsSet {
-		ids = append(ids, fmt.Sprintf("(UNHEX('%s'))", hex.EncodeToString(k[:])))
+		// Copy the 32 bytes locally here, not just the pointer or slice.
+		// The loop variable k is set with 32 new bytes on each iteration, but its pointer &k does
+		// not change and remains constant for all the loop ("captured"). A slice on that array
+		// such as k[:] will create a new slice, with all the same storage across all iterations.
+		localK := k // Because k changes during the loop, we need a local copy that doesn't.
+		data[i] = localK[:]
+		i++
 	}
-	str += fmt.Sprintf("%s", strings.Join(ids, ","))
 
-	fmt.Printf("deleteme SQL: %s\n", str)
 	if _, err := c.db.ExecContext(ctx, str, data...); err != nil {
-		panic(err) // deleteme
 		return fmt.Errorf("inserting domains into dirty: %w", err)
 	}
-
-	// // deleteme
-	// if _, err := c.db.ExecContext(ctx, "COMMIT"); err != nil {
-	// 	panic(err)
-	// }
 
 	return nil
 }

@@ -1,6 +1,8 @@
 package util
 
 import (
+	"math"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -50,6 +52,30 @@ func TestPow(t *testing.T) {
 			t.Parallel()
 			got := Pow(tc.base, tc.exp)
 			require.Equal(t, tc.expected, got)
+		})
+	}
+}
+
+func TestLog2(t *testing.T) {
+	testCases := map[uint]uint{
+		0: 0,
+	}
+	// Populate cases automatically with a lot of numbers.
+	for i := uint(1); i < 1024; i++ {
+		got := uint(math.Ceil(math.Log2(float64(i))))
+		testCases[i] = got
+	}
+	for i := uint(1024 * 16); i < 1024*1024; i += 1024 * 13 {
+		got := uint(math.Ceil(math.Log2(float64(i))))
+		testCases[i] = got
+	}
+
+	for N, expected := range testCases {
+		N, expected := N, expected
+		t.Run(strconv.FormatUint(uint64(N), 10), func(t *testing.T) {
+			t.Parallel()
+			got := Log2(N)
+			require.Equal(t, expected, got, "got: %d expected: %d", int(got), int(expected))
 		})
 	}
 }
