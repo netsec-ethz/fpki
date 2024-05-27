@@ -62,6 +62,33 @@ func TestManagerStart(t *testing.T) {
 			NWorkers:         4,
 			MultiInsertSize:  2,
 		},
+
+		// All of the following test cases will be using the sameAncestry generator.
+
+		"1000leafs_4workers_1024multi": {
+			NLeafDomains:     1000,
+			certGenerator:    sameAncestryHierarchy,
+			expectedNCerts:   2 + 1000,
+			expectedNDomains: 2 + 1000,
+			NWorkers:         4,
+			MultiInsertSize:  1024,
+		},
+		"100leafs_2workers_10multi": {
+			NLeafDomains:     100,
+			certGenerator:    sameAncestryHierarchy,
+			expectedNCerts:   2 + 100,
+			expectedNDomains: 2 + 100,
+			NWorkers:         2,
+			MultiInsertSize:  10,
+		},
+		"3leafs_4workers_10multi": {
+			NLeafDomains:     3,
+			certGenerator:    sameAncestryHierarchy,
+			expectedNCerts:   2 + 3,
+			expectedNDomains: 2 + 3,
+			NWorkers:         4,
+			MultiInsertSize:  10,
+		},
 	}
 
 	for name, tc := range testCases {
@@ -69,7 +96,7 @@ func TestManagerStart(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
+			ctx, cancelF := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancelF()
 
 			// Configure a test DB.
