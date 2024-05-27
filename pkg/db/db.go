@@ -35,6 +35,10 @@ type dirty interface {
 	// present in the `updates` table.
 	RetrieveDirtyDomains(ctx context.Context) ([]*common.SHA256Output, error)
 
+	// InsertDomainsIntoDirty adds the domain IDs into the dirty table, to signal that these
+	// domains have not been fully processed yet.
+	InsertDomainsIntoDirty(ctx context.Context, ids []*common.SHA256Output) error
+
 	// RecomputeDirtyDomainsCertAndPolicyIDs retrieves dirty domains from the dirty list, starting
 	// at firstRow and finishing at lastRow (for a total of lastRow - firstRow + 1 domains),
 	// computes the aggregated payload for their certificates and policies, and stores it in the DB.
@@ -42,6 +46,7 @@ type dirty interface {
 	// domain, including e.g. the trust chain.
 	RecomputeDirtyDomainsCertAndPolicyIDs(ctx context.Context) error
 
+	// CleanupDirty removes all entries from the dirty table.
 	CleanupDirty(ctx context.Context) error
 }
 
@@ -105,6 +110,7 @@ type certsAndPolicies interface {
 	RetrieveCertificateOrPolicyPayloads(ctx context.Context, IDs []*common.SHA256Output) ([][]byte, error)
 }
 
+// Conn is a connection to operate with the DB.
 type Conn interface {
 	smt
 	dirty

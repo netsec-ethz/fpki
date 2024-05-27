@@ -29,12 +29,10 @@ EOF
 CMD=$(cat <<EOF
 USE $DBNAME;
 CREATE TABLE domains (
-  auto_id BIGINT NOT NULL AUTO_INCREMENT,
   domain_id VARBINARY(32) NOT NULL,
   domain_name VARCHAR(300) COLLATE ascii_bin DEFAULT NULL,
 
-  PRIMARY KEY (auto_id),
-  UNIQUE KEY(domain_id),
+  PRIMARY KEY (domain_id),
   INDEX domain_name (domain_name)
 ) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
 EOF
@@ -45,14 +43,12 @@ EOF
 CMD=$(cat <<EOF
 USE $DBNAME;
 CREATE TABLE certs (
-  auto_id BIGINT NOT NULL AUTO_INCREMENT,
   cert_id VARBINARY(32) NOT NULL,
   parent_id VARBINARY(32) DEFAULT NULL,
   expiration DATETIME NOT NULL,
   payload LONGBLOB,
 
-  PRIMARY KEY(auto_id),
-  UNIQUE KEY(cert_id)
+  PRIMARY KEY(cert_id)
 ) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
 EOF
   )
@@ -62,12 +58,10 @@ EOF
 CMD=$(cat <<EOF
 USE $DBNAME;
 CREATE TABLE domain_certs (
-  auto_id BIGINT NOT NULL AUTO_INCREMENT,
   domain_id VARBINARY(32) NOT NULL,
   cert_id VARBINARY(32) NOT NULL,
 
-  PRIMARY KEY(auto_id),
-  UNIQUE KEY domain_cert (domain_id,cert_id),
+  PRIMARY KEY domain_cert (domain_id,cert_id),
   INDEX domain_id (domain_id)
 ) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
 EOF
@@ -78,14 +72,12 @@ EOF
 CMD=$(cat <<EOF
 USE $DBNAME;
 CREATE TABLE policies (
-  auto_id BIGINT NOT NULL AUTO_INCREMENT,
   policy_id VARBINARY(32) NOT NULL,
   parent_id VARBINARY(32) DEFAULT NULL,
   expiration DATETIME NOT NULL,
   payload LONGBLOB,
 
-  PRIMARY KEY(auto_id),
-  UNIQUE KEY(policy_id)
+  PRIMARY KEY(policy_id)
 ) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
 EOF
   )
@@ -95,12 +87,10 @@ EOF
 CMD=$(cat <<EOF
 USE $DBNAME;
 CREATE TABLE domain_policies (
-  auto_id BIGINT NOT NULL AUTO_INCREMENT,
   domain_id VARBINARY(32) NOT NULL,
   policy_id VARBINARY(32) NOT NULL,
 
-  PRIMARY KEY(auto_id),
-  UNIQUE KEY domain_pol (domain_id,policy_id),
+  PRIMARY KEY domain_pol (domain_id,policy_id),
   INDEX domain_id (domain_id)
 ) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
 EOF
@@ -129,11 +119,9 @@ EOF
 CMD=$(cat <<EOF
 USE $DBNAME;
 CREATE TABLE dirty (
-  auto_id BIGINT NOT NULL AUTO_INCREMENT,
   domain_id VARBINARY(32) NOT NULL,
 
-  PRIMARY KEY (auto_id),
-  UNIQUE KEY(domain_id)
+  PRIMARY KEY(domain_id)
 ) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
 EOF
   )

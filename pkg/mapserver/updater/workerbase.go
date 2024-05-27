@@ -45,13 +45,14 @@ func (w *Worker) Wait() error {
 
 // addError queues a new error to the errChan to be later retrieved via Wait().
 func (w *Worker) addError(err error) {
+	if err == nil {
+		return
+	}
 	// We send it asynchronously because writing to errChan might block.
 	w.errWg.Add(1)
 	go func() {
 		defer w.errWg.Done()
-		if err != nil {
-			w.errChan <- err
-		}
+		w.errChan <- err
 	}()
 }
 

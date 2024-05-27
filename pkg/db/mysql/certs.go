@@ -3,6 +3,7 @@ package mysql
 import (
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -42,11 +43,17 @@ func (c *mysqlDB) UpdateCerts(ctx context.Context, ids, parents []*common.SHA256
 	if len(ids) == 0 {
 		return nil
 	}
+
+	// // deleteme
+	// if _, err := c.db.ExecContext(ctx, "START TRANSACTION"); err != nil {
+	// 	panic(err)
+	// }
+
 	// TODO(juagargi) set a prepared statement in constructor
 	// Because the primary key is the SHA256 of the payload, if there is a clash, it must
 	// be that the certificates are identical. Thus always REPLACE or INSERT IGNORE.
 	const N = 4
-	str := "REPLACE INTO certs (cert_id, parent_id, expiration, payload) VALUES " +
+	str := "INSERT IGNORE INTO certs (cert_id, parent_id, expiration, payload) VALUES " +
 		repeatStmt(len(ids), N)
 	data := make([]interface{}, N*len(ids))
 	for i := range ids {
@@ -55,12 +62,23 @@ func (c *mysqlDB) UpdateCerts(ctx context.Context, ids, parents []*common.SHA256
 			data[i*N+1] = parents[i][:]
 		}
 		data[i*N+2] = expirations[i]
-		data[i*N+3] = payloads[i]
+		// data[i*N+3] = payloads[i] // deleteme
 	}
 	_, err := c.db.ExecContext(ctx, str, data...)
 	if err != nil {
-		return err
+		// deleteme this super verbose error
+		IDs := make([]string, 0)
+		for _, id := range ids {
+			IDs = append(IDs, hex.EncodeToString(id[:]))
+		}
+		return fmt.Errorf("error: %w\nWith IDs:\n%s", err, strings.Join(IDs, "\n"))
+		// return err
 	}
+
+	// // deleteme
+	// if _, err := c.db.ExecContext(ctx, "COMMIT"); err != nil {
+	// 	panic(err)
+	// }
 
 	return nil
 }
@@ -72,15 +90,40 @@ func (c *mysqlDB) UpdateDomainCerts(ctx context.Context,
 	if len(domainIDs) == 0 {
 		return nil
 	}
-	// Insert into domain_certs:
-	str := "INSERT IGNORE INTO domain_certs (domain_id,cert_id) VALUES " +
-		repeatStmt(len(certIDs), 2)
-	data := make([]interface{}, 2*len(certIDs))
+
+	// // deleteme
+	// if _, err := c.db.ExecContext(ctx, "START TRANSACTION"); err != nil {
+	// 	panic(err)
+	// }
+
+	// // Insert into domain_certs:
+	// str := "INSERT IGNORE INTO domain_certs (domain_id,cert_id) VALUES " +
+	// 	repeatStmt(len(certIDs), 2)
+	// data := make([]interface{}, 2*len(certIDs))
+	// for i := range certIDs {
+	// 	data[2*i] = domainIDs[i][:]
+	// 	data[2*i+1] = certIDs[i][:]
+	// }
+
+	// deleteme
+	var data []any
+	str := "INSERT IGNORE INTO domain_certs (domain_id,cert_id) VALUES "
+	entries := make([]string, 0)
 	for i := range certIDs {
-		data[2*i] = domainIDs[i][:]
-		data[2*i+1] = certIDs[i][:]
+		entries = append(entries, fmt.Sprintf("(UNHEX('%s') , UNHEX('%s'))",
+			hex.EncodeToString(domainIDs[i][:]),
+			hex.EncodeToString(certIDs[i][:]),
+		))
 	}
+	str += fmt.Sprintf("%s", strings.Join(entries, ","))
+
+	fmt.Printf("deleteme SQL: %s\n", str)
 	_, err := c.db.ExecContext(ctx, str, data...)
+
+	// // deleteme
+	// if _, err := c.db.ExecContext(ctx, "COMMIT"); err != nil {
+	// 	panic(err)
+	// }
 
 	return err
 }

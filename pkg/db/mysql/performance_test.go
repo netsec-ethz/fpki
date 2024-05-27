@@ -347,7 +347,7 @@ func TestPartitionInsert(t *testing.T) {
 
 			// Function to split all the data in N CSV files, where each file contains
 			// records sorted by the result of the hasher function applied to cert_id.
-			splitFileSorted := func(t *testing.T, N int, hasher func([]byte, int) uint) {
+			splitFileSorted := func(t *testing.T, N int, hasher func(*common.SHA256Output, int) uint) {
 				writeSortedChunkedCsv(t, records, N, hasher, chunkFilePathSorted)
 			}
 
@@ -1172,7 +1172,7 @@ func writeSortedChunkedCsv(
 	t *testing.T,
 	records [][]string,
 	N int,
-	hasher func([]byte, int) uint, //  hash function that determines the partition
+	hasher func(*common.SHA256Output, int) uint, //  hash function that determines the partition
 	fName func(int) string, //         filename function
 ) {
 	// Require N to be positive.
@@ -1197,7 +1197,7 @@ func writeSortedChunkedCsv(
 		id, err := base64.StdEncoding.DecodeString(r[0])
 		require.NoError(t, err)
 
-		parsed[i].part = hasher(id, nBits)
+		parsed[i].part = hasher((*common.SHA256Output)(id), nBits)
 		parsed[i].fields = r
 	}
 	// Sort them according to cert_id.
@@ -1305,29 +1305,17 @@ func removeChunkedCsv(t *testing.T, fName func(int) string, N int) {
 }
 
 func mockTestData(t *testing.T, NCerts int) []*common.SHA256Output {
-	// Create lots of data to insert into the `certs` table.
-	// From xenon2025h1 we have an average of 1100b/cert
-	allCertIDs := make([]*common.SHA256Output, NCerts)
-	for i := 0; i < NCerts; i++ {
-		allCertIDs[i] = new(common.SHA256Output)
-		// Random, valid IDs.
-		copy(allCertIDs[i][:], random.RandomBytesForTest(t, 32))
-	}
-	// Shuffle the order of certificates.
-	rand.Shuffle(len(allCertIDs), func(i, j int) {
-		allCertIDs[i], allCertIDs[j] = allCertIDs[j], allCertIDs[i]
-	})
-	return allCertIDs
+	return random.RandomIDsForTest(t, NCerts)
 }
 
 // hasherMSB returns the most significant `nBits` of `id` as an int.
-func hasherMSB(id []byte, nBits int) uint {
-	return uint(id[0] >> (8 - byte(nBits)))
+func hasherMSB(id *common.SHA256Output, nBits int) uint {
+	return mysql.PartitionByIdMSB(id, nBits)
 }
 
 // hasherLSB returns the least significant `nBits` of `id` as an int.
-func hasherLSB(id []byte, nBits int) uint {
-	return uint(id[31] >> (8 - byte(nBits)))
+func hasherLSB(id *common.SHA256Output, nBits int) uint {
+	return mysql.PartitionByIdLSB(id, nBits)
 }
 
 func runWithCsvFile(

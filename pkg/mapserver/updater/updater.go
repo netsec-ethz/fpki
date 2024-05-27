@@ -39,7 +39,12 @@ type MapUpdater struct {
 }
 
 // NewMapUpdater: return a new map updater.
-func NewMapUpdater(config *db.Configuration, urls []string, localCertificateFolders map[string]string, csvIngestionMaxRows uint64) (*MapUpdater, error) {
+func NewMapUpdater(
+	config *db.Configuration,
+	urls []string,
+	localCertificateFolders map[string]string,
+	csvIngestionMaxRows uint64,
+) (*MapUpdater, error) {
 	if len(urls) == 0 {
 		return nil, fmt.Errorf("no URLs")
 	}
@@ -400,6 +405,7 @@ func UpdateWithKeepExisting(ctx context.Context, conn db.Conn, domainNames [][]s
 		id := common.SHA256Hash32Bytes(payload)
 		policyIDs[i] = &id
 		policySubjects[i] = pol.Domain()
+		fmt.Printf("deleteme domain: %s\n", policySubjects[i])
 	}
 	// Check which policies are already present in the DB.
 	maskPols, err := conn.CheckPoliciesExist(ctx, policyIDs)
@@ -587,6 +593,10 @@ func loadRoot(ctx context.Context, conn db.Conn) ([]byte, error) {
 func insertCerts(ctx context.Context, conn db.Conn, names [][]string,
 	ids, parentIDs []*common.SHA256Output, expirations []*time.Time, payloads [][]byte) error {
 
+	if len(ids) == 0 {
+		return nil
+	}
+
 	// Send hash, parent hash, expiration and payload to the certs table.
 	fmt.Printf("deleteme insertCerts [%s] inserting certificates ...\n", time.Now().Format(time.StampMilli))
 	if err := conn.UpdateCerts(ctx, ids, parentIDs, expirations, payloads); err != nil {
@@ -611,6 +621,10 @@ func insertCerts(ctx context.Context, conn db.Conn, names [][]string,
 		}
 	}
 	// Push the changes of the domains to the DB.
+	fmt.Printf("deleteme insertCerts [%s] updating dirty ...\n", time.Now().Format(time.StampMilli))
+	if err := conn.InsertDomainsIntoDirty(ctx, domainIDs); err != nil {
+		return fmt.Errorf("updating domains: %w", err)
+	}
 	fmt.Printf("deleteme insertCerts [%s] updating domains ...\n", time.Now().Format(time.StampMilli))
 	if err := conn.UpdateDomains(ctx, domainIDs, newNames); err != nil {
 		return fmt.Errorf("updating domains: %w", err)
@@ -628,6 +642,10 @@ func insertCerts(ctx context.Context, conn db.Conn, names [][]string,
 func insertPolicies(ctx context.Context, conn db.Conn, names []string, ids []*common.SHA256Output,
 	payloads [][]byte) error {
 
+	if len(ids) == 0 {
+		return nil
+	}
+
 	// TODO(juagargi) use parent IDs for the policies
 
 	// Push the changes of the domains to the DB.
@@ -635,6 +653,10 @@ func insertPolicies(ctx context.Context, conn db.Conn, names []string, ids []*co
 	for i, name := range names {
 		domainID := common.SHA256Hash32Bytes([]byte(name))
 		domainIDs[i] = &domainID
+	}
+
+	if err := conn.InsertDomainsIntoDirty(ctx, domainIDs); err != nil {
+		return fmt.Errorf("inserting domains in dirty: %w", err)
 	}
 	if err := conn.UpdateDomains(ctx, domainIDs, names); err != nil {
 		return fmt.Errorf("updating domains: %w", err)

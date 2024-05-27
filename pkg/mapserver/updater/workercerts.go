@@ -49,11 +49,8 @@ func (w *CertWorker) resume() {
 	for cert := range w.IncomingChan {
 		certs = append(certs, cert)
 		if len(certs) == w.Manager.MultiInsertSize {
-			if err := w.processBundle(certs); err != nil {
-				// Add the error.
-				w.addError(err)
-				// Continue reading certificates until incomingChan is closed.
-			}
+			w.addError(w.processBundle(certs))
+			// Continue reading certificates until incomingChan is closed.
 			certs = certs[:0] // Reuse storage, but reset elements
 		}
 	}

@@ -101,7 +101,12 @@ func BuildTestRandomPolicyHierarchy(t tests.T, domainName string) []common.Polic
 // chains: the first chain is domainName->c1.com->c0.com , and the second chain is
 // domainName->c0.com .
 func BuildTestRandomCertHierarchy(t tests.T, domainName string) (
-	certs []*ctx509.Certificate, IDs, parentIDs []*common.SHA256Output, names [][]string) {
+	// returns:
+	certs []*ctx509.Certificate,
+	IDs []*common.SHA256Output,
+	parentIDs []*common.SHA256Output,
+	names [][]string,
+) {
 
 	// Create all certificates.
 	certs = make([]*ctx509.Certificate, 4)
@@ -130,6 +135,75 @@ func BuildTestRandomCertHierarchy(t tests.T, domainName string) (
 	parentIDs[2] = IDs[1]
 	// Second chain:
 	parentIDs[3] = IDs[0]
+
+	return
+}
+
+// BuildTestRandomCertTree returns a test certificate tree.
+//
+//	           c0
+//	           |
+//	           c1
+//	    /     /      \
+//	   |      |       |
+//	leaf1   leaf2   leaf3 .....
+//
+// These are the return values:
+// certs[0] = c0
+// certs[1] = c1
+// certs[2] = leaves[0]
+// certs[3] = c0
+// certs[4] = c1
+// certs[5] = leaves[1]
+// etc.
+// certs[0] == certs[3] and so on.
+func BuildTestRandomCertTree(t tests.T, domainNames ...string) (
+	// returns:
+	certs []*ctx509.Certificate,
+	IDs []*common.SHA256Output,
+	parentIDs []*common.SHA256Output,
+	names [][]string,
+) {
+
+	// Reserve return values: 3 entries per domain name.
+	N := len(domainNames) * 3
+	certs = make([]*ctx509.Certificate, N)
+	IDs = make([]*common.SHA256Output, N)
+	parentIDs = make([]*common.SHA256Output, N)
+	names = make([][]string, N)
+
+	// Create the ancestry.
+	name0 := "c0.com"
+	name1 := "c1.com"
+	c0 := RandomX509Cert(t, name0)
+	c1 := RandomX509Cert(t, name1)
+	id0 := common.SHA256Hash32Bytes(c0.Raw)
+	id1 := common.SHA256Hash32Bytes(c1.Raw)
+
+	// For each leaf:
+	for i, leaf := range domainNames {
+		c0 := *c0
+		c1 := *c1
+		c := RandomX509Cert(t, leaf)
+		certs[i*3+0] = &c0
+		certs[i*3+1] = &c1
+		certs[i*3+2] = c
+
+		id0 := id0
+		id1 := id1
+		id := common.SHA256Hash32Bytes(c.Raw)
+		IDs[i*3+0] = &id0
+		IDs[i*3+1] = &id1
+		IDs[i*3+2] = &id
+
+		parentIDs[i*3+0] = nil
+		parentIDs[i*3+1] = &id0
+		parentIDs[i*3+0] = &id1
+
+		names[i*3+0] = c0.DNSNames
+		names[i*3+1] = c1.DNSNames
+		names[i*3+2] = c.DNSNames
+	}
 
 	return
 }

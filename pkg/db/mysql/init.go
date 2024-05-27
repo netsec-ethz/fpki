@@ -34,6 +34,7 @@ func Connect(config *db.Configuration) (db.Conn, error) {
 	// maxConnections := 8
 	maxConnections := 64 // deleteme ?
 	db.SetMaxOpenConns(maxConnections)
+	db.SetMaxIdleConns(maxConnections)
 
 	// Set the maximum idle connection time to a lower value than the mysql wait_timeout (8h) to
 	// ensure that idle connections that are closed by the mysql DB are not reused

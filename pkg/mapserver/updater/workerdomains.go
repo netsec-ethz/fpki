@@ -40,11 +40,8 @@ func (w *DomainWorker) resume() {
 	for domain := range w.IncomingChan {
 		domains = append(domains, domain)
 		if len(domains) == w.Manager.MultiInsertSize {
-			if err := w.processBundle(domains); err != nil {
-				// Add the error.
-				w.addError(err)
-				// Continue reading certificates until incomingChan is closed.
-			}
+			w.addError(w.processBundle(domains))
+			// Continue reading certificates until incomingChan is closed.
 			domains = domains[:0] // Reuse storage, but reset elements
 		}
 	}
@@ -79,24 +76,32 @@ func (w *DomainWorker) processBundle(domains []*DirtyDomain) error {
 		certIDs[i] = d.CertID
 
 		// deleteme
-		fmt.Printf("[%2d, %p] domain: %s\n", w.Id, w.Manager, hex.EncodeToString(d.DomainID[:]))
+		fmt.Printf("[%2d, %p] domain: %s \t %s\n",
+			w.Id, w.Manager, hex.EncodeToString(d.DomainID[:]), d.Name)
 	}
 
 	// Update dirty and domain table.
-	if err := w.insertDomains(domainIDs, domainNames); err != nil {
+	if err := w.Conn.InsertDomainsIntoDirty(w.Ctx, domainIDs); err != nil {
+		return fmt.Errorf("inserting domains at worker %d: %w", w.Id, err)
+	}
+
+	if err := w.Conn.UpdateDomains(w.Ctx, domainIDs, domainNames); err != nil {
 		return fmt.Errorf("inserting domains at worker %d: %w", w.Id, err)
 	}
 	// Update domain_certs.
-	return w.insertDomainCerts(domainIDs, certIDs)
-}
-
-func (w *DomainWorker) insertDomains(IDs []*common.SHA256Output, domainNames []string) error {
-	if err := w.Conn.InsertDomainsIntoDirty(w.Ctx, IDs); err != nil {
-		return err
+	if err := w.Conn.UpdateDomainCerts(w.Ctx, domainIDs, certIDs); err != nil {
+		return fmt.Errorf("inserting domains at worker %d: %w", w.Id, err)
 	}
-	return w.Conn.UpdateDomains(w.Ctx, IDs, domainNames)
+
+	return nil
+
+	// if err := w.insertDomains(domainIDs, domainNames); err != nil {
+	// 	return fmt.Errorf("inserting domains at worker %d: %w", w.Id, err)
+	// }
+	// Update domain_certs.
+	// return w.insertDomainCerts(domainIDs, certIDs)
 }
 
-func (w *DomainWorker) insertDomainCerts(domainIDs, certIDs []*common.SHA256Output) error {
-	return w.Conn.UpdateDomainCerts(w.Ctx, domainIDs, certIDs)
-}
+// func (w *DomainWorker) insertDomainCerts(domainIDs, certIDs []*common.SHA256Output) error {
+// 	return w.Conn.UpdateDomainCerts(w.Ctx, domainIDs, certIDs)
+// }

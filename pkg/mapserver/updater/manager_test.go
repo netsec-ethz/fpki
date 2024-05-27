@@ -78,6 +78,10 @@ func TestManagerStart(t *testing.T) {
 					- COMMIT at the end of inserting in dirty
 					||||||||||||||||||||||||||||||||||||
 					Nope, it also failed [9min to fail]
+
+				4. Enabled general query logging. Now removing the DB is locked-wait forever.
+				5. With autocommit==1, no explicit transactions and repeatable read it works.
+					MultiInsertSize == 1, 4 workers, 4 leafs.
 			*/
 		},
 		"deleteme2": {
@@ -90,6 +94,15 @@ func TestManagerStart(t *testing.T) {
 			MultiInsertSize:  2,
 		},
 	}
+
+	// deleteme debug with these:
+	// SET GLOBAL general_log = 'ON';
+	// SET GLOBAL general_log_file = '/tmp/query.log';
+
+	// SET GLOBAL innodb_status_output = 'ON';
+	// SET GLOBAL innodb_status_output_locks = 'ON';
+
+	// SHOW PROCESSLIST;
 
 	for name, tc := range testCases {
 		name, tc := name, tc
@@ -106,11 +119,16 @@ func TestManagerStart(t *testing.T) {
 			// config, removeF := testdb.ConfigureTestDB(tt)
 			config, removeF := testdb.ConfigureTestDB(t)
 			defer removeF()
-			// _ = removeF // deleteme
 
 			// Connect to the DB.
 			conn := testdb.Connect(t, config)
 			defer conn.Close()
+
+			// deleteme
+			conn2 := testdb.Connect(t, config)
+			defer conn2.Close()
+			conn3 := testdb.Connect(t, config)
+			defer conn3.Close()
 
 			// deleteme:
 			// str := "SELECT 'deleteme';"
@@ -128,9 +146,13 @@ func TestManagerStart(t *testing.T) {
 			_, err = conn.DB().ExecContext(ctx, str)
 			require.NoError(t, err)
 
+			str = "COMMIT"
+			_, err = conn.DB().ExecContext(ctx, str)
+			require.NoError(t, err)
+
 			certs := tc.certGenerator(t, mockLeaves(tc.NLeafDomains)...)
 
-			manager := updater.NewManager(ctx, tc.NWorkers, conn, tc.MultiInsertSize, time.Second, nil)
+			manager := updater.NewManager(ctx, tc.NWorkers, conn2, tc.MultiInsertSize, time.Second, nil)
 
 			t.Logf("Manager: %p number of certs: %d", manager, len(certs))
 			// Log their IDs, for debugging purposes.
@@ -144,7 +166,7 @@ func TestManagerStart(t *testing.T) {
 			manager.Stop()
 			err = manager.Wait()
 			require.NoError(t, err)
-			verifyDB(ctx, t, conn, tc.expectedNCerts, tc.expectedNDomains)
+			verifyDB(ctx, t, conn3, tc.expectedNCerts, tc.expectedNDomains)
 		})
 	}
 }
