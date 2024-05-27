@@ -2,129 +2,82 @@ package updater
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 )
 
-// const AutoFlushTimeout = time.Millisecond
-
-const AutoFlushTimeout = 5 * time.Second // deleteme
-
-type WorkerCerts struct {
-	Id           int
-	Ctx          context.Context
-	Manager      *Manager
-	Conn         db.Conn
-	IncomingCert chan *Certificate
-	flushCertsCh chan struct{} // signals a flush of the certificates in buffer
-	doneCertsCh  chan struct{}
+type CertWorker struct {
+	Worker
+	IncomingChan chan *Certificate
 }
 
-func NewWorkerCerts(ctx context.Context, id int, m *Manager, conn db.Conn) *WorkerCerts {
-	w := &WorkerCerts{
-		Id:           id,
-		Ctx:          ctx,
-		Manager:      m,
-		Conn:         conn,
-		IncomingCert: make(chan *Certificate),
-		flushCertsCh: make(chan struct{}),
-		doneCertsCh:  make(chan struct{}),
+func NewCertWorker(ctx context.Context, id int, m *Manager, conn db.Conn) *CertWorker {
+	w := &CertWorker{
+		Worker:       *newBaseWorker(ctx, id, m, conn),
+		IncomingChan: make(chan *Certificate),
 	}
 	w.Resume()
 
 	return w
 }
 
-func (w *WorkerCerts) Resume() {
-	go w.processAllCerts()
+func (w *CertWorker) Resume() {
+	go w.resume()
 }
 
-func (w *WorkerCerts) WaitCerts() {
-	<-w.doneCertsCh
+// Stop stops processing. This function doesn't wait for the worker to finish. For that, see Wait().
+func (w *CertWorker) Stop() {
+	close(w.IncomingChan)
 }
 
-// Flush makes this worker send its data to DB even if it is not enough to make up a bundle.
-func (w *WorkerCerts) Flush() {
-	w.FlushCerts()
-}
+func (w *CertWorker) resume() {
+	// deleteme
 
-func (w *WorkerCerts) FlushCerts() {
-	w.flushCertsCh <- struct{}{}
-}
+	/*
+	   If while reading incomingChan we return and write to doneChan, two things happen:
+	   1. Writing to doneChan blocks the thread until someone reads it.
+	   2. The manager is still sending certs to incomingChan. It won't read doneChan until it is
+	   		done with all certs. We are locking each other.
+	*/
 
-func (w *WorkerCerts) processAllCerts() {
 	// Create a certificate slice where all the received certificates will end up.
 	certs := make([]*Certificate, 0, w.Manager.MultiInsertSize)
-	// Read all certificates until the manager signals to stop.
-	for !w.Manager.stopping.Load() {
-		fmt.Printf("deleteme manager stopping? %v\n", w.Manager.stopping.Load())
-		// Get the certificate bundle. Or a partial one.
-		w.getCertsOrTimeout(&certs, AutoFlushTimeout)
-		// deleteme reporting of IDs
-		IDs := make([]string, len(certs))
-		for i, c := range certs {
-			IDs[i] = hex.EncodeToString(c.CertID[:])
-		}
-		if len(IDs) > 0 {
-			fmt.Printf("[worker %2d] inserting certificates, IDs:\n%s\n",
-				w.Id, strings.Join(IDs, "\n"))
-		}
 
-		err := w.processCertificateBundle(certs)
-		if err != nil {
-			panic(err) // deleteme
-		}
-		fmt.Println("deleteme looping again?")
-	}
-	fmt.Printf("deleteme manager stopping ? %v\n", w.Manager.stopping.Load())
-	w.doneCertsCh <- struct{}{}
-}
-
-// getCertsOrTimeout returns a certificate bundle of MultiInsertSize certificates, or it
-// times out and returns whatever it could read.
-// If Flush is called upon this worker, it will immediately return the read certificates.
-// The certificates are returned inside the slice passed as pointer in the arguments.
-// The function returns false if
-func (w *WorkerCerts) getCertsOrTimeout(
-	pCerts *[]*Certificate,
-	maxWait time.Duration,
-) {
-	// Derive when we would timeout if taking too long.
-	waitTime := time.After(maxWait)
-	// Prepare the return slice for the certificates, keep storage.
-	*pCerts = (*pCerts)[:0]
-	for {
-		select {
-		case cert := <-w.IncomingCert:
-			*pCerts = append(*pCerts, cert)
-			if len(*pCerts) == w.Manager.MultiInsertSize {
-				// It is already big enough.
-				return
+	for cert := range w.IncomingChan {
+		certs = append(certs, cert)
+		if len(certs) == w.Manager.MultiInsertSize {
+			if err := w.processBundle(certs); err != nil {
+				// Add the error.
+				w.addError(err)
+				// Continue reading certificates until incomingChan is closed.
 			}
-		case <-waitTime:
-			fmt.Printf("deleteme [%2d] timeout waiting for certs\n", w.Id)
-			return
-		case <-w.flushCertsCh:
-			fmt.Printf("deleteme [%2d] flushed certs\n", w.Id)
-			return
+			certs = certs[:0] // Reuse storage, but reset elements
 		}
 	}
+
+	// Process the last (possibly empty) batch.
+	w.addError(w.processBundle(certs))
+	// Signal that we have finished working.
+	w.closeErrors()
+
+	fmt.Printf("[%2d] cert worker is finished\n", w.Id)
 }
 
-func (w *WorkerCerts) processCertificateBundle(certs []*Certificate) error {
+func (w *CertWorker) processBundle(certs []*Certificate) error {
 	if len(certs) == 0 {
 		return nil
 	}
+
 	// Insert the certificates into the DB.
 	if err := w.insertCertificates(certs); err != nil {
-		return err
+		return fmt.Errorf("inserting certificates at worker %d: %w", w.Id, err)
 	}
-	domainNames, domainIDs, certInDomainIDs := w.extractDomains(certs)
+	// fmt.Printf("[%2d, %p] certificates inserted\n", w.Id, w.Manager)
+
+	domainIDs, domainNames, certInDomainIDs := w.extractDomains(certs)
 
 	for i := range domainIDs {
 		d := &DirtyDomain{
@@ -134,12 +87,13 @@ func (w *WorkerCerts) processCertificateBundle(certs []*Certificate) error {
 		}
 		w.Manager.IncomingDomainChan <- d
 	}
-	fmt.Println("deleteme done processing certs and sending domains")
+
+	fmt.Printf("[%2d, %p] domains sent\n", w.Id, w.Manager)
 
 	return nil
 }
 
-func (w *WorkerCerts) insertCertificates(certs []*Certificate) error {
+func (w *CertWorker) insertCertificates(certs []*Certificate) error {
 	ids := make([]*common.SHA256Output, len(certs))
 	parents := make([]*common.SHA256Output, len(certs))
 	expirations := make([]*time.Time, len(certs))
@@ -150,6 +104,9 @@ func (w *WorkerCerts) insertCertificates(certs []*Certificate) error {
 		expirations[i] = &c.Cert.NotAfter
 		payloads[i] = c.Cert.Raw
 
+		// // deleteme
+		// fmt.Printf("[%2d, %p] cert: %s\n", w.Id, w.Manager, hex.EncodeToString(c.CertID[:]))
+
 	}
 	return w.Conn.UpdateCerts(w.Ctx, ids, parents, expirations, payloads)
 }
@@ -158,12 +115,12 @@ func (w *WorkerCerts) insertCertificates(certs []*Certificate) error {
 // E.g. if certs contains two certificates, the first one with one name, and the second with two,
 // extractDomains will return three entries.
 // Each one of the returned slices has the same length.
-func (w *WorkerCerts) extractDomains(
+func (w *CertWorker) extractDomains(
 	certs []*Certificate,
 ) (
+	domainIDs []*common.SHA256Output,
 	newDomainNames []string,
 	certInDomainsIDs []*common.SHA256Output,
-	domainIDs []*common.SHA256Output,
 ) {
 	estimatedLeafCount := len(certs)
 	newDomainNames = make([]string, 0, estimatedLeafCount)
@@ -177,6 +134,9 @@ func (w *WorkerCerts) extractDomains(
 			certInDomainsIDs = append(certInDomainsIDs, c.CertID)
 			domainID := common.SHA256Hash32Bytes([]byte(name))
 			domainIDs = append(domainIDs, &domainID)
+
+			// deleteme
+			// fmt.Printf("id/name: %s\t%s\n", hex.EncodeToString(domainID[:]), name)
 		}
 	}
 	return
