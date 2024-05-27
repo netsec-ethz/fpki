@@ -483,6 +483,74 @@ func TestInsertDomainsIntoDirty(t *testing.T) {
 	}
 	// 2. Compare them.
 	require.Equal(t, len(domainIds), len(gotIds))
+	require.ElementsMatch(t, domainIds, gotIds)
+}
+
+func TestUpdateDomains(t *testing.T) {
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelF()
+
+	// Configure a test DB.
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	// Connect to the DB.
+	conn := testdb.Connect(t, config)
+	defer conn.Close()
+
+	c := mysql.NewMysqlDBForTests(conn)
+
+	// Create a bunch of mock domain IDs, and insert them into the dirty table.
+	N := 1_000
+	expectedIds := random.RandomIDsForTest(t, N)
+	err := c.InsertDomainsIntoDirty(ctx, expectedIds)
+	require.NoError(t, err)
+
+	expectedNames := random.RandomLeafNames(t, N)
+	err = c.UpdateDomains(ctx, expectedIds, expectedNames)
+	require.NoError(t, err)
+
+	// Function to tie id with name.
+	type pair struct {
+		id   *common.SHA256Output
+		name string
+	}
+	idsNames2Pairs := func(ids []*common.SHA256Output, names []string) []pair {
+		// Tie id with name.
+		s := make([]pair, len(ids))
+		for i := range ids {
+			s[i] = pair{
+				id:   ids[i],
+				name: names[i],
+			}
+		}
+		return s
+	}
+
+	// Check they were inserted correctly.
+	// 1. Retrieve.
+	str := "SELECT domain_id,domain_name FROM domains"
+	rows, err := c.DB().QueryContext(ctx, str)
+	require.NoError(t, err)
+	require.NoError(t, rows.Err())
+	// Each ID.
+	gotIds := make([]*common.SHA256Output, 0)
+	gotNames := make([]string, 0)
+	for rows.Next() {
+		var id []byte
+		var name string
+		err := rows.Scan(&id, &name)
+		require.NoError(t, err)
+
+		require.Equal(t, common.SHA256Size, len(id))
+		gotIds = append(gotIds, (*common.SHA256Output)(id))
+		gotNames = append(gotNames, name)
+	}
+	// 2. Compare them.
+	require.Equal(t, len(expectedIds), len(gotIds))
+	expected := idsNames2Pairs(expectedIds, expectedNames)
+	got := idsNames2Pairs(gotIds, gotNames)
+	require.ElementsMatch(t, expected, got)
 }
 
 func BenchmarkRetrieveDomainEntries(b *testing.B) {

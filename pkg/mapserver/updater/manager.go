@@ -43,10 +43,7 @@ func NewManager(
 ) *Manager {
 	// Compute how many bits we need to cover N partitions (i.e. ceil(log2(N-1)),
 	// doable by computing the bit length of N-1 even if not a power of 2.
-	nBits := 0
-	for n := workerCount - 1; n > 0; n >>= 1 {
-		nBits++
-	}
+	nBits := int(util.Log2(uint(workerCount - 1)))
 
 	selectPartition := func(id *common.SHA256Output) uint {
 		return mysql.PartitionByIdMSB(id, nBits)

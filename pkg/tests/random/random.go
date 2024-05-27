@@ -2,6 +2,7 @@ package random
 
 import (
 	"crypto/rsa"
+	"fmt"
 	"io"
 	"math/big"
 	"math/rand"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/tests"
+	"github.com/netsec-ethz/fpki/pkg/util"
 	"github.com/stretchr/testify/require"
 )
 
@@ -51,6 +53,19 @@ func RandomIDsForTest(t tests.T, size int) []*common.SHA256Output {
 		copy(IDs[i][:], RandomBytesForTest(t, common.SHA256Size))
 	}
 	return IDs
+}
+
+func RandomLeafNames(t tests.T, N int) []string {
+	padding := util.Log2(uint(N))
+	// Dynamic format string: as many padding zeroes as indicated by padding, e.g. leaf-%03d .
+	format := fmt.Sprintf("leaf-%%0%dd", padding)
+
+	names := make([]string, N)
+	for i := 0; i < N; i++ {
+		// Dynamic format string: as many padding zeroes as indicated by the variable `p` :
+		names[i] = fmt.Sprintf(format, i)
+	}
+	return names
 }
 
 var keyCreatingRandomCerts = RandomRSAPrivateKey(tests.NewTestObject("test_RSA_key"))

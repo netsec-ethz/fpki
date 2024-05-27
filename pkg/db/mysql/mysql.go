@@ -3,7 +3,6 @@ package mysql
 import (
 	"context"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
 	"strings"
 	"sync"
@@ -73,66 +72,29 @@ func (c *mysqlDB) UpdateDomains(ctx context.Context, domainIDs []*common.SHA256O
 		return nil
 	}
 
-	// // deleteme
-	// if _, err := c.db.ExecContext(ctx, "START TRANSACTION"); err != nil {
-	// 	panic(err)
-	// }
-
 	// Make the list of domains unique, attach the name to each unique ID.
 	domainIDsSet := make(map[common.SHA256Output]string)
 	for i, id := range domainIDs {
 		domainIDsSet[*id] = domainNames[i]
 	}
 
-	// // Insert into dirty.
-	// str := "REPLACE INTO dirty (domain_id) VALUES " + repeatStmt(len(domainIDsSet), 1)
-	// data := make([]interface{}, len(domainIDsSet))
-	// i := 0
-	// for k := range domainIDsSet {
-	// 	k := k // Because k changes during the loop, we need a local copy that doesn't.
-	// 	data[i] = k[:]
-	// 	i++
-	// }
-	// _, err := c.db.ExecContext(ctx, str, data...)
-	// if err != nil {
-	// 	// deleteme, debug code
-	// 	// Find duplicates here?
-	// 	return fmt.Errorf("inserting domains into dirty: %w", err)
-	// }
-
-	// // Insert into domains.
-	// str := "INSERT IGNORE INTO domains (domain_id,domain_name) VALUES " +
-	// 	repeatStmt(len(domainIDsSet), 2)
-	// data := make([]interface{}, 2*len(domainIDsSet))
-	// i := 0
-	// for k, v := range domainIDsSet {
-	// 	k := k
-	// 	data[2*i] = k[:]
-	// 	data[2*i+1] = v
-	// 	i++
-	// }
-
-	// deleteme
-	var data []any
-	str := "INSERT IGNORE INTO domains (domain_id,domain_name) VALUES "
-	entries := make([]string, 0)
+	// Insert into domains.
+	str := "INSERT IGNORE INTO domains (domain_id,domain_name) VALUES " +
+		repeatStmt(len(domainIDsSet), 2)
+	data := make([]interface{}, 2*len(domainIDsSet))
+	i := 0
 	for k, v := range domainIDsSet {
-		entries = append(entries, fmt.Sprintf("(UNHEX('%s') , '%s')",
-			hex.EncodeToString(k[:]),
-			v))
+		// Because k is of type array, &k is the same through the life of the loop. That means
+		// that k[:] is also the same; assigning it to a slice copies the same pointer as storage.
+		k := k // Create local copy of the 32 bytes.
+		data[2*i] = k[:]
+		data[2*i+1] = v
+		i++
 	}
-	str += fmt.Sprintf("%s", strings.Join(entries, ","))
 
-	fmt.Printf("deleteme SQL: %s\n", str)
 	if _, err := c.db.ExecContext(ctx, str, data...); err != nil {
-		panic(err) // deleteme
 		return fmt.Errorf("inserting domains into domains table: %w", err)
 	}
-
-	// // deleteme
-	// if _, err := c.db.ExecContext(ctx, "COMMIT"); err != nil {
-	// 	panic(err)
-	// }
 
 	return nil
 }
