@@ -34,15 +34,6 @@ func (w *CertWorker) Stop() {
 }
 
 func (w *CertWorker) resume() {
-	// deleteme
-
-	/*
-	   If while reading incomingChan we return and write to doneChan, two things happen:
-	   1. Writing to doneChan blocks the thread until someone reads it.
-	   2. The manager is still sending certs to incomingChan. It won't read doneChan until it is
-	   		done with all certs. We are locking each other.
-	*/
-
 	// Create a certificate slice where all the received certificates will end up.
 	certs := make([]*Certificate, 0, w.Manager.MultiInsertSize)
 
@@ -59,8 +50,6 @@ func (w *CertWorker) resume() {
 	w.addError(w.processBundle(certs))
 	// Signal that we have finished working.
 	w.closeErrors()
-
-	fmt.Printf("[%2d] cert worker is finished\n", w.Id)
 }
 
 func (w *CertWorker) processBundle(certs []*Certificate) error {
@@ -72,7 +61,6 @@ func (w *CertWorker) processBundle(certs []*Certificate) error {
 	if err := w.insertCertificates(certs); err != nil {
 		return fmt.Errorf("inserting certificates at worker %d: %w", w.Id, err)
 	}
-	// fmt.Printf("[%2d, %p] certificates inserted\n", w.Id, w.Manager)
 
 	domainIDs, domainNames, certInDomainIDs := w.extractDomains(certs)
 
@@ -84,8 +72,6 @@ func (w *CertWorker) processBundle(certs []*Certificate) error {
 		}
 		w.Manager.IncomingDomainChan <- d
 	}
-
-	fmt.Printf("[%2d, %p] domains sent\n", w.Id, w.Manager)
 
 	return nil
 }
@@ -100,10 +86,6 @@ func (w *CertWorker) insertCertificates(certs []*Certificate) error {
 		parents[i] = c.ParentID
 		expirations[i] = &c.Cert.NotAfter
 		payloads[i] = c.Cert.Raw
-
-		// // deleteme
-		// fmt.Printf("[%2d, %p] cert: %s\n", w.Id, w.Manager, hex.EncodeToString(c.CertID[:]))
-
 	}
 	return w.Conn.UpdateCerts(w.Ctx, ids, parents, expirations, payloads)
 }
@@ -131,9 +113,6 @@ func (w *CertWorker) extractDomains(
 			certInDomainsIDs = append(certInDomainsIDs, c.CertID)
 			domainID := common.SHA256Hash32Bytes([]byte(name))
 			domainIDs = append(domainIDs, &domainID)
-
-			// deleteme
-			// fmt.Printf("id/name: %s\t%s\n", hex.EncodeToString(domainID[:]), name)
 		}
 	}
 	return

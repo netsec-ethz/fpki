@@ -2,7 +2,6 @@ package updater
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
@@ -50,17 +49,6 @@ func (w *DomainWorker) resume() {
 	w.addError(w.processBundle(domains))
 	// Signal that we have finished working.
 	w.closeErrors()
-
-	fmt.Printf("[%2d] domain worker is finished\n", w.Id)
-
-	//
-	//
-	// deleteme
-	// // try to settle the DB again by running commit once more on the connection/session
-	// _, err := w.Conn.DB().ExecContext(w.Ctx, "COMMIT")
-	// if err != nil {
-	// 	panic(err)
-	// }
 }
 
 func (w *DomainWorker) processBundle(domains []*DirtyDomain) error {
@@ -74,10 +62,6 @@ func (w *DomainWorker) processBundle(domains []*DirtyDomain) error {
 		domainIDs[i] = d.DomainID
 		domainNames[i] = d.Name
 		certIDs[i] = d.CertID
-
-		// deleteme
-		fmt.Printf("[%2d, %p] domain: %s \t %s\n",
-			w.Id, w.Manager, hex.EncodeToString(d.DomainID[:]), d.Name)
 	}
 
 	// Update dirty and domain table.

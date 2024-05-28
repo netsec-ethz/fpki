@@ -2,7 +2,6 @@ package updater
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
@@ -103,10 +102,8 @@ func (m *Manager) resume() {
 			w := m.ShardFuncCert(c.CertID)
 			m.CertWorkers[w].IncomingChan <- c
 		}
-		// deleteme
-		fmt.Printf("\t\tMANAGER: waiting for certs\n")
+
 		errInCerts = m.stopAndWaitForCertWorkers()
-		fmt.Printf("\t\tMANAGER: certs done\n")
 
 		// Since all certificates have been processed already, no worker will send a domain
 		// to the manager's incoming domain channel. We can close it now.
@@ -123,15 +120,9 @@ func (m *Manager) resume() {
 			w := m.ShardFuncDomain(d.DomainID)
 			m.DomainWorkers[w].IncomingChan <- d
 		}
-		fmt.Printf("\t\tMANAGER: waiting for domains\n")
-
-		// deleteme
-		time.Sleep(100 * time.Millisecond)
 
 		// After closing the incoming domain channel, wait for all domains to be processed.
 		errInDomains = m.stopAndWaitForDomainWorkers()
-
-		fmt.Printf("\t\tMANAGER: domains done\n")
 	}()
 	wg.Wait()
 
