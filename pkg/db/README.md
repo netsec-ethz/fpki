@@ -109,3 +109,23 @@ SET GLOBAL innodb_status_output_locks = 'ON';
 -- transactions and the queries they're executing.
 SHOW PROCESSLIST;
 ```
+
+## Encountered bugs, etc
+
+Running UTs under `pkg/mapserver/updater`:
+```
+...
+2024-05-27T16:11:39.571043Z 0 [ERROR] [MY-012872] [InnoDB] [FATAL] Semaphore wait has lasted > 600 seconds. We intentionally crash the server because it appears to be hung.
+2024-05-27T16:11:39.571071Z 0 [ERROR] [MY-013183] [InnoDB] Assertion failure: srv0srv.cc:1878:ib::fatal triggered thread 140692931946048
+InnoDB: We intentionally generate a memory trap.
+InnoDB: Submit a detailed bug report to http://bugs.mysql.com.
+InnoDB: If you get repeated assertion failures or crashes, even
+InnoDB: immediately after the mysqld startup, there may be
+InnoDB: corruption in the InnoDB tablespace. Please refer to
+InnoDB: http://dev.mysql.com/doc/refman/8.0/en/forcing-innodb-recovery.html
+InnoDB: about forcing recovery.
+2024-05-27T16:11:39Z UTC - mysqld got signal 6 ;
+...
+```
+According to the `query.log` one UT was trying to create some tables.
+Maybe another UT was using the same DB and for some reason there was a deadlock?
