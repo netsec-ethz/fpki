@@ -9,13 +9,12 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql" // deleteme
+	"github.com/stretchr/testify/require"
 
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
 	"github.com/netsec-ethz/fpki/pkg/tests"
 	"github.com/netsec-ethz/fpki/tools"
-	"github.com/stretchr/testify/require"
 )
 
 type Conn db.Conn
