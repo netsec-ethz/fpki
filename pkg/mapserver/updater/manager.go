@@ -129,7 +129,7 @@ func (m *Manager) resume() {
 	m.Stats.Stop() // stop statistics printing
 
 	// Unblock any previous steps in the pipeline and return last error
-	m.errChan <- util.ErrorsCoalesce([]error{errInCerts, errInDomains})
+	m.errChan <- util.ErrorsCoalesce(errInCerts, errInDomains)
 }
 
 // Stop closes this manager's certificate incoming channel.
@@ -165,7 +165,7 @@ func (m *Manager) stopAndWaitForCertWorkers() error {
 		}()
 	}
 	wg.Wait() // until all workers have processed all certs
-	return util.ErrorsCoalesce(errors)
+	return util.ErrorsCoalesce(errors...)
 }
 
 func (m *Manager) stopAndWaitForDomainWorkers() error {
@@ -182,5 +182,5 @@ func (m *Manager) stopAndWaitForDomainWorkers() error {
 		}()
 	}
 	wg.Wait() // until all workers have processed all domains
-	return util.ErrorsCoalesce(errors)
+	return util.ErrorsCoalesce(errors...)
 }

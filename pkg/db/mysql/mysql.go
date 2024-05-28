@@ -187,7 +187,7 @@ func (c *mysqlDB) retrieveDomainEntriesParallel(
 	wg.Wait()
 
 	// Are there errors?
-	if err := util.ErrorsCoalesce(errs); err != nil {
+	if err := util.ErrorsCoalesce(errs...); err != nil {
 		return nil, err
 	}
 

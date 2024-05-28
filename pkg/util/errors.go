@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-func ErrorsCoalesce(errs []error) error {
+func ErrorsCoalesce(errs ...error) error {
 	// First find if there is any error at all (common case is "no").
 	nonNilErrors := make([]error, 0, len(errs))
 	for _, err := range errs {
