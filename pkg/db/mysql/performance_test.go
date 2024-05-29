@@ -27,19 +27,19 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
 )
 
-// TestInsertPerformance tests the insert performance using different approaches, in articuno:
-// TestInsertPerformance/MyISAM (58.31s)
-// TestInsertPerformance/InnoDB (54.51s)
-func TestInsertPerformance(t *testing.T) {
+// BenchmarkInsertPerformance tests the insert performance using different approaches, in articuno:
+// BenchmarkInsertPerformance/MyISAM (58.31s)
+// BenchmarkInsertPerformance/InnoDB (54.51s)
+func BenchmarkInsertPerformance(b *testing.B) {
 	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancelF()
 
 	// Configure a test DB.
-	config, removeF := testdb.ConfigureTestDB(t)
+	config, removeF := testdb.ConfigureTestDB(b)
 	defer removeF()
 
 	// Connect to the DB.
-	conn := testdb.Connect(t, config)
+	conn := testdb.Connect(b, config)
 	defer conn.Close()
 
 	// Create lots of data to insert into the `certs` table.
@@ -53,7 +53,7 @@ func TestInsertPerformance(t *testing.T) {
 		NWorkers = 8
 		NCerts = NWorkers * BatchSize
 	}
-	require.Equal(t, 0, NCerts%BatchSize, "there is an error in the test setup. NCerts must be a "+
+	require.Equal(b, 0, NCerts%BatchSize, "there is an error in the test setup. NCerts must be a "+
 		"multiple of BatchSize, modify either of them")
 	// From xenon2025h1 we have an average of 1100b/cert
 	PayloadSize := 1_100
@@ -67,15 +67,15 @@ func TestInsertPerformance(t *testing.T) {
 	})
 	mockExp := time.Unix(42, 0)
 	mockPayload := make([]byte, PayloadSize)
-	t.Log("Mock data ready in memory")
+	b.Log("Mock data ready in memory")
 
 	// Note that InnoDB works much faster with insertions with AUTO INCREMENT.
-	t.Run("InnoDB", func(t *testing.T) {
-		tests.SkipExpensiveTest(t)
+	b.Run("InnoDB", func(b *testing.B) {
+		tests.SkipExpensiveTest(b)
 		// Create a certs-like table using MyISAM.
 		str := "DROP TABLE IF EXISTS `insert_test`"
 		_, err := conn.DB().ExecContext(ctx, str)
-		require.NoError(t, err)
+		require.NoError(b, err)
 		str = `CREATE TABLE insert_test (
 			auto_id BIGINT NOT NULL AUTO_INCREMENT,
 			cert_id VARBINARY(32) NOT NULL,
@@ -87,47 +87,47 @@ func TestInsertPerformance(t *testing.T) {
 			UNIQUE KEY(cert_id)
 		  ) ENGINE=InnoDB CHARSET=binary COLLATE=binary;`
 		_, err = conn.DB().ExecContext(ctx, str)
-		require.NoError(t, err)
+		require.NoError(b, err)
 
 		str = "ALTER INSTANCE DISABLE INNODB REDO_LOG;"
 		_, err = conn.DB().ExecContext(ctx, str)
-		require.NoError(t, err)
+		require.NoError(b, err)
 
 		str = "SET autocommit=0;"
 		_, err = conn.DB().ExecContext(ctx, str)
-		require.NoError(t, err)
+		require.NoError(b, err)
 
 		str = "SET unique_checks=0;"
 		_, err = conn.DB().ExecContext(ctx, str)
-		require.NoError(t, err)
+		require.NoError(b, err)
 
 		str = "START TRANSACTION"
 		_, err = conn.DB().ExecContext(ctx, str)
-		require.NoError(t, err)
+		require.NoError(b, err)
 
 		callFuncPerIDBatch(NWorkers, BatchSize, allCertIDs, func(workerID int, IDs []*common.SHA256Output) {
-			insertCerts(ctx, t, conn, "insert_test", IDs, mockExp, mockPayload)
+			insertCerts(ctx, b, conn, "insert_test", IDs, mockExp, mockPayload)
 		})
 
 		str = "COMMIT"
 		_, err = conn.DB().ExecContext(ctx, str)
-		require.NoError(t, err)
+		require.NoError(b, err)
 
 		str = "SET unique_checks=1;"
 		_, err = conn.DB().ExecContext(ctx, str)
-		require.NoError(t, err)
+		require.NoError(b, err)
 
 		str = "ALTER INSTANCE DISABLE INNODB REDO_LOG;"
 		_, err = conn.DB().ExecContext(ctx, str)
-		require.NoError(t, err)
+		require.NoError(b, err)
 	})
 
 	// Create a certs-like table using MyISAM.
 	// 58K certs/s using articuno.
-	t.Run("MyISAM", func(t *testing.T) {
+	b.Run("MyISAM", func(b *testing.B) {
 		str := "DROP TABLE IF EXISTS `insert_test`"
 		_, err := conn.DB().ExecContext(ctx, str)
-		require.NoError(t, err)
+		require.NoError(b, err)
 		str = `CREATE TABLE insert_test (
 			cert_id VARBINARY(32) NOT NULL,
 			expiration DATETIME NOT NULL,
@@ -136,22 +136,22 @@ func TestInsertPerformance(t *testing.T) {
 			PRIMARY KEY(cert_id)
 		) ENGINE=MyISAM CHARSET=binary COLLATE=binary;`
 		_, err = conn.DB().ExecContext(ctx, str)
-		require.NoError(t, err)
+		require.NoError(b, err)
 
 		callFuncPerIDBatch(NWorkers, BatchSize, allCertIDs, func(workerID int, IDs []*common.SHA256Output) {
-			insertCerts(ctx, t, conn, "insert_test", IDs, mockExp, mockPayload)
+			insertCerts(ctx, b, conn, "insert_test", IDs, mockExp, mockPayload)
 		})
 	})
 
 	CSVFilePath := "/mnt/data/tmp/insert_test_data.csv"
-	t.Run("create_data_to_csv", func(t *testing.T) {
-		writeCSV(t, CSVFilePath, recordsFromCertIDs(allCertIDs, mockExp, mockPayload))
+	b.Run("create_data_to_csv", func(b *testing.B) {
+		writeCSV(b, CSVFilePath, recordsFromCertIDs(allCertIDs, mockExp, mockPayload))
 	})
-	t.Run("save_table_to_csv", func(t *testing.T) {
-		tests.SkipExpensiveTest(t)
+	b.Run("save_table_to_csv", func(b *testing.B) {
+		tests.SkipExpensiveTest(b)
 		str := "DROP TABLE IF EXISTS `insert_test`"
 		_, err := conn.DB().ExecContext(ctx, str)
-		require.NoError(t, err)
+		require.NoError(b, err)
 		str = `CREATE TABLE insert_test (
 			cert_id VARBINARY(32) NOT NULL,
 			expiration DATETIME NOT NULL,
@@ -160,26 +160,26 @@ func TestInsertPerformance(t *testing.T) {
 			PRIMARY KEY(cert_id)
 		) ENGINE=MyISAM CHARSET=binary COLLATE=binary;`
 		_, err = conn.DB().ExecContext(ctx, str)
-		require.NoError(t, err)
+		require.NoError(b, err)
 
 		callFuncPerIDBatch(NWorkers, BatchSize, allCertIDs, func(workerID int, IDs []*common.SHA256Output) {
-			insertCerts(ctx, t, conn, "insert_test", IDs, mockExp, mockPayload)
+			insertCerts(ctx, b, conn, "insert_test", IDs, mockExp, mockPayload)
 		})
 
 		str = `SELECT TO_BASE64(cert_id),expiration,TO_BASE64(payload) FROM insert_test INTO OUTFILE ? ` +
 			`FIELDS TERMINATED BY ',' ENCLOSED BY '"' ` +
 			`LINES TERMINATED BY '\n'`
 		_, err = conn.DB().ExecContext(ctx, str, CSVFilePath)
-		require.NoError(t, err)
+		require.NoError(b, err)
 	})
 
 	// Load a file directly.
 	// In articuno it takes 78s, that is, 64K certs/s (file not in RAID)
 	// In articuno it takes 65s, that is, 77K certs/s (file in RAID)
-	t.Run("load_data_myisam", func(t *testing.T) {
+	b.Run("load_data_myisam", func(b *testing.B) {
 		str := "DROP TABLE IF EXISTS `insert_test`"
 		_, err := conn.DB().ExecContext(ctx, str)
-		require.NoError(t, err)
+		require.NoError(b, err)
 		str = `CREATE TABLE insert_test (
 			cert_id VARBINARY(32) NOT NULL,
 			expiration DATETIME NOT NULL,
@@ -188,9 +188,9 @@ func TestInsertPerformance(t *testing.T) {
 			PRIMARY KEY(cert_id)
 		) ENGINE=MyISAM CHARSET=binary COLLATE=binary;`
 		_, err = conn.DB().ExecContext(ctx, str)
-		require.NoError(t, err)
+		require.NoError(b, err)
 
-		loadDataWithCSV(ctx, t, conn, CSVFilePath)
+		loadDataWithCSV(ctx, b, conn, CSVFilePath)
 	})
 }
 
