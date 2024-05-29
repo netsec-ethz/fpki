@@ -857,8 +857,10 @@ func TestReadPerformance(t *testing.T) {
 	})
 }
 
-// TestInsertDeadlock checks that our assumption about InnoDB hitting a deadlock while inserting
-// the same ID (e.g. into dirty) is still true: there will be a deadlock error.
+// TestInsertDeadlock checks that InnoDB gets a deadlock if inserting two records with the
+// same ID into the same table from two different go routines.
+// InnoDB should not complain if the insert with same IDs is done from the same multi-insert
+// SQL statement.
 func TestInsertDeadlock(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancelF()
@@ -871,7 +873,7 @@ func TestInsertDeadlock(t *testing.T) {
 	conn := testdb.Connect(t, config)
 	defer conn.Close()
 
-	// Create lots of data to insert into a mock `dirty` table.
+	// Create data to insert into a mock `dirty` table.
 	NDomains := 100_000
 	allDomainIDs := make([]*common.SHA256Output, NDomains)
 	for i := 0; i < NDomains; i++ {
@@ -908,10 +910,8 @@ func TestInsertDeadlock(t *testing.T) {
 		_, err := conn.DB().ExecContext(ctx, str)
 		require.NoError(t, err)
 		str = `CREATE TABLE dirty_test (
-			auto_id bigint NOT NULL AUTO_INCREMENT,
 			domain_id varbinary(32) NOT NULL,
-			PRIMARY KEY (auto_id),
-			UNIQUE KEY domain_id (domain_id)
+			PRIMARY KEY (domain_id)
 			) ENGINE=InnoDB AUTO_INCREMENT=917012 DEFAULT CHARSET=binary;`
 		_, err = conn.DB().ExecContext(ctx, str)
 		require.NoError(t, err)
@@ -945,43 +945,30 @@ func TestInsertDeadlock(t *testing.T) {
 		}
 		require.Equal(t, 1, successCount)
 	})
-}
 
-// TestMultipleTablesOrMultipleConn checks which option is better:
-//  1. Use multiple temporary tables to insert, then INSERT IGNORE into the final one.
-//  2. Use a MultiConn object that "dispatches" the data to be inserted to different Conn's,
-//     depending on their keys/indices.
-//
-// For this test we will use the "certs" table as target.
-func TestMultipleTablesOrMultipleConn(t *testing.T) {
-	ctx, cancelF := context.WithTimeout(context.Background(), 200*time.Second)
-	defer cancelF()
+	// Same go routine, multiple times the same ID.
+	t.Run("same_multi-insert", func(t *testing.T) {
+		// Create a dirty table using InnoDB.
+		str := "DROP TABLE IF EXISTS `dirty_test`"
+		_, err := conn.DB().ExecContext(ctx, str)
+		require.NoError(t, err)
+		str = `CREATE TABLE dirty_test (
+			domain_id varbinary(32) NOT NULL,
+			PRIMARY KEY (domain_id)
+			) ENGINE=InnoDB AUTO_INCREMENT=917012 DEFAULT CHARSET=binary;`
+		_, err = conn.DB().ExecContext(ctx, str)
+		require.NoError(t, err)
 
-	// Configure a test DB.
-	config, removeF := testdb.ConfigureTestDB(t)
-	defer removeF()
-
-	// Connect to the DB.
-	conn := testdb.Connect(t, config)
-	defer conn.Close()
-
-	// Create lots of data to insert into the `certs` table.
-	NCerts := 1_000_000
-	PayloadSize := 4_000
-	allCertIDs := make([]*common.SHA256Output, NCerts)
-	for i := 0; i < NCerts; i++ {
-		allCertIDs[i] = new(common.SHA256Output)
-		binary.LittleEndian.PutUint64(allCertIDs[i][:], uint64(i))
-	}
-	t.Log("Mock data ready in memory")
-
-	// Function that inserts certificates and payload.
-	mockExp := time.Unix(42, 0)
-	mockPayload := make([]byte, PayloadSize)
-
-	_ = ctx
-	_ = mockExp
-	_ = mockPayload
+		// Create a slice with all the same IDs.
+		sameIDs := allDomainIDs[:0]
+		firstID := *allDomainIDs[0]
+		for i := 0; i < len(allDomainIDs); i++ {
+			localCopy := firstID
+			sameIDs = append(sameIDs, &localCopy)
+		}
+		err = insertIntoDirty(ctx, conn, "dirty_test", sameIDs)
+		require.NoError(t, err)
+	})
 }
 
 func exec(ctx context.Context, t *testing.T, conn db.Conn, query string, args ...any) {
