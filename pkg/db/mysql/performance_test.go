@@ -257,19 +257,19 @@ func TestInsertPerformance(t *testing.T) {
 // The reason that the inverse sorted data is faster might be because each thread will attack
 // many partitions, while straight sorted data means each thread uses just one.
 // We could use KEY for partitions, but the data is sorted anyway.
-func TestPartitionInsert(t *testing.T) {
+func BenchmarkPartitionInsert(b *testing.B) {
 	ctx, cancelF := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancelF()
 
 	// Configure a test DB.
-	config, removeF := testdb.ConfigureTestDB(t)
+	config, removeF := testdb.ConfigureTestDB(b)
 	defer removeF()
 
 	// Connect to the DB.
-	conn := testdb.Connect(t, config)
+	conn := testdb.Connect(b, config)
 	defer conn.Close()
 
-	exec := func(t *testing.T, query string, args ...any) {
+	exec := func(t tests.T, query string, args ...any) {
 		exec(ctx, t, conn, query, args...)
 	}
 
@@ -282,39 +282,39 @@ func TestPartitionInsert(t *testing.T) {
 		NWorkers = 8
 		NCerts = 10 * NWorkers * BatchSize
 	}
-	require.Equal(t, 0, NCerts%BatchSize, "there is an error in the test setup. NCerts must be a "+
+	require.Equal(b, 0, NCerts%BatchSize, "there is an error in the test setup. NCerts must be a "+
 		"multiple of BatchSize, modify either of them")
 
-	allCertIDs := mockTestData(t, NCerts)
+	allCertIDs := mockTestData(b, NCerts)
 	mockExp := time.Unix(42, 0)
 	mockPayload := make([]byte, 1_100) // From xenon2025h1 we have an average of 1100b/cert
 	records := recordsFromCertIDs(allCertIDs, mockExp, mockPayload)
-	require.Equal(t, NCerts, len(records))
-	t.Log("Mock data ready in memory")
+	require.Equal(b, NCerts, len(records))
+	b.Logf("Mock data ready in memory, %d certs", NCerts)
 
 	CSVFilePath := "/mnt/data/tmp/insert_test_data.csv"
 
-	dropTable := func(t *testing.T) {
+	dropTable := func(t tests.T) {
 		exec(t, "DROP TABLE IF EXISTS `insert_test`")
 	}
-	createCsv := func(t *testing.T) {
+	createCsv := func(t tests.T) {
 		writeCSV(t, CSVFilePath, records)
 	}
-	t.Run("myisam", func(t *testing.T) {
-		createCsv(t)
-		dropTable(t)
-		exec(t, `CREATE TABLE insert_test (
+	b.Run("myisam", func(b *testing.B) {
+		createCsv(b)
+		dropTable(b)
+		exec(b, `CREATE TABLE insert_test (
 				cert_id VARBINARY(32) NOT NULL,
 				parent_id VARBINARY(32) DEFAULT NULL,
 				expiration DATETIME NOT NULL,
 				payload LONGBLOB,
 				PRIMARY KEY(cert_id)
 			) ENGINE=MyISAM CHARSET=binary COLLATE=binary;`)
-		loadDataWithCSV(ctx, t, conn, CSVFilePath)
+		loadDataWithCSV(ctx, b, conn, CSVFilePath)
 	})
-	t.Run("innodb", func(t *testing.T) {
-		dropTable(t)
-		exec(t, `CREATE TABLE insert_test (
+	b.Run("innodb", func(b *testing.B) {
+		dropTable(b)
+		exec(b, `CREATE TABLE insert_test (
 				auto_id BIGINT NOT NULL AUTO_INCREMENT,
 				cert_id VARBINARY(32) NOT NULL,
 				parent_id VARBINARY(32) DEFAULT NULL,
@@ -324,13 +324,14 @@ func TestPartitionInsert(t *testing.T) {
 				UNIQUE KEY(cert_id)
 			) ENGINE=InnoDB CHARSET=binary COLLATE=binary;`)
 
-		t.Run("single", func(t *testing.T) {
-			createCsv(t)
+		b.Run("single", func(b *testing.B) {
+			createCsv(b)
 			// For better performance with InnoDB while loading bulk data, TAL:
 			// https://dev.mysql.com/doc/refman/8.3/en/optimizing-innodb-bulk-data-loading.html
-			loadDataWithCSV(ctx, t, conn, CSVFilePath)
+			defer tests.ExtendTimeForBenchmark(b)()
+			loadDataWithCSV(ctx, b, conn, CSVFilePath)
 		})
-		t.Run("parallel", func(t *testing.T) {
+		b.Run("parallel", func(b *testing.B) {
 			NWorkers := NWorkers // Use the same value
 
 			chunkFilePath := func(workerIndex int) string {
@@ -341,38 +342,42 @@ func TestPartitionInsert(t *testing.T) {
 			}
 
 			// Function to split all the data in N CSV files.
-			splitFile := func(t *testing.T, numParts int) {
+			splitFile := func(t tests.T, numParts int) {
 				writeChunkedCsv(t, chunkFilePath, numParts, records)
 			}
 
 			// Function to split all the data in N CSV files, where each file contains
 			// records sorted by the result of the hasher function applied to cert_id.
-			splitFileSorted := func(t *testing.T, N int, hasher func(*common.SHA256Output, int) uint) {
+			splitFileSorted := func(t tests.T, N int, hasher func(*common.SHA256Output, int) uint) {
 				writeSortedChunkedCsv(t, records, N, hasher, chunkFilePathSorted)
 			}
 
-			runPartitionTest := func(t *testing.T, N int, createF func(*testing.T, int)) {
-				splitFile(t, N)
-				runWithCsvFile(ctx, t, conn, N, createF, chunkFilePath)
+			runPartitionTest := func(b *testing.B, N int, createF func(tests.T, int)) {
+				defer tests.ExtendTimeForBenchmark(b)()
+				splitFile(b, N)
+				runWithCsvFile(ctx, b, conn, N, createF, chunkFilePath)
 			}
-			runMsbSortedPartitionTest := func(t *testing.T, N int, createF func(*testing.T, int)) {
-				splitFileSorted(t, N, hasherMSB)
-				runWithCsvFile(ctx, t, conn, N, createF, chunkFilePathSorted)
+			runMsbSortedPartitionTest := func(b *testing.B, N int, createF func(tests.T, int)) {
+				defer tests.ExtendTimeForBenchmark(b)()
+				splitFileSorted(b, N, hasherMSB)
+				runWithCsvFile(ctx, b, conn, N, createF, chunkFilePathSorted)
 			}
-			runLsbSortedPartitionTest := func(t *testing.T, N int, createF func(*testing.T, int)) {
-				splitFileSorted(t, N, hasherLSB)
-				runWithCsvFile(ctx, t, conn, N, createF, chunkFilePathSorted)
+			runLsbSortedPartitionTest := func(b *testing.B, N int, createF func(tests.T, int)) {
+				defer tests.ExtendTimeForBenchmark(b)()
+				splitFileSorted(b, N, hasherLSB)
+				runWithCsvFile(ctx, b, conn, N, createF, chunkFilePathSorted)
 			}
 
-			t.Run("load_0_partitions", func(t *testing.T) {
-				splitFile(t, NWorkers)
-				t.Run("load_only", func(t *testing.T) {
-					runWithCsvFile(ctx, t, conn, NWorkers, nil, chunkFilePath)
+			b.Run("load_0_partitions", func(b *testing.B) {
+				splitFile(b, NWorkers)
+				b.Run("load_only", func(b *testing.B) {
+					defer tests.ExtendTimeForBenchmark(b)()
+					runWithCsvFile(ctx, b, conn, NWorkers, nil, chunkFilePath)
 				})
-				removeChunkedCsv(t, chunkFilePath, NWorkers)
+				removeChunkedCsv(b, chunkFilePath, NWorkers)
 			})
-			t.Run("range", func(t *testing.T) {
-				createTable := func(t *testing.T, numPartitions int) {
+			b.Run("range", func(b *testing.B) {
+				createTable := func(t tests.T, numPartitions int) {
 					str := "CREATE TABLE insert_test ( " +
 						"cert_id VARBINARY(32) NOT NULL," +
 						"parent_id VARBINARY(32) DEFAULT NULL," +
@@ -399,54 +404,54 @@ func TestPartitionInsert(t *testing.T) {
 					exec(t, str)
 				}
 
-				t.Run("2", func(t *testing.T) {
-					runPartitionTest(t, 2, createTable)
+				b.Run("2", func(b *testing.B) {
+					runPartitionTest(b, 2, createTable)
 				})
-				t.Run("4", func(t *testing.T) {
-					runPartitionTest(t, 4, createTable)
+				b.Run("4", func(b *testing.B) {
+					runPartitionTest(b, 4, createTable)
 				})
-				t.Run("8", func(t *testing.T) {
-					runPartitionTest(t, 8, createTable)
+				b.Run("8", func(b *testing.B) {
+					runPartitionTest(b, 8, createTable)
 				})
-				t.Run("16", func(t *testing.T) {
-					runPartitionTest(t, 16, createTable)
+				b.Run("16", func(b *testing.B) {
+					runPartitionTest(b, 16, createTable)
 				})
-				t.Run("32", func(t *testing.T) {
-					runPartitionTest(t, 32, createTable)
+				b.Run("32", func(b *testing.B) {
+					runPartitionTest(b, 32, createTable)
 				})
-				t.Run("64", func(t *testing.T) {
-					runPartitionTest(t, 64, createTable)
+				b.Run("64", func(b *testing.B) {
+					runPartitionTest(b, 64, createTable)
 				})
 				// Sorted data tests.
-				t.Run("sorted2", func(t *testing.T) {
-					runMsbSortedPartitionTest(t, 2, createTable)
+				b.Run("sorted2", func(b *testing.B) {
+					runMsbSortedPartitionTest(b, 2, createTable)
 				})
-				t.Run("sorted4", func(t *testing.T) {
-					runMsbSortedPartitionTest(t, 4, createTable)
+				b.Run("sorted4", func(b *testing.B) {
+					runMsbSortedPartitionTest(b, 4, createTable)
 				})
-				t.Run("sorted8", func(t *testing.T) {
-					runMsbSortedPartitionTest(t, 8, createTable)
+				b.Run("sorted8", func(b *testing.B) {
+					runMsbSortedPartitionTest(b, 8, createTable)
 				})
-				t.Run("sorted16", func(t *testing.T) {
-					runMsbSortedPartitionTest(t, 16, createTable)
+				b.Run("sorted16", func(b *testing.B) {
+					runMsbSortedPartitionTest(b, 16, createTable)
 				})
-				t.Run("sorted32", func(t *testing.T) {
-					runMsbSortedPartitionTest(t, 32, createTable)
+				b.Run("sorted32", func(b *testing.B) {
+					runMsbSortedPartitionTest(b, 32, createTable)
 				})
-				t.Run("sorted64", func(t *testing.T) {
-					runMsbSortedPartitionTest(t, 64, createTable)
+				b.Run("sorted64", func(b *testing.B) {
+					runMsbSortedPartitionTest(b, 64, createTable)
 				})
-				t.Run("inverse32", func(t *testing.T) {
-					runLsbSortedPartitionTest(t, 32, createTable)
+				b.Run("inverse32", func(b *testing.B) {
+					runLsbSortedPartitionTest(b, 32, createTable)
 				})
-				t.Run("inverse64", func(t *testing.T) {
-					runLsbSortedPartitionTest(t, 64, createTable)
+				b.Run("inverse64", func(b *testing.B) {
+					runLsbSortedPartitionTest(b, 64, createTable)
 				})
 			})
 
-			t.Run("key", func(t *testing.T) {
+			b.Run("key", func(b *testing.B) {
 				// Creates a table partitioned by key, linearly. The LSBs are used.
-				createTable := func(t *testing.T, numPartitions int) {
+				createTable := func(t tests.T, numPartitions int) {
 					str := fmt.Sprintf(
 						"CREATE TABLE insert_test ( "+
 							"cert_id VARBINARY(32) NOT NULL,"+
@@ -462,27 +467,27 @@ func TestPartitionInsert(t *testing.T) {
 					exec(t, str)
 				}
 
-				t.Run("8", func(t *testing.T) {
-					runPartitionTest(t, 8, createTable)
+				b.Run("8", func(b *testing.B) {
+					runPartitionTest(b, 8, createTable)
 				})
-				t.Run("32", func(t *testing.T) {
-					runPartitionTest(t, 32, createTable)
+				b.Run("32", func(b *testing.B) {
+					runPartitionTest(b, 32, createTable)
 				})
-				t.Run("64", func(t *testing.T) {
-					runPartitionTest(t, 64, createTable)
+				b.Run("64", func(b *testing.B) {
+					runPartitionTest(b, 64, createTable)
 				})
 
-				t.Run("sorted32", func(t *testing.T) {
-					runLsbSortedPartitionTest(t, 32, createTable)
+				b.Run("sorted32", func(b *testing.B) {
+					runLsbSortedPartitionTest(b, 32, createTable)
 				})
-				t.Run("inverse32", func(t *testing.T) {
-					runMsbSortedPartitionTest(t, 32, createTable)
+				b.Run("inverse32", func(b *testing.B) {
+					runMsbSortedPartitionTest(b, 32, createTable)
 				})
 			})
 
-			t.Run("linear", func(t *testing.T) {
+			b.Run("linear", func(b *testing.B) {
 				// Creates a table partitioned by key, linearly. The LSBs are used.
-				createTable := func(t *testing.T, numPartitions int) {
+				createTable := func(t tests.T, numPartitions int) {
 					str := fmt.Sprintf(
 						"CREATE TABLE insert_test ( "+
 							"cert_id VARBINARY(32) NOT NULL,"+
@@ -498,61 +503,61 @@ func TestPartitionInsert(t *testing.T) {
 					exec(t, str)
 				}
 
-				t.Run("2", func(t *testing.T) {
-					runPartitionTest(t, 2, createTable)
+				b.Run("2", func(b *testing.B) {
+					runPartitionTest(b, 2, createTable)
 				})
-				t.Run("4", func(t *testing.T) {
-					runPartitionTest(t, 4, createTable)
+				b.Run("4", func(b *testing.B) {
+					runPartitionTest(b, 4, createTable)
 				})
-				t.Run("8", func(t *testing.T) {
-					runPartitionTest(t, 8, createTable)
+				b.Run("8", func(b *testing.B) {
+					runPartitionTest(b, 8, createTable)
 				})
-				t.Run("16", func(t *testing.T) {
-					runPartitionTest(t, 16, createTable)
+				b.Run("16", func(b *testing.B) {
+					runPartitionTest(b, 16, createTable)
 				})
-				t.Run("32", func(t *testing.T) {
-					runPartitionTest(t, 32, createTable)
+				b.Run("32", func(b *testing.B) {
+					runPartitionTest(b, 32, createTable)
 				})
-				t.Run("64", func(t *testing.T) {
-					runPartitionTest(t, 64, createTable)
+				b.Run("64", func(b *testing.B) {
+					runPartitionTest(b, 64, createTable)
 				})
 				// Sorted data tests.
-				t.Run("sorted2", func(t *testing.T) {
-					runLsbSortedPartitionTest(t, 2, createTable)
+				b.Run("sorted2", func(b *testing.B) {
+					runLsbSortedPartitionTest(b, 2, createTable)
 				})
-				t.Run("sorted4", func(t *testing.T) {
-					runLsbSortedPartitionTest(t, 4, createTable)
+				b.Run("sorted4", func(b *testing.B) {
+					runLsbSortedPartitionTest(b, 4, createTable)
 				})
-				t.Run("sorted8", func(t *testing.T) {
-					runLsbSortedPartitionTest(t, 8, createTable)
+				b.Run("sorted8", func(b *testing.B) {
+					runLsbSortedPartitionTest(b, 8, createTable)
 				})
-				t.Run("sorted16", func(t *testing.T) {
-					runLsbSortedPartitionTest(t, 16, createTable)
+				b.Run("sorted16", func(b *testing.B) {
+					runLsbSortedPartitionTest(b, 16, createTable)
 				})
-				t.Run("sorted32", func(t *testing.T) {
-					runLsbSortedPartitionTest(t, 32, createTable)
+				b.Run("sorted32", func(b *testing.B) {
+					runLsbSortedPartitionTest(b, 32, createTable)
 				})
-				t.Run("sorted64", func(t *testing.T) {
-					runLsbSortedPartitionTest(t, 64, createTable)
+				b.Run("sorted64", func(b *testing.B) {
+					runLsbSortedPartitionTest(b, 64, createTable)
 				})
 				// Inverse data tests.
-				t.Run("inverse2", func(t *testing.T) {
-					runMsbSortedPartitionTest(t, 2, createTable)
+				b.Run("inverse2", func(b *testing.B) {
+					runMsbSortedPartitionTest(b, 2, createTable)
 				})
-				t.Run("inverse4", func(t *testing.T) {
-					runMsbSortedPartitionTest(t, 4, createTable)
+				b.Run("inverse4", func(b *testing.B) {
+					runMsbSortedPartitionTest(b, 4, createTable)
 				})
-				t.Run("inverse8", func(t *testing.T) {
-					runMsbSortedPartitionTest(t, 8, createTable)
+				b.Run("inverse8", func(b *testing.B) {
+					runMsbSortedPartitionTest(b, 8, createTable)
 				})
-				t.Run("inverse16", func(t *testing.T) {
-					runMsbSortedPartitionTest(t, 16, createTable)
+				b.Run("inverse16", func(b *testing.B) {
+					runMsbSortedPartitionTest(b, 16, createTable)
 				})
-				t.Run("inverse32", func(t *testing.T) {
-					runMsbSortedPartitionTest(t, 32, createTable)
+				b.Run("inverse32", func(b *testing.B) {
+					runMsbSortedPartitionTest(b, 32, createTable)
 				})
-				t.Run("inverse64", func(t *testing.T) {
-					runMsbSortedPartitionTest(t, 64, createTable)
+				b.Run("inverse64", func(b *testing.B) {
+					runMsbSortedPartitionTest(b, 64, createTable)
 				})
 			})
 		})
@@ -971,7 +976,7 @@ func TestInsertDeadlock(t *testing.T) {
 	})
 }
 
-func exec(ctx context.Context, t *testing.T, conn db.Conn, query string, args ...any) {
+func exec(ctx context.Context, t tests.T, conn db.Conn, query string, args ...any) {
 	_, err := conn.DB().ExecContext(ctx, query, args...)
 	require.NoError(t, err)
 }
@@ -1104,7 +1109,7 @@ func insertIntoDirty(
 	return err
 }
 
-func loadDataWithCSV(ctx context.Context, t *testing.T, conn db.Conn, filepath string) {
+func loadDataWithCSV(ctx context.Context, t tests.T, conn db.Conn, filepath string) {
 	str := `LOAD DATA CONCURRENT INFILE ? IGNORE INTO TABLE insert_test ` +
 		`FIELDS TERMINATED BY ',' ENCLOSED BY '"' LINES TERMINATED BY '\n' ` +
 		`(@cert_id,expiration,@payload) SET ` +
@@ -1115,7 +1120,7 @@ func loadDataWithCSV(ctx context.Context, t *testing.T, conn db.Conn, filepath s
 }
 
 func writeCSV(
-	t *testing.T,
+	t tests.T,
 	filename string,
 	records [][]string,
 ) {
@@ -1133,7 +1138,7 @@ func writeCSV(
 }
 
 func writeChunkedCsv(
-	t *testing.T,
+	t tests.T,
 	fileNameFunc func(int) string,
 	NWorkers int,
 	records [][]string, // rows of columns
@@ -1156,7 +1161,7 @@ func writeChunkedCsv(
 // Function to split all the data in N CSV files, where each file contains
 // records sorted by the result of the hasher function applied to cert_id.
 func writeSortedChunkedCsv(
-	t *testing.T,
+	t tests.T,
 	records [][]string,
 	N int,
 	hasher func(*common.SHA256Output, int) uint, //  hash function that determines the partition
@@ -1284,14 +1289,14 @@ func csvChunkFileName(CSVFilePath, qualifier string, workerIndex int) string {
 }
 
 // Function that removes all CSV files from 0 to N, using the naming function `nameFunc`.
-func removeChunkedCsv(t *testing.T, fName func(int) string, N int) {
+func removeChunkedCsv(t tests.T, fName func(int) string, N int) {
 	for w := 0; w < N; w++ {
 		err := os.Remove(fName(w))
 		require.NoError(t, err)
 	}
 }
 
-func mockTestData(t *testing.T, NCerts int) []*common.SHA256Output {
+func mockTestData(t tests.T, NCerts int) []*common.SHA256Output {
 	return random.RandomIDsForTest(t, NCerts)
 }
 
@@ -1307,17 +1312,18 @@ func hasherLSB(id *common.SHA256Output, nBits int) uint {
 
 func runWithCsvFile(
 	ctx context.Context,
-	t *testing.T,
+	t tests.T,
 	conn db.Conn,
 	N int, // number of chunks/partitions
-	createTableFunc func(*testing.T, int), // function to create the table
+	createTableFunc func(tests.T, int), // function to create the table
 	fName func(int) string, // function returning chunked csv filename
 ) {
 	// Create table, but with partitions.
 	if createTableFunc != nil {
 		createTableFunc(t, N)
 	}
-	t.Run("load_only", func(t *testing.T) {
+
+	tests.Run(t, "load_only", func(t tests.T) {
 		// There are N files. Load them in parallel.
 		wg := sync.WaitGroup{}
 		wg.Add(N)
