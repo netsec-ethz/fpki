@@ -27,6 +27,120 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
 )
 
+// TestInsertDeadlock checks that InnoDB gets a deadlock if inserting two records with the
+// same ID into the same table from two different go routines.
+// InnoDB should not complain if the insert with same IDs is done from the same multi-insert
+// SQL statement.
+func TestInsertDeadlock(t *testing.T) {
+	ctx, cancelF := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancelF()
+
+	// Configure a test DB.
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	// Connect to the DB.
+	conn := testdb.Connect(t, config)
+	defer conn.Close()
+
+	// Create data to insert into a mock `dirty` table.
+	NDomains := 100_000
+	allDomainIDs := make([]*common.SHA256Output, NDomains)
+	for i := 0; i < NDomains; i++ {
+		allDomainIDs[i] = new(common.SHA256Output)
+		binary.LittleEndian.PutUint64(allDomainIDs[i][:], uint64(i))
+	}
+	t.Log("Mock data ready in memory")
+
+	// Call each thread with different domain IDs separately:
+	t.Run("non_overlapping_ids", func(t *testing.T) {
+		// Create a dirty table using InnoDB.
+		str := "DROP TABLE IF EXISTS `dirty_test`"
+		_, err := conn.DB().ExecContext(ctx, str)
+		require.NoError(t, err)
+		str = `CREATE TABLE dirty_test (
+			auto_id bigint NOT NULL AUTO_INCREMENT,
+			domain_id varbinary(32) NOT NULL,
+			PRIMARY KEY (auto_id),
+			UNIQUE KEY domain_id (domain_id)
+			) ENGINE=InnoDB AUTO_INCREMENT=917012 DEFAULT CHARSET=binary;`
+		_, err = conn.DB().ExecContext(ctx, str)
+		require.NoError(t, err)
+
+		callFuncPerIDBatch(32, 100_000, allDomainIDs, func(workerID int, IDs []*common.SHA256Output) {
+			err := insertIntoDirty(ctx, conn, "dirty_test", IDs)
+			require.NoError(t, err)
+		})
+	})
+
+	// Now call many threads with the same IDs.
+	t.Run("clashing_ids", func(t *testing.T) {
+		// Create a dirty table using InnoDB.
+		str := "DROP TABLE IF EXISTS `dirty_test`"
+		_, err := conn.DB().ExecContext(ctx, str)
+		require.NoError(t, err)
+		str = `CREATE TABLE dirty_test (
+			domain_id varbinary(32) NOT NULL,
+			PRIMARY KEY (domain_id)
+			) ENGINE=InnoDB AUTO_INCREMENT=917012 DEFAULT CHARSET=binary;`
+		_, err = conn.DB().ExecContext(ctx, str)
+		require.NoError(t, err)
+
+		errors := make([]error, 4)
+		wg := sync.WaitGroup{}
+		wg.Add(len(errors))
+		for i := 0; i < len(errors); i++ {
+			i := i
+			go func() {
+				defer wg.Done()
+
+				// The same IDs, at the same time.
+				errors[i] = insertIntoDirty(ctx, conn, "dirty_test", allDomainIDs)
+			}()
+		}
+		wg.Wait()
+
+		// We expect one non-error, and the errors on the rest of the routines.
+		successCount := 0
+		for _, err := range errors {
+			if err != nil {
+				require.Error(t, err)
+				require.IsType(t, (*mysqllib.MySQLError)(nil), err)
+				err := err.(*mysqllib.MySQLError)
+				require.Equal(t, uint16(1213), err.Number,
+					"got error code: %d\nMySQL Message: %s", err.Number, err.Message)
+			} else {
+				successCount++
+			}
+		}
+		require.Equal(t, 1, successCount)
+	})
+
+	// Same go routine, multiple times the same ID.
+	t.Run("same_multi-insert", func(t *testing.T) {
+		// Create a dirty table using InnoDB.
+		str := "DROP TABLE IF EXISTS `dirty_test`"
+		_, err := conn.DB().ExecContext(ctx, str)
+		require.NoError(t, err)
+		str = `CREATE TABLE dirty_test (
+			domain_id varbinary(32) NOT NULL,
+			PRIMARY KEY (domain_id)
+			) ENGINE=InnoDB AUTO_INCREMENT=917012 DEFAULT CHARSET=binary;`
+		_, err = conn.DB().ExecContext(ctx, str)
+		require.NoError(t, err)
+
+		// Create a slice with all the same IDs.
+		sameIDs := allDomainIDs[:0]
+		firstID := *allDomainIDs[0]
+		for i := 0; i < len(allDomainIDs); i++ {
+			localCopy := firstID
+			sameIDs = append(sameIDs, &localCopy)
+		}
+		err = insertIntoDirty(ctx, conn, "dirty_test", sameIDs)
+		require.NoError(t, err)
+	})
+}
+
 // BenchmarkInsertPerformance tests the insert performance using different approaches, in articuno:
 // BenchmarkInsertPerformance/MyISAM (58.31s)
 // BenchmarkInsertPerformance/InnoDB (54.51s)
@@ -860,120 +974,6 @@ func BenchmarkReadPerformance(b *testing.B) {
 			testWithPartitions(b, "key", createTableKey, 32)
 			testWithPartitions(b, "key", createTableKey, 64)
 		})
-	})
-}
-
-// TestInsertDeadlock checks that InnoDB gets a deadlock if inserting two records with the
-// same ID into the same table from two different go routines.
-// InnoDB should not complain if the insert with same IDs is done from the same multi-insert
-// SQL statement.
-func TestInsertDeadlock(t *testing.T) {
-	ctx, cancelF := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancelF()
-
-	// Configure a test DB.
-	config, removeF := testdb.ConfigureTestDB(t)
-	defer removeF()
-
-	// Connect to the DB.
-	conn := testdb.Connect(t, config)
-	defer conn.Close()
-
-	// Create data to insert into a mock `dirty` table.
-	NDomains := 100_000
-	allDomainIDs := make([]*common.SHA256Output, NDomains)
-	for i := 0; i < NDomains; i++ {
-		allDomainIDs[i] = new(common.SHA256Output)
-		binary.LittleEndian.PutUint64(allDomainIDs[i][:], uint64(i))
-	}
-	t.Log("Mock data ready in memory")
-
-	// Call each thread with different domain IDs separately:
-	t.Run("non_overlapping_ids", func(t *testing.T) {
-		// Create a dirty table using InnoDB.
-		str := "DROP TABLE IF EXISTS `dirty_test`"
-		_, err := conn.DB().ExecContext(ctx, str)
-		require.NoError(t, err)
-		str = `CREATE TABLE dirty_test (
-			auto_id bigint NOT NULL AUTO_INCREMENT,
-			domain_id varbinary(32) NOT NULL,
-			PRIMARY KEY (auto_id),
-			UNIQUE KEY domain_id (domain_id)
-			) ENGINE=InnoDB AUTO_INCREMENT=917012 DEFAULT CHARSET=binary;`
-		_, err = conn.DB().ExecContext(ctx, str)
-		require.NoError(t, err)
-
-		callFuncPerIDBatch(32, 100_000, allDomainIDs, func(workerID int, IDs []*common.SHA256Output) {
-			err := insertIntoDirty(ctx, conn, "dirty_test", IDs)
-			require.NoError(t, err)
-		})
-	})
-
-	// Now call many threads with the same IDs.
-	t.Run("clashing_ids", func(t *testing.T) {
-		// Create a dirty table using InnoDB.
-		str := "DROP TABLE IF EXISTS `dirty_test`"
-		_, err := conn.DB().ExecContext(ctx, str)
-		require.NoError(t, err)
-		str = `CREATE TABLE dirty_test (
-			domain_id varbinary(32) NOT NULL,
-			PRIMARY KEY (domain_id)
-			) ENGINE=InnoDB AUTO_INCREMENT=917012 DEFAULT CHARSET=binary;`
-		_, err = conn.DB().ExecContext(ctx, str)
-		require.NoError(t, err)
-
-		errors := make([]error, 4)
-		wg := sync.WaitGroup{}
-		wg.Add(len(errors))
-		for i := 0; i < len(errors); i++ {
-			i := i
-			go func() {
-				defer wg.Done()
-
-				// The same IDs, at the same time.
-				errors[i] = insertIntoDirty(ctx, conn, "dirty_test", allDomainIDs)
-			}()
-		}
-		wg.Wait()
-
-		// We expect one non-error, and the errors on the rest of the routines.
-		successCount := 0
-		for _, err := range errors {
-			if err != nil {
-				require.Error(t, err)
-				require.IsType(t, (*mysqllib.MySQLError)(nil), err)
-				err := err.(*mysqllib.MySQLError)
-				require.Equal(t, uint16(1213), err.Number,
-					"got error code: %d\nMySQL Message: %s", err.Number, err.Message)
-			} else {
-				successCount++
-			}
-		}
-		require.Equal(t, 1, successCount)
-	})
-
-	// Same go routine, multiple times the same ID.
-	t.Run("same_multi-insert", func(t *testing.T) {
-		// Create a dirty table using InnoDB.
-		str := "DROP TABLE IF EXISTS `dirty_test`"
-		_, err := conn.DB().ExecContext(ctx, str)
-		require.NoError(t, err)
-		str = `CREATE TABLE dirty_test (
-			domain_id varbinary(32) NOT NULL,
-			PRIMARY KEY (domain_id)
-			) ENGINE=InnoDB AUTO_INCREMENT=917012 DEFAULT CHARSET=binary;`
-		_, err = conn.DB().ExecContext(ctx, str)
-		require.NoError(t, err)
-
-		// Create a slice with all the same IDs.
-		sameIDs := allDomainIDs[:0]
-		firstID := *allDomainIDs[0]
-		for i := 0; i < len(allDomainIDs); i++ {
-			localCopy := firstID
-			sameIDs = append(sameIDs, &localCopy)
-		}
-		err = insertIntoDirty(ctx, conn, "dirty_test", sameIDs)
-		require.NoError(t, err)
 	})
 }
 
