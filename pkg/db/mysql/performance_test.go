@@ -606,24 +606,24 @@ func BenchmarkPartitionInsert(b *testing.B) {
 // TestReadPerformance/innodb/partitioned/32_partitions_key/retrieve_only/256 (4.53s)		5518764 certs/s
 // TestReadPerformance/innodb/partitioned/32_partitions_key/retrieve_only/512 (4.58s)		5458515 certs/s
 
-// TestReadPerformance/innodb/partitioned/64_partitions_key/retrieve_only/8 (14.80s)		1689189 certs/s
-// TestReadPerformance/innodb/partitioned/64_partitions_key/retrieve_only32 (5.57s)			4488330 certs/s
-// TestReadPerformance/innodb/partitioned/64_partitions_key/retrieve_only/64 (5.15s)		4854369 certs/s
-// TestReadPerformance/innodb/partitioned/64_partitions_key/retrieve_only/128 (4.57s)		5470460 certs/s
-// TestReadPerformance/innodb/partitioned/64_partitions_key/retrieve_only/256 (4.40s)		5681818 certs/s
-// TestReadPerformance/innodb/partitioned/64_partitions_key/retrieve_only/512 (4.55s)		5494505 certs/s
-func TestReadPerformance(t *testing.T) {
-	tests.SkipExpensiveTest(t)
+// BenchmarkReadPerformance/innodb/partitioned/64_partitions_key/retrieve_only/8 (14.80s)		1689189 certs/s
+// BenchmarkReadPerformance/innodb/partitioned/64_partitions_key/retrieve_only32 (5.57s)		4488330 certs/s
+// BenchmarkReadPerformance/innodb/partitioned/64_partitions_key/retrieve_only/64 (5.15s)		4854369 certs/s
+// BenchmarkReadPerformance/innodb/partitioned/64_partitions_key/retrieve_only/128 (4.57s)		5470460 certs/s
+// BenchmarkReadPerformance/innodb/partitioned/64_partitions_key/retrieve_only/256 (4.40s)		5681818 certs/s
+// BenchmarkReadPerformance/innodb/partitioned/64_partitions_key/retrieve_only/512 (4.55s)		5494505 certs/s
+func BenchmarkReadPerformance(b *testing.B) {
+	tests.SkipExpensiveTest(b)
 
 	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancelF()
 
 	// Configure a test DB.
-	config, removeF := testdb.ConfigureTestDB(t)
+	config, removeF := testdb.ConfigureTestDB(b)
 	defer removeF()
 
 	// Connect to the DB.
-	conn := testdb.Connect(t, config)
+	conn := testdb.Connect(b, config)
 	defer conn.Close()
 
 	NCerts := 5_000_000
@@ -635,20 +635,20 @@ func TestReadPerformance(t *testing.T) {
 		NWorkers = 8
 		NCerts = 10 * NWorkers * BatchSize
 	}
-	require.Equal(t, 0, NCerts%BatchSize, "there is an error in the test setup. NCerts must be a "+
+	require.Equal(b, 0, NCerts%BatchSize, "there is an error in the test setup. NCerts must be a "+
 		"multiple of BatchSize, modify either of them")
 
 	CSVFilePath := "/mnt/data/tmp/insert_test_data.csv"
 	chunkFilePath := func(workerIndex int) string {
 		return csvChunkFileName(CSVFilePath, "", workerIndex)
 	}
-	exec := func(t *testing.T, query string, args ...any) {
+	exec := func(t tests.T, query string, args ...any) {
 		exec(ctx, t, conn, query, args...)
 	}
-	dropTable := func(t *testing.T) {
+	dropTable := func(t tests.T) {
 		exec(t, "DROP TABLE IF EXISTS `insert_test`")
 	}
-	loadCSV := func(t *testing.T, filepath string) {
+	loadCSV := func(t tests.T, filepath string) {
 		loadDataWithCSV(ctx, t, conn, filepath)
 	}
 
@@ -659,7 +659,7 @@ func TestReadPerformance(t *testing.T) {
 	for i := 0; i < NCerts; i++ {
 		allCertIDs[i] = new(common.SHA256Output)
 		// Random, valid IDs.
-		copy(allCertIDs[i][:], random.RandomBytesForTest(t, 32))
+		copy(allCertIDs[i][:], random.RandomBytesForTest(b, 32))
 	}
 	// Shuffle the order of certificates.
 	rand.Shuffle(len(allCertIDs), func(i, j int) {
@@ -667,15 +667,15 @@ func TestReadPerformance(t *testing.T) {
 	})
 	mockExp := time.Unix(42, 0)
 	mockPayload := make([]byte, PayloadSize)
-	t.Log("Mock data ready in memory")
+	b.Log("Mock data ready in memory")
 
 	records := recordsFromCertIDs(allCertIDs, mockExp, mockPayload)
 
-	writeChunkedCsv(t, chunkFilePath, NWorkers, records)
-	defer removeChunkedCsv(t, chunkFilePath, NWorkers)
+	writeChunkedCsv(b, chunkFilePath, NWorkers, records)
+	defer removeChunkedCsv(b, chunkFilePath, NWorkers)
 
 	// Function to insert data into a table.
-	insertIntoTable := func(t *testing.T) {
+	insertIntoTable := func(t tests.T) {
 		// Load those CSV files into the table in parallel.
 		wg := sync.WaitGroup{}
 		wg.Add(NWorkers)
@@ -691,7 +691,8 @@ func TestReadPerformance(t *testing.T) {
 	}
 
 	// Function to retrieve certificate payloads, given their IDs.
-	retrieve := func(t *testing.T, NWorkers int, IDs []*common.SHA256Output) {
+	retrieve := func(b *testing.B, NWorkers int, IDs []*common.SHA256Output) {
+		defer tests.ExtendTimeForBenchmark(b)()
 		wg := sync.WaitGroup{}
 		wg.Add(NWorkers)
 		for w := 0; w < NWorkers; w++ {
@@ -702,47 +703,47 @@ func TestReadPerformance(t *testing.T) {
 				s := w * batchSize
 				e := min(s+batchSize, len(IDs))
 				IDs := IDs[s:e]
-				retrieveCertificatePayloads(ctx, t, conn, IDs)
+				retrieveCertificatePayloads(ctx, b, conn, IDs)
 			}()
 		}
 		wg.Wait()
 	}
 
 	// Read all certificates using MyISAM. Emulate the RetrieveCertificatesPayloads function.
-	t.Run("myisam", func(t *testing.T) {
-		dropTable(t)
-		exec(t, `CREATE TABLE insert_test (
+	b.Run("myisam", func(b *testing.B) {
+		dropTable(b)
+		exec(b, `CREATE TABLE insert_test (
 			cert_id VARBINARY(32) NOT NULL,
 			parent_id VARBINARY(32) DEFAULT NULL,
 			expiration DATETIME NOT NULL,
 			payload LONGBLOB,
 			PRIMARY KEY(cert_id)
 		) ENGINE=MyISAM CHARSET=binary COLLATE=binary;`)
-		insertIntoTable(t)
+		insertIntoTable(b)
 
-		t.Run("retrieve_only/8", func(t *testing.T) {
-			retrieve(t, 8, allCertIDs)
+		b.Run("retrieve_only/8", func(b *testing.B) {
+			retrieve(b, 8, allCertIDs)
 		})
-		t.Run("retrieve_only32", func(t *testing.T) {
-			retrieve(t, 32, allCertIDs)
+		b.Run("retrieve_only32", func(b *testing.B) {
+			retrieve(b, 32, allCertIDs)
 		})
-		t.Run("retrieve_only/64", func(t *testing.T) {
-			retrieve(t, 64, allCertIDs)
+		b.Run("retrieve_only/64", func(b *testing.B) {
+			retrieve(b, 64, allCertIDs)
 		})
-		t.Run("retrieve_only/128", func(t *testing.T) {
-			retrieve(t, 128, allCertIDs)
+		b.Run("retrieve_only/128", func(b *testing.B) {
+			retrieve(b, 128, allCertIDs)
 		})
-		t.Run("retrieve_only/256", func(t *testing.T) {
-			retrieve(t, 256, allCertIDs)
+		b.Run("retrieve_only/256", func(b *testing.B) {
+			retrieve(b, 256, allCertIDs)
 		})
-		t.Run("retrieve_only/512", func(t *testing.T) {
-			retrieve(t, 512, allCertIDs)
+		b.Run("retrieve_only/512", func(b *testing.B) {
+			retrieve(b, 512, allCertIDs)
 		})
 	})
-	t.Run("innodb", func(t *testing.T) {
-		t.Run("no_partitions", func(t *testing.T) {
-			dropTable(t)
-			exec(t, `CREATE TABLE insert_test (
+	b.Run("innodb", func(b *testing.B) {
+		b.Run("no_partitions", func(b *testing.B) {
+			dropTable(b)
+			exec(b, `CREATE TABLE insert_test (
 				auto_id BIGINT NOT NULL AUTO_INCREMENT,
 				cert_id VARBINARY(32) NOT NULL,
 				parent_id VARBINARY(32) DEFAULT NULL,
@@ -751,33 +752,33 @@ func TestReadPerformance(t *testing.T) {
 				PRIMARY KEY(auto_id),
 				UNIQUE KEY(cert_id)
 			) ENGINE=InnoDB CHARSET=binary COLLATE=binary;`)
-			insertIntoTable(t)
+			insertIntoTable(b)
 			// Not necessary: avoid locking the same rows while reading:
 			// exec(t, "SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED")
 
-			t.Run("retrieve_only/8", func(t *testing.T) {
-				retrieve(t, 8, allCertIDs)
+			b.Run("retrieve_only/8", func(b *testing.B) {
+				retrieve(b, 8, allCertIDs)
 			})
-			t.Run("retrieve_only32", func(t *testing.T) {
-				retrieve(t, 32, allCertIDs)
+			b.Run("retrieve_only32", func(b *testing.B) {
+				retrieve(b, 32, allCertIDs)
 			})
-			t.Run("retrieve_only/64", func(t *testing.T) {
-				retrieve(t, 64, allCertIDs)
+			b.Run("retrieve_only/64", func(b *testing.B) {
+				retrieve(b, 64, allCertIDs)
 			})
-			t.Run("retrieve_only/128", func(t *testing.T) {
-				retrieve(t, 128, allCertIDs)
+			b.Run("retrieve_only/128", func(b *testing.B) {
+				retrieve(b, 128, allCertIDs)
 			})
-			t.Run("retrieve_only/256", func(t *testing.T) {
-				retrieve(t, 256, allCertIDs)
+			b.Run("retrieve_only/256", func(b *testing.B) {
+				retrieve(b, 256, allCertIDs)
 			})
-			t.Run("retrieve_only/512", func(t *testing.T) {
-				retrieve(t, 512, allCertIDs)
+			b.Run("retrieve_only/512", func(b *testing.B) {
+				retrieve(b, 512, allCertIDs)
 			})
 		})
 
-		t.Run("partitioned", func(t *testing.T) {
+		b.Run("partitioned", func(b *testing.B) {
 			// creates a table partitioned by key.
-			createTableKey := func(t *testing.T, numPartitions int) {
+			createTableKey := func(t tests.T, numPartitions int) {
 				str := fmt.Sprintf(
 					"CREATE TABLE insert_test ( "+
 						"cert_id VARBINARY(32) NOT NULL,"+
@@ -794,7 +795,7 @@ func TestReadPerformance(t *testing.T) {
 				insertIntoTable(t)
 			}
 			// Creates a table partitioned by key, linearly. The LSBs are used.
-			createTableLinear := func(t *testing.T, numPartitions int) {
+			createTableLinear := func(t tests.T, numPartitions int) {
 				str := fmt.Sprintf(
 					"CREATE TABLE insert_test ( "+
 						"cert_id VARBINARY(32) NOT NULL,"+
@@ -812,30 +813,30 @@ func TestReadPerformance(t *testing.T) {
 			}
 
 			testWithPartitions := func(
-				t *testing.T,
+				b *testing.B,
 				name string,
-				tableF func(*testing.T, int),
+				tableF func(tests.T, int),
 				partCount int,
 			) {
-				t.Run(fmt.Sprintf("%d_partitions_%s", partCount, name), func(t *testing.T) {
-					tableF(t, partCount)
-					t.Run("retrieve_only/8", func(t *testing.T) {
-						retrieve(t, 8, allCertIDs)
+				b.Run(fmt.Sprintf("%d_partitions_%s", partCount, name), func(b *testing.B) {
+					tableF(b, partCount)
+					b.Run("retrieve_only/8", func(b *testing.B) {
+						retrieve(b, 8, allCertIDs)
 					})
-					t.Run("retrieve_only32", func(t *testing.T) {
-						retrieve(t, 32, allCertIDs)
+					b.Run("retrieve_only32", func(b *testing.B) {
+						retrieve(b, 32, allCertIDs)
 					})
-					t.Run("retrieve_only/64", func(t *testing.T) {
-						retrieve(t, 64, allCertIDs)
+					b.Run("retrieve_only/64", func(b *testing.B) {
+						retrieve(b, 64, allCertIDs)
 					})
-					t.Run("retrieve_only/128", func(t *testing.T) {
-						retrieve(t, 128, allCertIDs)
+					b.Run("retrieve_only/128", func(b *testing.B) {
+						retrieve(b, 128, allCertIDs)
 					})
-					t.Run("retrieve_only/256", func(t *testing.T) {
-						retrieve(t, 256, allCertIDs)
+					b.Run("retrieve_only/256", func(b *testing.B) {
+						retrieve(b, 256, allCertIDs)
 					})
-					t.Run("retrieve_only/512", func(t *testing.T) {
-						retrieve(t, 512, allCertIDs)
+					b.Run("retrieve_only/512", func(b *testing.B) {
+						retrieve(b, 512, allCertIDs)
 					})
 				})
 			}
@@ -852,12 +853,12 @@ func TestReadPerformance(t *testing.T) {
 			fmt.Printf("querying %d certificates\n", len(allCertIDs))
 
 			// Test linear partitions.
-			testWithPartitions(t, "linear", createTableLinear, 32)
-			testWithPartitions(t, "linear", createTableLinear, 64)
+			testWithPartitions(b, "linear", createTableLinear, 32)
+			testWithPartitions(b, "linear", createTableLinear, 64)
 
 			// Test key partitions.
-			testWithPartitions(t, "key", createTableKey, 32)
-			testWithPartitions(t, "key", createTableKey, 64)
+			testWithPartitions(b, "key", createTableKey, 32)
+			testWithPartitions(b, "key", createTableKey, 64)
 		})
 	})
 }
