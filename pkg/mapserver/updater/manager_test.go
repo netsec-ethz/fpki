@@ -113,11 +113,6 @@ func TestManagerStart(t *testing.T) {
 			_, err := conn.DB().ExecContext(ctx, str)
 			require.NoError(t, err)
 
-			// We will want to have READ UNCOMMITTED or REPEATABLE READ.
-			str = "SET GLOBAL TRANSACTION ISOLATION LEVEL READ UNCOMMITTED"
-			_, err = conn.DB().ExecContext(ctx, str)
-			require.NoError(t, err)
-
 			certs := tc.certGenerator(t, mockLeaves(tc.NLeafDomains)...)
 
 			manager := updater.NewManager(ctx, tc.NWorkers, conn, tc.MultiInsertSize, time.Second, nil)
