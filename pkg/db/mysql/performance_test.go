@@ -44,7 +44,10 @@ func TestInsertDeadlock(t *testing.T) {
 	defer conn.Close()
 
 	// Create data to insert into a mock `dirty` table.
-	NDomains := 100_000
+	// The data has to be sufficiently large for this test not to be too flaky:
+	// All go routines in "clashing_ids" must be inserting simultaneously for the deadlock
+	// error to show up.
+	NDomains := 1_000
 	allDomainIDs := make([]*common.SHA256Output, NDomains)
 	for i := 0; i < NDomains; i++ {
 		allDomainIDs[i] = new(common.SHA256Output)
@@ -59,11 +62,10 @@ func TestInsertDeadlock(t *testing.T) {
 		_, err := conn.DB().ExecContext(ctx, str)
 		require.NoError(t, err)
 		str = `CREATE TABLE dirty_test (
-			auto_id bigint NOT NULL AUTO_INCREMENT,
-			domain_id varbinary(32) NOT NULL,
-			PRIMARY KEY (auto_id),
-			UNIQUE KEY domain_id (domain_id)
-			) ENGINE=InnoDB AUTO_INCREMENT=917012 DEFAULT CHARSET=binary;`
+			domain_id VARBINARY(32) NOT NULL,
+
+			PRIMARY KEY(domain_id)
+			) ENGINE=InnoDB CHARSET=binary COLLATE=binary;`
 		_, err = conn.DB().ExecContext(ctx, str)
 		require.NoError(t, err)
 
@@ -80,9 +82,10 @@ func TestInsertDeadlock(t *testing.T) {
 		_, err := conn.DB().ExecContext(ctx, str)
 		require.NoError(t, err)
 		str = `CREATE TABLE dirty_test (
-			domain_id varbinary(32) NOT NULL,
-			PRIMARY KEY (domain_id)
-			) ENGINE=InnoDB AUTO_INCREMENT=917012 DEFAULT CHARSET=binary;`
+			domain_id VARBINARY(32) NOT NULL,
+
+			PRIMARY KEY(domain_id)
+			) ENGINE=InnoDB CHARSET=binary COLLATE=binary;`
 		_, err = conn.DB().ExecContext(ctx, str)
 		require.NoError(t, err)
 
@@ -123,9 +126,10 @@ func TestInsertDeadlock(t *testing.T) {
 		_, err := conn.DB().ExecContext(ctx, str)
 		require.NoError(t, err)
 		str = `CREATE TABLE dirty_test (
-			domain_id varbinary(32) NOT NULL,
-			PRIMARY KEY (domain_id)
-			) ENGINE=InnoDB AUTO_INCREMENT=917012 DEFAULT CHARSET=binary;`
+			domain_id VARBINARY(32) NOT NULL,
+
+			PRIMARY KEY(domain_id)
+			) ENGINE=InnoDB CHARSET=binary COLLATE=binary;`
 		_, err = conn.DB().ExecContext(ctx, str)
 		require.NoError(t, err)
 

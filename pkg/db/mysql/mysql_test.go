@@ -318,14 +318,14 @@ func TestPruneCerts(t *testing.T) {
 	require.Equal(t, len(certs), len(certIDs))
 	require.Equal(t, len(certs), len(parentIDs))
 	require.Equal(t, len(certs), len(names))
-	// Modify b.com: only the 2 leaf certificates.
+	// Modify b.com chains: only the 2 leaf certificates.
 	c := certs[4*1+2]                               // first chain of b.com (b.com->c1->c0)
 	require.Equal(t, "b.com", c.Subject.CommonName) // assert that the test data is still correct.
 	c.NotAfter = expiredTime
 	c = certs[4*1+3]                                // second chain of b.com (b.com->c0)
 	require.Equal(t, "b.com", c.Subject.CommonName) // assert that the test data is still correct.
 	c.NotAfter = expiredTime
-	// Modify c.com: only the single root of its two chains.
+	// Modify c.com chains: only the single root of its two chains.
 	c = certs[4*2]                                   // root of both chains for c.com
 	require.Equal(t, "c0.com", c.Subject.CommonName) // assert that the test data is still correct.
 	c.NotAfter = expiredTime
@@ -350,7 +350,9 @@ func TestPruneCerts(t *testing.T) {
 	// We should substract two leafs in b.com + all certs from c.com
 	newCertIDs := getAllCerts(ctx, t, conn)
 	require.Equal(t, len(certs)-((1+1)+(4)), len(newCertIDs))
-	// The certs we still have should correspond to 4 from a.com + 2 from b.com (non leaf certs)
+	// The certs that remain should correspond to:
+	// a.com: 4 certs
+	// b.com: 2 certs (non leaf certs c0 and c1)
 	// Create a set of IDs and query them.
 	newIDsSet := make(map[common.SHA256Output]struct{})
 	for _, id := range newCertIDs {
@@ -376,7 +378,7 @@ func TestPruneCerts(t *testing.T) {
 	// Test the appropriate entries exist in dirty.
 	dirtyDomains, err := conn.RetrieveDirtyDomains(ctx)
 	require.NoError(t, err)
-	require.Len(t, dirtyDomains, 2) // b.com + c.com
+	require.Len(t, dirtyDomains, 4) // (c0.com,c1.com,b.com) + c.com
 }
 
 func TestRetrieveDomainEntries(t *testing.T) {
@@ -393,35 +395,14 @@ func TestRetrieveDomainEntries(t *testing.T) {
 
 	c := mysql.NewMysqlDBForTests(conn)
 
-	// Add a bunch of entries into the `domains` table.
+	// Add a bunch of entries into the `domain_payloads` table.
 	// The domain_id will start at 1, the cert_id at 1_000_000 + 1, and the policy at 2_000_000.
 	N := 100_000
-	domainIDs := make([]*common.SHA256Output, N)
-	for i := uint64(0); i < uint64(N); i++ {
-		domainID := new(common.SHA256Output)
-		binary.LittleEndian.PutUint64(domainID[:], i)
-		domainIDs[i] = domainID
+	domainIDs, certIDs, polIDs := mockDomainData(N)
+	insertIntoDomainPayloads(ctx, t, c, domainIDs, certIDs, polIDs)
+	// Insert into dirty to use the in-DB-join functionality.
+	insertIntoDirty(ctx, conn, "dirty", domainIDs)
 
-		certID := new(common.SHA256Output)
-		binary.LittleEndian.PutUint64(certID[:], i+1_000_000)
-		polID := new(common.SHA256Output)
-		binary.LittleEndian.PutUint64(polID[:], i+2_000_000)
-		res, err := c.DB().ExecContext(ctx,
-			"INSERT INTO domain_payloads (domain_id,cert_ids,policy_ids) VALUES (?,?,?)",
-			domainID[:], certID[:], polID[:])
-		require.NoError(t, err)
-		n, err := res.RowsAffected()
-		require.NoError(t, err)
-		require.Equal(t, int64(1), n)
-		// Insert into dirty to use the in-DB-join functionality.
-		res, err = conn.DB().ExecContext(ctx,
-			"INSERT INTO dirty (domain_id) VALUES (?)",
-			domainID[:])
-		require.NoError(t, err)
-		n, err = res.RowsAffected()
-		require.NoError(t, err)
-		require.Equal(t, int64(1), n)
-	}
 	t.Logf("Added mock data to domain_payloads at %s", time.Now().Format(time.StampMilli))
 
 	// Retrieve them using the concurrent RetrieveDomainEntries.
@@ -752,5 +733,73 @@ func kvElementsMatch(t tests.T, expected, got []*db.KeyValuePair, args ...any) {
 			require.FailNow(t, fmt.Sprintf("different value for key %s", hex.EncodeToString(k[:])),
 				args...)
 		}
+	}
+}
+
+func mockDomainData(N int) (
+	domainIDs []*common.SHA256Output,
+	certIDs []*common.SHA256Output,
+	polIDs []*common.SHA256Output,
+) {
+
+	domainIDs = make([]*common.SHA256Output, N)
+	certIDs = make([]*common.SHA256Output, N)
+	polIDs = make([]*common.SHA256Output, N)
+	for i := uint64(0); i < uint64(N); i++ {
+		domainID := new(common.SHA256Output)
+		binary.LittleEndian.PutUint64(domainID[:], i+1)
+		domainIDs[i] = domainID
+
+		certID := new(common.SHA256Output)
+		binary.LittleEndian.PutUint64(certID[:], i+1_000_001)
+		certIDs[i] = certID
+
+		polID := new(common.SHA256Output)
+		binary.LittleEndian.PutUint64(polID[:], i+2_000_001)
+		polIDs[i] = polID
+	}
+	return
+}
+
+func insertIntoDomainPayloads(
+	ctx context.Context,
+	t *testing.T,
+	conn db.Conn,
+	domainIDs []*common.SHA256Output,
+	certIDs []*common.SHA256Output,
+	polIDs []*common.SHA256Output,
+) {
+
+	batchSize := 10_000
+	N := len(domainIDs)
+	for i := 0; i < N; {
+		s := i
+		e := min(s+batchSize, N)
+		W := e - s
+
+		// Convert pointers to byte slices.
+		data := make([]interface{}, 3*W)
+		for d := 0; d < W; d++ {
+			domainID := *domainIDs[i+d] // local copy
+			certID := *certIDs[i+d]
+			polID := *polIDs[i+d]
+
+			data[3*d+0] = domainID[:]
+			data[3*d+1] = certID[:]
+			data[3*d+2] = polID[:]
+		}
+
+		// Insert into DB and check.
+		res, err := conn.DB().ExecContext(ctx,
+			"INSERT INTO domain_payloads (domain_id,cert_ids,policy_ids) VALUES "+
+				mysql.RepeatStmt(W, 3),
+			data...)
+		require.NoError(t, err)
+		n, err := res.RowsAffected()
+		require.NoError(t, err)
+		require.Equal(t, int64(W), n)
+
+		// Continue with next batch.
+		i = e
 	}
 }
