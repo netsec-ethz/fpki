@@ -65,7 +65,8 @@ func TestInsertDeadlock(t *testing.T) {
 			domain_id VARBINARY(32) NOT NULL,
 
 			PRIMARY KEY(domain_id)
-			) ENGINE=InnoDB CHARSET=binary COLLATE=binary;`
+			) ENGINE=InnoDB CHARSET=binary COLLATE=binary
+			PARTITION BY LINEAR KEY (domain_id) PARTITIONS 32;`
 		_, err = conn.DB().ExecContext(ctx, str)
 		require.NoError(t, err)
 
@@ -85,7 +86,8 @@ func TestInsertDeadlock(t *testing.T) {
 			domain_id VARBINARY(32) NOT NULL,
 
 			PRIMARY KEY(domain_id)
-			) ENGINE=InnoDB CHARSET=binary COLLATE=binary;`
+			) ENGINE=InnoDB CHARSET=binary COLLATE=binary
+			PARTITION BY LINEAR KEY (domain_id) PARTITIONS 32;`
 		_, err = conn.DB().ExecContext(ctx, str)
 		require.NoError(t, err)
 
@@ -129,7 +131,8 @@ func TestInsertDeadlock(t *testing.T) {
 			domain_id VARBINARY(32) NOT NULL,
 
 			PRIMARY KEY(domain_id)
-			) ENGINE=InnoDB CHARSET=binary COLLATE=binary;`
+			) ENGINE=InnoDB CHARSET=binary COLLATE=binary
+			PARTITION BY LINEAR KEY (domain_id) PARTITIONS 32;`
 		_, err = conn.DB().ExecContext(ctx, str)
 		require.NoError(t, err)
 

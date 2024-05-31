@@ -109,15 +109,15 @@ func (c *mysqlDB) RetrieveDomainEntries(ctx context.Context, domainIDs []*common
 	}
 
 	// return c.retrieveDomainEntriesParallel(ctx, domainIDs)
-	return c.retrieveDomainEntriesSequential(ctx, domainIDs)
+	return c.retrieveDirtyDomainEntriesSequential(ctx, domainIDs)
 }
 
 func (c *mysqlDB) RetrieveDomainEntriesDirtyOnes(ctx context.Context, start, end uint64,
 ) ([]*db.KeyValuePair, error) {
-	return c.retrieveDomainEntriesInDBJoin(ctx, start, end)
+	return c.retrieveDirtyDomainEntriesInDBJoin(ctx, start, end)
 }
 
-func (c *mysqlDB) retrieveDomainEntriesInDBJoin(
+func (c *mysqlDB) retrieveDirtyDomainEntriesInDBJoin(
 	ctx context.Context,
 	start, end uint64,
 ) ([]*db.KeyValuePair, error) {
@@ -137,12 +137,12 @@ func (c *mysqlDB) retrieveDomainEntriesInDBJoin(
 	return extractDomainEntries(rows)
 }
 
-// retrieveDomainEntriesParallel uses retrieveDomainEntriesSequential NumDBWorkers times to
+// retrieveDirtyDomainEntriesParallel uses retrieveDomainEntriesSequential NumDBWorkers times to
 // query the (huge) table domain_payloads values that match the passed argument.
 //
 // XXX(juagargi) According to the benchmarks (see BenchmarkRetrieveDomainEntries),
 // this strategy is slower than running retrieveDomainEntriesSequential.
-func (c *mysqlDB) retrieveDomainEntriesParallel(
+func (c *mysqlDB) retrieveDirtyDomainEntriesParallel(
 	ctx context.Context,
 	domainIDs []*common.SHA256Output,
 ) ([]*db.KeyValuePair, error) {
@@ -166,7 +166,7 @@ func (c *mysqlDB) retrieveDomainEntriesParallel(
 				s := lastOffset
 				e := s + blockSize
 				domainsPerWorker[worker], errs[worker] =
-					c.retrieveDomainEntriesSequential(ctx, domainIDs[s:e])
+					c.retrieveDirtyDomainEntriesSequential(ctx, domainIDs[s:e])
 			}()
 		}
 	}
@@ -200,8 +200,8 @@ func (c *mysqlDB) retrieveDomainEntriesParallel(
 	return allDomains, nil
 }
 
-// retrieveDomainEntriesSequential is a classic SELECT x FROM y.
-func (c *mysqlDB) retrieveDomainEntriesSequential(
+// retrieveDirtyDomainEntriesSequential is a classic SELECT x FROM y.
+func (c *mysqlDB) retrieveDirtyDomainEntriesSequential(
 	ctx context.Context,
 	domainIDs []*common.SHA256Output,
 ) ([]*db.KeyValuePair, error) {

@@ -402,20 +402,19 @@ func TestRetrieveDomainEntries(t *testing.T) {
 	insertIntoDomainPayloads(ctx, t, c, domainIDs, certIDs, polIDs)
 	// Insert into dirty to use the in-DB-join functionality.
 	insertIntoDirty(ctx, conn, "dirty", domainIDs)
-
 	t.Logf("Added mock data to domain_payloads at %s", time.Now().Format(time.StampMilli))
 
 	// Retrieve them using the concurrent RetrieveDomainEntries.
-	parallel, err := c.RetrieveDomainEntriesParallel(ctx, domainIDs)
+	parallel, err := c.RetrieveDirtyDomainEntriesParallel(ctx, domainIDs)
 	require.NoError(t, err)
 	t.Logf("Got data from parallel retrieve at %s", time.Now().Format(time.StampMilli))
 
-	joined, err := c.RetrieveDomainEntriesInDBJoin(ctx, 0, uint64(len(domainIDs)))
+	joined, err := c.RetrieveDirtyDomainEntriesInDBJoin(ctx, 0, uint64(len(domainIDs)))
 	require.NoError(t, err)
 	t.Logf("Got data from db join retrieve at %s", time.Now().Format(time.StampMilli))
 
 	// Check against domains from the sequential retrieveDomainEntries function.
-	expected, err := c.RetrieveDomainEntriesSequential(ctx, domainIDs)
+	expected, err := c.RetrieveDirtyDomainEntriesSequential(ctx, domainIDs)
 	require.NoError(t, err)
 	t.Logf("Got data from serial retrieve at %s", time.Now().Format(time.StampMilli))
 
@@ -538,63 +537,22 @@ func BenchmarkRetrieveDomainEntries(b *testing.B) {
 	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancelF()
 
-	noop := func() {}
-	removeTestDB := &noop
-	defer func() {
-		(*removeTestDB)()
-	}()
+	// Configure a test DB.
+	config, removeF := testdb.ConfigureTestDB(b)
+	defer removeF()
+
+	// Connect to the DB.
+	conn := testdb.Connect(b, config)
+	defer conn.Close()
+	c := mysql.NewMysqlDBForTests(conn)
 
 	N := 1_000_000
-	domainIDs := make([]*common.SHA256Output, N)
-	insert := func(pushToDB bool) {
-		var conn db.Conn
-		if pushToDB {
-			// Configure a test DB.
-			config, removeF := testdb.ConfigureTestDB(b)
-			*removeTestDB = removeF // comment out to leave the DB in place
-			// Connect to the DB.
-			conn = testdb.Connect(b, config)
-		}
 
-		// Add a bunch of entries into the `domains` table.
-		// The domain_id will start at 1, the cert_id at 1_000_000 + 1, and the policy at 2_000_000.
-		for i := uint64(0); i < uint64(N); i++ {
-			domainID := new(common.SHA256Output)
-			binary.LittleEndian.PutUint64(domainID[:], i)
-			domainIDs[i] = domainID
-
-			certID := new(common.SHA256Output)
-			binary.LittleEndian.PutUint64(certID[:], i+1_000_000)
-			polID := new(common.SHA256Output)
-			binary.LittleEndian.PutUint64(polID[:], i+2_000_000)
-			// Insert into domain_payloads
-			if pushToDB {
-				res, err := conn.DB().ExecContext(ctx,
-					"INSERT INTO domain_payloads (domain_id,cert_ids,policy_ids) VALUES (?,?,?)",
-					domainID[:], certID[:], polID[:])
-				require.NoError(b, err)
-				n, err := res.RowsAffected()
-				require.NoError(b, err)
-				require.Equal(b, int64(1), n)
-				// Insert into dirty to use the in-DB-join functionality.
-				res, err = conn.DB().ExecContext(ctx,
-					"INSERT INTO dirty (domain_id) VALUES (?)",
-					domainID[:])
-				require.NoError(b, err)
-				n, err = res.RowsAffected()
-				require.NoError(b, err)
-				require.Equal(b, int64(1), n)
-			}
-		}
-		if pushToDB {
-			conn.Close()
-		}
-		b.Logf("Added mock data to domain_payloads at %s", time.Now().Format(time.StampMilli))
-	}
-	insert(false)
-
-	c := mysql.NewMysqlDBForTests(testdb.Connect(b, testdb.ConfigureTestDBOnly(b)))
-	defer c.Close()
+	domainIDs, certIDs, polIDs := mockDomainData(N)
+	insertIntoDomainPayloads(ctx, b, c, domainIDs, certIDs, polIDs)
+	// Insert into dirty to use the in-DB-join functionality.
+	insertIntoDirty(ctx, conn, "dirty", domainIDs)
+	b.Logf("Added mock data to domain_payloads at %s", time.Now().Format(time.StampMilli))
 
 	bdr := benchDomainRetrieval{
 		b:   b,
@@ -604,21 +562,21 @@ func BenchmarkRetrieveDomainEntries(b *testing.B) {
 		str := fmt.Sprintf("querying-%d00K-", i/100_000)
 		b.Run(str+"parallel", func(b *testing.B) {
 			bdr.run(func(ctx context.Context) ([]*db.KeyValuePair, error) {
-				return c.RetrieveDomainEntriesParallel(ctx, domainIDs[:i])
+				return c.RetrieveDirtyDomainEntriesParallel(ctx, domainIDs[:i])
 			})
 		})
 		require.Greater(b, bdr.count, 0)
 
 		b.Run(str+"sequential", func(b *testing.B) {
 			bdr.run(func(ctx context.Context) ([]*db.KeyValuePair, error) {
-				return c.RetrieveDomainEntriesParallel(ctx, domainIDs[:i])
+				return c.RetrieveDirtyDomainEntriesSequential(ctx, domainIDs[:i])
 			})
 		})
 		require.Greater(b, bdr.count, 0)
 
 		b.Run(str+"dirty-join", func(b *testing.B) {
 			bdr.run(func(ctx context.Context) ([]*db.KeyValuePair, error) {
-				return c.RetrieveDomainEntriesInDBJoin(ctx, 0, uint64(i))
+				return c.RetrieveDirtyDomainEntriesInDBJoin(ctx, 0, uint64(i))
 			})
 		})
 		require.Greater(b, bdr.count, 0)
@@ -763,7 +721,7 @@ func mockDomainData(N int) (
 
 func insertIntoDomainPayloads(
 	ctx context.Context,
-	t *testing.T,
+	t tests.T,
 	conn db.Conn,
 	domainIDs []*common.SHA256Output,
 	certIDs []*common.SHA256Output,

@@ -23,28 +23,28 @@ func (c *MysqlDBForTests) DebugCheckCertsExist(ctx context.Context, ids []*commo
 	return c.checkCertsExist(ctx, ids, present)
 }
 
-func (c *MysqlDBForTests) RetrieveDomainEntriesInDBJoin(
+func (c *MysqlDBForTests) RetrieveDirtyDomainEntriesInDBJoin(
 	ctx context.Context,
 	start, end uint64,
 ) ([]*db.KeyValuePair, error) {
 
-	return c.retrieveDomainEntriesInDBJoin(ctx, start, end)
+	return c.retrieveDirtyDomainEntriesInDBJoin(ctx, start, end)
 }
 
-func (c *MysqlDBForTests) RetrieveDomainEntriesParallel(
+func (c *MysqlDBForTests) RetrieveDirtyDomainEntriesParallel(
 	ctx context.Context,
 	domainIDs []*common.SHA256Output,
 ) ([]*db.KeyValuePair, error) {
 
-	return c.retrieveDomainEntriesParallel(ctx, domainIDs)
+	return c.retrieveDirtyDomainEntriesParallel(ctx, domainIDs)
 }
 
-func (c *MysqlDBForTests) RetrieveDomainEntriesSequential(
+func (c *MysqlDBForTests) RetrieveDirtyDomainEntriesSequential(
 	ctx context.Context,
 	domainIDs []*common.SHA256Output,
 ) ([]*db.KeyValuePair, error) {
 
-	return c.retrieveDomainEntriesSequential(ctx, domainIDs)
+	return c.retrieveDirtyDomainEntriesSequential(ctx, domainIDs)
 }
 
 func RepeatStmt(elemCount int, dimensions int) string {

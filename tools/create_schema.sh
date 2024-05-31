@@ -34,7 +34,8 @@ CREATE TABLE domains (
 
   PRIMARY KEY (domain_id),
   INDEX domain_name (domain_name)
-) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
+) ENGINE=InnoDB CHARSET=binary COLLATE=binary
+PARTITION BY LINEAR KEY (domain_id) PARTITIONS 32;
 EOF
   )
   echo "$CMD" | $MYSQLCMD
@@ -49,7 +50,8 @@ CREATE TABLE certs (
   payload LONGBLOB,
 
   PRIMARY KEY(cert_id)
-) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
+) ENGINE=InnoDB CHARSET=binary COLLATE=binary
+PARTITION BY LINEAR KEY (cert_id) PARTITIONS 32;
 EOF
   )
   echo "$CMD" | $MYSQLCMD
@@ -63,7 +65,8 @@ CREATE TABLE domain_certs (
 
   PRIMARY KEY domain_cert (domain_id,cert_id),
   INDEX domain_id (domain_id)
-) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
+) ENGINE=InnoDB CHARSET=binary COLLATE=binary
+PARTITION BY LINEAR KEY (domain_id) PARTITIONS 32;
 EOF
   )
   echo "$CMD" | $MYSQLCMD
@@ -78,7 +81,8 @@ CREATE TABLE policies (
   payload LONGBLOB,
 
   PRIMARY KEY(policy_id)
-) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
+) ENGINE=InnoDB CHARSET=binary COLLATE=binary
+PARTITION BY LINEAR KEY (policy_id) PARTITIONS 32;
 EOF
   )
   echo "$CMD" | $MYSQLCMD
@@ -92,7 +96,8 @@ CREATE TABLE domain_policies (
 
   PRIMARY KEY domain_pol (domain_id,policy_id),
   INDEX domain_id (domain_id)
-) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
+) ENGINE=InnoDB CHARSET=binary COLLATE=binary
+PARTITION BY LINEAR KEY (domain_id) PARTITIONS 32;
 EOF
   )
   echo "$CMD" | $MYSQLCMD
@@ -110,7 +115,8 @@ CREATE TABLE domain_payloads (
   policy_ids_id VARBINARY(32) DEFAULT NULL,     -- ID of cert_ids (above).
 
   PRIMARY KEY (domain_id)
-) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
+) ENGINE=InnoDB CHARSET=binary COLLATE=binary
+PARTITION BY LINEAR KEY (domain_id) PARTITIONS 32;
 EOF
   )
   echo "$CMD" | $MYSQLCMD
@@ -122,7 +128,8 @@ CREATE TABLE dirty (
   domain_id VARBINARY(32) NOT NULL,
 
   PRIMARY KEY(domain_id)
-) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
+) ENGINE=InnoDB CHARSET=binary COLLATE=binary
+PARTITION BY LINEAR KEY (domain_id) PARTITIONS 32;
 EOF
   )
   echo "$CMD" | $MYSQLCMD
