@@ -96,7 +96,7 @@ func TestManagerStart(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			ctx, cancelF := context.WithTimeout(context.Background(), 30*time.Second)
+			ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancelF()
 
 			// Configure a test DB.
@@ -107,16 +107,9 @@ func TestManagerStart(t *testing.T) {
 			conn := testdb.Connect(t, config)
 			defer conn.Close()
 
-			// The default behavior is autocommit=1. We want this, as it prevents the start of
-			// a new transaction on every new connection, and the need to COMMIT.
-			str := "SET autocommit=1;"
-			_, err := conn.DB().ExecContext(ctx, str)
-			require.NoError(t, err)
-
-			certs := tc.certGenerator(t, mockLeaves(tc.NLeafDomains)...)
-
 			manager := updater.NewManager(ctx, tc.NWorkers, conn, tc.MultiInsertSize, time.Second, nil)
 
+			certs := tc.certGenerator(t, mockLeaves(tc.NLeafDomains)...)
 			t.Logf("Manager: %p number of certs: %d", manager, len(certs))
 			// Log their IDs, for debugging purposes.
 			IDs := make([]string, len(certs))

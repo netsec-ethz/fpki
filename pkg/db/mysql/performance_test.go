@@ -214,6 +214,7 @@ func BenchmarkInsertPerformance(b *testing.B) {
 		_, err = conn.DB().ExecContext(ctx, str)
 		require.NoError(b, err)
 
+		// Also TAL at the WithDefaults() function.
 		str = "SET autocommit=0;"
 		_, err = conn.DB().ExecContext(ctx, str)
 		require.NoError(b, err)
