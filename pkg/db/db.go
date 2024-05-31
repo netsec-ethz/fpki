@@ -79,11 +79,15 @@ type certs interface {
 }
 
 type policies interface {
+	// MarkDescendentPolicyDomainsAsDirty finds all domain IDs that are affected by adding policies
+	// with specific immutable IDs and adds them to the dirty table
+	MarkDescendentPolicyDomainsAsDirty(ctx context.Context, immutableIDs []*common.SHA256Output) error
+
 	// CheckPoliciesExist returns a slice of true/false values. Each value indicates if
 	// the corresponding policy identified by its ID is already present in the DB.
 	CheckPoliciesExist(ctx context.Context, ids []*common.SHA256Output) ([]bool, error)
 
-	UpdatePolicies(ctx context.Context, ids, parents []*common.SHA256Output,
+	UpdatePolicies(ctx context.Context, ids, immutableIDs, parents []*common.SHA256Output,
 		expirations []*time.Time, payloads [][]byte) error
 
 	// UpdateDomainPolicies updates the domain_policies table with new entries.

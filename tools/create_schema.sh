@@ -73,11 +73,14 @@ CMD=$(cat <<EOF
 USE $DBNAME;
 CREATE TABLE policies (
   policy_id VARBINARY(32) NOT NULL,
-  parent_id VARBINARY(32) DEFAULT NULL,
+  immutable_policy_id VARBINARY(32) NOT NULL,
+  immutable_parent_id VARBINARY(32) DEFAULT NULL,
   expiration DATETIME NOT NULL,
   payload LONGBLOB,
 
-  PRIMARY KEY(policy_id)
+  PRIMARY KEY(policy_id),
+  INDEX immutable_policy_id (immutable_policy_id),
+  INDEX immutable_parent_id (immutable_parent_id)
 ) ENGINE=MyISAM CHARSET=binary COLLATE=binary;
 EOF
   )
@@ -225,16 +228,16 @@ BEGIN
 			WITH RECURSIVE cte AS (
 				-- Base case: specify which leaf policies we choose: those that
 				-- have a link with a domain that is part of the dirty domains.
-				SELECT dirty.domain_id, policies.policy_id, parent_id
+				SELECT dirty.domain_id, policies.policy_id, immutable_parent_id
 				FROM policies
 				INNER JOIN domain_policies ON policies.policy_id = domain_policies.policy_id
 				INNER JOIN dirty ON domain_policies.domain_id = dirty.domain_id
 				UNION ALL
 				-- Recursive case: any poilicy that has its ID as
 				-- parent ID of the previous set, recursively.
-				SELECT cte.domain_id, policies.policy_id, policies.parent_id
+				SELECT cte.domain_id, policies.policy_id, policies.immutable_parent_id
 				FROM policies
-				JOIN cte ON policies.policy_id = cte.parent_id
+				JOIN cte ON policies.immutable_policy_id = cte.immutable_parent_id
 			)
 			SELECT DISTINCT domain_id, policy_id FROM cte
 		) AS B
@@ -266,16 +269,16 @@ BEGIN
 			WITH RECURSIVE cte AS (
 				-- Base case: specify which leaf policies we choose: those that
 				-- have a link with a domain that is part of the dirty domains.
-				SELECT dirty.domain_id, policies.policy_id, parent_id
+				SELECT dirty.domain_id, policies.policy_id, immutable_parent_id
 				FROM policies
 				INNER JOIN domain_policies ON policies.policy_id = domain_policies.policy_id
 				INNER JOIN dirty ON domain_policies.domain_id = dirty.domain_id
 				UNION ALL
 				-- Recursive case: any poilicy that has its ID as
 				-- parent ID of the previous set, recursively.
-				SELECT cte.domain_id, policies.policy_id, policies.parent_id
+				SELECT cte.domain_id, policies.policy_id, policies.immutable_parent_id
 				FROM policies
-				JOIN cte ON policies.policy_id = cte.parent_id
+				JOIN cte ON policies.immutable_policy_id = cte.immutable_parent_id
 			)
 			SELECT DISTINCT domain_id, policy_id FROM cte
 		) AS B
@@ -345,10 +348,10 @@ EOF
 } # end of `create_new_db` function
 
 
-
+DB_NAME_ARG=${1:-fpki_test_policy_chains}
 if [ "${BASH_SOURCE[0]}" -ef "$0" ]
 then
-  echo "This will destroy everything in the fpki database"
+  echo "This will destroy everything in the ${DB_NAME_ARG} database"
   read -p "Are you sure? (y/n) default=n " answer
   case ${answer:0:1} in
       y|Y )
@@ -357,6 +360,6 @@ then
           exit 1
       ;;
   esac
-  create_new_db fpki
+  create_new_db ${DB_NAME_ARG}
 fi
 

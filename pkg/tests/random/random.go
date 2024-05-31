@@ -11,6 +11,7 @@ import (
 	"github.com/google/certificate-transparency-go/x509/pkix"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/common/crypto"
 	"github.com/netsec-ethz/fpki/pkg/tests"
 	"github.com/stretchr/testify/require"
 )
@@ -68,6 +69,33 @@ func RandomX509Cert(t tests.T, domain string) *ctx509.Certificate {
 	template.Raw = derBytes
 
 	return template
+}
+
+// BuildTestRandomPolicyChain creates a policy certificate chain for the given domains. Note that
+// the chain is not valid since the signature values are set randomly instead of calculated
+func BuildTestRandomPolicyChain(t tests.T, domains []string) []common.PolicyDocument {
+	// Create one policy certificate per subdomain.
+	docs := make([]common.PolicyDocument, len(domains))
+	var parentIssuerHash []byte
+	for i := range docs {
+		domain := domains[len(domains)-1-i]
+		pc := RandomPolicyCertificate(t)
+		pc.IssuerHash = parentIssuerHash
+		if domain == "" {
+			pc.DomainField = ""
+		} else {
+			pc.DomainField = domain
+		}
+
+		data, err := common.ToJSON(pc)
+		require.NoError(t, err)
+		pc.JSONField = data
+		docs[len(domains)-1-i] = pc
+
+		parentIssuerHash, err = crypto.ComputeHashAsSigner(pc)
+		require.NoError(t, err)
+	}
+	return docs
 }
 
 // BuildTestRandomPolicyHierarchy creates two policy certificates for the given name.

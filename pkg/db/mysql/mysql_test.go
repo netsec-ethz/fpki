@@ -20,6 +20,65 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
+func TestPolicyChainCoalescing(t *testing.T) {
+	// Because we are using "random" bytes deterministically here, set a fixed seed.
+	rand.Seed(1)
+
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelF()
+
+	// Configure a test DB.
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	// Connect to the DB.
+	conn := testdb.Connect(t, config)
+	defer conn.Close()
+
+	// Prepare a mock policy chain.
+	leafPols := []string{
+		"sub.domain_with_policies.com",
+		"domain_with_policies.com",
+		"",
+		"",
+		"",
+	}
+	pols, polIDs := testPolicyChain(t, leafPols)
+
+	// start with the leaf policy and then add parent policies one by one to ensure that the map
+	// server always returns the longest possible policy chain
+	insertedPols := [][]common.PolicyDocument{{pols[0]}, {pols[4]}, {pols[1], pols[2]}, {pols[3]}}
+	expectedCoalescedIDs := [][]*common.SHA256Output{{polIDs[0]}, {polIDs[0]}, {polIDs[0], polIDs[1], polIDs[2]}, {polIDs[0], polIDs[1], polIDs[2], polIDs[3], polIDs[4]}}
+
+	for i := range insertedPols {
+		// Update with certificates and policies.
+		err := updater.UpdateWithKeepExisting(ctx, conn, nil, nil, nil, nil, nil, insertedPols[i])
+		require.NoError(t, err)
+
+		// Coalescing of payloads.
+		err = updater.CoalescePayloadsForDirtyDomains(ctx, conn)
+		require.NoError(t, err)
+
+		// get policy IDs for domain
+		domainID := common.SHA256Hash32Bytes([]byte(leafPols[0]))
+		gotPolIDsID, gotPolIDs, err := conn.RetrieveDomainPoliciesIDs(ctx, domainID)
+		require.NoError(t, err)
+
+		// check length of policy ID slice
+		expectedUnsortedIDs := expectedCoalescedIDs[i]
+		expectedSize := common.SHA256Size * len(expectedUnsortedIDs)
+		require.Len(t, gotPolIDs, expectedSize, "bad length, should be %d but it's %d",
+			expectedSize, len(gotPolIDs))
+
+		// sort policy IDs for comparison
+		expectedPolIDs, expectedPolIDsID := glueSortedIDsAndComputeItsID(expectedUnsortedIDs)
+		t.Logf("Policy IDs for domain name \"%s\":\nexpected: %s\ngot:      %s",
+			leafPols[0], hex.EncodeToString(expectedPolIDs), hex.EncodeToString(gotPolIDs))
+		require.Equal(t, expectedPolIDs, gotPolIDs)
+		require.Equal(t, expectedPolIDsID, gotPolIDsID)
+	}
+}
+
 func TestCheckCertsExist(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
@@ -390,6 +449,22 @@ func testCertHierarchyForLeafs(t tests.T, leaves []string) (certs []*ctx509.Cert
 		certIDs = append(certIDs, certIDs2...)
 		parentCertIDs = append(parentCertIDs, parentCertIDs2...)
 		certNames = append(certNames, certNames2...)
+	}
+	return
+}
+
+// testPolicyHierarchyForLeafs returns a policy chain for the given domains, created using the
+// function BuildTestRandomPolicyChain.
+func testPolicyChain(t tests.T, domains []string) (pols []common.PolicyDocument,
+	polIDs []*common.SHA256Output) {
+	pols = random.BuildTestRandomPolicyChain(t, domains)
+
+	polIDs = make([]*common.SHA256Output, len(pols))
+	for i, pol := range pols {
+		raw, err := pol.Raw()
+		require.NoError(t, err)
+		id := common.SHA256Hash32Bytes(raw)
+		polIDs[i] = &id
 	}
 	return
 }
