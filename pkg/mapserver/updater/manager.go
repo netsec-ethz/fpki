@@ -24,8 +24,7 @@ type Manager struct {
 	ShardFuncCert   func(*common.SHA256Output) uint // select cert worker index from ID
 	ShardFuncDomain func(*common.SHA256Output) uint // select the domain worker from domain ID
 
-	IncomingCertChan chan *Certificate // Certificates arrive from this channel
-	// deleteme incomindomains should be private
+	IncomingCertChan   chan *Certificate // Certificates arrive from this channel
 	IncomingDomainChan chan *DirtyDomain
 	errChan            chan error
 }
@@ -49,13 +48,11 @@ func NewManager(
 	}
 
 	m := &Manager{
-		MultiInsertSize:    multiInsertSize,
-		Stats:              NewStatistics(statsUpdateFreq, statsUpdateFunc),
-		ShardFuncCert:      selectPartition,
-		ShardFuncDomain:    selectPartition,
-		IncomingCertChan:   make(chan *Certificate),
-		IncomingDomainChan: make(chan *DirtyDomain),
-		errChan:            make(chan error),
+		MultiInsertSize: multiInsertSize,
+		Stats:           NewStatistics(statsUpdateFreq, statsUpdateFunc),
+		ShardFuncCert:   selectPartition,
+		ShardFuncDomain: selectPartition,
+		errChan:         make(chan error),
 	}
 	m.CertWorkers = make([]*CertWorker, workerCount)
 	for i := 0; i < workerCount; i++ {
@@ -65,18 +62,17 @@ func NewManager(
 	for i := 0; i < workerCount; i++ {
 		m.DomainWorkers[i] = NewDomainWorker(ctx, i, m, conn)
 	}
-	m.Resume()
 
 	return m
 }
 
 func (m *Manager) Resume() {
+	m.IncomingDomainChan = make(chan *DirtyDomain)
+	m.IncomingCertChan = make(chan *Certificate)
 	go m.resume()
 }
 
 func (m *Manager) resume() {
-	m.Stats.Start()
-
 	// The manager controls two pipelines:
 	// 1. Read many Certificate and send each one to the appropriate Worker.
 	// 2. Read many DirtyDomain and send each one to the appropriate Worker.
@@ -86,16 +82,36 @@ func (m *Manager) resume() {
 	// Thus, in order to orderly stop the manager, the routine that reads certificates will
 	// start a shutdown when the incoming certificates channel is closed.
 
-	wg := sync.WaitGroup{}
-	wg.Add(2) // Two concurrent pipelines
+	// Pipelines have to be opened in reverse.
+	pipelineWaitGroup := sync.WaitGroup{}
+	pipelineWaitGroup.Add(2) // Two concurrent pipelines
 
 	var errInCerts error
 	var errInDomains error
+
+	// Second pipeline: domain workers read from here and send to the sink (the DB).
+	m.resumeDomainWorkers()
+	go func() {
+		// Second pipeline: move domains to workers' second pipeline.
+		defer pipelineWaitGroup.Done()
+
+		for d := range m.IncomingDomainChan {
+			// Determine worker for the domain.
+			w := m.ShardFuncDomain(d.DomainID)
+			m.DomainWorkers[w].IncomingChan <- d
+		}
+
+		// After closing the incoming domain channel, wait for all domains to be processed.
+		errInDomains = m.stopAndWaitForDomainWorkers()
+	}()
+
+	// First pipeline: cert workers will read from here and send to the second pipeline.
+	m.resumeCertWorkers()
 	go func() {
 		// First pipeline: move certificates to workers' first pipeline.
 		// This action will cause the workers to move domains to this manager's second pipeline
 		// (see below).
-		defer wg.Done()
+		defer pipelineWaitGroup.Done()
 
 		for c := range m.IncomingCertChan {
 			// Determine worker for the certificate.
@@ -111,20 +127,8 @@ func (m *Manager) resume() {
 		close(m.IncomingDomainChan)
 	}()
 
-	go func() {
-		// Second pipeline: move domains to workers' second pipeline.
-		defer wg.Done()
-
-		for d := range m.IncomingDomainChan {
-			// Determine worker for the domain.
-			w := m.ShardFuncDomain(d.DomainID)
-			m.DomainWorkers[w].IncomingChan <- d
-		}
-
-		// After closing the incoming domain channel, wait for all domains to be processed.
-		errInDomains = m.stopAndWaitForDomainWorkers()
-	}()
-	wg.Wait()
+	m.Stats.Start()
+	pipelineWaitGroup.Wait()
 
 	m.Stats.Stop() // stop statistics printing
 
@@ -147,6 +151,34 @@ func (m *Manager) Stop() {
 
 func (m *Manager) Wait() error {
 	return <-m.errChan
+}
+
+func (m *Manager) resumeCertWorkers() {
+	wg := sync.WaitGroup{}
+	wg.Add(len(m.CertWorkers))
+
+	for _, w := range m.CertWorkers {
+		w := w
+		go func() {
+			defer wg.Done()
+			w.Resume()
+		}()
+	}
+	wg.Wait()
+}
+
+func (m *Manager) resumeDomainWorkers() {
+	wg := sync.WaitGroup{}
+	wg.Add(len(m.DomainWorkers))
+
+	for _, w := range m.DomainWorkers {
+		w := w
+		go func() {
+			defer wg.Done()
+			w.Resume()
+		}()
+	}
+	wg.Wait()
 }
 
 // stopAndWaitForCertWorkers waits for all workers to process all certificates.

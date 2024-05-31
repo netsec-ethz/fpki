@@ -15,8 +15,7 @@ type DomainWorker struct {
 
 func NewDomainWorker(ctx context.Context, id int, m *Manager, conn db.Conn) *DomainWorker {
 	w := &DomainWorker{
-		Worker:       *newBaseWorker(ctx, id, m, conn),
-		IncomingChan: make(chan *DirtyDomain),
+		Worker: *newBaseWorker(ctx, id, m, conn),
 	}
 	w.Resume()
 
@@ -24,6 +23,8 @@ func NewDomainWorker(ctx context.Context, id int, m *Manager, conn db.Conn) *Dom
 }
 
 func (w *DomainWorker) Resume() {
+	w.Worker.Resume()
+	w.IncomingChan = make(chan *DirtyDomain)
 	go w.resume()
 }
 
@@ -78,14 +79,4 @@ func (w *DomainWorker) processBundle(domains []*DirtyDomain) error {
 	}
 
 	return nil
-
-	// if err := w.insertDomains(domainIDs, domainNames); err != nil {
-	// 	return fmt.Errorf("inserting domains at worker %d: %w", w.Id, err)
-	// }
-	// Update domain_certs.
-	// return w.insertDomainCerts(domainIDs, certIDs)
 }
-
-// func (w *DomainWorker) insertDomainCerts(domainIDs, certIDs []*common.SHA256Output) error {
-// 	return w.Conn.UpdateDomainCerts(w.Ctx, domainIDs, certIDs)
-// }

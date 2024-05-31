@@ -16,8 +16,7 @@ type CertWorker struct {
 
 func NewCertWorker(ctx context.Context, id int, m *Manager, conn db.Conn) *CertWorker {
 	w := &CertWorker{
-		Worker:       *newBaseWorker(ctx, id, m, conn),
-		IncomingChan: make(chan *Certificate),
+		Worker: *newBaseWorker(ctx, id, m, conn),
 	}
 	w.Resume()
 
@@ -25,6 +24,8 @@ func NewCertWorker(ctx context.Context, id int, m *Manager, conn db.Conn) *CertW
 }
 
 func (w *CertWorker) Resume() {
+	w.Worker.Resume()
+	w.IncomingChan = make(chan *Certificate)
 	go w.resume()
 }
 

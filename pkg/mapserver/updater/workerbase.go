@@ -22,9 +22,12 @@ func newBaseWorker(ctx context.Context, id int, m *Manager, conn db.Conn) *Worke
 		Ctx:     ctx,
 		Manager: m,
 		Conn:    conn,
-		errChan: make(chan error),
 		errWg:   sync.WaitGroup{},
 	}
+}
+
+func (w *Worker) Resume() {
+	w.errChan = make(chan error)
 }
 
 // Wait returns the last error or nil.

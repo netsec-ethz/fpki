@@ -28,6 +28,14 @@ func TestManagerStart(t *testing.T) {
 		NWorkers         int
 		MultiInsertSize  int
 	}{
+		"lonely": {
+			NLeafDomains:     1,
+			certGenerator:    sameAncestryHierarchy,
+			expectedNCerts:   2 + 1, // c0, c1 and leaf.
+			expectedNDomains: 2 + 1,
+			NWorkers:         1,
+			MultiInsertSize:  1,
+		},
 		"different_ancestors": {
 			NLeafDomains:     8,
 			certGenerator:    diffAncestryHierarchy,
@@ -118,11 +126,106 @@ func TestManagerStart(t *testing.T) {
 			}
 			t.Logf("IDs:\n%s", strings.Join(IDs, "\n"))
 
-			processCertificates(manager, certs)
-			manager.Stop()
-			err = manager.Wait()
-			require.NoError(t, err)
+			tests.TestOrTimeout(t, func(t tests.T) {
+				manager.Resume()
+				processCertificates(manager, certs)
+				manager.Stop()
+				err := manager.Wait()
+				require.NoError(t, err)
+			}, tests.WithContext(ctx))
 			verifyDB(ctx, t, conn, tc.expectedNCerts, tc.expectedNDomains)
+		})
+	}
+}
+
+func TestManagerResume(t *testing.T) {
+	testCases := map[string]struct {
+		NLeafDomains    int
+		NWorkers        int
+		MultiInsertSize int
+		NStages         int
+	}{
+		"lonely": {
+			NLeafDomains:    1,
+			NWorkers:        1,
+			MultiInsertSize: 1,
+			NStages:         1,
+		},
+		"two": {
+			NLeafDomains:    11,
+			NWorkers:        2,
+			MultiInsertSize: 10,
+			NStages:         2,
+		},
+		"seven": {
+			NLeafDomains:    121,
+			NWorkers:        4,
+			MultiInsertSize: 50,
+			NStages:         7,
+		},
+		"toomany_stages": {
+			NLeafDomains:    1,
+			NWorkers:        1,
+			MultiInsertSize: 1,
+			NStages:         5,
+		},
+	}
+	for name, tc := range testCases {
+		name, tc := name, tc
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx, cancelF := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancelF()
+
+			// Configure a test DB.
+			config, removeF := testdb.ConfigureTestDB(t)
+			defer removeF()
+
+			// Connect to the DB.
+			conn := testdb.Connect(t, config)
+			defer conn.Close()
+
+			manager := updater.NewManager(
+				ctx,
+				tc.NWorkers,
+				conn,
+				tc.MultiInsertSize,
+				time.Second,
+				nil,
+			)
+
+			N := tc.NLeafDomains
+			certs := sameAncestryHierarchy(t, mockLeaves(N)...)
+			t.Logf("Manager: %p number of certs: %d", manager, len(certs))
+			// Log their IDs, for debugging purposes.
+			IDs := make([]string, len(certs))
+			for i, c := range certs {
+				IDs[i] = hex.EncodeToString(c.CertID[:])
+			}
+			t.Logf("IDs:\n%s", strings.Join(IDs, "\n"))
+
+			stageSize := len(certs) / tc.NStages
+			for stage := 0; stage < tc.NStages; stage++ {
+				tests.TestOrTimeout(t, func(t tests.T) {
+					t.Logf("Starting stage %d/%d", stage, tc.NStages)
+					S := stage * stageSize
+					E := S + stageSize
+					if stage == tc.NStages-1 {
+						E = len(certs)
+					}
+					stagedCerts := certs[S:E]
+
+					manager.Resume()
+					processCertificates(manager, stagedCerts)
+					manager.Stop()
+					err := manager.Wait()
+					require.NoError(t, err)
+				}, tests.WithContext(ctx))
+			}
+
+			t.Log("All stages finished")
+			verifyDB(ctx, t, conn, tc.NLeafDomains+2, tc.NLeafDomains+2)
 		})
 	}
 }
