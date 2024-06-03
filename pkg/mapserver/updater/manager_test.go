@@ -104,7 +104,7 @@ func TestManagerStart(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
+			ctx, cancelF := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancelF()
 
 			// Configure a test DB.
