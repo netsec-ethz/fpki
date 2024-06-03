@@ -179,7 +179,6 @@ func BuildTestRandomCertTree(t tests.T, domainNames ...string) (
 	parentIDs []*common.SHA256Output,
 	names [][]string,
 ) {
-
 	// Reserve return values: 3 entries per domain name.
 	N := len(domainNames) * 3
 	certs = make([]*ctx509.Certificate, N)
@@ -213,7 +212,7 @@ func BuildTestRandomCertTree(t tests.T, domainNames ...string) (
 
 		parentIDs[i*3+0] = nil
 		parentIDs[i*3+1] = &id0
-		parentIDs[i*3+0] = &id1
+		parentIDs[i*3+2] = &id1
 
 		names[i*3+0] = c0.DNSNames
 		names[i*3+1] = c1.DNSNames
