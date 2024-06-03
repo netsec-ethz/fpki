@@ -13,7 +13,7 @@ func TestOrTimeout(t *testing.T, fcn func(T), timeoutFunc timeoutFcn) {
 	finished := make(chan struct{})
 	go func() {
 		defer func() {
-			t.Logf("test finished")
+			t.Logf("Test finished: %s", t.Name())
 			finished <- struct{}{}
 		}()
 
@@ -22,7 +22,7 @@ func TestOrTimeout(t *testing.T, fcn func(T), timeoutFunc timeoutFcn) {
 
 	select {
 	case <-time.After(timeout):
-		t.Errorf("Timeout !!")
+		t.Errorf("Timeout!!: %s", t.Name())
 	case <-finished:
 	}
 }
