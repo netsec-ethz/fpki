@@ -161,8 +161,7 @@ func (m *Manager) resumeCertWorkers() {
 
 	for _, w := range m.CertWorkers {
 		w := w
-		// go func() {
-		func() { // deleteme
+		go func() {
 			defer wg.Done()
 			w.Resume()
 		}()
@@ -176,8 +175,7 @@ func (m *Manager) resumeDomainWorkers() {
 
 	for _, w := range m.DomainWorkers {
 		w := w
-		// go func() {
-		func() { // deleteme
+		go func() {
 			defer wg.Done()
 			w.Resume()
 		}()
@@ -194,8 +192,7 @@ func (m *Manager) stopAndWaitForCertWorkers() error {
 	errors := make([]error, len(m.CertWorkers))
 	for i, w := range m.CertWorkers {
 		i, w := i, w
-		// go func() {
-		func() { // deleteme
+		go func() {
 			defer wg.Done()
 			w.Stop()
 			errors[i] = w.Wait()
