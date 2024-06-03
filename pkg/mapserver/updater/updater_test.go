@@ -74,8 +74,8 @@ func TestUpdateWithKeepExisting(t *testing.T) {
 		require.NoError(t, err)
 		// Expect as many IDs as total certs per leaf ( #certs / #leafs ). Each ID is 32 bytes:
 		expectedSize := common.SHA256Size * len(certs) / len(leafCerts)
-		require.Len(t, gotCertIDs, expectedSize, "bad length, should be %d but it's %d",
-			expectedSize, len(gotCertIDs))
+		require.Len(t, gotCertIDs, expectedSize, "bad length at leaf %d, should be %d but it's %d",
+			i, expectedSize, len(gotCertIDs))
 		// From the certificate IDs, grab the IDs corresponding to this leaf:
 		N := len(certIDs) / len(leafCerts) // IDs per leaf = total / leaf_count
 		expectedCertIDs, expectedCertIDsID := glueSortedIDsAndComputeItsID(certIDs[i*N : (i+1)*N])

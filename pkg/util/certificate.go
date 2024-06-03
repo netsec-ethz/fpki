@@ -19,13 +19,22 @@ func ExtractNames(certs []*ctx509.Certificate) [][]string {
 	return names
 }
 
-// ExtractExpirations simply returns all expiration times in order.
+// ExtractExpirations returns all expiration times in order.
 func ExtractExpirations(certs []*ctx509.Certificate) []*time.Time {
 	expirations := make([]*time.Time, len(certs))
 	for i, c := range certs {
 		expirations[i] = &c.NotAfter
 	}
 	return expirations
+}
+
+// ExtractPayloads returns the .Raw component of each certificate in order.
+func ExtractPayloads(certs []*ctx509.Certificate) [][]byte {
+	payloads := make([][]byte, len(certs))
+	for i, c := range certs {
+		payloads[i] = c.Raw
+	}
+	return payloads
 }
 
 // SerializeCertificates serializes a sequence of certificates into their ASN.1 DER form.

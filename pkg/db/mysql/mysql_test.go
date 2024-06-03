@@ -24,6 +24,96 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
+// TestUpdateCerts checks that the UpdateCerts function in DB works as expected.
+func TestUpdateCerts(t *testing.T) {
+	// Because we are using "random" bytes deterministically here, set a fixed seed.
+	rand.Seed(111)
+
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelF()
+
+	// Configure a test DB.
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	// Connect to the DB.
+	conn := testdb.Connect(t, config)
+	defer conn.Close()
+
+	certs, certIds, parentIds, names :=
+		random.BuildTestRandomUniqueCertsTree(t, random.RandomLeafNames(t, 2)...)
+	_ = names
+	err := conn.UpdateCerts(
+		ctx,
+		certIds,
+		parentIds,
+		util.ExtractExpirations(certs),
+		util.ExtractPayloads(certs),
+	)
+	require.NoError(t, err)
+
+	// Check contents of the certs table.
+	gotIds, gotParents, gotExpirations, gotPayloads := getAllCertsTable(ctx, t, conn)
+	require.Equal(t, len(certIds), len(gotIds))
+	require.ElementsMatch(t, gotIds, certIds)
+	require.ElementsMatch(t, parentIds, gotParents)
+	require.ElementsMatch(t, util.ExtractExpirations(certs), gotExpirations)
+	require.ElementsMatch(t, util.ExtractPayloads(certs), gotPayloads)
+}
+
+// TestUpdateCertsNonUnique is similar to TestUpdateCerts but it attempts to insert many
+// certificates with the same ID (namely, the c0 and c1 ones).
+func TestUpdateCertsNonUnique(t *testing.T) {
+	// Because we are using "random" bytes deterministically here, set a fixed seed.
+	rand.Seed(111)
+
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelF()
+
+	// Configure a test DB.
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	// Connect to the DB.
+	conn := testdb.Connect(t, config)
+	defer conn.Close()
+
+	certs, certIds, parentIds, names :=
+		random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, 2)...)
+	_ = names
+	expirations := util.ExtractExpirations(certs)
+	payloads := util.ExtractPayloads(certs)
+	err := conn.UpdateCerts(
+		ctx,
+		certIds,
+		parentIds,
+		expirations,
+		payloads,
+	)
+	require.NoError(t, err)
+
+	// The result of the call to BuildTestRandomCertTree contains c0 and c1 multiple times.
+	// Remove them.
+	expectedIds := certIds[:2]
+	expectedParents := parentIds[:2]
+	expectedExpirations := expirations[:2]
+	expectedPayloads := payloads[:2]
+	for i := 2; i < len(certIds); i += 3 {
+		expectedIds = append(expectedIds, certIds[i])
+		expectedParents = append(expectedParents, parentIds[i])
+		expectedExpirations = append(expectedExpirations, expirations[i])
+		expectedPayloads = append(expectedPayloads, payloads[i])
+	}
+
+	// Check contents of the certs table.
+	gotIds, gotParents, gotExpirations, gotPayloads := getAllCertsTable(ctx, t, conn)
+	require.Equal(t, len(expectedIds), len(gotIds))
+	require.ElementsMatch(t, gotIds, expectedIds)
+	require.ElementsMatch(t, expectedParents, gotParents)
+	require.ElementsMatch(t, expectedExpirations, gotExpirations)
+	require.ElementsMatch(t, expectedPayloads, gotPayloads)
+}
+
 func TestCheckCertsExist(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
@@ -330,14 +420,14 @@ func TestPruneCerts(t *testing.T) {
 	require.Equal(t, "c0.com", c.Subject.CommonName) // assert that the test data is still correct.
 	c.NotAfter = expiredTime
 
-	// Ingest data into DB.
+	// Ingest data into DB: certs, domains, domain_certs, policies, etc. updated.
 	err := updater.UpdateWithKeepExisting(ctx, conn, names, certIDs, parentIDs,
 		certs, util.ExtractExpirations(certs), nil)
 	require.NoError(t, err)
 	// Coalescing of payloads.
-	err = updater.CoalescePayloadsForDirtyDomains(ctx, conn)
+	err = conn.RecomputeDirtyDomainsCertAndPolicyIDs(ctx)
 	require.NoError(t, err)
-
+	// Cleanup dirty table, as we do with a regular ingest at the end.
 	err = conn.CleanupDirty(ctx)
 	require.NoError(t, err)
 
@@ -346,10 +436,11 @@ func TestPruneCerts(t *testing.T) {
 	t.Logf("Using expired time: %s", now)
 	err = conn.PruneCerts(ctx, now)
 	require.NoError(t, err)
+
 	// Find out how many certs we have now.
-	// We should substract two leafs in b.com + all certs from c.com
-	newCertIDs := getAllCerts(ctx, t, conn)
-	require.Equal(t, len(certs)-((1+1)+(4)), len(newCertIDs))
+	// We should subtract two leafs in b.com + all certs from c.com
+	newCertIDs := getAllCertIds(ctx, t, conn)
+	require.Equal(t, len(certs)-(2+4), len(newCertIDs))
 	// The certs that remain should correspond to:
 	// a.com: 4 certs
 	// b.com: 2 certs (non leaf certs c0 and c1)
@@ -652,7 +743,7 @@ func glueSortedIDsAndComputeItsID(IDs []*common.SHA256Output) ([]byte, *common.S
 	return gluedIDs, &id
 }
 
-func getAllCerts(ctx context.Context, t tests.T, conn testdb.Conn) []*common.SHA256Output {
+func getAllCertIds(ctx context.Context, t tests.T, conn testdb.Conn) []*common.SHA256Output {
 	rows, err := conn.DB().QueryContext(ctx, "SELECT cert_id FROM certs")
 	require.NoError(t, err)
 	IDs := make([]*common.SHA256Output, 0)
@@ -664,6 +755,41 @@ func getAllCerts(ctx context.Context, t tests.T, conn testdb.Conn) []*common.SHA
 		IDs = append(IDs, &id)
 	}
 	return IDs
+}
+
+func getAllCertsTable(ctx context.Context, t tests.T, conn db.Conn) (
+	ids []*common.SHA256Output,
+	parentIds []*common.SHA256Output,
+	expirations []*time.Time,
+	payloads [][]byte,
+) {
+	ids = make([]*common.SHA256Output, 0)
+	parentIds = make([]*common.SHA256Output, 0)
+	expirations = make([]*time.Time, 0)
+	payloads = make([][]byte, 0)
+
+	str := "SELECT cert_id,parent_id,expiration,payload FROM certs"
+	rows, err := conn.DB().QueryContext(ctx, str)
+	require.NoError(t, err)
+	require.NoError(t, rows.Err())
+	for rows.Next() {
+		var id, parent []byte
+		var expiration time.Time
+		var payload []byte
+
+		err := rows.Scan(&id, &parent, &expiration, &payload)
+		require.NoError(t, err)
+
+		ids = append(ids, (*common.SHA256Output)(id))
+		if len(parent) == 0 {
+			parentIds = append(parentIds, nil)
+		} else {
+			parentIds = append(parentIds, (*common.SHA256Output)(parent))
+		}
+		expirations = append(expirations, &expiration)
+		payloads = append(payloads, payload)
+	}
+	return
 }
 
 // kvElementsMatch acts as require.ElementsMatch, but faster (no reflection).

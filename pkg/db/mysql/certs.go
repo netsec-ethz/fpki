@@ -1,14 +1,22 @@
 package mysql
 
 import (
+	"bufio"
 	"context"
 	"database/sql"
+	"encoding/base64"
+	"encoding/csv"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 )
+
+const CsvBufferSize = 64 * 1024 * 1024 // 64MB
+
+const TemporaryDir = "/mnt/data/tmp"
 
 // CheckCertsExist returns a slice of true/false values. Each value indicates if
 // the corresponding certificate identified by its ID is already present in the DB.
@@ -36,7 +44,82 @@ func (c *mysqlDB) CheckCertsExist(ctx context.Context, ids []*common.SHA256Outpu
 	return presence, err
 }
 
-func (c *mysqlDB) UpdateCerts(ctx context.Context, ids, parents []*common.SHA256Output,
+func (c *mysqlDB) UpdateCerts(
+	ctx context.Context,
+	ids []*common.SHA256Output,
+	parents []*common.SHA256Output,
+	expirations []*time.Time,
+	payloads [][]byte,
+) error {
+	return c.updateCertsCSV(ctx, ids, parents, expirations, payloads)
+}
+
+func (c *mysqlDB) updateCertsCSV(
+	ctx context.Context,
+	ids []*common.SHA256Output,
+	parents []*common.SHA256Output,
+	expirations []*time.Time,
+	payloads [][]byte,
+) error {
+
+	// For the sake of performance, filter identical certificates.
+	certIdSet := make(map[common.SHA256Output]struct{}, len(ids))
+	for i := 0; i < len(ids); i++ {
+		id := *ids[i]
+		if _, ok := certIdSet[id]; ok {
+			// Swap last element with this one.
+			l := len(ids) - 1
+			ids[i] = ids[l]
+			parents[i] = parents[l]
+			expirations[i] = expirations[l]
+			payloads[i] = payloads[l]
+			// Reduce slice ids; we use its size as master size.
+			ids = ids[:l]
+			// Prepare to iterate over the new element.
+			i--
+			continue
+		}
+		certIdSet[id] = struct{}{}
+	}
+	// Set all slices to the master size.
+	parents = parents[:len(ids)]
+	expirations = expirations[:len(ids)]
+	payloads = payloads[:len(ids)]
+	// Now we have unique data.
+
+	// Prepare the records for the CSV file.
+	records := make([][]string, len(ids))
+	for i := 0; i < len(ids); i++ {
+		records[i] = make([]string, 4)
+		records[i][0] = (base64.StdEncoding.EncodeToString(ids[i][:]))
+		if parents[i] != nil {
+			records[i][1] = (base64.StdEncoding.EncodeToString(parents[i][:]))
+		}
+		records[i][2] = expirations[i].Format(time.DateTime)
+		records[i][3] = base64.StdEncoding.EncodeToString(payloads[i])
+	}
+
+	// Create temporary file.
+	tempfile, err := os.CreateTemp(TemporaryDir, "fpki-ingest-*.csv")
+	if err != nil {
+		return fmt.Errorf("creating temporary file: %w", err)
+	}
+	defer os.Remove(tempfile.Name())
+
+	// Write data to CSV file.
+	if err = writeToCSV(tempfile, records); err != nil {
+		return err
+	}
+
+	// Now instruct MySQL to directly ingest this file into the certs table.
+	if _, err := loadCertsTableWithCSV(ctx, c.db, tempfile.Name()); err != nil {
+		return fmt.Errorf("inserting CSV \"%s\" into DB: %w", tempfile.Name(), err)
+	}
+
+	return nil
+}
+
+func (c *mysqlDB) updateCertsMemory(ctx context.Context, ids, parents []*common.SHA256Output,
 	expirations []*time.Time, payloads [][]byte) error {
 
 	if len(ids) == 0 {
@@ -223,6 +306,51 @@ func (c *mysqlDB) pruneCerts(ctx context.Context, now time.Time) error {
 	// We thus look for certificates with expiration less than now.
 
 	str := "CALL prune_expired(?)"
-	_, err := c.db.ExecContext(ctx, str, now)
+	_, err := c.db.ExecContext(ctx, str, now.Format(time.DateTime))
 	return err
+}
+
+func writeToCSV(
+	f *os.File,
+	records [][]string,
+) error {
+
+	errFcn := func(err error) error {
+		return fmt.Errorf("writing CSV file: %w", err)
+	}
+
+	w := bufio.NewWriterSize(f, CsvBufferSize)
+	csv := csv.NewWriter(w)
+
+	csv.WriteAll(records)
+	csv.Flush()
+
+	if err := w.Flush(); err != nil {
+		return errFcn(err)
+	}
+	if err := f.Close(); err != nil {
+		return errFcn(err)
+	}
+
+	return nil
+}
+
+func loadCertsTableWithCSV(
+	ctx context.Context,
+	db *sql.DB,
+	filepath string,
+) (sql.Result, error) {
+
+	// Set read permissions to all.
+	if err := os.Chmod(filepath, 0644); err != nil {
+		return nil, fmt.Errorf("setting permissions to file \"%s\": %w", filepath, err)
+	}
+
+	str := `LOAD DATA CONCURRENT INFILE ? IGNORE INTO TABLE certs ` +
+		`FIELDS TERMINATED BY ',' ENCLOSED BY '"' LINES TERMINATED BY '\n' ` +
+		`(@cert_id,@parent_id,expiration,@payload) SET ` +
+		`cert_id = FROM_BASE64(@cert_id),` +
+		`parent_id = FROM_BASE64(@parent_id),` +
+		`payload = FROM_BASE64(@payload);`
+	return db.ExecContext(ctx, str, filepath)
 }
