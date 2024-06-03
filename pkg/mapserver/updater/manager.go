@@ -69,7 +69,28 @@ func NewManager(
 func (m *Manager) Resume() {
 	m.IncomingDomainChan = make(chan *DirtyDomain)
 	m.IncomingCertChan = make(chan *Certificate)
+	m.resumeDomainWorkers()
+	m.resumeCertWorkers()
+
+	// The rest of the resume is blocking, spawn a goroutine for it.
 	go m.resume()
+}
+
+// Stop closes this manager's certificate incoming channel.
+// This should cascade in the following events:
+// 1. Manager closes the cert workers incoming channels.
+// 2. Manager waits for the cert workers to finish.
+// 3. Cert workers finish.
+// 4. Manager closes the domain workers incoming channels.
+// 5. Manager waits for the domain workers to finish.
+// 6. Domain workers finish.
+// 7. This pipeline is done.
+func (m *Manager) Stop() {
+	close(m.IncomingCertChan)
+}
+
+func (m *Manager) Wait() error {
+	return <-m.errChan
 }
 
 func (m *Manager) resume() {
@@ -90,7 +111,6 @@ func (m *Manager) resume() {
 	var errInDomains error
 
 	// Second pipeline: domain workers read from here and send to the sink (the DB).
-	m.resumeDomainWorkers()
 	go func() {
 		// Second pipeline: move domains to workers' second pipeline.
 		defer pipelineWaitGroup.Done()
@@ -106,7 +126,6 @@ func (m *Manager) resume() {
 	}()
 
 	// First pipeline: cert workers will read from here and send to the second pipeline.
-	m.resumeCertWorkers()
 	go func() {
 		// First pipeline: move certificates to workers' first pipeline.
 		// This action will cause the workers to move domains to this manager's second pipeline
@@ -136,30 +155,14 @@ func (m *Manager) resume() {
 	m.errChan <- util.ErrorsCoalesce(errInCerts, errInDomains)
 }
 
-// Stop closes this manager's certificate incoming channel.
-// This should cascade in the following events:
-// 1. Manager closes the cert workers incoming channels.
-// 2. Manager waits for the cert workers to finish.
-// 3. Cert workers finish.
-// 4. Manager closes the domain workers incoming channels.
-// 5. Manager waits for the domain workers to finish.
-// 6. Domain workers finish.
-// 7. This pipeline is done.
-func (m *Manager) Stop() {
-	close(m.IncomingCertChan)
-}
-
-func (m *Manager) Wait() error {
-	return <-m.errChan
-}
-
 func (m *Manager) resumeCertWorkers() {
 	wg := sync.WaitGroup{}
 	wg.Add(len(m.CertWorkers))
 
 	for _, w := range m.CertWorkers {
 		w := w
-		go func() {
+		// go func() {
+		func() { // deleteme
 			defer wg.Done()
 			w.Resume()
 		}()
@@ -173,7 +176,8 @@ func (m *Manager) resumeDomainWorkers() {
 
 	for _, w := range m.DomainWorkers {
 		w := w
-		go func() {
+		// go func() {
+		func() { // deleteme
 			defer wg.Done()
 			w.Resume()
 		}()
@@ -190,7 +194,8 @@ func (m *Manager) stopAndWaitForCertWorkers() error {
 	errors := make([]error, len(m.CertWorkers))
 	for i, w := range m.CertWorkers {
 		i, w := i, w
-		go func() {
+		// go func() {
+		func() { // deleteme
 			defer wg.Done()
 			w.Stop()
 			errors[i] = w.Wait()

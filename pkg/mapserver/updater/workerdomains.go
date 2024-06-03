@@ -17,7 +17,6 @@ func NewDomainWorker(ctx context.Context, id int, m *Manager, conn db.Conn) *Dom
 	w := &DomainWorker{
 		Worker: *newBaseWorker(ctx, id, m, conn),
 	}
-	w.Resume()
 
 	return w
 }

@@ -18,7 +18,6 @@ func NewCertWorker(ctx context.Context, id int, m *Manager, conn db.Conn) *CertW
 	w := &CertWorker{
 		Worker: *newBaseWorker(ctx, id, m, conn),
 	}
-	w.Resume()
 
 	return w
 }
