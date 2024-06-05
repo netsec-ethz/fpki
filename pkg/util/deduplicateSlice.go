@@ -12,7 +12,17 @@ func DeduplicateSlice[T comparable](
 	valueFunc func(int) T, // The function used to retrieve a comparable value from the slices.
 	slices ...sliceLike, // Slices.
 ) {
-	makeUnique[T](valueFunc, slices...)
+	storage := make(map[T]struct{})
+	makeUnique[T](storage, valueFunc, slices...)
+}
+
+// DeduplicateSliceWithStorage is like DeduplicateSlice but providing the own storage for the map.
+func DeduplicateSliceWithStorage[T comparable](
+	storage map[T]struct{},
+	valueFunc func(int) T,
+	slices ...sliceLike,
+) {
+	makeUnique[T](storage, valueFunc, slices...)
 }
 
 func WithSlice[T comparable](slice []T) func(int) T {
@@ -65,16 +75,30 @@ type sliceLike interface {
 // are: master = {1,3,2}, slave1 = {a,c,b}.
 // The order of the slices is not preserved, they are treated like a set.
 func makeUnique[T comparable](
+	storage map[T]struct{},
 	getElem func(int) T,
 	slices ...sliceLike,
 ) {
+	// The master slice is the one that keeps the current size inside the loop.
+	// Panic early if the function was called without any slice at all.
 	master := slices[0]
-	set := make(map[T]struct{})
-	for i := 0; i < master.Len(); i++ {
+
+	if master.Len() == 0 {
+		// If there are no elements, return already.
+		return
+	}
+
+	// Preserve storage, remove entries.
+	clear(storage)
+
+	// Add the first item as new.
+	storage[getElem(0)] = struct{}{}
+
+	for i := 1; i < master.Len(); i++ {
 		e := getElem(i)
-		if _, ok := set[e]; !ok {
+		if _, ok := storage[e]; !ok {
 			// New item, continue.
-			set[e] = struct{}{}
+			storage[e] = struct{}{}
 			continue
 		}
 
