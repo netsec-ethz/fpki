@@ -35,3 +35,12 @@ build_integration_test:
 
 drop_cacheTable:
 	@mysql -u root -e "DROP TABLE map.deleteTest;"
+
+mockgen:
+	@echo "mockgen version `mockgen --version`" || (\
+		echo "Run 'go install go.uber.org/mock/mockgen@latest' to install mockgen"; \
+		echo "See also: https://github.com/uber-go/mock"; \
+		exit 1; \
+	)
+	@# for each mock location:
+	@cd ./pkg/db && mockgen -destination ./mock_db/conn.go  . Conn
