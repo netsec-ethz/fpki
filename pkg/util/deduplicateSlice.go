@@ -1,25 +1,30 @@
 package util
 
-// DeduplicateNonPointer removes all non unique items from the master slice.
-// The master slice contains comparable values, not pointers to values.
-// The slave slices loose their elements which correspond to those indices lost in master.
+// DeduplicateSlice removes all non unique items from the slices.
+// The valueFunc should return the (comparable) representation of the item to deduplicate at i.
+// If there is only one slice that contains the possibly duplicated elements, use the already
+// defined functions WithSlice, if the slice contains values, or WithSlicePtr, if contains pointers.
+// The slave slices loose their elements which correspond to those indices where valueFunc
+// returned a duplicated item.
 // The function does not preserve the order of the slices, but ensures that the correspondence
 // between master[i] and slave1[i] is preserved.
-func DeduplicateNonPointer[T comparable](masterSlice sWrap[T], slaveSlices ...sliceLike) {
-	makeUnique[T, T](func(t []T, i int) T {
-		return (*masterSlice.Ptr)[i]
-	}, masterSlice, slaveSlices...)
+func DeduplicateSlice[T comparable](
+	valueFunc func(int) T, // The function used to retrieve a comparable value from the slices.
+	slices ...sliceLike, // Slices.
+) {
+	makeUnique[T](valueFunc, slices...)
 }
 
-// DeduplicatePointer removes all non unique items from the master slice.
-// The master slice contains pointers to comparable values.
-// The slave slices loose their elements which correspond to those indices lost in master.
-// The function does not preserve the order of the slices, but ensures that the correspondence
-// between master[i] and slave1[i] is preserved.
-func DeduplicatePointer[T comparable](masterSlice sWrap[*T], slaveSlices ...sliceLike) {
-	makeUnique[*T, T](func(t []*T, i int) T {
-		return *(*masterSlice.Ptr)[i]
-	}, masterSlice, slaveSlices...)
+func WithSlice[T comparable](slice []T) func(int) T {
+	return func(i int) T {
+		return slice[i]
+	}
+}
+
+func WithSlicePtr[T comparable](slice []*T) func(int) T {
+	return func(i int) T {
+		return *slice[i]
+	}
 }
 
 type sWrap[T any] struct {
@@ -33,6 +38,10 @@ func Wrap[T any](slice *[]T) sWrap[T] {
 	return s
 }
 
+func (s sWrap[T]) Len() int {
+	return len(*s.Ptr)
+}
+
 func (s sWrap[T]) CopyElem(to, from int) {
 	(*s.Ptr)[to] = (*s.Ptr)[from]
 }
@@ -42,39 +51,41 @@ func (s sWrap[T]) SetSize(newSize int) {
 }
 
 type sliceLike interface {
+	Len() int
 	CopyElem(to, from int)
 	SetSize(int)
 }
 
-// makeUnique takes a function returning the comparable element from the master slice
-// (to be able to check if it was seen already), the master slice (the slice where we check
-// for already present elements), and slave slices, and modifies all these slices so that
-// the master slice contains unique elements (according to the getElem function), and the
-// slave slices contain the corresponding items to the indices in the master slice.
+// makeUnique takes a function returning the comparable element from any slice
+// (to be able to check if it was seen already), usually one or more of the slices argument,
+// and modifies all these slices so that the getElem function doesn't return duplicates.
+// The slices passed as argument loose their elements where a duplicate is found.
+// The function does not preserve the original order of the slices.
 // E.g. If master = {1,2,3,1}, slave1 = {a,b,c,a}, after calling the function, the new values
 // are: master = {1,3,2}, slave1 = {a,c,b}.
 // The order of the slices is not preserved, they are treated like a set.
-func makeUnique[T any, V comparable](
-	getElem func([]T, int) V,
-	master sWrap[T],
-	slaves ...sliceLike,
+func makeUnique[T comparable](
+	getElem func(int) T,
+	slices ...sliceLike,
 ) {
-	set := make(map[V]struct{})
-	for i := 0; i < len(*master.Ptr); i++ {
-		e := getElem(*master.Ptr, i)
+	master := slices[0]
+	set := make(map[T]struct{})
+	for i := 0; i < master.Len(); i++ {
+		e := getElem(i)
 		if _, ok := set[e]; !ok {
 			// New item, continue.
 			set[e] = struct{}{}
 			continue
 		}
+
 		// Already present at i, pull last item and reduce slice size.
-		lastIndex := len(*master.Ptr) - 1
-		master.CopyElem(i, lastIndex) // last item to i
-		master.SetSize(lastIndex)     // reduce slice size
+		lastElemIndex := master.Len() - 1 // Index of last element.
+		master.CopyElem(i, lastElemIndex) // last item to i
+		master.SetSize(lastElemIndex)     // reduce slice size
 
 		// Now the rest of slices, guided by `master`.
-		for _, s := range slaves {
-			s.CopyElem(i, lastIndex) // len(master) was already decreased
+		for _, s := range slices[1:] {
+			s.CopyElem(i, lastElemIndex) // len(master) was already decreased
 		}
 
 		// Loop again but treat this new element, in the existing index.
@@ -82,8 +93,8 @@ func makeUnique[T any, V comparable](
 	}
 
 	// Adjust size of the other slices.
-	newSize := len(*master.Ptr)
-	for _, s := range slaves {
+	newSize := master.Len()
+	for _, s := range slices[1:] {
 		s.SetSize(newSize)
 	}
 }

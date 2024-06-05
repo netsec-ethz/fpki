@@ -1,12 +1,14 @@
 package util_test
 
 import (
+	"fmt"
 	"math/rand"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/netsec-ethz/fpki/pkg/tests"
 	"github.com/netsec-ethz/fpki/pkg/util"
-	"github.com/stretchr/testify/require"
 )
 
 func TestDeduplicate(t *testing.T) {
@@ -14,86 +16,14 @@ func TestDeduplicate(t *testing.T) {
 		a := []int{
 			1,
 			2,
-			1,
-			2,
-		}
-		b := []int{
-			11,
-			22,
-			11,
-			22,
-		}
-		c := []*int{
-			ptr(0),
-			ptr(1),
-			ptr(0),
-			ptr(1),
-		}
-
-		util.DeduplicateNonPointer(util.Wrap(&a), util.Wrap(&b), util.Wrap(&c))
-
-		expectedSize := 2
-		require.Equal(t, expectedSize, len(a))
-		require.Equal(t, expectedSize, len(b))
-		require.Equal(t, expectedSize, len(c))
-
-		require.ElementsMatch(t, []int{1, 2}, a)
-		require.ElementsMatch(t, []int{11, 22}, b)
-		require.ElementsMatch(t, []*int{ptr(0), ptr(1)}, c)
-	})
-
-	t.Run("valueStruct1", func(t *testing.T) {
-		a := []myType{
-			{1},
-			{1},
-			{2},
-			{3},
-			{1},
-			{3},
-			{1},
-		}
-		b := []int{
-			11,
-			11,
-			22,
-			33,
-			11,
-			33,
-			11,
-		}
-		c := []*myType{
-			ptr(myType{11}),
-			ptr(myType{11}),
-			ptr(myType{22}),
-			ptr(myType{33}),
-			ptr(myType{11}),
-			ptr(myType{33}),
-			ptr(myType{11}),
-		}
-		util.DeduplicateNonPointer(util.Wrap(&a), util.Wrap(&b), util.Wrap(&c))
-
-		expectedSize := 3
-		require.Equal(t, expectedSize, len(a))
-		require.Equal(t, expectedSize, len(b))
-		require.Equal(t, expectedSize, len(c))
-
-		require.ElementsMatch(t, []myType{{1}, {2}, {3}}, a)
-		require.ElementsMatch(t, []int{11, 22, 33}, b)
-		require.ElementsMatch(t, []*myType{ptr(myType{11}), ptr(myType{22}), ptr(myType{33})}, c)
-	})
-
-	//
-	//
-	//
-
-	t.Run("value1", func(t *testing.T) {
-		a := []int{
-			1,
-			2,
 			3,
 			1,
 		}
-		util.DeduplicateNonPointer(util.Wrap(&a))
+
+		util.DeduplicateSlice(
+			util.WithSlice(a),
+			util.Wrap(&a),
+		)
 
 		require.Equal(t, 3, len(a))
 
@@ -121,7 +51,13 @@ func TestDeduplicate(t *testing.T) {
 			ptr(1),
 			ptr(0),
 		}
-		util.DeduplicateNonPointer(util.Wrap(&a), util.Wrap(&b), util.Wrap(&c))
+
+		util.DeduplicateSlice(
+			util.WithSlice(a),
+			util.Wrap(&a),
+			util.Wrap(&b),
+			util.Wrap(&c),
+		)
 
 		expectedSize := 2
 		require.Equal(t, expectedSize, len(a))
@@ -139,7 +75,11 @@ func TestDeduplicate(t *testing.T) {
 			{1},
 			{2},
 		}
-		util.DeduplicateNonPointer(util.Wrap(&a))
+
+		util.DeduplicateSlice(
+			util.WithSlice(a),
+			util.Wrap(&a),
+		)
 
 		require.Equal(t, 2, len(a))
 
@@ -156,7 +96,12 @@ func TestDeduplicate(t *testing.T) {
 			1,
 			2,
 		}
-		util.DeduplicateNonPointer(util.Wrap(&a), util.Wrap(&b))
+
+		util.DeduplicateSlice(
+			util.WithSlice(a),
+			util.Wrap(&a),
+			util.Wrap(&b),
+		)
 
 		expectedSize := 2
 		require.Equal(t, expectedSize, len(a))
@@ -166,7 +111,7 @@ func TestDeduplicate(t *testing.T) {
 		require.ElementsMatch(t, []int{0, 2}, b)
 	})
 
-	t.Run("valueStruct2", func(t *testing.T) {
+	t.Run("valueStruct3", func(t *testing.T) {
 		a := []myType{
 			{1},
 			{1},
@@ -194,7 +139,12 @@ func TestDeduplicate(t *testing.T) {
 			ptr(3),
 			ptr(4),
 		}
-		util.DeduplicateNonPointer(util.Wrap(&a), util.Wrap(&b), util.Wrap(&c))
+		util.DeduplicateSlice(
+			util.WithSlice(a),
+			util.Wrap(&a),
+			util.Wrap(&b),
+			util.Wrap(&c),
+		)
 
 		expectedSize := 5
 		require.Equal(t, expectedSize, len(a))
@@ -206,7 +156,7 @@ func TestDeduplicate(t *testing.T) {
 		require.ElementsMatch(t, []*int{ptr(0), ptr(1), ptr(2), ptr(3), ptr(4)}, c)
 	})
 
-	t.Run("valueStruct3", func(t *testing.T) {
+	t.Run("valueStruct4", func(t *testing.T) {
 		a := []myType{
 			{1},
 			{1},
@@ -234,7 +184,13 @@ func TestDeduplicate(t *testing.T) {
 			ptr(myType{33}),
 			ptr(myType{11}),
 		}
-		util.DeduplicateNonPointer(util.Wrap(&a), util.Wrap(&b), util.Wrap(&c))
+
+		util.DeduplicateSlice(
+			util.WithSlice(a),
+			util.Wrap(&a),
+			util.Wrap(&b),
+			util.Wrap(&c),
+		)
 
 		expectedSize := 3
 		require.Equal(t, expectedSize, len(a))
@@ -253,7 +209,11 @@ func TestDeduplicate(t *testing.T) {
 			ptr(3),
 			ptr(3),
 		}
-		util.DeduplicatePointer(util.Wrap(&a))
+
+		util.DeduplicateSlice(
+			util.WithSlicePtr(a),
+			util.Wrap(&a),
+		)
 
 		require.Equal(t, 2, len(a))
 
@@ -279,7 +239,12 @@ func TestDeduplicate(t *testing.T) {
 			0,
 			0,
 		}
-		util.DeduplicatePointer(util.Wrap(&a), util.Wrap(&b))
+
+		util.DeduplicateSlice(
+			util.WithSlicePtr(a),
+			util.Wrap(&a),
+			util.Wrap(&b),
+		)
 
 		require.Equal(t, 2, len(a))
 		require.Equal(t, 2, len(b))
@@ -329,7 +294,13 @@ func TestDeduplicate(t *testing.T) {
 			ptr(myType{2}),
 			ptr(myType{1}),
 		}
-		util.DeduplicatePointer(util.Wrap(&a), util.Wrap(&b), util.Wrap(&c))
+
+		util.DeduplicateSlice(
+			util.WithSlicePtr(a),
+			util.Wrap(&a),
+			util.Wrap(&b),
+			util.Wrap(&c),
+		)
 
 		expectedSize := 4
 		require.Equal(t, expectedSize, len(a))
@@ -339,7 +310,132 @@ func TestDeduplicate(t *testing.T) {
 		require.ElementsMatch(t, []*myArray{ptr(id1), ptr(id2), ptr(id3), ptr(id4)}, a)
 		require.ElementsMatch(t, []int{11, 22, 33, 44}, b)
 		tests.RequireDerefElementsMatch(t, []*myType{
-			ptr(myType{1}), ptr(myType{2}), ptr(myType{3}), ptr(myType{4})}, c)
+			ptr(myType{1}), ptr(myType{2}), ptr(myType{3}), ptr(myType{4})},
+			c,
+			func(x, y *myType) bool { return x.Count < y.Count },
+		)
+	})
+
+	t.Run("complex1", func(t *testing.T) {
+		// Two "dimensions": similar to updater.Certificates domain and cert ID.
+		// Dim1,	Dim2:
+		// 1, 		1
+		// 1, 		2
+		// 2, 		1
+		// 2, 		2
+
+		a := []*certificate{
+			ptr(newCert(1, 1, "11")),
+			ptr(newCert(1, 2, "12")),
+			ptr(newCert(2, 2, "22")), // dup
+			ptr(newCert(1, 1, "11")), // dup
+			ptr(newCert(2, 1, "21")),
+			ptr(newCert(2, 2, "22")),
+			ptr(newCert(1, 2, "12")), // dup
+			ptr(newCert(2, 1, "21")), // dup
+		}
+		b := []int{
+			11,
+			12,
+			22, // dup
+			11, // dup
+			21,
+			22,
+			12, // dup
+			21, // dup
+		}
+
+		util.DeduplicateSlice(
+			func(i int) [2]int {
+				return [2]int{
+					*a[i].Domain,
+					*a[i].Cert,
+				}
+			},
+			util.Wrap(&a),
+			util.Wrap(&b),
+		)
+
+		expectedSize := 4
+		require.Equal(t, expectedSize, len(a))
+		require.Equal(t, expectedSize, len(b))
+
+		tests.RequireDerefElementsMatch(t,
+			[]*certificate{
+				ptr(newCert(1, 1, "11")),
+				ptr(newCert(1, 2, "12")),
+				ptr(newCert(2, 1, "21")),
+				ptr(newCert(2, 2, "22")),
+			},
+			a,
+			func(c1, c2 *certificate) bool {
+				fmt.Printf("comparing %v AND %v\n", c1.Names, c2.Names)
+				return *c1.Domain < *c2.Domain &&
+					*c1.Cert < *c2.Cert &&
+					c1.Names[0] < c2.Names[0]
+			},
+		)
+		require.ElementsMatch(t, []int{11, 12, 21, 22}, b)
+	})
+
+	t.Run("complex2", func(t *testing.T) {
+		// The uniqueness is determined from a AND b.
+		// Elements:
+		// 1,1, ...
+		// 1,2, ...
+		// 1,1, ...  // dup
+		// 2,1, ...
+		// 2,2, ...
+		// 2,2, ...  // dup
+		// 1,1, ...  // dup
+		a := []*int{
+			ptr(1),
+			ptr(1),
+			ptr(1),
+			ptr(2),
+			ptr(2),
+			ptr(2),
+			ptr(1),
+		}
+		b := []*int{
+			ptr(1),
+			ptr(2),
+			ptr(1),
+			ptr(1),
+			ptr(2),
+			ptr(2),
+			ptr(1),
+		}
+		c := []string{
+			"1,1",
+			"1,2",
+			"1,1",
+			"2,1",
+			"2,2",
+			"2,2",
+			"1,1",
+		}
+
+		util.DeduplicateSlice(
+			func(i int) [2]int {
+				return [2]int{
+					*a[i],
+					*b[i],
+				}
+			},
+			util.Wrap(&a),
+			util.Wrap(&b),
+			util.Wrap(&c),
+		)
+
+		expectedSize := 4
+		require.Equal(t, expectedSize, len(a))
+		require.Equal(t, expectedSize, len(b))
+		require.Equal(t, expectedSize, len(c))
+
+		require.ElementsMatch(t, []*int{ptr(1), ptr(1), ptr(2), ptr(2)}, a)
+		require.ElementsMatch(t, []*int{ptr(1), ptr(1), ptr(2), ptr(2)}, b)
+		require.ElementsMatch(t, []string{"1,1", "1,2", "2,1", "2,2"}, c)
 	})
 }
 
@@ -359,4 +455,18 @@ func randomMyArray(t *testing.T) myArray {
 	require.NoError(t, err)
 	require.Equal(t, 32, n)
 	return myArray(buff)
+}
+
+type certificate struct {
+	Domain *int
+	Cert   *int
+	Names  []string
+}
+
+func newCert(domain, cert int, names ...string) certificate {
+	return certificate{
+		Domain: &domain,
+		Cert:   &cert,
+		Names:  names,
+	}
 }
