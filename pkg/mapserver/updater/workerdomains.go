@@ -11,12 +11,18 @@ import (
 
 type DomainWorker struct {
 	Worker
-	IncomingChan chan *DirtyDomain
+	IncomingChan   chan *DirtyDomain
+	cloneDomainIDs []*common.SHA256Output // to avoid calling malloc when we run dedup.
+	cloneCertIDs   []*common.SHA256Output
+	cloneNames     []string
 }
 
 func NewDomainWorker(ctx context.Context, id int, m *Manager, conn db.Conn) *DomainWorker {
 	w := &DomainWorker{
-		Worker: *newBaseWorker(ctx, id, m, conn),
+		Worker:         *newBaseWorker(ctx, id, m, conn),
+		cloneDomainIDs: make([]*common.SHA256Output, 0, m.MultiInsertSize),
+		cloneCertIDs:   make([]*common.SHA256Output, 0, m.MultiInsertSize),
+		cloneNames:     make([]string, 0, m.MultiInsertSize),
 	}
 
 	return w
@@ -66,30 +72,54 @@ func (w *DomainWorker) processBundle(domains []*DirtyDomain) error {
 		certIDs[i] = d.CertID
 	}
 
-	// Remove duplicates.
+	// Update dirty table.
+	// Remove duplicates for the dirty table insertion.
+	w.cloneDomainIDs = append(w.cloneDomainIDs[:0], domainIDs...)
+	util.DeduplicateSlice(
+		util.WithSlicePtr(w.cloneDomainIDs),
+		util.Wrap(&w.cloneDomainIDs),
+	)
+	if err := w.Conn.InsertDomainsIntoDirty(w.Ctx, w.cloneDomainIDs); err != nil {
+		return fmt.Errorf("inserting domains at worker %d: %w", w.Id, err)
+	}
+
+	// Update domains table.
+	// Remove duplicates (domainID,name)
+	w.cloneDomainIDs = append(w.cloneDomainIDs[:0], domainIDs...) // clone again (was modified).
+	w.cloneNames = append(w.cloneNames[:0], domainNames...)
+	type idName struct {
+		id   common.SHA256Output
+		name string
+	}
+	util.DeduplicateSlice(
+		func(i int) idName {
+			return idName{
+				id:   *w.cloneDomainIDs[i],
+				name: w.cloneNames[i],
+			}
+		},
+		util.Wrap(&w.cloneDomainIDs),
+		util.Wrap(&w.cloneNames),
+	)
+	if err := w.Conn.UpdateDomains(w.Ctx, w.cloneDomainIDs, w.cloneNames); err != nil {
+		return fmt.Errorf("inserting domains at worker %d: %w", w.Id, err)
+	}
+
+	// Update domain_certs.
+	// Remove duplicates (domainID, certID)
+	w.cloneDomainIDs = append(w.cloneDomainIDs[:0], domainIDs...) // again
+	w.cloneCertIDs = append(certIDs[:0], certIDs...)
 	util.DeduplicateSlice(
 		func(i int) [2]common.SHA256Output {
 			return [2]common.SHA256Output{
-				// The bundle of both the domain AND cert ID has to be unique.
-				*domainIDs[i],
-				*certIDs[i],
+				*w.cloneDomainIDs[i],
+				*w.cloneCertIDs[i],
 			}
 		},
-		util.Wrap(&domainIDs),
-		util.Wrap(&domainNames),
-		util.Wrap(&certIDs),
+		util.Wrap(&w.cloneDomainIDs),
+		util.Wrap(&w.cloneCertIDs),
 	)
-
-	// Update dirty and domain table.
-	if err := w.Conn.InsertDomainsIntoDirty(w.Ctx, domainIDs); err != nil {
-		return fmt.Errorf("inserting domains at worker %d: %w", w.Id, err)
-	}
-
-	if err := w.Conn.UpdateDomains(w.Ctx, domainIDs, domainNames); err != nil {
-		return fmt.Errorf("inserting domains at worker %d: %w", w.Id, err)
-	}
-	// Update domain_certs.
-	if err := w.Conn.UpdateDomainCerts(w.Ctx, domainIDs, certIDs); err != nil {
+	if err := w.Conn.UpdateDomainCerts(w.Ctx, w.cloneDomainIDs, w.cloneCertIDs); err != nil {
 		return fmt.Errorf("inserting domains at worker %d: %w", w.Id, err)
 	}
 
