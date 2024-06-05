@@ -1,11 +1,9 @@
 package mysql
 
 import (
-	"bufio"
 	"context"
 	"database/sql"
 	"encoding/base64"
-	"encoding/csv"
 	"fmt"
 	"os"
 	"strings"
@@ -62,31 +60,6 @@ func (c *mysqlDB) updateCertsCSV(
 	payloads [][]byte,
 ) error {
 
-	// For the sake of performance, filter identical certificates.
-	certIdSet := make(map[common.SHA256Output]struct{}, len(ids))
-	for i := 0; i < len(ids); i++ {
-		id := *ids[i]
-		if _, ok := certIdSet[id]; ok {
-			// Swap last element with this one.
-			l := len(ids) - 1
-			ids[i] = ids[l]
-			parents[i] = parents[l]
-			expirations[i] = expirations[l]
-			payloads[i] = payloads[l]
-			// Reduce slice ids; we use its size as master size.
-			ids = ids[:l]
-			// Prepare to iterate over the new element.
-			i--
-			continue
-		}
-		certIdSet[id] = struct{}{}
-	}
-	// Set all slices to the master size.
-	parents = parents[:len(ids)]
-	expirations = expirations[:len(ids)]
-	payloads = payloads[:len(ids)]
-	// Now we have unique data.
-
 	// Prepare the records for the CSV file.
 	records := make([][]string, len(ids))
 	for i := 0; i < len(ids); i++ {
@@ -100,7 +73,7 @@ func (c *mysqlDB) updateCertsCSV(
 	}
 
 	// Create temporary file.
-	tempfile, err := os.CreateTemp(TemporaryDir, "fpki-ingest-*.csv")
+	tempfile, err := os.CreateTemp(TemporaryDir, "fpki-ingest-certs-*.csv")
 	if err != nil {
 		return fmt.Errorf("creating temporary file: %w", err)
 	}
@@ -113,7 +86,7 @@ func (c *mysqlDB) updateCertsCSV(
 
 	// Now instruct MySQL to directly ingest this file into the certs table.
 	if _, err := loadCertsTableWithCSV(ctx, c.db, tempfile.Name()); err != nil {
-		return fmt.Errorf("inserting CSV \"%s\" into DB: %w", tempfile.Name(), err)
+		return fmt.Errorf("inserting CSV \"%s\" into DB.certs: %w", tempfile.Name(), err)
 	}
 
 	return nil
@@ -308,31 +281,6 @@ func (c *mysqlDB) pruneCerts(ctx context.Context, now time.Time) error {
 	str := "CALL prune_expired(?)"
 	_, err := c.db.ExecContext(ctx, str, now.Format(time.DateTime))
 	return err
-}
-
-func writeToCSV(
-	f *os.File,
-	records [][]string,
-) error {
-
-	errFcn := func(err error) error {
-		return fmt.Errorf("writing CSV file: %w", err)
-	}
-
-	w := bufio.NewWriterSize(f, CsvBufferSize)
-	csv := csv.NewWriter(w)
-
-	csv.WriteAll(records)
-	csv.Flush()
-
-	if err := w.Flush(); err != nil {
-		return errFcn(err)
-	}
-	if err := f.Close(); err != nil {
-		return errFcn(err)
-	}
-
-	return nil
 }
 
 func loadCertsTableWithCSV(

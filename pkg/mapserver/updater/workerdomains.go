@@ -6,6 +6,7 @@ import (
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
+	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
 type DomainWorker struct {
@@ -55,6 +56,7 @@ func (w *DomainWorker) processBundle(domains []*DirtyDomain) error {
 	if len(domains) == 0 {
 		return nil
 	}
+
 	domainIDs := make([]*common.SHA256Output, len(domains))
 	domainNames := make([]string, len(domains))
 	certIDs := make([]*common.SHA256Output, len(domains))
@@ -63,6 +65,20 @@ func (w *DomainWorker) processBundle(domains []*DirtyDomain) error {
 		domainNames[i] = d.Name
 		certIDs[i] = d.CertID
 	}
+
+	// Remove duplicates.
+	util.DeduplicateSlice(
+		func(i int) [2]common.SHA256Output {
+			return [2]common.SHA256Output{
+				// The bundle of both the domain AND cert ID has to be unique.
+				*domainIDs[i],
+				*certIDs[i],
+			}
+		},
+		util.Wrap(&domainIDs),
+		util.Wrap(&domainNames),
+		util.Wrap(&certIDs),
+	)
 
 	// Update dirty and domain table.
 	if err := w.Conn.InsertDomainsIntoDirty(w.Ctx, domainIDs); err != nil {

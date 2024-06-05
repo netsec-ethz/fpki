@@ -2,7 +2,10 @@ package mysql
 
 import (
 	"context"
+	"database/sql"
+	"encoding/base64"
 	"fmt"
+	"os"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 )
@@ -43,6 +46,44 @@ func (c *mysqlDB) RetrieveDirtyDomains(ctx context.Context) ([]*common.SHA256Out
 }
 
 func (c *mysqlDB) InsertDomainsIntoDirty(ctx context.Context, domainIDs []*common.SHA256Output) error {
+	return c.insertDomainsIntoDirtyCSV(ctx, domainIDs)
+}
+
+func (c *mysqlDB) insertDomainsIntoDirtyCSV(
+	ctx context.Context,
+	domainIDs []*common.SHA256Output,
+) error {
+	// Prepare the records for the CSV file.
+	records := make([][]string, len(domainIDs))
+	for i := 0; i < len(domainIDs); i++ {
+		records[i] = make([]string, 1)
+		records[i][0] = (base64.StdEncoding.EncodeToString(domainIDs[i][:]))
+	}
+
+	// Create temporary file.
+	tempfile, err := os.CreateTemp(TemporaryDir, "fpki-ingest-dirty-*.csv")
+	if err != nil {
+		return fmt.Errorf("creating temporary file: %w", err)
+	}
+	defer os.Remove(tempfile.Name())
+
+	// Write data to CSV file.
+	if err = writeToCSV(tempfile, records); err != nil {
+		return err
+	}
+
+	// Now instruct MySQL to directly ingest this file into the certs table.
+	if _, err := loadDirtyTableWithCSV(ctx, c.db, tempfile.Name()); err != nil {
+		return fmt.Errorf("inserting CSV \"%s\" into DB.dirty: %w", tempfile.Name(), err)
+	}
+
+	return nil
+}
+
+func (c *mysqlDB) insertDomainsIntoDirtyMemory(
+	ctx context.Context,
+	domainIDs []*common.SHA256Output,
+) error {
 	// Make the list of domains unique, attach the name to each unique ID.
 	domainIDsSet := make(map[common.SHA256Output]struct{})
 	for _, id := range domainIDs {
@@ -88,4 +129,22 @@ func (c *mysqlDB) RecomputeDirtyDomainsCertAndPolicyIDs(ctx context.Context) err
 		return fmt.Errorf("coalescing for domains: %w", err)
 	}
 	return nil
+}
+
+func loadDirtyTableWithCSV(
+	ctx context.Context,
+	db *sql.DB,
+	filepath string,
+) (sql.Result, error) {
+
+	// Set read permissions to all.
+	if err := os.Chmod(filepath, 0644); err != nil {
+		return nil, fmt.Errorf("setting permissions to file \"%s\": %w", filepath, err)
+	}
+
+	str := `LOAD DATA CONCURRENT INFILE ? IGNORE INTO TABLE dirty ` +
+		`FIELDS TERMINATED BY ',' ENCLOSED BY '"' LINES TERMINATED BY '\n' ` +
+		`(@domain_id) SET ` +
+		`domain_id = FROM_BASE64(@domain_id);`
+	return db.ExecContext(ctx, str, filepath)
 }

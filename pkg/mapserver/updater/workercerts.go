@@ -7,6 +7,7 @@ import (
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
+	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
 type CertWorker struct {
@@ -56,6 +57,14 @@ func (w *CertWorker) processBundle(certs []*Certificate) error {
 	if len(certs) == 0 {
 		return nil
 	}
+
+	// Remove duplicated certs.
+	util.DeduplicateSlice(
+		func(i int) common.SHA256Output {
+			return *certs[i].CertID
+		},
+		util.Wrap(&certs),
+	)
 
 	// Insert the certificates into the DB.
 	if err := w.insertCertificates(certs); err != nil {

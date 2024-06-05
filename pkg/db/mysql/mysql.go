@@ -1,9 +1,12 @@
 package mysql
 
 import (
+	"bufio"
 	"context"
 	"database/sql"
+	"encoding/csv"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 
@@ -237,6 +240,31 @@ func extractDomainEntries(rows *sql.Rows) ([]*db.KeyValuePair, error) {
 		})
 	}
 	return pairs, nil
+}
+
+func writeToCSV(
+	f *os.File,
+	records [][]string,
+) error {
+
+	errFcn := func(err error) error {
+		return fmt.Errorf("writing CSV file: %w", err)
+	}
+
+	w := bufio.NewWriterSize(f, CsvBufferSize)
+	csv := csv.NewWriter(w)
+
+	csv.WriteAll(records)
+	csv.Flush()
+
+	if err := w.Flush(); err != nil {
+		return errFcn(err)
+	}
+	if err := f.Close(); err != nil {
+		return errFcn(err)
+	}
+
+	return nil
 }
 
 // repeatStmt returns  ( (?,..dimensions..,?), ...elemCount...  )

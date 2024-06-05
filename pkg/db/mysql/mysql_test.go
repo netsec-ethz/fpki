@@ -93,7 +93,7 @@ func TestUpdateCertsNonUnique(t *testing.T) {
 	require.NoError(t, err)
 
 	// The result of the call to BuildTestRandomCertTree contains c0 and c1 multiple times.
-	// Remove them.
+	// Remove them to build the expected results.
 	expectedIds := certIds[:2]
 	expectedParents := parentIds[:2]
 	expectedExpirations := expirations[:2]
