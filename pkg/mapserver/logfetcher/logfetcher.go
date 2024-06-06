@@ -17,7 +17,7 @@ type Fetcher interface {
 	// Like with sql.Rows.Next()
 	NextBatch(ctx context.Context) bool
 	// Like sql.Rows.Scan(...) also returns the number of certificates in the batch that were removed (e.g., due to their expiration time)
-	ReturnNextBatch() ([]*ctx509.Certificate, [][]*ctx509.Certificate, int, error)
+	ReturnNextBatch() ([]ctx509.Certificate, [][]*ctx509.Certificate, int, error)
 }
 
 // State represents the state of a log (in a server) at a given point in time.
@@ -28,7 +28,7 @@ type State struct {
 }
 
 type result struct {
-	certs   []*ctx509.Certificate
+	certs   []ctx509.Certificate
 	chains  [][]*ctx509.Certificate
 	expired int
 	err     error

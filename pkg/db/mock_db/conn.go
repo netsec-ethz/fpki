@@ -44,7 +44,7 @@ func (m *MockConn) EXPECT() *MockConnMockRecorder {
 }
 
 // CheckCertsExist mocks base method.
-func (m *MockConn) CheckCertsExist(arg0 context.Context, arg1 []*common.SHA256Output) ([]bool, error) {
+func (m *MockConn) CheckCertsExist(arg0 context.Context, arg1 []common.SHA256Output) ([]bool, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CheckCertsExist", arg0, arg1)
 	ret0, _ := ret[0].([]bool)
@@ -59,7 +59,7 @@ func (mr *MockConnMockRecorder) CheckCertsExist(arg0, arg1 any) *gomock.Call {
 }
 
 // CheckPoliciesExist mocks base method.
-func (m *MockConn) CheckPoliciesExist(arg0 context.Context, arg1 []*common.SHA256Output) ([]bool, error) {
+func (m *MockConn) CheckPoliciesExist(arg0 context.Context, arg1 []common.SHA256Output) ([]bool, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CheckPoliciesExist", arg0, arg1)
 	ret0, _ := ret[0].([]bool)
@@ -146,7 +146,7 @@ func (mr *MockConnMockRecorder) DirtyCount(arg0 any) *gomock.Call {
 }
 
 // InsertDomainsIntoDirty mocks base method.
-func (m *MockConn) InsertDomainsIntoDirty(arg0 context.Context, arg1 []*common.SHA256Output) error {
+func (m *MockConn) InsertDomainsIntoDirty(arg0 context.Context, arg1 []common.SHA256Output) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "InsertDomainsIntoDirty", arg0, arg1)
 	ret0, _ := ret[0].(error)
@@ -219,7 +219,7 @@ func (mr *MockConnMockRecorder) RecomputeDirtyDomainsCertAndPolicyIDs(arg0 any) 
 }
 
 // RetrieveCertificateOrPolicyPayloads mocks base method.
-func (m *MockConn) RetrieveCertificateOrPolicyPayloads(arg0 context.Context, arg1 []*common.SHA256Output) ([][]byte, error) {
+func (m *MockConn) RetrieveCertificateOrPolicyPayloads(arg0 context.Context, arg1 []common.SHA256Output) ([][]byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RetrieveCertificateOrPolicyPayloads", arg0, arg1)
 	ret0, _ := ret[0].([][]byte)
@@ -234,7 +234,7 @@ func (mr *MockConnMockRecorder) RetrieveCertificateOrPolicyPayloads(arg0, arg1 a
 }
 
 // RetrieveCertificatePayloads mocks base method.
-func (m *MockConn) RetrieveCertificatePayloads(arg0 context.Context, arg1 []*common.SHA256Output) ([][]byte, error) {
+func (m *MockConn) RetrieveCertificatePayloads(arg0 context.Context, arg1 []common.SHA256Output) ([][]byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RetrieveCertificatePayloads", arg0, arg1)
 	ret0, _ := ret[0].([][]byte)
@@ -249,10 +249,10 @@ func (mr *MockConnMockRecorder) RetrieveCertificatePayloads(arg0, arg1 any) *gom
 }
 
 // RetrieveDirtyDomains mocks base method.
-func (m *MockConn) RetrieveDirtyDomains(arg0 context.Context) ([]*common.SHA256Output, error) {
+func (m *MockConn) RetrieveDirtyDomains(arg0 context.Context) ([]common.SHA256Output, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RetrieveDirtyDomains", arg0)
-	ret0, _ := ret[0].([]*common.SHA256Output)
+	ret0, _ := ret[0].([]common.SHA256Output)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -264,10 +264,10 @@ func (mr *MockConnMockRecorder) RetrieveDirtyDomains(arg0 any) *gomock.Call {
 }
 
 // RetrieveDomainCertificatesIDs mocks base method.
-func (m *MockConn) RetrieveDomainCertificatesIDs(arg0 context.Context, arg1 common.SHA256Output) (*common.SHA256Output, []byte, error) {
+func (m *MockConn) RetrieveDomainCertificatesIDs(arg0 context.Context, arg1 common.SHA256Output) (common.SHA256Output, []byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RetrieveDomainCertificatesIDs", arg0, arg1)
-	ret0, _ := ret[0].(*common.SHA256Output)
+	ret0, _ := ret[0].(common.SHA256Output)
 	ret1, _ := ret[1].([]byte)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
@@ -280,10 +280,10 @@ func (mr *MockConnMockRecorder) RetrieveDomainCertificatesIDs(arg0, arg1 any) *g
 }
 
 // RetrieveDomainEntries mocks base method.
-func (m *MockConn) RetrieveDomainEntries(arg0 context.Context, arg1 []*common.SHA256Output) ([]*db.KeyValuePair, error) {
+func (m *MockConn) RetrieveDomainEntries(arg0 context.Context, arg1 []common.SHA256Output) ([]db.KeyValuePair, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RetrieveDomainEntries", arg0, arg1)
-	ret0, _ := ret[0].([]*db.KeyValuePair)
+	ret0, _ := ret[0].([]db.KeyValuePair)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -295,10 +295,10 @@ func (mr *MockConnMockRecorder) RetrieveDomainEntries(arg0, arg1 any) *gomock.Ca
 }
 
 // RetrieveDomainEntriesDirtyOnes mocks base method.
-func (m *MockConn) RetrieveDomainEntriesDirtyOnes(arg0 context.Context, arg1, arg2 uint64) ([]*db.KeyValuePair, error) {
+func (m *MockConn) RetrieveDomainEntriesDirtyOnes(arg0 context.Context, arg1, arg2 uint64) ([]db.KeyValuePair, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RetrieveDomainEntriesDirtyOnes", arg0, arg1, arg2)
-	ret0, _ := ret[0].([]*db.KeyValuePair)
+	ret0, _ := ret[0].([]db.KeyValuePair)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -310,10 +310,10 @@ func (mr *MockConnMockRecorder) RetrieveDomainEntriesDirtyOnes(arg0, arg1, arg2 
 }
 
 // RetrieveDomainPoliciesIDs mocks base method.
-func (m *MockConn) RetrieveDomainPoliciesIDs(arg0 context.Context, arg1 common.SHA256Output) (*common.SHA256Output, []byte, error) {
+func (m *MockConn) RetrieveDomainPoliciesIDs(arg0 context.Context, arg1 common.SHA256Output) (common.SHA256Output, []byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RetrieveDomainPoliciesIDs", arg0, arg1)
-	ret0, _ := ret[0].(*common.SHA256Output)
+	ret0, _ := ret[0].(common.SHA256Output)
 	ret1, _ := ret[1].([]byte)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
@@ -326,7 +326,7 @@ func (mr *MockConnMockRecorder) RetrieveDomainPoliciesIDs(arg0, arg1 any) *gomoc
 }
 
 // RetrievePolicyPayloads mocks base method.
-func (m *MockConn) RetrievePolicyPayloads(arg0 context.Context, arg1 []*common.SHA256Output) ([][]byte, error) {
+func (m *MockConn) RetrievePolicyPayloads(arg0 context.Context, arg1 []common.SHA256Output) ([][]byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RetrievePolicyPayloads", arg0, arg1)
 	ret0, _ := ret[0].([][]byte)
@@ -384,7 +384,7 @@ func (mr *MockConnMockRecorder) TruncateAllTables(arg0 any) *gomock.Call {
 }
 
 // UpdateCerts mocks base method.
-func (m *MockConn) UpdateCerts(arg0 context.Context, arg1, arg2 []*common.SHA256Output, arg3 []*time.Time, arg4 [][]byte) error {
+func (m *MockConn) UpdateCerts(arg0 context.Context, arg1 []common.SHA256Output, arg2 []*common.SHA256Output, arg3 []time.Time, arg4 [][]byte) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateCerts", arg0, arg1, arg2, arg3, arg4)
 	ret0, _ := ret[0].(error)
@@ -398,7 +398,7 @@ func (mr *MockConnMockRecorder) UpdateCerts(arg0, arg1, arg2, arg3, arg4 any) *g
 }
 
 // UpdateDomainCerts mocks base method.
-func (m *MockConn) UpdateDomainCerts(arg0 context.Context, arg1, arg2 []*common.SHA256Output) error {
+func (m *MockConn) UpdateDomainCerts(arg0 context.Context, arg1, arg2 []common.SHA256Output) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateDomainCerts", arg0, arg1, arg2)
 	ret0, _ := ret[0].(error)
@@ -412,7 +412,7 @@ func (mr *MockConnMockRecorder) UpdateDomainCerts(arg0, arg1, arg2 any) *gomock.
 }
 
 // UpdateDomainPolicies mocks base method.
-func (m *MockConn) UpdateDomainPolicies(arg0 context.Context, arg1, arg2 []*common.SHA256Output) error {
+func (m *MockConn) UpdateDomainPolicies(arg0 context.Context, arg1, arg2 []common.SHA256Output) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateDomainPolicies", arg0, arg1, arg2)
 	ret0, _ := ret[0].(error)
@@ -426,7 +426,7 @@ func (mr *MockConnMockRecorder) UpdateDomainPolicies(arg0, arg1, arg2 any) *gomo
 }
 
 // UpdateDomains mocks base method.
-func (m *MockConn) UpdateDomains(arg0 context.Context, arg1 []*common.SHA256Output, arg2 []string) error {
+func (m *MockConn) UpdateDomains(arg0 context.Context, arg1 []common.SHA256Output, arg2 []string) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateDomains", arg0, arg1, arg2)
 	ret0, _ := ret[0].(error)
@@ -454,7 +454,7 @@ func (mr *MockConnMockRecorder) UpdateLastCTlogServerState(arg0, arg1, arg2, arg
 }
 
 // UpdatePolicies mocks base method.
-func (m *MockConn) UpdatePolicies(arg0 context.Context, arg1, arg2 []*common.SHA256Output, arg3 []*time.Time, arg4 [][]byte) error {
+func (m *MockConn) UpdatePolicies(arg0 context.Context, arg1 []common.SHA256Output, arg2 []*common.SHA256Output, arg3 []time.Time, arg4 [][]byte) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdatePolicies", arg0, arg1, arg2, arg3, arg4)
 	ret0, _ := ret[0].(error)

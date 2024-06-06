@@ -55,7 +55,7 @@ func TestGetRawEntries(t *testing.T) {
 
 			f, err := NewHttpLogFetcher(testURL)
 			require.NoError(t, err)
-			rawEntries := make([]*ct.LeafEntry, tc.end-tc.start+1)
+			rawEntries := make([]ct.LeafEntry, tc.end-tc.start+1)
 			n, err := f.getRawEntries(rawEntries, tc.start, tc.end)
 			require.NoError(t, err)
 			require.Equal(t, tc.end-tc.start+1, n)
@@ -75,7 +75,7 @@ func TestStoppingGetRawEntries(t *testing.T) {
 		f.StopFetching()
 	}()
 	// Manually call getRawEntries as if called from the parent.
-	leafEntries := make([]*ct.LeafEntry, f.end-f.start+1)
+	leafEntries := make([]ct.LeafEntry, f.end-f.start+1)
 	n, err := f.getRawEntries(leafEntries, f.start, f.end)
 	require.NoError(t, err)
 	require.Equal(t, int64(0), n)
@@ -138,7 +138,7 @@ func TestGetRawEntriesInBatches(t *testing.T) {
 				f.processBatchSize = f.serverBatchSize * 128
 			}
 
-			entries := make([]*ct.LeafEntry, tc.end-tc.start+1)
+			entries := make([]ct.LeafEntry, tc.end-tc.start+1)
 			n, err := f.getRawEntriesInBatches(entries, tc.start, tc.end)
 			require.NoError(t, err)
 			expected := tc.end - tc.start + 1
@@ -166,7 +166,7 @@ func TestStoppingGetRawEntriesInBatches(t *testing.T) {
 	}()
 
 	// Manually call getRawEntriesInBatches as if called from "fetch()".
-	leafEntries := make([]*ct.LeafEntry, f.processBatchSize)
+	leafEntries := make([]ct.LeafEntry, f.processBatchSize)
 	start := f.start
 	end := f.start + f.processBatchSize - 1
 	n, err := f.getRawEntriesInBatches(leafEntries, start, end)
@@ -235,7 +235,7 @@ func TestLogFetcher(t *testing.T) {
 			}
 			f.StartFetching(int64(tc.start), int64(tc.end))
 
-			allCerts := make([]*ctx509.Certificate, 0)
+			allCerts := make([]ctx509.Certificate, 0)
 			allChains := make([][]*ctx509.Certificate, 0)
 			for f.NextBatch(ctx) {
 				certs, chains, _, err := f.ReturnNextBatch()
@@ -268,7 +268,7 @@ func TestTimeoutLogFetcher(t *testing.T) {
 	require.NoError(t, err)
 
 	// Attempt to fetch something really big that would need more than 1 sec.
-	certs, chains, _, err := f.FetchAllCertificates(ctx, 2000, 666000000)
+	certs, chains, _, err := f.FetchAllCertificates(ctx, 2000, 1_000_000)
 	require.Error(t, err)
 	require.ErrorIs(t, err, context.DeadlineExceeded)
 	require.Len(t, certs, 0)

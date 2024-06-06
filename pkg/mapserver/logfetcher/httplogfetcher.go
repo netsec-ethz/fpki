@@ -142,7 +142,7 @@ func (f *HttpLogFetcher) NextBatch(ctx context.Context) bool {
 // The call blocks until a whole batch is available. The last batch may have less elements.
 // Returns nil when there is no more batches, i.e. all certificates have been fetched.
 func (f *HttpLogFetcher) ReturnNextBatch() (
-	certs []*ctx509.Certificate,
+	certs []ctx509.Certificate,
 	chains [][]*ctx509.Certificate,
 	excluded int,
 	err error) {
@@ -156,14 +156,14 @@ func (f *HttpLogFetcher) FetchAllCertificates(
 	start,
 	end int64,
 ) (
-	certs []*ctx509.Certificate,
+	certs []ctx509.Certificate,
 	chains [][]*ctx509.Certificate,
 	excluded uint64,
 	err error,
 ) {
 
 	f.StartFetching(start, end)
-	certs = make([]*ctx509.Certificate, 0, end-start+1)
+	certs = make([]ctx509.Certificate, 0, end-start+1)
 	chains = make([][]*ctx509.Certificate, 0, end-start+1)
 	for f.NextBatch(ctx) {
 		bCerts, bChains, bExcluded, bErr := f.ReturnNextBatch()
@@ -192,7 +192,7 @@ func (f *HttpLogFetcher) fetch() {
 	// It calls count-1 times with the batchSize, and 1 time with the remainder.
 	count := 1 + (f.end-f.start)/f.processBatchSize
 
-	leafEntries := make([]*ct.LeafEntry, f.processBatchSize)
+	leafEntries := make([]ct.LeafEntry, f.processBatchSize)
 	for i := int64(0); i < count; i++ {
 		start := f.start + i*f.processBatchSize
 		end := min(f.end, start+f.processBatchSize-1)
@@ -207,12 +207,12 @@ func (f *HttpLogFetcher) fetch() {
 			f.stopping = false // We are handling the stop now.
 			return
 		}
-		certEntries := make([]*ctx509.Certificate, n)
+		certEntries := make([]ctx509.Certificate, n)
 		chainEntries := make([][]*ctx509.Certificate, n)
 		// Parse each entry to certificates and chains.
 		for i, leaf := range leafEntries[:n] {
 			index := start + int64(i)
-			raw, err := ct.RawLogEntryFromLeaf(index, leaf)
+			raw, err := ct.RawLogEntryFromLeaf(index, &leaf)
 			if err != nil {
 				f.chanResults <- &result{
 					err: err,
@@ -229,7 +229,7 @@ func (f *HttpLogFetcher) fetch() {
 				}
 				return
 			}
-			certEntries[i] = cert
+			certEntries[i] = *cert
 			// Chain.
 			chainEntries[i] = make([]*ctx509.Certificate, len(raw.Chain))
 			for j, c := range raw.Chain {
@@ -255,7 +255,7 @@ func (f *HttpLogFetcher) fetch() {
 // serverBatchSize.
 // streamRawEntries will download end - start + 1 certificates,
 // starting at start, and finishing with end.
-func (f *HttpLogFetcher) getRawEntriesInBatches(leafEntries []*ct.LeafEntry, start, end int64) (
+func (f *HttpLogFetcher) getRawEntriesInBatches(leafEntries []ct.LeafEntry, start, end int64) (
 	int64, error) {
 
 	assert(end >= start, "logic error: call to getRawEntriesInBatches with %d and %d", start, end)
@@ -308,7 +308,7 @@ func (f *HttpLogFetcher) getRawEntriesInBatches(leafEntries []*ct.LeafEntry, sta
 // It returns the number of retrieved entries, plus maybe an error.
 // The rawEntries must be at least of size end-start+1, or panic.
 func (f *HttpLogFetcher) getRawEntries(
-	leafEntries []*ct.LeafEntry,
+	leafEntries []ct.LeafEntry,
 	start,
 	end int64,
 ) (int64, error) {
@@ -326,7 +326,7 @@ func (f *HttpLogFetcher) getRawEntries(
 		}
 		for i := int64(0); i < int64(len(rsp.Entries)); i++ {
 			e := rsp.Entries[i]
-			leafEntries[offset+i] = &e
+			leafEntries[offset+i] = e
 		}
 		offset += int64(len(rsp.Entries))
 	}

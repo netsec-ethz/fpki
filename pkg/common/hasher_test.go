@@ -157,7 +157,7 @@ func doSha256(data []byte) []byte {
 	return hasher.Sum(nil)
 }
 
-func checkSequentialValues(t require.TestingT, IDs []*SHA256Output) {
+func checkSequentialValues(t require.TestingT, IDs []SHA256Output) {
 	i := 0
 	for _, id := range IDs {
 		for _, j := range id {

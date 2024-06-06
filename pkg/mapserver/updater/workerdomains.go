@@ -11,18 +11,35 @@ import (
 
 type DomainWorker struct {
 	Worker
-	IncomingChan   chan *DirtyDomain
-	cloneDomainIDs []*common.SHA256Output // to avoid calling malloc when we run dedup.
-	cloneCertIDs   []*common.SHA256Output
-	cloneNames     []string
+	IncomingChan chan DirtyDomain
+	domainIDs    []common.SHA256Output // do not call make more than once.
+	certIDs      []common.SHA256Output // do not call make more than once.
+	names        []string              // do not call make more than once.
+
+	cloneDomainIDs []common.SHA256Output // to avoid calling malloc when we run dedup.
+	cloneCertIDs   []common.SHA256Output // to avoid calling malloc when we run dedup.
+	cloneNames     []string              // to avoid calling malloc when we run dedup.
+
+	dedupIDStorage     map[common.SHA256Output]struct{}    // For dedup to not allocate.
+	dedupIdNameStorage map[idName]struct{}                 // For dedup to not allocate.
+	dedupTwoIdsStorage map[[2]common.SHA256Output]struct{} // For dedup to not allocate.
 }
 
 func NewDomainWorker(ctx context.Context, id int, m *Manager, conn db.Conn) *DomainWorker {
 	w := &DomainWorker{
-		Worker:         *newBaseWorker(ctx, id, m, conn),
-		cloneDomainIDs: make([]*common.SHA256Output, 0, m.MultiInsertSize),
-		cloneCertIDs:   make([]*common.SHA256Output, 0, m.MultiInsertSize),
+		Worker: *newBaseWorker(ctx, id, m, conn),
+
+		domainIDs: make([]common.SHA256Output, 0, m.MultiInsertSize),
+		certIDs:   make([]common.SHA256Output, 0, m.MultiInsertSize),
+		names:     make([]string, 0, m.MultiInsertSize),
+
+		cloneDomainIDs: make([]common.SHA256Output, 0, m.MultiInsertSize),
+		cloneCertIDs:   make([]common.SHA256Output, 0, m.MultiInsertSize),
 		cloneNames:     make([]string, 0, m.MultiInsertSize),
+
+		dedupIDStorage:     make(map[common.SHA256Output]struct{}, 2*m.MultiInsertSize),
+		dedupIdNameStorage: make(map[idName]struct{}, m.MultiInsertSize),
+		dedupTwoIdsStorage: make(map[[2]common.SHA256Output]struct{}, m.MultiInsertSize),
 	}
 
 	return w
@@ -30,7 +47,7 @@ func NewDomainWorker(ctx context.Context, id int, m *Manager, conn db.Conn) *Dom
 
 func (w *DomainWorker) Resume() {
 	w.Worker.Resume()
-	w.IncomingChan = make(chan *DirtyDomain)
+	w.IncomingChan = make(chan DirtyDomain)
 	go w.resume()
 }
 
@@ -41,7 +58,7 @@ func (w *DomainWorker) Stop() {
 
 func (w *DomainWorker) resume() {
 	// Create a certificate slice where all the received certificates will end up.
-	domains := make([]*DirtyDomain, 0, w.Manager.MultiInsertSize)
+	domains := make([]DirtyDomain, 0, w.Manager.MultiInsertSize)
 
 	for domain := range w.IncomingChan {
 		domains = append(domains, domain)
@@ -58,25 +75,26 @@ func (w *DomainWorker) resume() {
 	w.closeErrors()
 }
 
-func (w *DomainWorker) processBundle(domains []*DirtyDomain) error {
+func (w *DomainWorker) processBundle(domains []DirtyDomain) error {
 	if len(domains) == 0 {
 		return nil
 	}
 
-	domainIDs := make([]*common.SHA256Output, len(domains))
-	domainNames := make([]string, len(domains))
-	certIDs := make([]*common.SHA256Output, len(domains))
+	w.domainIDs = w.domainIDs[:len(domains)] // keep storage
+	w.certIDs = w.certIDs[:len(domains)]
+	w.names = w.names[:len(domains)]
 	for i, d := range domains {
-		domainIDs[i] = d.DomainID
-		domainNames[i] = d.Name
-		certIDs[i] = d.CertID
+		w.domainIDs[i] = d.DomainID
+		w.names[i] = d.Name
+		w.certIDs[i] = d.CertID
 	}
 
 	// Update dirty table.
 	// Remove duplicates for the dirty table insertion.
-	w.cloneDomainIDs = append(w.cloneDomainIDs[:0], domainIDs...)
-	util.DeduplicateSlice(
-		util.WithSlicePtr(w.cloneDomainIDs),
+	w.cloneDomainIDs = append(w.cloneDomainIDs[:0], w.domainIDs...)
+	util.DeduplicateSliceWithStorage(
+		w.dedupIDStorage,
+		util.WithSlice(w.cloneDomainIDs),
 		util.Wrap(&w.cloneDomainIDs),
 	)
 	if err := w.Conn.InsertDomainsIntoDirty(w.Ctx, w.cloneDomainIDs); err != nil {
@@ -85,35 +103,35 @@ func (w *DomainWorker) processBundle(domains []*DirtyDomain) error {
 
 	// Update domains table.
 	// Remove duplicates (domainID,name)
-	w.cloneDomainIDs = append(w.cloneDomainIDs[:0], domainIDs...) // clone again (was modified).
-	w.cloneNames = append(w.cloneNames[:0], domainNames...)
-	type idName struct {
-		id   common.SHA256Output
-		name string
-	}
-	util.DeduplicateSlice(
+	w.cloneDomainIDs = append(w.cloneDomainIDs[:0], w.domainIDs...) // clone again (was modified).
+	w.cloneNames = append(w.cloneNames[:0], w.names...)
+
+	util.DeduplicateSliceWithStorage(
+		w.dedupIdNameStorage,
 		func(i int) idName {
 			return idName{
-				id:   *w.cloneDomainIDs[i],
+				id:   w.cloneDomainIDs[i],
 				name: w.cloneNames[i],
 			}
 		},
 		util.Wrap(&w.cloneDomainIDs),
 		util.Wrap(&w.cloneNames),
 	)
+
 	if err := w.Conn.UpdateDomains(w.Ctx, w.cloneDomainIDs, w.cloneNames); err != nil {
 		return fmt.Errorf("inserting domains at worker %d: %w", w.Id, err)
 	}
 
 	// Update domain_certs.
 	// Remove duplicates (domainID, certID)
-	w.cloneDomainIDs = append(w.cloneDomainIDs[:0], domainIDs...) // again
-	w.cloneCertIDs = append(certIDs[:0], certIDs...)
-	util.DeduplicateSlice(
+	w.cloneDomainIDs = append(w.cloneDomainIDs[:0], w.domainIDs...) // again
+	w.cloneCertIDs = append(w.certIDs[:0], w.certIDs...)
+	util.DeduplicateSliceWithStorage(
+		w.dedupTwoIdsStorage,
 		func(i int) [2]common.SHA256Output {
 			return [2]common.SHA256Output{
-				*w.cloneDomainIDs[i],
-				*w.cloneCertIDs[i],
+				w.cloneDomainIDs[i],
+				w.cloneCertIDs[i],
 			}
 		},
 		util.Wrap(&w.cloneDomainIDs),
@@ -124,4 +142,10 @@ func (w *DomainWorker) processBundle(domains []*DirtyDomain) error {
 	}
 
 	return nil
+}
+
+// idName is the bundle of the ID and name, to deduplicate domainID,name insertion.
+type idName struct {
+	id   common.SHA256Output
+	name string
 }

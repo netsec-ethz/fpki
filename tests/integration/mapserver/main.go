@@ -148,10 +148,10 @@ func checkResponse(
 	policyIDs := make(map[common.SHA256Output]struct{})
 	for _, p := range proofChain {
 		for _, id := range common.BytesToIDs(p.DomainEntry.CertIDs) {
-			certIDs[*id] = struct{}{}
+			certIDs[id] = struct{}{}
 		}
 		for _, id := range common.BytesToIDs(p.DomainEntry.PolicyIDs) {
-			policyIDs[*id] = struct{}{}
+			policyIDs[id] = struct{}{}
 		}
 	}
 
@@ -244,12 +244,12 @@ func checkIDsInProof(
 		// Certificates.
 		ids := common.BytesToIDs(proofChain[i].DomainEntry.CertIDs)
 		for _, id := range ids {
-			allIDs[*id] = struct{}{}
+			allIDs[id] = struct{}{}
 		}
 		// Policies.
 		ids = common.BytesToIDs(proofChain[i].DomainEntry.PolicyIDs)
 		for _, id := range ids {
-			allIDs[*id] = struct{}{}
+			allIDs[id] = struct{}{}
 		}
 	}
 

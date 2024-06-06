@@ -12,12 +12,41 @@ import (
 
 type CertWorker struct {
 	Worker
-	IncomingChan chan *Certificate
+	IncomingChan chan Certificate
+	hasher       common.Hasher
+
+	// Cache for the domain ID storage after hash.
+	cacheDomainIdHash []common.SHA256Output
+	// Cache storage arrays used to unfold Certificate objects into the DB fields.
+	cacheIds         []common.SHA256Output
+	cacheParents     []*common.SHA256Output
+	cacheExpirations []time.Time
+	cachePayloads    [][]byte
+
+	// Cache storage arrays used to create DirtyDomain objects. We don't need a certificate ID
+	// storage, as we can reuse the one above: never used concurrently.
+	// cacheDomainIds []*common.SHA256Output
+	// cacheNames     []string
+	cacheDomains []DirtyDomain
+
+	dedupStorage map[common.SHA256Output]struct{} // For dedup to not allocate.
 }
 
 func NewCertWorker(ctx context.Context, id int, m *Manager, conn db.Conn) *CertWorker {
 	w := &CertWorker{
 		Worker: *newBaseWorker(ctx, id, m, conn),
+		hasher: *common.NewHasher(),
+
+		cacheDomainIdHash: make([]common.SHA256Output, 0, m.MultiInsertSize),
+
+		cacheIds:         make([]common.SHA256Output, 0, m.MultiInsertSize),
+		cacheParents:     make([]*common.SHA256Output, 0, m.MultiInsertSize),
+		cacheExpirations: make([]time.Time, 0, m.MultiInsertSize),
+		cachePayloads:    make([][]byte, 0, m.MultiInsertSize),
+
+		cacheDomains: make([]DirtyDomain, 0, 2*m.MultiInsertSize), // estimates 2 names per cert
+
+		dedupStorage: make(map[common.SHA256Output]struct{}, m.MultiInsertSize),
 	}
 
 	return w
@@ -25,7 +54,7 @@ func NewCertWorker(ctx context.Context, id int, m *Manager, conn db.Conn) *CertW
 
 func (w *CertWorker) Resume() {
 	w.Worker.Resume()
-	w.IncomingChan = make(chan *Certificate)
+	w.IncomingChan = make(chan Certificate)
 	go w.resume()
 }
 
@@ -36,7 +65,7 @@ func (w *CertWorker) Stop() {
 
 func (w *CertWorker) resume() {
 	// Create a certificate slice where all the received certificates will end up.
-	certs := make([]*Certificate, 0, w.Manager.MultiInsertSize)
+	certs := make([]Certificate, 0, w.Manager.MultiInsertSize)
 
 	for cert := range w.IncomingChan {
 		certs = append(certs, cert)
@@ -53,76 +82,103 @@ func (w *CertWorker) resume() {
 	w.closeErrors()
 }
 
-func (w *CertWorker) processBundle(certs []*Certificate) error {
+func (w *CertWorker) processBundle(certs []Certificate) error {
 	if len(certs) == 0 {
 		return nil
 	}
-
-	// Remove duplicated certs.
-	util.DeduplicateSlice(
-		func(i int) common.SHA256Output {
-			return *certs[i].CertID
-		},
-		util.Wrap(&certs),
-	)
 
 	// Insert the certificates into the DB.
 	if err := w.insertCertificates(certs); err != nil {
 		return fmt.Errorf("inserting certificates at worker %d: %w", w.Id, err)
 	}
 
-	domainIDs, domainNames, certInDomainIDs := w.extractDomains(certs)
+	// var domain DirtyDomain
+	// _=domain
+	// for _,c:=range certs {
+	// 	for _, name := range c.Names {
 
-	for i := range domainIDs {
-		d := &DirtyDomain{
-			DomainID: domainIDs[i],
-			CertID:   certInDomainIDs[i],
-			Name:     domainNames[i],
-		}
+	// 		// domainID := w.hasher.HashCopy([]byte(name))
+	// 		w.hasher.Hash(&w.cacheDomainIdHash[i], []byte(name))
+	// 		domain  = DirtyDomain{
+	// 			DomainID: &w.cacheDomainIdHash[i],
+	// 			CertID:   c.CertID,
+	// 			Name:     name,
+	// 		}
+	// 		i++
+	// 	}
+	// }
+	// return nil
+	w.extractDomains(certs)
+
+	for _, d := range w.cacheDomains {
 		w.Manager.IncomingDomainChan <- d
 	}
 
 	return nil
 }
 
-func (w *CertWorker) insertCertificates(certs []*Certificate) error {
-	ids := make([]*common.SHA256Output, len(certs))
-	parents := make([]*common.SHA256Output, len(certs))
-	expirations := make([]*time.Time, len(certs))
-	payloads := make([][]byte, len(certs))
+func (w *CertWorker) insertCertificates(certs []Certificate) error {
+	// Reuse storage for the data translation.
+	w.cacheIds = w.cacheIds[:len(certs)]
+	w.cacheParents = w.cacheParents[:len(certs)]
+	w.cacheExpirations = w.cacheExpirations[:len(certs)]
+	w.cachePayloads = w.cachePayloads[:len(certs)]
+
 	for i, c := range certs {
-		ids[i] = c.CertID
-		parents[i] = c.ParentID
-		expirations[i] = &c.Cert.NotAfter
-		payloads[i] = c.Cert.Raw
+		w.cacheIds[i] = c.CertID
+		w.cacheParents[i] = c.ParentID
+		w.cacheExpirations[i] = c.Cert.NotAfter
+		w.cachePayloads[i] = c.Cert.Raw
 	}
-	return w.Conn.UpdateCerts(w.Ctx, ids, parents, expirations, payloads)
+
+	// Remove duplicated certs.
+	util.DeduplicateSliceWithStorage(
+		w.dedupStorage,
+		func(i int) common.SHA256Output {
+			return w.cacheIds[i]
+		},
+		util.Wrap(&w.cacheIds),
+		util.Wrap(&w.cacheParents),
+		util.Wrap(&w.cacheExpirations),
+		util.Wrap(&w.cachePayloads),
+	)
+	return w.Conn.UpdateCerts(
+		w.Ctx,
+		w.cacheIds,
+		w.cacheParents,
+		w.cacheExpirations,
+		w.cachePayloads,
+	)
 }
 
 // extractDomains inspects the Certificate slice and returns one entry per name in each certificate.
 // E.g. if certs contains two certificates, the first one with one name, and the second with two,
 // extractDomains will return three entries.
 // Each one of the returned slices has the same length.
-func (w *CertWorker) extractDomains(
-	certs []*Certificate,
-) (
-	domainIDs []*common.SHA256Output,
-	newDomainNames []string,
-	certInDomainsIDs []*common.SHA256Output,
-) {
-	estimatedLeafCount := len(certs)
-	newDomainNames = make([]string, 0, estimatedLeafCount)
-	certInDomainsIDs = make([]*common.SHA256Output, 0, estimatedLeafCount)
-	domainIDs = make([]*common.SHA256Output, 0, estimatedLeafCount)
+// The domains are extracted into this CertWorker's cacheDomain slice.
+func (w *CertWorker) extractDomains(certs []Certificate) {
+	// Clear storage (but preserve it).
+	w.cacheDomainIdHash = w.cacheDomainIdHash[:0]
+	w.cacheDomains = w.cacheDomains[:0]
+
+	i := 0
 	for _, c := range certs {
 		// Iff the certificate is a leaf certificate it will have a non-nil names slice: insert
 		// one entry per name.
 		for _, name := range c.Names {
-			newDomainNames = append(newDomainNames, name)
-			certInDomainsIDs = append(certInDomainsIDs, c.CertID)
-			domainID := common.SHA256Hash32Bytes([]byte(name))
-			domainIDs = append(domainIDs, &domainID)
+			// Prepare cache for the hash.
+			w.cacheDomainIdHash = append(w.cacheDomainIdHash, common.SHA256Output{})
+			// domainID := common.SHA256Hash32Bytes([]byte(name))
+			// domainID := common.SHA256Output{}
+			// domainID := w.hasher.HashCopy([]byte(name))
+			w.hasher.Hash(&w.cacheDomainIdHash[i], []byte(name))
+			w.cacheDomains = append(w.cacheDomains, DirtyDomain{
+				DomainID: w.cacheDomainIdHash[i],
+				CertID:   c.CertID,
+				Name:     name,
+			})
+			i++
 		}
 	}
-	return
+	w.cacheDomains = w.cacheDomains[:i]
 }

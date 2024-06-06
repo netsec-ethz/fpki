@@ -31,6 +31,7 @@ func PartitionByIdLSB(id *common.SHA256Output, nBits int) uint {
 }
 
 type mysqlDB struct {
+	db.Conn
 	db *sql.DB
 }
 
@@ -68,7 +69,7 @@ func (c *mysqlDB) TruncateAllTables(ctx context.Context) error {
 }
 
 // UpdateDomains updates the domains AND dirty tables.
-func (c *mysqlDB) UpdateDomains(ctx context.Context, domainIDs []*common.SHA256Output,
+func (c *mysqlDB) UpdateDomains(ctx context.Context, domainIDs []common.SHA256Output,
 	domainNames []string) error {
 
 	if len(domainIDs) == 0 {
@@ -78,7 +79,7 @@ func (c *mysqlDB) UpdateDomains(ctx context.Context, domainIDs []*common.SHA256O
 	// Make the list of domains unique, attach the name to each unique ID.
 	domainIDsSet := make(map[common.SHA256Output]string)
 	for i, id := range domainIDs {
-		domainIDsSet[*id] = domainNames[i]
+		domainIDsSet[id] = domainNames[i]
 	}
 
 	// Insert into domains.
@@ -104,8 +105,8 @@ func (c *mysqlDB) UpdateDomains(ctx context.Context, domainIDs []*common.SHA256O
 
 // RetrieveDomainEntries: Retrieve a list of key-value pairs from domain entries table
 // No sql.ErrNoRows will be thrown, if some records does not exist. Check the length of result
-func (c *mysqlDB) RetrieveDomainEntries(ctx context.Context, domainIDs []*common.SHA256Output,
-) ([]*db.KeyValuePair, error) {
+func (c *mysqlDB) RetrieveDomainEntries(ctx context.Context, domainIDs []common.SHA256Output,
+) ([]db.KeyValuePair, error) {
 
 	if len(domainIDs) == 0 {
 		return nil, nil
@@ -116,14 +117,14 @@ func (c *mysqlDB) RetrieveDomainEntries(ctx context.Context, domainIDs []*common
 }
 
 func (c *mysqlDB) RetrieveDomainEntriesDirtyOnes(ctx context.Context, start, end uint64,
-) ([]*db.KeyValuePair, error) {
+) ([]db.KeyValuePair, error) {
 	return c.retrieveDirtyDomainEntriesInDBJoin(ctx, start, end)
 }
 
 func (c *mysqlDB) retrieveDirtyDomainEntriesInDBJoin(
 	ctx context.Context,
 	start, end uint64,
-) ([]*db.KeyValuePair, error) {
+) ([]db.KeyValuePair, error) {
 
 	str := `SELECT d.domain_id,p.cert_ids,p.policy_ids
 		FROM
@@ -147,11 +148,11 @@ func (c *mysqlDB) retrieveDirtyDomainEntriesInDBJoin(
 // this strategy is slower than running retrieveDomainEntriesSequential.
 func (c *mysqlDB) retrieveDirtyDomainEntriesParallel(
 	ctx context.Context,
-	domainIDs []*common.SHA256Output,
-) ([]*db.KeyValuePair, error) {
+	domainIDs []common.SHA256Output,
+) ([]db.KeyValuePair, error) {
 
 	// Function closure that concurrently asks to retrieve the domainsPerWorker given the IDs.
-	domainsPerWorker := make([][]*db.KeyValuePair, NumDBWorkers)
+	domainsPerWorker := make([][]db.KeyValuePair, NumDBWorkers)
 	errs := make([]error, NumDBWorkers)
 	wg := sync.WaitGroup{}
 	bundler := func(offset, fromWorker, toWorker, blockSize int) {
@@ -195,7 +196,7 @@ func (c *mysqlDB) retrieveDirtyDomainEntriesParallel(
 	}
 
 	// Place each bundle in its place.
-	allDomains := make([]*db.KeyValuePair, 0, len(domainIDs))
+	allDomains := make([]db.KeyValuePair, 0, len(domainIDs))
 	for _, ids := range domainsPerWorker {
 		allDomains = append(allDomains, ids...)
 	}
@@ -206,14 +207,15 @@ func (c *mysqlDB) retrieveDirtyDomainEntriesParallel(
 // retrieveDirtyDomainEntriesSequential is a classic SELECT x FROM y.
 func (c *mysqlDB) retrieveDirtyDomainEntriesSequential(
 	ctx context.Context,
-	domainIDs []*common.SHA256Output,
-) ([]*db.KeyValuePair, error) {
+	domainIDs []common.SHA256Output,
+) ([]db.KeyValuePair, error) {
 
 	// Retrieve the certificate and policy IDs for each domain ID.
 	str := "SELECT domain_id,cert_ids,policy_ids FROM domain_payloads WHERE domain_id IN " +
 		repeatStmt(1, len(domainIDs))
 	params := make([]interface{}, len(domainIDs))
 	for i, id := range domainIDs {
+		id := id
 		params[i] = id[:]
 	}
 	rows, err := c.db.QueryContext(ctx, str, params...)
@@ -224,8 +226,8 @@ func (c *mysqlDB) retrieveDirtyDomainEntriesSequential(
 	return extractDomainEntries(rows)
 }
 
-func extractDomainEntries(rows *sql.Rows) ([]*db.KeyValuePair, error) {
-	pairs := make([]*db.KeyValuePair, 0)
+func extractDomainEntries(rows *sql.Rows) ([]db.KeyValuePair, error) {
+	pairs := make([]db.KeyValuePair, 0)
 	for rows.Next() {
 		var id, certIDs, policyIDs []byte
 		err := rows.Scan(&id, &certIDs, &policyIDs)
@@ -234,7 +236,7 @@ func extractDomainEntries(rows *sql.Rows) ([]*db.KeyValuePair, error) {
 		}
 		// Unfold the byte streams into IDs, sort them, and fold again.
 		allIDs := append(common.BytesToIDs(certIDs), common.BytesToIDs(policyIDs)...)
-		pairs = append(pairs, &db.KeyValuePair{
+		pairs = append(pairs, db.KeyValuePair{
 			Key:   *(*common.SHA256Output)(id),
 			Value: common.SortIDsAndGlue(allIDs),
 		})

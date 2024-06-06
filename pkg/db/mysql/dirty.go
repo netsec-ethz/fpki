@@ -26,32 +26,34 @@ func (c *mysqlDB) DirtyCount(ctx context.Context) (uint64, error) {
 
 // RetrieveDirtyDomains returns the domain IDs that are still dirty, i.e. modified certificates for
 // that domain, but not yet coalesced and ingested by the SMT.
-func (c *mysqlDB) RetrieveDirtyDomains(ctx context.Context) ([]*common.SHA256Output, error) {
+func (c *mysqlDB) RetrieveDirtyDomains(ctx context.Context) ([]common.SHA256Output, error) {
 	str := "SELECT domain_id FROM dirty"
 	rows, err := c.db.QueryContext(ctx, str)
 	if err != nil {
 		return nil, fmt.Errorf("error querying dirty domains: %w", err)
 	}
-	domainIDs := make([]*common.SHA256Output, 0)
+	domainIDs := make([]common.SHA256Output, 0)
 	for rows.Next() {
 		var domainId []byte
 		err = rows.Scan(&domainId)
 		if err != nil {
 			return nil, fmt.Errorf("error scanning domain ID: %w", err)
 		}
-		ptr := (*common.SHA256Output)(domainId)
-		domainIDs = append(domainIDs, ptr)
+		domainIDs = append(domainIDs, common.SHA256Output(domainId))
 	}
 	return domainIDs, nil
 }
 
-func (c *mysqlDB) InsertDomainsIntoDirty(ctx context.Context, domainIDs []*common.SHA256Output) error {
+func (c *mysqlDB) InsertDomainsIntoDirty(
+	ctx context.Context,
+	domainIDs []common.SHA256Output,
+) error {
 	return c.insertDomainsIntoDirtyCSV(ctx, domainIDs)
 }
 
 func (c *mysqlDB) insertDomainsIntoDirtyCSV(
 	ctx context.Context,
-	domainIDs []*common.SHA256Output,
+	domainIDs []common.SHA256Output,
 ) error {
 	// Prepare the records for the CSV file.
 	records := make([][]string, len(domainIDs))
@@ -82,12 +84,12 @@ func (c *mysqlDB) insertDomainsIntoDirtyCSV(
 
 func (c *mysqlDB) insertDomainsIntoDirtyMemory(
 	ctx context.Context,
-	domainIDs []*common.SHA256Output,
+	domainIDs []common.SHA256Output,
 ) error {
 	// Make the list of domains unique, attach the name to each unique ID.
 	domainIDsSet := make(map[common.SHA256Output]struct{})
 	for _, id := range domainIDs {
-		domainIDsSet[*id] = struct{}{}
+		domainIDsSet[id] = struct{}{}
 	}
 
 	str := "INSERT IGNORE INTO dirty (domain_id) VALUES " + repeatStmt(len(domainIDsSet), 1)

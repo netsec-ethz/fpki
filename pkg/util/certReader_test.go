@@ -13,7 +13,7 @@ func TestCertReader(t *testing.T) {
 	require.NoError(t, err)
 
 	N := 10
-	certs := make([]*ctx509.Certificate, N)
+	certs := make([]ctx509.Certificate, N)
 	r := NewCertReader(z)
 	n, err := r.Read(certs)
 	require.NoError(t, err)
@@ -29,21 +29,21 @@ func TestCertReader(t *testing.T) {
 	require.NoError(t, err)
 
 	N = 10
-	certs = make([]*ctx509.Certificate, N)
+	certs = make([]ctx509.Certificate, N)
 	r = NewCertReader(z)
 	n, err = r.Read(certs)
 	require.NoError(t, err)
 	require.Equal(t, N, n)
 
 	N = 20
-	certs = make([]*ctx509.Certificate, N)
+	certs = make([]ctx509.Certificate, N)
 	r = NewCertReader(z)
 	n, err = r.Read(certs)
 	require.NoError(t, err)
 	require.Equal(t, N, n)
 
 	N = 5
-	certs = make([]*ctx509.Certificate, N)
+	certs = make([]ctx509.Certificate, N)
 	r = NewCertReader(z)
 	n, err = r.Read(certs)
 	require.NoError(t, err)
@@ -54,7 +54,7 @@ func TestCertReader(t *testing.T) {
 	require.NoError(t, err)
 	// Read them all.
 	N = 100000 - 1
-	certs = make([]*ctx509.Certificate, N)
+	certs = make([]ctx509.Certificate, N)
 	r = NewCertReader(z)
 	n, err = r.Read(certs)
 	require.NoError(t, err)
@@ -78,7 +78,7 @@ func TestCertReaderOneByOne(t *testing.T) {
 	r := NewCertReader(f)
 	N := 3
 
-	cs := make([]*ctx509.Certificate, 1)
+	cs := make([]ctx509.Certificate, 1)
 	for i := 0; i < N; i++ {
 		t.Logf("iteration %d", i)
 		n, err := r.Read(cs)
@@ -105,7 +105,7 @@ func TestCertReaderReadAll(t *testing.T) {
 	f, err = os.Open("../../tests/testdata/3-certs.pem")
 	require.NoError(t, err)
 	r = NewCertReader(f)
-	threeCerts := make([]*ctx509.Certificate, N)
+	threeCerts := make([]ctx509.Certificate, N)
 	n, err := r.Read(threeCerts)
 	require.Equal(t, N, n)
 	require.NoError(t, err)

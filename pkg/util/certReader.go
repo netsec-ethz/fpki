@@ -22,8 +22,8 @@ func NewCertReader(r io.Reader) *CertReader {
 	}
 }
 
-// Read reads as many certificates as the `certs` slice has or end-of-stream.
-func (r *CertReader) Read(certs []*ctx509.Certificate) (int, error) {
+// Read reads as many certificates as the `certs` slice has, or end-of-stream.
+func (r *CertReader) Read(certs []ctx509.Certificate) (int, error) {
 	certPointers := certs
 	for len(certPointers) > 0 {
 		// Move len(buff) bytes to beginning of storage.
@@ -72,7 +72,7 @@ func (r *CertReader) Read(certs []*ctx509.Certificate) (int, error) {
 					return 0, err
 				}
 			}
-			certPointers[0] = c
+			certPointers[0] = *c
 			certPointers = certPointers[1:]
 		}
 		if r.eofReached {
@@ -84,8 +84,8 @@ func (r *CertReader) Read(certs []*ctx509.Certificate) (int, error) {
 
 // ReadAll reads all pending certificates from the internal reader this CertReader was created
 // from. This function is usually called right after creating the CertReader.
-func (r *CertReader) ReadAll() ([]*ctx509.Certificate, error) {
-	certs := make([]*ctx509.Certificate, 1)
+func (r *CertReader) ReadAll() ([]ctx509.Certificate, error) {
+	certs := make([]ctx509.Certificate, 1)
 	for {
 		n, err := r.Read(certs[len(certs)-1:]) // read one certificate, at the end of the slice
 		if err != nil {
@@ -95,7 +95,7 @@ func (r *CertReader) ReadAll() ([]*ctx509.Certificate, error) {
 			certs = certs[:len(certs)-1] // remove the empty gap
 			break
 		}
-		certs = append(certs, nil) // make room for one more, with an empty gap
+		certs = append(certs, ctx509.Certificate{}) // make room for one more, with an empty gap
 	}
 	return certs, nil
 }

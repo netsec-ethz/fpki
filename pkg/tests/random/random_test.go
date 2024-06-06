@@ -62,8 +62,9 @@ func TestBuildTestRandomCertHierarchy(t *testing.T) {
 		"a.com",
 		"b.com",
 	}
-	var certs []*ctx509.Certificate
-	var certIDs, parentCertIDs []*common.SHA256Output
+	var certs []ctx509.Certificate
+	var certIDs []common.SHA256Output
+	var parentCertIDs []*common.SHA256Output
 	var certNames [][]string
 	nonLeafCerts := make([]*ctx509.Certificate, 0, len(certs)/2)
 	for _, leaf := range leafs {
@@ -89,12 +90,12 @@ func TestBuildTestRandomCertHierarchy(t *testing.T) {
 
 		// Parents
 		nilPtr := (*common.SHA256Output)(nil)
-		require.Equal(t, nilPtr, parentCertIDs2[0])      // parent(c0)=nil
-		require.Equal(t, certIDs2[0], parentCertIDs2[1]) // parent(c1)=c0
-		require.Equal(t, certIDs2[1], parentCertIDs2[2]) // parent(leaf1)=c1
-		require.Equal(t, certIDs2[0], parentCertIDs2[3]) // parent(leaf2)=c0
+		require.Equal(t, nilPtr, parentCertIDs2[0])       // parent(c0)=nil
+		require.Equal(t, &certIDs2[0], parentCertIDs2[1]) // parent(c1)=c0
+		require.Equal(t, &certIDs2[1], parentCertIDs2[2]) // parent(leaf1)=c1
+		require.Equal(t, &certIDs2[0], parentCertIDs2[3]) // parent(leaf2)=c0
 
-		nonLeafCerts = append(nonLeafCerts, certs2[0], certs2[1])
+		nonLeafCerts = append(nonLeafCerts, &certs2[0], &certs2[1])
 
 		certs = append(certs, certs2...)
 		certIDs = append(certIDs, certIDs2...)

@@ -24,8 +24,8 @@ type Manager struct {
 	ShardFuncCert   func(*common.SHA256Output) uint // select cert worker index from ID
 	ShardFuncDomain func(*common.SHA256Output) uint // select the domain worker from domain ID
 
-	IncomingCertChan   chan *Certificate // Certificates arrive from this channel
-	IncomingDomainChan chan *DirtyDomain
+	IncomingCertChan   chan Certificate // Certificates arrive from this channel
+	IncomingDomainChan chan DirtyDomain // Not a pointer! domains are taken ownership here.
 	errChan            chan error
 }
 
@@ -67,8 +67,8 @@ func NewManager(
 }
 
 func (m *Manager) Resume() {
-	m.IncomingDomainChan = make(chan *DirtyDomain)
-	m.IncomingCertChan = make(chan *Certificate)
+	m.IncomingDomainChan = make(chan DirtyDomain)
+	m.IncomingCertChan = make(chan Certificate)
 	m.resumeDomainWorkers()
 	m.resumeCertWorkers()
 
@@ -117,7 +117,7 @@ func (m *Manager) resume() {
 
 		for d := range m.IncomingDomainChan {
 			// Determine worker for the domain.
-			w := m.ShardFuncDomain(d.DomainID)
+			w := m.ShardFuncDomain(&d.DomainID)
 			m.DomainWorkers[w].IncomingChan <- d
 		}
 
@@ -134,7 +134,7 @@ func (m *Manager) resume() {
 
 		for c := range m.IncomingCertChan {
 			// Determine worker for the certificate.
-			w := m.ShardFuncCert(c.CertID)
+			w := m.ShardFuncCert(&c.CertID)
 			m.CertWorkers[w].IncomingChan <- c
 		}
 
