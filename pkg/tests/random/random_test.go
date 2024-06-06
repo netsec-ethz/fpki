@@ -47,6 +47,10 @@ func TestRandomX509Cert(t *testing.T) {
 	c2 := random.RandomX509Cert(t, "a.com")
 	require.NotEmpty(t, c2.Raw)
 	require.NotEqual(t, c1.Raw, c2.Raw)
+
+	// Sizes not too big. Usual certificates are < 4K.
+	require.Less(t, len(c1.Raw), 1024)
+	require.Less(t, len(c2.Raw), 1024)
 }
 
 // TestBuildTestRandomCertHierarchy checks that the function creates two leaf certificates with
