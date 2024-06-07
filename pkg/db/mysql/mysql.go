@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"encoding/csv"
 	"fmt"
 	"os"
@@ -68,10 +69,54 @@ func (c *mysqlDB) TruncateAllTables(ctx context.Context) error {
 	return nil
 }
 
-// UpdateDomains updates the domains AND dirty tables.
-func (c *mysqlDB) UpdateDomains(ctx context.Context, domainIDs []common.SHA256Output,
-	domainNames []string) error {
+// UpdateDomains updates the domains table.
+func (c *mysqlDB) UpdateDomains(
+	ctx context.Context,
+	domainIDs []common.SHA256Output,
+	domainNames []string,
+) error {
+	// return c.updateDomainsMemory(ctx, domainIDs, domainNames)
+	return c.updateDomainsCSV(ctx, domainIDs, domainNames)
+}
 
+func (c *mysqlDB) updateDomainsCSV(
+	ctx context.Context,
+	ids []common.SHA256Output,
+	domainNames []string,
+) error {
+	// Prepare the records for the CSV file.
+	records := make([][]string, len(ids))
+	for i := 0; i < len(ids); i++ {
+		records[i] = make([]string, 2)
+		records[i][0] = base64.StdEncoding.EncodeToString(ids[i][:])
+		records[i][1] = domainNames[i]
+	}
+
+	// Create temporary file.
+	tempfile, err := os.CreateTemp(TemporaryDir, "fpki-ingest-domains-*.csv")
+	if err != nil {
+		return fmt.Errorf("creating temporary file: %w", err)
+	}
+	defer os.Remove(tempfile.Name())
+
+	// Write data to CSV file.
+	if err = writeToCSV(tempfile, records); err != nil {
+		return err
+	}
+
+	// Now instruct MySQL to directly ingest this file into the certs table.
+	if _, err := loadDomainsTableWithCSV(ctx, c.db, tempfile.Name()); err != nil {
+		return fmt.Errorf("inserting CSV \"%s\" into DB.domains: %w", tempfile.Name(), err)
+	}
+
+	return nil
+}
+
+func (c *mysqlDB) updateDomainsMemory(
+	ctx context.Context,
+	domainIDs []common.SHA256Output,
+	domainNames []string,
+) error {
 	if len(domainIDs) == 0 {
 		return nil
 	}
@@ -242,6 +287,24 @@ func extractDomainEntries(rows *sql.Rows) ([]db.KeyValuePair, error) {
 		})
 	}
 	return pairs, nil
+}
+
+func loadDomainsTableWithCSV(
+	ctx context.Context,
+	db *sql.DB,
+	filepath string,
+) (sql.Result, error) {
+
+	// Set read permissions to all.
+	if err := os.Chmod(filepath, 0644); err != nil {
+		return nil, fmt.Errorf("setting permissions to file \"%s\": %w", filepath, err)
+	}
+
+	str := `LOAD DATA CONCURRENT INFILE ? IGNORE INTO TABLE domains ` +
+		`FIELDS TERMINATED BY ',' ENCLOSED BY '"' LINES TERMINATED BY '\n' ` +
+		`(@domain_id,domain_name) SET ` +
+		`domain_id = FROM_BASE64(@domain_id);`
+	return db.ExecContext(ctx, str, filepath)
 }
 
 func writeToCSV(

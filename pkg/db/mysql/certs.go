@@ -59,14 +59,13 @@ func (c *mysqlDB) updateCertsCSV(
 	expirations []time.Time,
 	payloads [][]byte,
 ) error {
-
 	// Prepare the records for the CSV file.
 	records := make([][]string, len(ids))
 	for i := 0; i < len(ids); i++ {
 		records[i] = make([]string, 4)
-		records[i][0] = (base64.StdEncoding.EncodeToString(ids[i][:]))
+		records[i][0] = base64.StdEncoding.EncodeToString(ids[i][:])
 		if parents[i] != nil {
-			records[i][1] = (base64.StdEncoding.EncodeToString(parents[i][:]))
+			records[i][1] = base64.StdEncoding.EncodeToString(parents[i][:])
 		}
 		records[i][2] = expirations[i].Format(time.DateTime)
 		records[i][3] = base64.StdEncoding.EncodeToString(payloads[i])
@@ -133,7 +132,48 @@ func (c *mysqlDB) UpdateDomainCerts(
 	domainIDs []common.SHA256Output,
 	certIDs []common.SHA256Output,
 ) error {
+	// return c.updateDomainCertsMemory(ctx, domainIDs, certIDs)
+	return c.updateDomainCertsCSV(ctx, domainIDs, certIDs)
+}
 
+func (c *mysqlDB) updateDomainCertsCSV(
+	ctx context.Context,
+	domainIDs []common.SHA256Output,
+	certIDs []common.SHA256Output,
+) error {
+	// Prepare the records for the CSV file.
+	records := make([][]string, len(domainIDs))
+	for i := 0; i < len(domainIDs); i++ {
+		records[i] = make([]string, 2)
+		records[i][0] = base64.StdEncoding.EncodeToString(domainIDs[i][:])
+		records[i][1] = base64.StdEncoding.EncodeToString(certIDs[i][:])
+	}
+
+	// Create temporary file.
+	tempfile, err := os.CreateTemp(TemporaryDir, "fpki-ingest-domain_certs-*.csv")
+	if err != nil {
+		return fmt.Errorf("creating temporary file: %w", err)
+	}
+	defer os.Remove(tempfile.Name())
+
+	// Write data to CSV file.
+	if err = writeToCSV(tempfile, records); err != nil {
+		return err
+	}
+
+	// Now instruct MySQL to directly ingest this file into the certs table.
+	if _, err := loadDomainCertsTableWithCSV(ctx, c.db, tempfile.Name()); err != nil {
+		return fmt.Errorf("inserting CSV \"%s\" into DB.domain_certs: %w", tempfile.Name(), err)
+	}
+
+	return nil
+}
+
+func (c *mysqlDB) updateDomainCertsMemory(
+	ctx context.Context,
+	domainIDs []common.SHA256Output,
+	certIDs []common.SHA256Output,
+) error {
 	if len(domainIDs) == 0 {
 		return nil
 	}
@@ -312,5 +352,24 @@ func loadCertsTableWithCSV(
 		`cert_id = FROM_BASE64(@cert_id),` +
 		`parent_id = FROM_BASE64(@parent_id),` +
 		`payload = FROM_BASE64(@payload);`
+	return db.ExecContext(ctx, str, filepath)
+}
+
+func loadDomainCertsTableWithCSV(
+	ctx context.Context,
+	db *sql.DB,
+	filepath string,
+) (sql.Result, error) {
+
+	// Set read permissions to all.
+	if err := os.Chmod(filepath, 0644); err != nil {
+		return nil, fmt.Errorf("setting permissions to file \"%s\": %w", filepath, err)
+	}
+
+	str := `LOAD DATA CONCURRENT INFILE ? IGNORE INTO TABLE domain_certs ` +
+		`FIELDS TERMINATED BY ',' ENCLOSED BY '"' LINES TERMINATED BY '\n' ` +
+		`(@domain_id,@cert_id) SET ` +
+		`domain_id = FROM_BASE64(@domain_id),` +
+		`cert_id = FROM_BASE64(@cert_id);`
 	return db.ExecContext(ctx, str, filepath)
 }

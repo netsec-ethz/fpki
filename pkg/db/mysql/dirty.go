@@ -59,7 +59,7 @@ func (c *mysqlDB) insertDomainsIntoDirtyCSV(
 	records := make([][]string, len(domainIDs))
 	for i := 0; i < len(domainIDs); i++ {
 		records[i] = make([]string, 1)
-		records[i][0] = (base64.StdEncoding.EncodeToString(domainIDs[i][:]))
+		records[i][0] = base64.StdEncoding.EncodeToString(domainIDs[i][:])
 	}
 
 	// Create temporary file.

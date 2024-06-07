@@ -134,7 +134,7 @@ type Conn interface {
 	// TruncateAllTables resets the DB to an initial state.
 	TruncateAllTables(ctx context.Context) error
 
-	// UpdateDomains updates the domains and dirty tables.
+	// UpdateDomains updates the domains table.
 	UpdateDomains(
 		ctx context.Context,
 		domainIDs []common.SHA256Output,

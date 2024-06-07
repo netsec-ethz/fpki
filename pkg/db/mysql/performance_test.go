@@ -1242,7 +1242,7 @@ func recordsFromCertIDs(
 	records := make([][]string, len(IDs))
 	for i, id := range IDs {
 		records[i] = make([]string, 3)
-		records[i][0] = (base64.StdEncoding.EncodeToString(id[:]))
+		records[i][0] = base64.StdEncoding.EncodeToString(id[:])
 		records[i][1] = exp
 		records[i][2] = payload
 	}
