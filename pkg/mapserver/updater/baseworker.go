@@ -7,7 +7,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/db"
 )
 
-type Worker struct {
+type baseWorker struct {
 	Id      int
 	Ctx     context.Context
 	Manager *Manager
@@ -16,8 +16,8 @@ type Worker struct {
 	errWg   sync.WaitGroup // every time we send an error to errChan, we add 1 here.
 }
 
-func newBaseWorker(ctx context.Context, id int, m *Manager, conn db.Conn) *Worker {
-	return &Worker{
+func newBaseWorker(ctx context.Context, id int, m *Manager, conn db.Conn) *baseWorker {
+	return &baseWorker{
 		Id:      id,
 		Ctx:     ctx,
 		Manager: m,
@@ -26,7 +26,7 @@ func newBaseWorker(ctx context.Context, id int, m *Manager, conn db.Conn) *Worke
 	}
 }
 
-func (w *Worker) Resume() {
+func (w *baseWorker) Resume() {
 	w.errChan = make(chan error)
 }
 
@@ -36,7 +36,7 @@ func (w *Worker) Resume() {
 // 1. Stop() has been called: the incomingChan channel is closed.
 // 2. All pending errors have been reported.
 // 3. closeErrors() has been called: the errChan is closed.
-func (w *Worker) Wait() error {
+func (w *baseWorker) Wait() error {
 	var err error
 	for e := range w.errChan {
 		if e != nil {
@@ -47,7 +47,7 @@ func (w *Worker) Wait() error {
 }
 
 // addError queues a new error to the errChan to be later retrieved via Wait().
-func (w *Worker) addError(err error) {
+func (w *baseWorker) addError(err error) {
 	if err == nil {
 		return
 	}
@@ -59,7 +59,7 @@ func (w *Worker) addError(err error) {
 	}()
 }
 
-func (w *Worker) closeErrors() {
+func (w *baseWorker) closeErrors() {
 	// Wait until no other routine has to write to errChan.
 	w.errWg.Wait()
 	// No other routine will write to errChan, close it now.

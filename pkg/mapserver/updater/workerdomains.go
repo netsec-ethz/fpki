@@ -10,7 +10,7 @@ import (
 )
 
 type DomainWorker struct {
-	Worker
+	baseWorker
 	IncomingChan chan DirtyDomain
 	domainIDs    []common.SHA256Output // do not call make more than once.
 	certIDs      []common.SHA256Output // do not call make more than once.
@@ -27,7 +27,7 @@ type DomainWorker struct {
 
 func NewDomainWorker(ctx context.Context, id int, m *Manager, conn db.Conn) *DomainWorker {
 	w := &DomainWorker{
-		Worker: *newBaseWorker(ctx, id, m, conn),
+		baseWorker: *newBaseWorker(ctx, id, m, conn),
 
 		domainIDs: make([]common.SHA256Output, 0, m.MultiInsertSize),
 		certIDs:   make([]common.SHA256Output, 0, m.MultiInsertSize),
@@ -46,7 +46,7 @@ func NewDomainWorker(ctx context.Context, id int, m *Manager, conn db.Conn) *Dom
 }
 
 func (w *DomainWorker) Resume() {
-	w.Worker.Resume()
+	w.baseWorker.Resume()
 	w.IncomingChan = make(chan DirtyDomain)
 	go w.resume()
 }

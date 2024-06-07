@@ -11,7 +11,7 @@ import (
 )
 
 type CertWorker struct {
-	Worker
+	baseWorker
 	IncomingChan chan Certificate
 	hasher       common.Hasher
 
@@ -26,8 +26,8 @@ type CertWorker struct {
 
 func NewCertWorker(ctx context.Context, id int, m *Manager, conn db.Conn) *CertWorker {
 	w := &CertWorker{
-		Worker: *newBaseWorker(ctx, id, m, conn),
-		hasher: *common.NewHasher(),
+		baseWorker: *newBaseWorker(ctx, id, m, conn),
+		hasher:     *common.NewHasher(),
 
 		cacheIds:         make([]common.SHA256Output, 0, m.MultiInsertSize),
 		cacheParents:     make([]*common.SHA256Output, 0, m.MultiInsertSize),
@@ -41,7 +41,7 @@ func NewCertWorker(ctx context.Context, id int, m *Manager, conn db.Conn) *CertW
 }
 
 func (w *CertWorker) Resume() {
-	w.Worker.Resume()
+	w.baseWorker.Resume()
 	w.IncomingChan = make(chan Certificate)
 	go w.resume()
 }
