@@ -2,6 +2,7 @@ package common
 
 import (
 	"hash"
+	"unsafe"
 
 	sha256 "github.com/minio/sha256-simd"
 )
@@ -42,8 +43,19 @@ func (h *Hasher) Hash(hashOut *SHA256Output, data []byte) {
 	*hashOut = SHA256Output(h.hasher.Sum((*hashOut)[:0]))
 }
 
+func (h *Hasher) HashString(hashOut *SHA256Output, str string) {
+	bytes := unsafe.Slice(unsafe.StringData(str), len(str))
+	h.Hash(hashOut, bytes)
+}
+
 func (h *Hasher) HashCopy(data []byte) SHA256Output {
 	h.Hash(&(h.storage), data)
+	// Returns a copy so that this function can be called several times and not overwrite.
+	return h.storage
+}
+
+func (h *Hasher) HashStringCopy(str string) SHA256Output {
+	h.HashString(&(h.storage), str)
 	// Returns a copy so that this function can be called several times and not overwrite.
 	return h.storage
 }

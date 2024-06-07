@@ -102,20 +102,132 @@ func TestHasherCopy(t *testing.T) {
 	require.Equal(t, expected[0], results[0][:])
 }
 
-func TestHasherAllocations(t *testing.T) {
-	// Prepare test data.
-	data := randomBytes(t, 1_000_000)
+func TestHasherString(t *testing.T) {
+	// Prepare data.
+	N := 10
+	data := make([]string, N)
+	for i := range data {
+		data[i] = fmt.Sprintf("string-%d", i)
+	}
 
-	// Prepare the call to measure.
-	var ownStorage SHA256Output
+	// Prepare expected results.
+	expected := make([][]byte, N)
+	for i, str := range data {
+		expected[i] = doSha256([]byte(str))
+	}
+
+	// Test the string hashing method.
 	h := NewHasher()
+	got := make([]SHA256Output, N)
+	for i, str := range data {
+		got[i] = h.HashStringCopy(str)
+	}
 
-	// Check allocations when we hash.
-	allocs := testing.AllocsPerRun(100, func() {
-		h.Hash(&ownStorage, data)
+	// Check they are the same.
+	for i := range data {
+		require.Equal(t, expected[i], got[i][:])
+	}
+}
+
+func TestHasherAllocations(t *testing.T) {
+	t.Run("in-place", func(t *testing.T) {
+		N := 10 // Number of data slices to hash.
+		// Prepare test data.
+		data := make([][]byte, N)
+		for i := range data {
+			data[i] = randomBytes(t, 1024)
+		}
+
+		// Prepare the call to measure.
+		var ownStorage SHA256Output
+		h := NewHasher()
+
+		// Check allocations when we hash.
+		allocs := testing.AllocsPerRun(1, func() {
+			for _, d := range data {
+				h.Hash(&ownStorage, d)
+			}
+		})
+
+		require.Equal(t, 0.0, allocs)
 	})
 
-	require.Equal(t, 0.0, allocs)
+	t.Run("copy", func(t *testing.T) {
+		N := 10 // Number of data slices to hash.
+		// Prepare test data.
+		data := make([][]byte, N)
+		for i := range data {
+			data[i] = randomBytes(t, 1024)
+		}
+
+		// Prepare the call to measure.
+		h := NewHasher()
+
+		// Check allocations when we hash.
+		allocs := testing.AllocsPerRun(1, func() {
+			for _, d := range data {
+				h.HashCopy(d)
+			}
+		})
+
+		require.Equal(t, 0.0, allocs)
+	})
+
+	t.Run("string", func(t *testing.T) {
+		// Prepare data.
+		N := 10
+		names := make([]string, N)
+		for i := range names {
+			names[i] = fmt.Sprintf("domain-%d", i)
+		}
+
+		var ownStorage SHA256Output
+		h := NewHasher()
+		allocs := testing.AllocsPerRun(1, func() {
+			for _, name := range names {
+				h.HashString(&ownStorage, name)
+			}
+		})
+
+		require.Equal(t, 0.0, allocs)
+	})
+
+	t.Run("string-copy", func(t *testing.T) {
+		// Prepare data.
+		N := 10
+		names := make([]string, N)
+		for i := range names {
+			names[i] = fmt.Sprintf("domain-%d", i)
+		}
+
+		h := NewHasher()
+		allocs := testing.AllocsPerRun(1, func() {
+			for _, name := range names {
+				h.HashStringCopy(name)
+			}
+		})
+
+		require.Equal(t, 0.0, allocs)
+	})
+
+	t.Run("domains", func(t *testing.T) {
+		// Prepare data.
+		N := 10
+		domains := make([]DomainLike, N)
+		for i, d := range domains {
+			d.Name = fmt.Sprintf("domain-%d", i)
+		}
+
+		h := NewHasher()
+		allocs := testing.AllocsPerRun(1, func() {
+			for _, d := range domains {
+				// h.HashString(&d.DomainID, d.Name)
+				d.DomainID = h.HashStringCopy(d.Name)
+			}
+		})
+
+		require.Equal(t, 0.0, allocs)
+	})
 }
 
 func BenchmarkHashFunction(b *testing.B) {
@@ -183,4 +295,10 @@ func randomBytes(t tests.T, size int) []byte {
 	require.NoError(t, err)
 	require.Equal(t, size, n)
 	return buff
+}
+
+type DomainLike struct {
+	DomainID SHA256Output
+	CertID   SHA256Output
+	Name     string
 }
