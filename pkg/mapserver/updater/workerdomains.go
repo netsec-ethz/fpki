@@ -71,6 +71,7 @@ func (w *DomainWorker) resume() {
 
 	// Process the last (possibly empty) batch.
 	w.addError(w.processBundle(domains))
+
 	// Signal that we have finished working.
 	w.closeErrors()
 }

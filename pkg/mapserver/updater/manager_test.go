@@ -288,7 +288,7 @@ func TestMinimalAllocs(t *testing.T) {
 
 		// We should have 0 new allocations.
 		t.Logf("%f allocations", allocsPerRun)
-		// require.Equal(t, 0.0, allocsPerRun)
+		require.Equal(t, 0.0, allocsPerRun)
 	})
 
 	t.Run("domain", func(t *testing.T) {
@@ -313,11 +313,10 @@ func TestMinimalAllocs(t *testing.T) {
 
 		// Prepare the manager and worker for the test.
 		manager := updater.NewManager(ctx, 1, conn, 1000, 1, nil)
-		certWorker := manager.CertWorkers[0]
 		worker := manager.DomainWorkers[0]
 
 		// Bundle the mock data.
-		bundle := certWorker.ExtractDomains(certs)
+		bundle := extractDomains(certs)
 		bundle = bundle[:min(len(bundle), manager.MultiInsertSize)] // limit to the size of the bundle
 
 		// Measure allocations done in the mock library.
@@ -480,5 +479,19 @@ func verifyDB(ctx context.Context, t tests.T, conn db.Conn,
 	checkTable("cert_id", "domain_certs", ncerts)
 }
 
-type NoopConn struct {
+func extractDomains(certs []updater.Certificate) []updater.DirtyDomain {
+	domains := make([]updater.DirtyDomain, 0, len(certs))
+	for _, c := range certs {
+		// Iff the certificate is a leaf certificate it will have a non-nil names slice: insert
+		// one entry per name.
+		for _, name := range c.Names {
+			domain := updater.DirtyDomain{
+				DomainID: common.SHA256Hash32Bytes([]byte(name)),
+				CertID:   c.CertID,
+				Name:     name,
+			}
+			domains = append(domains, domain)
+		}
+	}
+	return domains
 }

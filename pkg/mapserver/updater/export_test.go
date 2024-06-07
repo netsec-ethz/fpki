@@ -6,11 +6,6 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/common"
 )
 
-func (w *CertWorker) ExtractDomains(certs []Certificate) []DirtyDomain {
-	w.extractDomains(certs)
-	return w.cacheDomains
-}
-
 func (w *CertWorker) ProcessBundle(certs []Certificate) error {
 	return w.processBundle(certs)
 }
