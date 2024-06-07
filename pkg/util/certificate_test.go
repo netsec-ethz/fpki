@@ -19,7 +19,7 @@ func TestDeserializeCertificates(t *testing.T) {
 	f, err := os.Open("../../tests/testdata/3-certs.pem")
 	require.NoError(t, err)
 	r := NewCertReader(f)
-	certs := make([]*ctx509.Certificate, N)
+	certs := make([]ctx509.Certificate, N)
 	n, err := r.Read(certs)
 	require.NoError(t, err)
 	require.Equal(t, N, n)
@@ -40,28 +40,28 @@ func TestDeserializeCertificates(t *testing.T) {
 
 func TestUnfoldCerts(t *testing.T) {
 	// `a` and `b` are leaves. `a` is root, `b` has `c`->`d` as its trust chain.
-	a := &ctx509.Certificate{
+	a := ctx509.Certificate{
 		Raw: []byte{0},
 		Subject: pkix.Name{
 			CommonName: "a",
 		},
 		DNSNames: []string{"a", "a", "a.com"},
 	}
-	b := &ctx509.Certificate{
+	b := ctx509.Certificate{
 		Raw: []byte{1},
 		Subject: pkix.Name{
 			CommonName: "b",
 		},
 		DNSNames: []string{"b", "b", "b.com"},
 	}
-	c := &ctx509.Certificate{
+	c := ctx509.Certificate{
 		Raw: []byte{1},
 		Subject: pkix.Name{
 			CommonName: "c",
 		},
 		DNSNames: []string{"c", "c", "c.com"},
 	}
-	d := &ctx509.Certificate{
+	d := ctx509.Certificate{
 		Raw: []byte{3},
 		Subject: pkix.Name{
 			CommonName: "d",
@@ -69,17 +69,17 @@ func TestUnfoldCerts(t *testing.T) {
 		DNSNames: []string{"d", "d", "d.com"},
 	}
 
-	certs := []*ctx509.Certificate{
+	certs := []ctx509.Certificate{
 		a,
 		b,
 	}
 	chains := [][]*ctx509.Certificate{
 		nil,
-		{c, d},
+		{&c, &d},
 	}
 	allCerts, IDs, parentIDs, names := UnfoldCerts(certs, chains)
 
-	fmt.Printf("[%p %p %p %p]\n", a, b, c, d)
+	fmt.Printf("[%p %p %p %p]\n", &a, &b, &c, &d)
 	fmt.Printf("%v\n", allCerts)
 	fmt.Printf("%v\n", IDs)
 	fmt.Printf("%v\n", parentIDs)
@@ -100,10 +100,10 @@ func TestUnfoldCerts(t *testing.T) {
 	cID := common.SHA256Hash32Bytes(c.Raw)
 	dID := common.SHA256Hash32Bytes(d.Raw)
 
-	assert.Equal(t, aID, *IDs[0])
-	assert.Equal(t, bID, *IDs[1])
-	assert.Equal(t, cID, *IDs[2])
-	assert.Equal(t, dID, *IDs[3])
+	assert.Equal(t, aID, IDs[0])
+	assert.Equal(t, bID, IDs[1])
+	assert.Equal(t, cID, IDs[2])
+	assert.Equal(t, dID, IDs[3])
 
 	// Check parent IDs.
 	nilID := (*common.SHA256Output)(nil)

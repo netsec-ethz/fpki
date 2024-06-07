@@ -18,7 +18,7 @@ func NewCertWriter(w io.Writer) *CertWriter {
 }
 
 // Write acts like a io.Writer Write method, but for certificates.
-func (w *CertWriter) Write(certs []*ctx509.Certificate) (int, error) {
+func (w *CertWriter) Write(certs []ctx509.Certificate) (int, error) {
 	for i, c := range certs {
 		b := &pem.Block{
 			Type:  "CERTIFICATE",

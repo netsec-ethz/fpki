@@ -18,7 +18,7 @@ const TemporaryDir = "/mnt/data/tmp"
 
 // CheckCertsExist returns a slice of true/false values. Each value indicates if
 // the corresponding certificate identified by its ID is already present in the DB.
-func (c *mysqlDB) CheckCertsExist(ctx context.Context, ids []*common.SHA256Output) ([]bool, error) {
+func (c *mysqlDB) CheckCertsExist(ctx context.Context, ids []common.SHA256Output) ([]bool, error) {
 	if len(ids) == 0 {
 		// If empty, return empty.
 		return nil, nil
@@ -44,9 +44,9 @@ func (c *mysqlDB) CheckCertsExist(ctx context.Context, ids []*common.SHA256Outpu
 
 func (c *mysqlDB) UpdateCerts(
 	ctx context.Context,
-	ids []*common.SHA256Output,
+	ids []common.SHA256Output,
 	parents []*common.SHA256Output,
-	expirations []*time.Time,
+	expirations []time.Time,
 	payloads [][]byte,
 ) error {
 	return c.updateCertsCSV(ctx, ids, parents, expirations, payloads)
@@ -54,9 +54,9 @@ func (c *mysqlDB) UpdateCerts(
 
 func (c *mysqlDB) updateCertsCSV(
 	ctx context.Context,
-	ids []*common.SHA256Output,
+	ids []common.SHA256Output,
 	parents []*common.SHA256Output,
-	expirations []*time.Time,
+	expirations []time.Time,
 	payloads [][]byte,
 ) error {
 
@@ -92,8 +92,13 @@ func (c *mysqlDB) updateCertsCSV(
 	return nil
 }
 
-func (c *mysqlDB) updateCertsMemory(ctx context.Context, ids, parents []*common.SHA256Output,
-	expirations []*time.Time, payloads [][]byte) error {
+func (c *mysqlDB) updateCertsMemory(
+	ctx context.Context,
+	ids []common.SHA256Output,
+	parents []*common.SHA256Output,
+	expirations []time.Time,
+	payloads [][]byte,
+) error {
 
 	if len(ids) == 0 {
 		return nil
@@ -123,8 +128,11 @@ func (c *mysqlDB) updateCertsMemory(ctx context.Context, ids, parents []*common.
 }
 
 // UpdateDomainCerts updates the domain_certs table.
-func (c *mysqlDB) UpdateDomainCerts(ctx context.Context,
-	domainIDs, certIDs []*common.SHA256Output) error {
+func (c *mysqlDB) UpdateDomainCerts(
+	ctx context.Context,
+	domainIDs []common.SHA256Output,
+	certIDs []common.SHA256Output,
+) error {
 
 	if len(domainIDs) == 0 {
 		return nil
@@ -147,29 +155,32 @@ func (c *mysqlDB) UpdateDomainCerts(ctx context.Context,
 // RetrieveDomainCertificatesIDs retrieves the domain's certificate payload ID and the payload itself,
 // given the domain ID.
 func (c *mysqlDB) RetrieveDomainCertificatesIDs(ctx context.Context, domainID common.SHA256Output,
-) (*common.SHA256Output, []byte, error) {
+) (common.SHA256Output, []byte, error) {
 
 	str := "SELECT cert_ids_id, cert_ids FROM domain_payloads WHERE domain_id = ?"
 	var certIDsID, certIDs []byte
 	err := c.db.QueryRowContext(ctx, str, domainID[:]).Scan(&certIDsID, &certIDs)
 	if err != nil && err != sql.ErrNoRows {
-		return nil, nil, fmt.Errorf("RetrieveDomainCertificatesIDs | %w", err)
+		return common.SHA256Output{}, nil, fmt.Errorf("RetrieveDomainCertificatesIDs | %w", err)
 	}
-	var IDptr *common.SHA256Output
+	var ID common.SHA256Output
 	if certIDsID != nil {
-		IDptr = (*common.SHA256Output)(certIDsID)
+		ID = (common.SHA256Output)(certIDsID)
 	}
-	return IDptr, certIDs, nil
+	return ID, certIDs, nil
 }
 
 // RetrieveCertificatePayloads returns the payload for each certificate identified by the IDs
 // parameter, in the same order (element i corresponds to IDs[i]).
-func (c *mysqlDB) RetrieveCertificatePayloads(ctx context.Context, IDs []*common.SHA256Output,
+func (c *mysqlDB) RetrieveCertificatePayloads(
+	ctx context.Context,
+	IDs []common.SHA256Output,
 ) ([][]byte, error) {
 
 	str := "SELECT cert_id,payload from certs WHERE cert_id IN " + repeatStmt(1, len(IDs))
 	params := make([]any, len(IDs))
 	for i, id := range IDs {
+		id := id
 		params[i] = id[:]
 	}
 	rows, err := c.db.QueryContext(ctx, str, params...)
@@ -190,7 +201,7 @@ func (c *mysqlDB) RetrieveCertificatePayloads(ctx context.Context, IDs []*common
 	// Sort them in the same order as the IDs.
 	payloads := make([][]byte, len(IDs))
 	for i, id := range IDs {
-		payloads[i] = m[*id]
+		payloads[i] = m[id]
 	}
 
 	return payloads, nil
@@ -230,12 +241,13 @@ func (c *mysqlDB) PruneCerts(ctx context.Context, now time.Time) error {
 // may fail with a message like:
 // Error 1436 (HY000): Thread stack overrun:  1028624 bytes used of a 1048576 byte stack,
 // and 20000 bytes needed.  Use 'mysqld --thread_stack=#' to specify a bigger stack.
-func (c *mysqlDB) checkCertsExist(ctx context.Context, ids []*common.SHA256Output,
+func (c *mysqlDB) checkCertsExist(ctx context.Context, ids []common.SHA256Output,
 	present []bool) error {
 
 	// Slice to be used in the SQL query:
 	data := make([]interface{}, len(ids))
 	for i, id := range ids {
+		id := id
 		data[i] = id[:]
 	}
 

@@ -12,7 +12,7 @@ import (
 
 // CheckPoliciesExist returns a slice of true/false values. Each value indicates if
 // the corresponding certificate identified by its ID is already present in the DB.
-func (c *mysqlDB) CheckPoliciesExist(ctx context.Context, ids []*common.SHA256Output) (
+func (c *mysqlDB) CheckPoliciesExist(ctx context.Context, ids []common.SHA256Output) (
 	[]bool, error) {
 
 	if len(ids) == 0 {
@@ -22,6 +22,7 @@ func (c *mysqlDB) CheckPoliciesExist(ctx context.Context, ids []*common.SHA256Ou
 	// Slice to be used in the SQL query:
 	data := make([]interface{}, len(ids))
 	for i, id := range ids {
+		id := id
 		data[i] = id[:]
 	}
 
@@ -62,8 +63,13 @@ func (c *mysqlDB) CheckPoliciesExist(ctx context.Context, ids []*common.SHA256Ou
 	return present, nil
 }
 
-func (c *mysqlDB) UpdatePolicies(ctx context.Context, ids, parents []*common.SHA256Output,
-	expirations []*time.Time, payloads [][]byte) error {
+func (c *mysqlDB) UpdatePolicies(
+	ctx context.Context,
+	ids []common.SHA256Output,
+	parents []*common.SHA256Output,
+	expirations []time.Time,
+	payloads [][]byte,
+) error {
 
 	if len(ids) == 0 {
 		return nil
@@ -92,8 +98,11 @@ func (c *mysqlDB) UpdatePolicies(ctx context.Context, ids, parents []*common.SHA
 }
 
 // UpdateDomainPolicies updates the domain_policies table.
-func (c *mysqlDB) UpdateDomainPolicies(ctx context.Context,
-	domainIDs, policyIDs []*common.SHA256Output) error {
+func (c *mysqlDB) UpdateDomainPolicies(
+	ctx context.Context,
+	domainIDs []common.SHA256Output,
+	policyIDs []common.SHA256Output,
+) error {
 
 	if len(domainIDs) == 0 {
 		return nil
@@ -112,30 +121,31 @@ func (c *mysqlDB) UpdateDomainPolicies(ctx context.Context,
 }
 
 func (c *mysqlDB) RetrieveDomainPoliciesIDs(ctx context.Context, domainID common.SHA256Output,
-) (*common.SHA256Output, []byte, error) {
+) (common.SHA256Output, []byte, error) {
 
 	str := "SELECT policy_ids_id, policy_ids FROM domain_payloads WHERE domain_id = ?"
 	var policyIDsID, policyIDs []byte
 	err := c.db.QueryRowContext(ctx, str, domainID[:]).Scan(&policyIDsID, &policyIDs)
 	if err != nil && err != sql.ErrNoRows {
-		return nil, nil, fmt.Errorf("RetrieveDomainPoliciesPayload | %w", err)
+		return common.SHA256Output{}, nil, fmt.Errorf("RetrieveDomainPoliciesPayload | %w", err)
 	}
-	var IDptr *common.SHA256Output
+	var ID common.SHA256Output
 	if policyIDsID != nil {
-		IDptr = (*common.SHA256Output)(policyIDsID)
+		ID = (common.SHA256Output)(policyIDsID)
 	}
-	return IDptr, policyIDs, nil
+	return ID, policyIDs, nil
 }
 
 // RetrievePolicyPayloads returns the payload for each policy identified by the IDs
 // parameter, in the same order (element i corresponds to IDs[i]).
-func (c *mysqlDB) RetrievePolicyPayloads(ctx context.Context, IDs []*common.SHA256Output,
+func (c *mysqlDB) RetrievePolicyPayloads(ctx context.Context, IDs []common.SHA256Output,
 ) ([][]byte, error) {
 
 	str := "SELECT policy_id,payload from policies WHERE policy_id IN " +
 		repeatStmt(1, len(IDs))
 	params := make([]any, len(IDs))
 	for i, id := range IDs {
+		i, id := i, id
 		params[i] = id[:]
 	}
 	rows, err := c.db.QueryContext(ctx, str, params...)
@@ -156,7 +166,7 @@ func (c *mysqlDB) RetrievePolicyPayloads(ctx context.Context, IDs []*common.SHA2
 	// Sort them in the same order as the IDs.
 	payloads := make([][]byte, len(IDs))
 	for i, id := range IDs {
-		payloads[i] = m[*id]
+		payloads[i] = m[id]
 	}
 
 	return payloads, nil

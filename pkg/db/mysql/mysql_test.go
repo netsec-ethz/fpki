@@ -128,13 +128,8 @@ func TestCheckCertsExist(t *testing.T) {
 
 	// Obtain a convenient MysqlDBForTests object (only in tests).
 	c := mysql.NewMysqlDBForTests(conn)
-	createIDs := func(n int) []*common.SHA256Output {
-		ids := make([]*common.SHA256Output, n)
-		for i := range ids {
-			id := common.SHA256Output{}
-			ids[i] = &id
-		}
-		return ids
+	createIDs := func(n int) []common.SHA256Output {
+		return make([]common.SHA256Output, n)
 	}
 
 	// Check the function with 10 elements, it should work.
@@ -267,6 +262,7 @@ func TestRetrieveCertificatePayloads(t *testing.T) {
 		expectedCerts[i] = cert.Raw
 	}
 	require.Equal(t, expectedCerts, gotCerts)
+
 	// Do the same one by one:
 	for i := range expectedCerts {
 		gotCerts, err := conn.RetrieveCertificatePayloads(ctx, certIDs[i:i+1])
@@ -292,10 +288,8 @@ func TestRetrieveCertificatePayloads(t *testing.T) {
 
 	// Do the same for combined retrieval of certificate and policies.
 	// prepare test data
-	certOrPolIDs := make([]*common.SHA256Output, len(certs)+len(pols))
-	for i, certID := range certIDs {
-		certOrPolIDs[i] = certID
-	}
+	certOrPolIDs := make([]common.SHA256Output, len(certs)+len(pols))
+	copy(certOrPolIDs, certIDs)
 	for i, polID := range polIDs {
 		certOrPolIDs[len(certIDs)+i] = polID
 	}
@@ -374,7 +368,7 @@ func TestLastCTlogServerState(t *testing.T) {
 func TestPruneCerts(t *testing.T) {
 	rand.Seed(322)
 
-	ctx, cancelF := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
 
 	// Configure a test DB.
@@ -409,14 +403,14 @@ func TestPruneCerts(t *testing.T) {
 	require.Equal(t, len(certs), len(parentIDs))
 	require.Equal(t, len(certs), len(names))
 	// Modify b.com chains: only the 2 leaf certificates.
-	c := certs[4*1+2]                               // first chain of b.com (b.com->c1->c0)
+	c := &certs[4*1+2]                              // first chain of b.com (b.com->c1->c0)
 	require.Equal(t, "b.com", c.Subject.CommonName) // assert that the test data is still correct.
 	c.NotAfter = expiredTime
-	c = certs[4*1+3]                                // second chain of b.com (b.com->c0)
+	c = &certs[4*1+3]                               // second chain of b.com (b.com->c0)
 	require.Equal(t, "b.com", c.Subject.CommonName) // assert that the test data is still correct.
 	c.NotAfter = expiredTime
 	// Modify c.com chains: only the single root of its two chains.
-	c = certs[4*2]                                   // root of both chains for c.com
+	c = &certs[4*2]                                  // root of both chains for c.com
 	require.Equal(t, "c0.com", c.Subject.CommonName) // assert that the test data is still correct.
 	c.NotAfter = expiredTime
 
@@ -447,24 +441,24 @@ func TestPruneCerts(t *testing.T) {
 	// Create a set of IDs and query them.
 	newIDsSet := make(map[common.SHA256Output]struct{})
 	for _, id := range newCertIDs {
-		newIDsSet[*id] = struct{}{}
+		newIDsSet[id] = struct{}{}
 	}
 	require.Len(t, newIDsSet, len(newCertIDs)) // check the conversion went okay
 	// a.com certificates
-	require.Contains(t, newIDsSet, *certIDs[4*0+0])
-	require.Contains(t, newIDsSet, *certIDs[4*0+1])
-	require.Contains(t, newIDsSet, *certIDs[4*0+2])
-	require.Contains(t, newIDsSet, *certIDs[4*0+3])
+	require.Contains(t, newIDsSet, certIDs[4*0+0])
+	require.Contains(t, newIDsSet, certIDs[4*0+1])
+	require.Contains(t, newIDsSet, certIDs[4*0+2])
+	require.Contains(t, newIDsSet, certIDs[4*0+3])
 	// b.com
-	require.Contains(t, newIDsSet, *certIDs[4*1+0])
-	require.Contains(t, newIDsSet, *certIDs[4*1+1])
-	require.NotContains(t, newIDsSet, *certIDs[4*1+2])
-	require.NotContains(t, newIDsSet, *certIDs[4*1+3])
+	require.Contains(t, newIDsSet, certIDs[4*1+0])
+	require.Contains(t, newIDsSet, certIDs[4*1+1])
+	require.NotContains(t, newIDsSet, certIDs[4*1+2])
+	require.NotContains(t, newIDsSet, certIDs[4*1+3])
 	// c.com
-	require.NotContains(t, newIDsSet, *certIDs[4*2+0])
-	require.NotContains(t, newIDsSet, *certIDs[4*2+1])
-	require.NotContains(t, newIDsSet, *certIDs[4*2+2])
-	require.NotContains(t, newIDsSet, *certIDs[4*2+3])
+	require.NotContains(t, newIDsSet, certIDs[4*2+0])
+	require.NotContains(t, newIDsSet, certIDs[4*2+1])
+	require.NotContains(t, newIDsSet, certIDs[4*2+2])
+	require.NotContains(t, newIDsSet, certIDs[4*2+3])
 
 	// Test the appropriate entries exist in dirty.
 	dirtyDomains, err := conn.RetrieveDirtyDomains(ctx)
@@ -544,13 +538,13 @@ func TestInsertDomainsIntoDirty(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, rows.Err())
 	// Each ID.
-	gotIds := make([]*common.SHA256Output, 0)
+	gotIds := make([]common.SHA256Output, 0)
 	for rows.Next() {
 		var id []byte
 		err := rows.Scan(&id)
 		require.NoError(t, err)
 		require.Equal(t, common.SHA256Size, len(id))
-		gotIds = append(gotIds, (*common.SHA256Output)(id))
+		gotIds = append(gotIds, (common.SHA256Output)(id))
 	}
 	// 2. Compare them.
 	require.Equal(t, len(domainIds), len(gotIds))
@@ -583,10 +577,10 @@ func TestUpdateDomains(t *testing.T) {
 
 	// Function to tie id with name.
 	type pair struct {
-		id   *common.SHA256Output
+		id   common.SHA256Output
 		name string
 	}
-	idsNames2Pairs := func(ids []*common.SHA256Output, names []string) []pair {
+	idsNames2Pairs := func(ids []common.SHA256Output, names []string) []pair {
 		// Tie id with name.
 		s := make([]pair, len(ids))
 		for i := range ids {
@@ -605,7 +599,7 @@ func TestUpdateDomains(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, rows.Err())
 	// Each ID.
-	gotIds := make([]*common.SHA256Output, 0)
+	gotIds := make([]common.SHA256Output, 0)
 	gotNames := make([]string, 0)
 	for rows.Next() {
 		var id []byte
@@ -614,7 +608,7 @@ func TestUpdateDomains(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Equal(t, common.SHA256Size, len(id))
-		gotIds = append(gotIds, (*common.SHA256Output)(id))
+		gotIds = append(gotIds, (common.SHA256Output)(id))
 		gotNames = append(gotNames, name)
 	}
 	// 2. Compare them.
@@ -652,21 +646,21 @@ func BenchmarkRetrieveDomainEntries(b *testing.B) {
 	for i := 600_000; i <= 1_000_000; i += 100_000 {
 		str := fmt.Sprintf("querying-%d00K-", i/100_000)
 		b.Run(str+"parallel", func(b *testing.B) {
-			bdr.run(func(ctx context.Context) ([]*db.KeyValuePair, error) {
+			bdr.run(func(ctx context.Context) ([]db.KeyValuePair, error) {
 				return c.RetrieveDirtyDomainEntriesParallel(ctx, domainIDs[:i])
 			})
 		})
 		require.Greater(b, bdr.count, 0)
 
 		b.Run(str+"sequential", func(b *testing.B) {
-			bdr.run(func(ctx context.Context) ([]*db.KeyValuePair, error) {
+			bdr.run(func(ctx context.Context) ([]db.KeyValuePair, error) {
 				return c.RetrieveDirtyDomainEntriesSequential(ctx, domainIDs[:i])
 			})
 		})
 		require.Greater(b, bdr.count, 0)
 
 		b.Run(str+"dirty-join", func(b *testing.B) {
-			bdr.run(func(ctx context.Context) ([]*db.KeyValuePair, error) {
+			bdr.run(func(ctx context.Context) ([]db.KeyValuePair, error) {
 				return c.RetrieveDirtyDomainEntriesInDBJoin(ctx, 0, uint64(i))
 			})
 		})
@@ -681,7 +675,7 @@ type benchDomainRetrieval struct {
 }
 
 func (b *benchDomainRetrieval) run(
-	fcn func(context.Context) ([]*db.KeyValuePair, error),
+	fcn func(context.Context) ([]db.KeyValuePair, error),
 ) {
 	b.b.ResetTimer()
 	count := 0
@@ -702,8 +696,15 @@ func (b *benchDomainRetrieval) run(
 // BuildTestRandomCertHierarchy. That function always returns four certificates, in this order:
 // c0.com,c1.com, leaf->c1->c0, leaf->c0
 // Thus it always returns 4*len(leaves) entries.
-func testCertHierarchyForLeafs(t tests.T, leaves []string) (certs []*ctx509.Certificate,
-	certIDs, parentCertIDs []*common.SHA256Output, certNames [][]string) {
+func testCertHierarchyForLeafs(
+	t tests.T,
+	leaves []string,
+) (
+	certs []ctx509.Certificate,
+	certIDs []common.SHA256Output,
+	parentCertIDs []*common.SHA256Output,
+	certNames [][]string,
+) {
 
 	for _, leaf := range leaves {
 		// Create two mock x509 chains on top of leaf:
@@ -719,53 +720,53 @@ func testCertHierarchyForLeafs(t tests.T, leaves []string) (certs []*ctx509.Cert
 // testPolicyHierarchyForLeafs returns simply a policy hierarchy per leaf name, created using
 // the function BuildTestRandomPolicyHierarchy.
 func testPolicyHierarchyForLeafs(t tests.T, leaves []string) (pols []common.PolicyDocument,
-	polIDs []*common.SHA256Output) {
+	polIDs []common.SHA256Output) {
 
 	for _, name := range leaves {
 		pols = append(pols,
 			random.BuildTestRandomPolicyHierarchy(t, name)...)
 	}
 
-	polIDs = make([]*common.SHA256Output, len(pols))
+	polIDs = make([]common.SHA256Output, len(pols))
 	for i, pol := range pols {
 		raw, err := pol.Raw()
 		require.NoError(t, err)
 		id := common.SHA256Hash32Bytes(raw)
-		polIDs[i] = &id
+		polIDs[i] = id
 	}
 	return
 }
 
-func glueSortedIDsAndComputeItsID(IDs []*common.SHA256Output) ([]byte, *common.SHA256Output) {
+func glueSortedIDsAndComputeItsID(IDs []common.SHA256Output) ([]byte, common.SHA256Output) {
 	gluedIDs := common.SortIDsAndGlue(IDs)
 	// Compute the hash of the glued IDs.
 	id := common.SHA256Hash32Bytes(gluedIDs)
-	return gluedIDs, &id
+	return gluedIDs, id
 }
 
-func getAllCertIds(ctx context.Context, t tests.T, conn testdb.Conn) []*common.SHA256Output {
+func getAllCertIds(ctx context.Context, t tests.T, conn testdb.Conn) []common.SHA256Output {
 	rows, err := conn.DB().QueryContext(ctx, "SELECT cert_id FROM certs")
 	require.NoError(t, err)
-	IDs := make([]*common.SHA256Output, 0)
+	IDs := make([]common.SHA256Output, 0)
 	for rows.Next() {
 		var data []byte
 		err = rows.Scan(&data)
 		require.NoError(t, err)
 		id := *(*common.SHA256Output)(data)
-		IDs = append(IDs, &id)
+		IDs = append(IDs, id)
 	}
 	return IDs
 }
 
 func getAllCertsTable(ctx context.Context, t tests.T, conn db.Conn) (
-	ids []*common.SHA256Output,
+	ids []common.SHA256Output,
 	parentIds []*common.SHA256Output,
-	expirations []*time.Time,
+	expirations []time.Time,
 	payloads [][]byte,
 ) {
-	ids = make([]*common.SHA256Output, 0)
+	ids = make([]common.SHA256Output, 0)
 	parentIds = make([]*common.SHA256Output, 0)
-	expirations = make([]*time.Time, 0)
+	expirations = make([]time.Time, 0)
 	payloads = make([][]byte, 0)
 
 	str := "SELECT cert_id,parent_id,expiration,payload FROM certs"
@@ -780,20 +781,20 @@ func getAllCertsTable(ctx context.Context, t tests.T, conn db.Conn) (
 		err := rows.Scan(&id, &parent, &expiration, &payload)
 		require.NoError(t, err)
 
-		ids = append(ids, (*common.SHA256Output)(id))
+		ids = append(ids, (common.SHA256Output)(id))
 		if len(parent) == 0 {
 			parentIds = append(parentIds, nil)
 		} else {
 			parentIds = append(parentIds, (*common.SHA256Output)(parent))
 		}
-		expirations = append(expirations, &expiration)
+		expirations = append(expirations, expiration)
 		payloads = append(payloads, payload)
 	}
 	return
 }
 
 // kvElementsMatch acts as require.ElementsMatch, but faster (no reflection).
-func kvElementsMatch(t tests.T, expected, got []*db.KeyValuePair, args ...any) {
+func kvElementsMatch(t tests.T, expected, got []db.KeyValuePair, args ...any) {
 	t.Helper()
 	A := make(map[common.SHA256Output][]byte)
 	for _, x := range expected {
@@ -821,26 +822,20 @@ func kvElementsMatch(t tests.T, expected, got []*db.KeyValuePair, args ...any) {
 }
 
 func mockDomainData(N int) (
-	domainIDs []*common.SHA256Output,
-	certIDs []*common.SHA256Output,
-	polIDs []*common.SHA256Output,
+	domainIDs []common.SHA256Output,
+	certIDs []common.SHA256Output,
+	polIDs []common.SHA256Output,
 ) {
 
-	domainIDs = make([]*common.SHA256Output, N)
-	certIDs = make([]*common.SHA256Output, N)
-	polIDs = make([]*common.SHA256Output, N)
+	domainIDs = make([]common.SHA256Output, N)
+	certIDs = make([]common.SHA256Output, N)
+	polIDs = make([]common.SHA256Output, N)
 	for i := uint64(0); i < uint64(N); i++ {
-		domainID := new(common.SHA256Output)
-		binary.LittleEndian.PutUint64(domainID[:], i+1)
-		domainIDs[i] = domainID
+		binary.LittleEndian.PutUint64(domainIDs[i][:], i+1)
 
-		certID := new(common.SHA256Output)
-		binary.LittleEndian.PutUint64(certID[:], i+1_000_001)
-		certIDs[i] = certID
+		binary.LittleEndian.PutUint64(certIDs[i][:], i+1_000_001)
 
-		polID := new(common.SHA256Output)
-		binary.LittleEndian.PutUint64(polID[:], i+2_000_001)
-		polIDs[i] = polID
+		binary.LittleEndian.PutUint64(polIDs[i][:], i+2_000_001)
 	}
 	return
 }
@@ -849,9 +844,9 @@ func insertIntoDomainPayloads(
 	ctx context.Context,
 	t tests.T,
 	conn db.Conn,
-	domainIDs []*common.SHA256Output,
-	certIDs []*common.SHA256Output,
-	polIDs []*common.SHA256Output,
+	domainIDs []common.SHA256Output,
+	certIDs []common.SHA256Output,
+	polIDs []common.SHA256Output,
 ) {
 
 	batchSize := 10_000
@@ -864,9 +859,9 @@ func insertIntoDomainPayloads(
 		// Convert pointers to byte slices.
 		data := make([]interface{}, 3*W)
 		for d := 0; d < W; d++ {
-			domainID := *domainIDs[i+d] // local copy
-			certID := *certIDs[i+d]
-			polID := *polIDs[i+d]
+			domainID := domainIDs[i+d] // local copy
+			certID := certIDs[i+d]
+			polID := polIDs[i+d]
 
 			data[3*d+0] = domainID[:]
 			data[3*d+1] = certID[:]

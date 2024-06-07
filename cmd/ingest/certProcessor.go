@@ -10,39 +10,31 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
-	"go.uber.org/atomic"
 )
-
-type CertificateNode struct {
-	CertID   *common.SHA256Output
-	Cert     *ctx509.Certificate
-	ParentID *common.SHA256Output
-	Names    []string
-}
 
 // CertBatch is an unwrapped collection of Certificate.
 // All slices must have the same size.
 type CertBatch struct {
 	Names       [][]string // collection of names per certificate
-	Expirations []*time.Time
-	Certs       []*ctx509.Certificate
-	CertIDs     []*common.SHA256Output
+	Expirations []time.Time
+	Certs       []ctx509.Certificate
+	CertIDs     []common.SHA256Output
 	ParentIDs   []*common.SHA256Output
 }
 
-func NewCertificateBatch() *CertBatch {
-	return &CertBatch{
+func NewCertificateBatch() CertBatch {
+	return CertBatch{
 		Names:       make([][]string, 0, MultiInsertSize),
-		Expirations: make([]*time.Time, 0, MultiInsertSize),
-		Certs:       make([]*ctx509.Certificate, 0, MultiInsertSize),
-		CertIDs:     make([]*common.SHA256Output, 0, MultiInsertSize),
+		Expirations: make([]time.Time, 0, MultiInsertSize),
+		Certs:       make([]ctx509.Certificate, 0, MultiInsertSize),
+		CertIDs:     make([]common.SHA256Output, 0, MultiInsertSize),
 		ParentIDs:   make([]*common.SHA256Output, 0, MultiInsertSize),
 	}
 }
 
-func (b *CertBatch) AddCertificate(c *CertificateNode) {
+func (b *CertBatch) AddCertificate(c updater.Certificate) {
 	b.Names = append(b.Names, c.Names)
-	b.Expirations = append(b.Expirations, &c.Cert.NotAfter)
+	b.Expirations = append(b.Expirations, c.Cert.NotAfter)
 	b.Certs = append(b.Certs, c.Cert)
 	b.CertIDs = append(b.CertIDs, c.CertID)
 	b.ParentIDs = append(b.ParentIDs, c.ParentID)
@@ -61,16 +53,11 @@ type CertificateProcessor struct {
 	updateCertBatch UpdateCertificateFunction // update strategy dependent method
 	strategy        CertificateUpdateStrategy
 
-	incomingCh chan *CertificateNode // From the previous processor
-	batchCh    chan *CertBatch       // Ready to be inserted
+	incomingCh chan updater.Certificate // From the previous processor
+	batchCh    chan CertBatch           // Ready to be inserted
 	doneCh     chan struct{}
-	// Statistics:
-	statsTicker    *time.Ticker
-	ReadCerts      atomic.Int64
-	ReadBytes      atomic.Int64
-	UncachedCerts  atomic.Int64
-	TotalFiles     atomic.Int64
-	TotalFilesRead atomic.Int64
+
+	stats *updater.Stats // Statistics
 }
 
 type CertificateUpdateStrategy int
@@ -81,10 +68,10 @@ const (
 )
 
 type UpdateCertificateFunction func(context.Context, db.Conn, [][]string,
-	[]*common.SHA256Output, []*common.SHA256Output, []*ctx509.Certificate, []*time.Time,
+	[]common.SHA256Output, []*common.SHA256Output, []ctx509.Certificate, []time.Time,
 	[]common.PolicyDocument) error
 
-func NewCertProcessor(conn db.Conn, incoming chan *CertificateNode,
+func NewCertProcessor(conn db.Conn, incoming chan updater.Certificate,
 	strategy CertificateUpdateStrategy) *CertificateProcessor {
 
 	// Select the update certificate method depending on the strategy:
@@ -102,16 +89,16 @@ func NewCertProcessor(conn db.Conn, incoming chan *CertificateNode,
 		conn:            conn,
 		updateCertBatch: updateFcn,
 		strategy:        strategy,
-		statsTicker:     time.NewTicker(2 * time.Second),
+		stats:           updater.NewStatistics(2*time.Second, printStats),
 	}
-
 	p.Resume(incoming)
+
 	return p
 }
 
 // Resume starts or continues the pipeline.
 // Two stages in this processor: from certificate node to batch, and from batch to DB.
-func (p *CertificateProcessor) Resume(incoming chan *CertificateNode) {
+func (p *CertificateProcessor) Resume(incoming chan updater.Certificate) {
 	// Prepare DB for certificate update.
 	p.PrepareDB()
 
@@ -119,7 +106,7 @@ func (p *CertificateProcessor) Resume(incoming chan *CertificateNode) {
 	// Incoming receives the parsed certificates from the previous pipeline (Processor).
 	p.incomingCh = incoming
 	// batchCh receives batches of certificates from the previous channel.
-	p.batchCh = make(chan *CertBatch)
+	p.batchCh = make(chan CertBatch)
 	// doneCh indicates all the batches are updated in DB.
 	p.doneCh = make(chan struct{})
 
@@ -139,7 +126,7 @@ func (p *CertificateProcessor) Resume(incoming chan *CertificateNode) {
 		close(p.batchCh)
 	}()
 
-	// Read batches and call the DB update method. Run NumDBWriters workers.
+	// Read batches and call the next step of the pipeline.
 	go func() {
 		wg := sync.WaitGroup{}
 		wg.Add(NumDBWriters)
@@ -155,7 +142,7 @@ func (p *CertificateProcessor) Resume(incoming chan *CertificateNode) {
 		wg.Wait()
 
 		// Stop printing the stats.
-		p.statsTicker.Stop()
+		p.stats.Stop()
 
 		// Leave the DB ready again.
 		p.ConsolidateDB()
@@ -165,23 +152,7 @@ func (p *CertificateProcessor) Resume(incoming chan *CertificateNode) {
 	}()
 
 	// Statistics.
-	startTime := time.Now()
-	go func() {
-		for {
-			<-p.statsTicker.C
-
-			writtenCerts := p.ReadCerts.Load()
-			writtenBytes := p.ReadBytes.Load()
-			uncachedCerts := p.UncachedCerts.Load()
-			secondsSinceStart := float64(time.Since(startTime).Seconds())
-			fmt.Printf("%.1f%% files completed %.0f Certs/s (%.0f%% uncached), %.1f Mb/s\n",
-				float64(p.TotalFilesRead.Load())*100.0/float64(p.TotalFiles.Load()),
-				float64(writtenCerts)/secondsSinceStart,
-				float64(uncachedCerts)*100./float64(writtenCerts),
-				float64(writtenBytes)/1024./1024./secondsSinceStart,
-			)
-		}
-	}()
+	p.stats.Start()
 }
 
 func (p *CertificateProcessor) Wait() {
@@ -209,7 +180,7 @@ func (p *CertificateProcessor) createBatches() {
 	p.batchCh <- batch
 }
 
-func (p *CertificateProcessor) processBatch(workerID int, batch *CertBatch) {
+func (p *CertificateProcessor) processBatch(workerID int, batch CertBatch) {
 	// Store certificates in DB:
 	fmt.Printf("DB: [worker %d][%s] processing batch (len=%d)...\n",
 		workerID, time.Now().Format(time.StampMilli), len(batch.CertIDs))

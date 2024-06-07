@@ -11,25 +11,25 @@ import (
 
 // ExtractNames returns a list of lists of names. Since each certificate contains several names,
 // the function returns a collection of slices of names, extracted from each certificate's SAN.
-func ExtractNames(certs []*ctx509.Certificate) [][]string {
+func ExtractNames(certs []ctx509.Certificate) [][]string {
 	names := make([][]string, len(certs))
 	for i, c := range certs {
-		names[i] = ExtractCertDomains(c)
+		names[i] = ExtractCertDomains(&c)
 	}
 	return names
 }
 
 // ExtractExpirations returns all expiration times in order.
-func ExtractExpirations(certs []*ctx509.Certificate) []*time.Time {
-	expirations := make([]*time.Time, len(certs))
+func ExtractExpirations(certs []ctx509.Certificate) []time.Time {
+	expirations := make([]time.Time, len(certs))
 	for i, c := range certs {
-		expirations[i] = &c.NotAfter
+		expirations[i] = c.NotAfter
 	}
 	return expirations
 }
 
 // ExtractPayloads returns the .Raw component of each certificate in order.
-func ExtractPayloads(certs []*ctx509.Certificate) [][]byte {
+func ExtractPayloads(certs []ctx509.Certificate) [][]byte {
 	payloads := make([][]byte, len(certs))
 	for i, c := range certs {
 		payloads[i] = c.Raw
@@ -38,7 +38,7 @@ func ExtractPayloads(certs []*ctx509.Certificate) [][]byte {
 }
 
 // SerializeCertificates serializes a sequence of certificates into their ASN.1 DER form.
-func SerializeCertificates(certs []*ctx509.Certificate) ([]byte, error) {
+func SerializeCertificates(certs []ctx509.Certificate) ([]byte, error) {
 	buff := bytes.NewBuffer(nil)
 	w := NewCertWriter(buff)
 	n, err := w.Write(certs)
@@ -53,7 +53,7 @@ func SerializeCertificates(certs []*ctx509.Certificate) ([]byte, error) {
 
 // DeserializeCertificates takes a stream of bytes that contains a sequence of certificates in
 // ASN.1 DER form, and returns the original sequence of certificates.
-func DeserializeCertificates(payload []byte) ([]*ctx509.Certificate, error) {
+func DeserializeCertificates(payload []byte) ([]ctx509.Certificate, error) {
 	br := bytes.NewReader(payload)
 	r := NewCertReader(br)
 	return r.ReadAll()
@@ -70,10 +70,10 @@ func DeserializeCertificates(payload []byte) ([]*ctx509.Certificate, error) {
 //
 // The leaf certificates are always returned at the head of the slice, which means, among others,
 // that once a nil value is found in the names slice, the rest of the slice will be nil as well.
-func UnfoldCerts(leafCerts []*ctx509.Certificate, chains [][]*ctx509.Certificate,
+func UnfoldCerts(leafCerts []ctx509.Certificate, chains [][]*ctx509.Certificate,
 ) (
-	certificates []*ctx509.Certificate,
-	certIDs []*common.SHA256Output,
+	certificates []ctx509.Certificate,
+	certIDs []common.SHA256Output,
 	parentIDs []*common.SHA256Output,
 	names [][]string,
 ) {
@@ -86,18 +86,18 @@ func UnfoldCerts(leafCerts []*ctx509.Certificate, chains [][]*ctx509.Certificate
 	}
 	// ChangeFcn changes extractNames to always return nil.
 	changeFcn := func() {
-		extractNames = func(c *ctx509.Certificate) []string {
+		extractNames = func(*ctx509.Certificate) []string {
 			return nil
 		}
 	}
 
 	for len(leafCerts) > 0 {
-		var pendingCerts []*ctx509.Certificate
+		var pendingCerts []ctx509.Certificate
 		var pendingChains [][]*ctx509.Certificate
 		for i, c := range leafCerts {
 			certificates = append(certificates, c)
 			ID := common.SHA256Hash32Bytes(c.Raw)
-			certIDs = append(certIDs, &ID)
+			certIDs = append(certIDs, ID)
 			var parentID *common.SHA256Output
 			if len(chains[i]) > 0 {
 				// The certificate has a trust chain (it is not root): add the first certificate
@@ -107,11 +107,11 @@ func UnfoldCerts(leafCerts []*ctx509.Certificate, chains [][]*ctx509.Certificate
 				parentID = &ID
 				// Add this parent to the back of the certs, plus the corresponding chain entry,
 				// so that it's processed as a certificate.
-				pendingCerts = append(pendingCerts, parent)
+				pendingCerts = append(pendingCerts, *parent)
 				pendingChains = append(pendingChains, chains[i][1:])
 			}
 			parentIDs = append(parentIDs, parentID)
-			names = append(names, extractNames(c))
+			names = append(names, extractNames(&c))
 		}
 		changeFcn() // This will change the function `extractNames` to always return nil.
 		leafCerts = pendingCerts
@@ -128,20 +128,20 @@ func UnfoldCerts(leafCerts []*ctx509.Certificate, chains [][]*ctx509.Certificate
 func UnfoldCert(leafCert *ctx509.Certificate, certID *common.SHA256Output,
 	chain []*ctx509.Certificate, chainIDs []*common.SHA256Output,
 ) (
-	certs []*ctx509.Certificate,
-	certIDs []*common.SHA256Output,
+	certs []ctx509.Certificate,
+	certIDs []common.SHA256Output,
 	parentIDs []*common.SHA256Output,
 	names [][]string,
 ) {
 
-	certs = make([]*ctx509.Certificate, 0, len(chainIDs)+1)
-	certIDs = make([]*common.SHA256Output, 0, len(chainIDs)+1)
+	certs = make([]ctx509.Certificate, 0, len(chainIDs)+1)
+	certIDs = make([]common.SHA256Output, 0, len(chainIDs)+1)
 	parentIDs = make([]*common.SHA256Output, 0, len(chainIDs)+1)
 	names = make([][]string, 0, len(chainIDs)+1)
 
 	// Always add the leaf certificate.
-	certs = append(certs, leafCert)
-	certIDs = append(certIDs, certID)
+	certs = append(certs, *leafCert)
+	certIDs = append(certIDs, *certID)
 	parentIDs = append(parentIDs, chainIDs[0])
 	names = append(names, ExtractCertDomains(leafCert))
 	// Add the intermediate certs iff their payload is not nil.
@@ -153,15 +153,15 @@ func UnfoldCert(leafCert *ctx509.Certificate, certID *common.SHA256Output,
 			// There are no more parents to insert.
 			return
 		}
-		certs = append(certs, chain[i])
-		certIDs = append(certIDs, chainIDs[i])
+		certs = append(certs, *chain[i])
+		certIDs = append(certIDs, *chainIDs[i])
 		parentIDs = append(parentIDs, chainIDs[i+1])
 		names = append(names, nil)
 	}
 	// Add the root certificate (no parent) iff we haven't inserted it yet.
 	if chain[i] != nil {
-		certs = append(certs, chain[i])
-		certIDs = append(certIDs, chainIDs[i])
+		certs = append(certs, *chain[i])
+		certIDs = append(certIDs, *chainIDs[i])
 		parentIDs = append(parentIDs, nil)
 		names = append(names, nil)
 	}

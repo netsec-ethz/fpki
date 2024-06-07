@@ -42,12 +42,14 @@ func TestUpdateWithKeepExisting(t *testing.T) {
 	}
 
 	// Create a random certificate test hierarchy for each leaf.
-	var certs []*ctx509.Certificate
-	var certIDs, parentCertIDs []*common.SHA256Output
+	var certs []ctx509.Certificate
+	var certIDs []common.SHA256Output
+	var parentCertIDs []*common.SHA256Output
 	var certNames [][]string
 	for _, leaf := range leafCerts {
 		// Create two mock x509 chains on top of leaf:
-		certs2, certIDs2, parentCertIDs2, certNames2 := random.BuildTestRandomCertHierarchy(t, leaf)
+		certs2, certIDs2, parentCertIDs2, certNames2 :=
+			random.BuildTestRandomCertHierarchy(t, leaf)
 		certs = append(certs, certs2...)
 		certIDs = append(certIDs, certIDs2...)
 		parentCertIDs = append(parentCertIDs, parentCertIDs2...)
@@ -173,7 +175,7 @@ func TestMapUpdaterStartFetchingRemaining(t *testing.T) {
 			return fetcher.size-onReturnNextBatchCalls*batchSize > 0
 		},
 		onReturnNextBatch: func() (
-			[]*ctx509.Certificate, // certs
+			[]ctx509.Certificate, // certs
 			[][]*ctx509.Certificate, // chains
 			int,
 			error,
@@ -185,7 +187,7 @@ func TestMapUpdaterStartFetchingRemaining(t *testing.T) {
 			if (onReturnNextBatchCalls * batchSize) > fetcher.size {
 				n = fetcher.size % batchSize
 			}
-			randomCerts := make([]*ctx509.Certificate, n)
+			randomCerts := make([]ctx509.Certificate, n)
 			for i := range randomCerts {
 				randomCerts[i] = random.RandomX509Cert(t, t.Name())
 			}
@@ -324,10 +326,10 @@ func TestMapUpdaterStartFetchingRemainingNextDay(t *testing.T) {
 			// Returns elements in batchSize: still something to return if size not reached.
 			return fetcher.size-onReturnNextBatchCalls > 0
 		},
-		onReturnNextBatch: func() ([]*ctx509.Certificate, [][]*ctx509.Certificate, int, error) {
+		onReturnNextBatch: func() ([]ctx509.Certificate, [][]*ctx509.Certificate, int, error) {
 			// Return one cert and chain with no parents.
 			onReturnNextBatchCalls++
-			return []*ctx509.Certificate{random.RandomX509Cert(t, "a.com")},
+			return []ctx509.Certificate{random.RandomX509Cert(t, "a.com")},
 				make([][]*ctx509.Certificate, 1), 0, nil
 		},
 	}
@@ -406,7 +408,7 @@ func TestMultipleFetchers(t *testing.T) {
 				return fetcher.size-sentCertCount > 0
 			},
 			onReturnNextBatch: func() (
-				[]*ctx509.Certificate, // certs
+				[]ctx509.Certificate, // certs
 				[][]*ctx509.Certificate, // chains
 				int,
 				error,
@@ -418,7 +420,7 @@ func TestMultipleFetchers(t *testing.T) {
 				if sentCertCount+batchSize > fetcher.size {
 					n = fetcher.size % batchSize
 				}
-				randomCerts := make([]*ctx509.Certificate, n)
+				randomCerts := make([]ctx509.Certificate, n)
 				for i := range randomCerts {
 					randomCerts[i] = random.RandomX509Cert(t, t.Name())
 				}
@@ -463,14 +465,14 @@ func TestMultipleFetchers(t *testing.T) {
 	require.Equal(t, totalSize, onReturnNextBatchCalls)
 }
 
-func glueSortedIDsAndComputeItsID(IDs []*common.SHA256Output) ([]byte, *common.SHA256Output) {
+func glueSortedIDsAndComputeItsID(IDs []common.SHA256Output) ([]byte, common.SHA256Output) {
 	gluedIDs := common.SortIDsAndGlue(IDs)
 	// Compute the hash of the glued IDs.
 	id := common.SHA256Hash32Bytes(gluedIDs)
-	return gluedIDs, &id
+	return gluedIDs, id
 }
 
-func computeIDsOfPolicies(t *testing.T, policies []common.PolicyDocument) []*common.SHA256Output {
+func computeIDsOfPolicies(t *testing.T, policies []common.PolicyDocument) []common.SHA256Output {
 	set := make(map[common.SHA256Output]struct{}, len(policies))
 	for _, pol := range policies {
 		raw, err := pol.Raw()
@@ -479,10 +481,10 @@ func computeIDsOfPolicies(t *testing.T, policies []common.PolicyDocument) []*com
 		set[id] = struct{}{}
 	}
 
-	IDs := make([]*common.SHA256Output, 0, len(set))
+	IDs := make([]common.SHA256Output, 0, len(set))
 	for k := range set {
 		k := k
-		IDs = append(IDs, &k)
+		IDs = append(IDs, k)
 	}
 	return IDs
 }
@@ -494,7 +496,7 @@ type mockFetcher struct {
 	onStartFetching   func(startIndex, endIndex int64)
 	onStopFetching    func()
 	onNextBatch       func(ctx context.Context) bool
-	onReturnNextBatch func() ([]*ctx509.Certificate, [][]*ctx509.Certificate, int, error)
+	onReturnNextBatch func() ([]ctx509.Certificate, [][]*ctx509.Certificate, int, error)
 }
 
 func (f *mockFetcher) Initialize(updateStartTime time.Time) error {
@@ -505,7 +507,10 @@ func (f *mockFetcher) URL() string {
 	return f.url
 }
 
-func (f *mockFetcher) GetCurrentState(ctx context.Context, origState logfetcher.State) (logfetcher.State, error) {
+func (f *mockFetcher) GetCurrentState(
+	ctx context.Context,
+	origState logfetcher.State,
+) (logfetcher.State, error) {
 	return logfetcher.State{
 		Size: uint64(f.size),
 		STH:  f.STH,
@@ -528,6 +533,11 @@ func (f *mockFetcher) NextBatch(ctx context.Context) bool {
 	return f.onNextBatch(ctx)
 }
 
-func (f *mockFetcher) ReturnNextBatch() ([]*ctx509.Certificate, [][]*ctx509.Certificate, int, error) {
+func (f *mockFetcher) ReturnNextBatch() (
+	[]ctx509.Certificate,
+	[][]*ctx509.Certificate,
+	int,
+	error,
+) {
 	return f.onReturnNextBatch()
 }

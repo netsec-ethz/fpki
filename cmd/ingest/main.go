@@ -12,9 +12,11 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 )
 
 const (
@@ -51,27 +53,27 @@ func mainFunction() int {
 	memProfile := flag.String("memprofile", "", "write a memory profile to file")
 	bundleSize := flag.Uint64("bundlesize", 0, "number of certificates after which a coalesce and "+
 		"SMT update must occur. If 0, no limit, meaning coalescing and SMT updating is done once")
-	certUpdateStrategy := flag.String("strategy", "keep", "strategy to update certificates\n"+
-		"\"overwrite\": always send certificates to DB, even if they exist already.\n"+
-		"\"keep\": first check if each certificate exists already in DB before sending it.\n"+
+	certUpdateStrategy := flag.String("strategy", "", "strategy to update certificates\n"+
+		// "\"overwrite\": always send certificates to DB, even if they exist already.\n"+
+		// "\"keep\": first check if each certificate exists already in DB before sending it.\n"+
 		"\"skipingest\": only coalesce payloads of domains in the dirty table and update SMT.\n"+
-		"\"smtupdate\": only update the SMT.\n"+
-		`If data transfer to DB is expensive, "keep" is recommended.`)
+		"\"smtupdate\": only update the SMT.\n")
 	flag.Parse()
 
-	// Update strategy.
-	var strategy CertificateUpdateStrategy
+	// // Update strategy.
+	// var strategy CertificateUpdateStrategy
 	var skipIngest bool
 	var smtUpdateOnly bool
 	switch *certUpdateStrategy {
-	case "overwrite":
-		strategy = CertificateUpdateOverwrite
-	case "keep":
-		strategy = CertificateUpdateKeepExisting
+	// case "overwrite":
+	// 	strategy = CertificateUpdateOverwrite
+	// case "keep":
+	// 	strategy = CertificateUpdateKeepExisting
 	case "skipingest":
 		skipIngest = true
 	case "smtupdate":
 		smtUpdateOnly = true
+	case "":
 	default:
 		panic(fmt.Errorf("bad update strategy: %v", *certUpdateStrategy))
 	}
@@ -141,7 +143,9 @@ func mainFunction() int {
 		gzFiles, csvFiles := listOurFiles(flag.Arg(0))
 		fmt.Printf("# gzFiles: %d, # csvFiles: %d\n", len(gzFiles), len(csvFiles))
 
-		proc := NewProcessor(conn, strategy)
+		dbManager := updater.NewManager(ctx, NumDBWriters, conn, MultiInsertSize,
+			2*time.Second, printStats)
+		proc := NewProcessor(dbManager)
 		// Set parameters to the processor.
 		proc.BundleMaxSize = *bundleSize
 		proc.OnBundleFinished = func() {
@@ -226,6 +230,19 @@ func filenameToFirstSize(name string) uint64 {
 	n, err := strconv.ParseUint(tokens[0], 10, 64)
 	exitIfError(err)
 	return n
+}
+
+func printStats(s *updater.Stats) {
+	writtenCerts := s.ReadCerts.Load()
+	writtenBytes := s.ReadBytes.Load()
+	uncachedCerts := s.UncachedCerts.Load()
+	secondsSinceStart := float64(time.Since(s.CreateTime).Seconds())
+	fmt.Printf("%.1f%% files completed %.0f Certs/s (%.0f%% uncached), %.1f Mb/s\n",
+		float64(s.TotalFilesRead.Load())*100.0/float64(s.TotalFiles.Load()),
+		float64(writtenCerts)/secondsSinceStart,
+		float64(uncachedCerts)*100./float64(writtenCerts),
+		float64(writtenBytes)/1024./1024./secondsSinceStart,
+	)
 }
 
 func exitIfError(err error) {

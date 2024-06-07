@@ -71,7 +71,7 @@ var _ Fetcher = (*LocalLogFetcher)(nil)
 
 type CertWithChainData struct {
 	CertID        *common.SHA256Output   // The ID (the SHA256) of the certificate.
-	Cert          *ctx509.Certificate    // The payload of the certificate.
+	Cert          ctx509.Certificate     // The payload of the certificate.
 	ChainIDs      []*common.SHA256Output // The trust chain of the certificate.
 	ChainPayloads []*ctx509.Certificate  // The payloads of the chain. Is nil if already cached.
 	Expired       bool
@@ -228,7 +228,7 @@ func (f *LocalLogFetcher) NextBatch(ctx context.Context) bool {
 // The call blocks until a whole batch is available. The last batch may have less elements.
 // Returns nil when there is no more batches, i.e. all certificates have been fetched.
 func (f *LocalLogFetcher) ReturnNextBatch() (
-	certs []*ctx509.Certificate,
+	certs []ctx509.Certificate,
 	chains [][]*ctx509.Certificate,
 	excluded int,
 	err error) {
@@ -330,7 +330,7 @@ func (p *LocalLogFetcher) ingestWithCSV(fileReader io.Reader) error {
 			chainIDs[i] = &id
 		}
 		p.certWithChainChan <- &CertWithChainData{
-			Cert:          cert,
+			Cert:          *cert,
 			CertID:        &certID,
 			ChainPayloads: chain,
 			ChainIDs:      chainIDs,

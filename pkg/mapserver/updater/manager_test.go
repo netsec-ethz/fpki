@@ -10,9 +10,11 @@ import (
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
+	"github.com/netsec-ethz/fpki/pkg/db/mock_db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 	"github.com/netsec-ethz/fpki/pkg/tests"
 	"github.com/netsec-ethz/fpki/pkg/tests/random"
@@ -22,7 +24,7 @@ import (
 func TestManagerStart(t *testing.T) {
 	testCases := map[string]struct {
 		NLeafDomains     int
-		certGenerator    func(tests.T, ...string) []*updater.Certificate
+		certGenerator    func(tests.T, ...string) []updater.Certificate
 		expectedNCerts   int
 		expectedNDomains int
 		NWorkers         int
@@ -230,9 +232,124 @@ func TestManagerResume(t *testing.T) {
 	}
 }
 
-func diffAncestryHierarchy(t tests.T, leaves ...string) []*updater.Certificate {
-	var payloads []*ctx509.Certificate
-	var IDs []*common.SHA256Output
+// TestMinimalAllocs checks that the calls to deduplicate elements in DomainWorker do not
+// need special memory allocations, due to the static member cloneDomainIDs, etc.
+func TestMinimalAllocs(t *testing.T) {
+	t.Run("cert", func(t *testing.T) {
+		// Cert worker use of allocations.
+
+		ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+		defer cancelF()
+
+		// Mock the DB.
+		ctrl := gomock.NewController(t)
+		conn := mock_db.NewMockConn(ctrl)
+
+		conn.EXPECT().UpdateCerts(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(),
+			gomock.Any()).AnyTimes().Return(nil)
+
+		// Create mock certificates.
+		N := 10
+		certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
+
+		// Prepare the manager and worker for the test.
+		manager := updater.NewManager(ctx, 1, conn, 1000, 1, nil)
+		worker := manager.CertWorkers[0]
+		// Mimic behavior of receiving the domains at the manager.
+
+		manager.IncomingDomainChan = make(chan updater.DirtyDomain)
+		go func() {
+			// Read all the sent domains.
+			for range manager.IncomingDomainChan {
+
+			}
+		}()
+
+		// Bundle the mock data.
+
+		// Measure allocations done in the mock library.
+		extraAllocs := testing.AllocsPerRun(1, func() {
+			conn.UpdateCerts(
+				ctx,
+				worker.CloneCerts(),
+				worker.CloneParents(),
+				worker.CloneExpirations(),
+				worker.ClonePayloads(),
+			)
+		})
+		require.Equal(t, 7.0, extraAllocs)
+
+		// Measure the test function.
+		allocsPerRun := testing.AllocsPerRun(1, func() {
+			worker.ProcessBundle(certs)
+		})
+		// Subtract the extra allocations not from the function.
+		allocsPerRun -= extraAllocs
+
+		// We should have 0 new allocations.
+		t.Logf("%f allocations", allocsPerRun)
+		// require.Equal(t, 0.0, allocsPerRun)
+	})
+
+	t.Run("domain", func(t *testing.T) {
+		// Domain worker use of allocations.
+
+		ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+		defer cancelF()
+
+		ctrl := gomock.NewController(t)
+		conn := mock_db.NewMockConn(ctrl)
+
+		conn.EXPECT().UpdateDomains(
+			gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
+		conn.EXPECT().InsertDomainsIntoDirty(
+			gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
+		conn.EXPECT().UpdateDomainCerts(
+			gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
+
+		// Create mock certificates.
+		N := 10
+		certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
+
+		// Prepare the manager and worker for the test.
+		manager := updater.NewManager(ctx, 1, conn, 1000, 1, nil)
+		certWorker := manager.CertWorkers[0]
+		worker := manager.DomainWorkers[0]
+
+		// Bundle the mock data.
+		bundle := certWorker.ExtractDomains(certs)
+		bundle = bundle[:min(len(bundle), manager.MultiInsertSize)] // limit to the size of the bundle
+
+		// Measure allocations done in the mock library.
+		extraAllocs := testing.AllocsPerRun(1, func() {
+			conn.InsertDomainsIntoDirty(ctx, worker.CloneDomainIDs())
+		})
+		require.Equal(t, 4.0, extraAllocs)
+		extraAllocs += testing.AllocsPerRun(1, func() {
+			conn.UpdateDomains(ctx, worker.CloneDomainIDs(), worker.CloneNames())
+		})
+		require.Equal(t, 4.0+5.0, extraAllocs)
+		extraAllocs += testing.AllocsPerRun(1, func() {
+			conn.UpdateDomainCerts(ctx, worker.CloneDomainIDs(), worker.CloneCertIDs())
+		})
+		require.Equal(t, 4.0+5.0+5.0, extraAllocs)
+
+		// Measure the test function.
+		allocsPerRun := testing.AllocsPerRun(1, func() {
+			worker.ProcessBundle(bundle)
+		})
+		// Subtract the extra allocations not from the function.
+		allocsPerRun -= extraAllocs
+
+		// We should have 0 new allocations.
+		t.Logf("%f allocations", allocsPerRun)
+		require.Equal(t, 0.0, allocsPerRun)
+	})
+}
+
+func diffAncestryHierarchy(t tests.T, leaves ...string) []updater.Certificate {
+	var payloads []ctx509.Certificate
+	var IDs []common.SHA256Output
 	var parentIDs []*common.SHA256Output
 	var names [][]string
 
@@ -247,28 +364,28 @@ func diffAncestryHierarchy(t tests.T, leaves ...string) []*updater.Certificate {
 	return toCertificates(payloads, IDs, parentIDs, names)
 }
 
-func sameAncestryHierarchy(t tests.T, leaves ...string) []*updater.Certificate {
+func sameAncestryHierarchy(t tests.T, leaves ...string) []updater.Certificate {
 	return toCertificates(random.BuildTestRandomCertTree(t, leaves...))
 }
 
 func generatorCertCloner(
-	generator func(tests.T, ...string) []*updater.Certificate,
+	generator func(tests.T, ...string) []updater.Certificate,
 	multiplier int,
-) func(tests.T, ...string) []*updater.Certificate {
+) func(tests.T, ...string) []updater.Certificate {
 
-	return func(t tests.T, leaves ...string) []*updater.Certificate {
+	return func(t tests.T, leaves ...string) []updater.Certificate {
 		return cloneCertSlice(generator(t, leaves...), multiplier)
 	}
 }
 
 // cloneCertSlice clones certs `multiplier` times. If multiplier is 1, no cloning is done.
-func cloneCertSlice(certs []*updater.Certificate, multiplier int) []*updater.Certificate {
+func cloneCertSlice(certs []updater.Certificate, multiplier int) []updater.Certificate {
 	// Duplicate all entries.
 	duplicated := certs
 	for i := 1; i < multiplier; i++ {
 		for _, pC := range certs {
-			payload := *pC.Cert
-			id := *pC.CertID
+			payload := pC.Cert
+			id := pC.CertID
 			pParentID := pC.ParentID
 			if pParentID != nil {
 				parent := *pParentID
@@ -277,27 +394,27 @@ func cloneCertSlice(certs []*updater.Certificate, multiplier int) []*updater.Cer
 			names := append(pC.Names[:0:0], pC.Names...)
 
 			c := updater.Certificate{
-				Cert:     &payload,
-				CertID:   &id,
+				Cert:     payload,
+				CertID:   id,
 				ParentID: pParentID,
 				Names:    names,
 			}
-			duplicated = append(duplicated, &c)
+			duplicated = append(duplicated, c)
 		}
 	}
 	return duplicated
 }
 
 func toCertificates(
-	payloads []*ctx509.Certificate,
-	ids,
+	payloads []ctx509.Certificate,
+	ids []common.SHA256Output,
 	parentIDs []*common.SHA256Output,
 	names [][]string,
-) []*updater.Certificate {
+) []updater.Certificate {
 
-	certs := make([]*updater.Certificate, 0)
+	certs := make([]updater.Certificate, 0)
 	for i := 0; i < len(payloads); i++ {
-		c := &updater.Certificate{
+		c := updater.Certificate{
 			CertID:   ids[i],
 			Cert:     payloads[i],
 			ParentID: parentIDs[i],
@@ -317,7 +434,7 @@ func mockLeaves(numberOfLeaves int) []string {
 	return leaves
 }
 
-func processCertificates(m *updater.Manager, certs []*updater.Certificate) {
+func processCertificates(m *updater.Manager, certs []updater.Certificate) {
 	for _, c := range certs {
 		m.IncomingCertChan <- c
 	}
@@ -361,4 +478,7 @@ func verifyDB(ctx context.Context, t tests.T, conn db.Conn,
 
 	// Check number of cert-domains.
 	checkTable("cert_id", "domain_certs", ncerts)
+}
+
+type NoopConn struct {
 }

@@ -16,7 +16,7 @@ import (
 
 	"github.com/netsec-ethz/fpki/cmd/ingest/cache"
 	"github.com/netsec-ethz/fpki/pkg/common"
-	"github.com/netsec-ethz/fpki/pkg/db"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
@@ -24,14 +24,12 @@ import (
 // inside the DB and SMT. It is composed of several different stages,
 // described in the `start` method.
 type Processor struct {
-	Conn  db.Conn
-	cache cache.Cache // IDs of certificates pushed to DB.
-	now   time.Time
+	upManager *updater.Manager
+	cache     cache.Cache // IDs of certificates already pushed to DB.
+	now       time.Time
 
-	incomingFileCh    chan util.CsvFile       // New files with certificates to be ingested
-	certWithChainChan chan *CertWithChainData // After parsing files
-	parsedCertCh      chan *CertificateNode   // After finding parents, to be sent to DB and SMT
-	certProcessor     *CertificateProcessor   // Processes certificate nodes (with parent pointer)
+	incomingFileCh    chan util.CsvFile               // New files with certificates to be ingested
+	certWithChainChan chan *updater.CertWithChainData // After parsing files
 
 	BundleMaxSize    uint64 // Max # of certs before calling OnBundle
 	OnBundleFinished func()
@@ -40,23 +38,13 @@ type Processor struct {
 	doneCh  chan error // Signals Processor is done
 }
 
-type CertWithChainData struct {
-	CertID        *common.SHA256Output   // The ID (the SHA256) of the certificate.
-	Cert          *ctx509.Certificate    // The payload of the certificate.
-	ChainIDs      []*common.SHA256Output // The trust chain of the certificate.
-	ChainPayloads []*ctx509.Certificate  // The payloads of the chain. Is nil if already cached.
-}
-
-func NewProcessor(conn db.Conn, certUpdateStrategy CertificateUpdateStrategy) *Processor {
-	parsedCertCh := make(chan *CertificateNode)
+func NewProcessor(manager *updater.Manager) *Processor {
 	p := &Processor{
-		Conn:              conn,
+		upManager:         manager,
 		cache:             cache.NewPresenceCache(LruCacheSize),
 		now:               time.Now(),
 		incomingFileCh:    make(chan util.CsvFile),
-		certWithChainChan: make(chan *CertWithChainData),
-		parsedCertCh:      parsedCertCh,
-		certProcessor:     NewCertProcessor(conn, parsedCertCh, certUpdateStrategy),
+		certWithChainChan: make(chan *updater.CertWithChainData),
 
 		BundleMaxSize:    math.MaxUint64, // originally set to "no limit"
 		OnBundleFinished: func() {},      // originally set to noop
@@ -97,23 +85,15 @@ func (p *Processor) start() {
 		close(p.certWithChainChan)
 	}()
 
-	// Process the parsed content into the DB.
+	// Process the parsed content into Certificates and send them to the updater.
 	// OnBundleFinished, called from callForEachBundle, would coalesce certs and update the SMT.
 	go func() {
 		var flyingCertCount uint64
 		for data := range p.certWithChainChan {
-			certs, certIDs, parentIDs, names := util.UnfoldCert(data.Cert, data.CertID,
-				data.ChainPayloads, data.ChainIDs)
-			for i := range certs {
-				// Add the certificate.
-				p.parsedCertCh <- &CertificateNode{
-					CertID:   certIDs[i],
-					Cert:     certs[i],
-					ParentID: parentIDs[i],
-					Names:    names[i],
-				}
+			certs := updater.CertificatesFromChains(data)
+			for _, c := range certs {
+				p.upManager.IncomingCertChan <- c
 				flyingCertCount++
-
 				// Check that if by adding this certificate we exceed the maximum amount of
 				// "flying" certificates (not coalesced and whose SMT is not updated).
 				// If so, we need to call the OnBundleFinished callback.
@@ -145,16 +125,15 @@ func (p *Processor) start() {
 // callForEachBundle waits until all certificates have been updated in the DB.
 // If the parameter resume is true, it will prepare the certificate processor for more bundles.
 func (p *Processor) callForEachBundle(resume bool) {
-	// Signal the cert processor that we don't send more certificates.
-	close(p.parsedCertCh)
-	// Wait for the cert processor to finish.
-	p.certProcessor.Wait()
+	// Signal the next step in the pipeline that we don't send more certificates.
+	close(p.upManager.IncomingCertChan)
+	// Wait for the next step to finish.
+	p.upManager.Wait()
 	// Actual call per bundle.
 	p.OnBundleFinished()
 	if resume {
-		p.parsedCertCh = make(chan *CertificateNode)
-		p.certProcessor.Resume(p.parsedCertCh)
-		// p.certProcessor = NewCertProcessor(p.Conn, p.parsedCertCh, p.certProcessor.strategy)
+		p.upManager.IncomingCertChan = make(chan updater.Certificate)
+		p.upManager.Resume()
 	}
 }
 
@@ -170,7 +149,7 @@ func (p *Processor) Wait() error {
 // It blocks until it is accepted.
 func (p *Processor) AddGzFiles(fileNames []string) {
 	// Tell the certificate processor that we have these new files.
-	p.certProcessor.TotalFiles.Add(int64(len(fileNames)))
+	p.upManager.Stats.TotalFiles.Add(int64(len(fileNames)))
 	// Parse the file and send it to the CSV parser.
 	for _, filename := range fileNames {
 		p.incomingFileCh <- (&util.GzFile{}).WithFile(filename)
@@ -181,7 +160,7 @@ func (p *Processor) AddGzFiles(fileNames []string) {
 // It blocks until it is accepted.
 func (p *Processor) AddCsvFiles(fileNames []string) {
 	// Tell the certificate processor that we have these new files.
-	p.certProcessor.TotalFiles.Add(int64(len(fileNames)))
+	p.upManager.Stats.TotalFiles.Add(int64(len(fileNames)))
 	// Parse the file and send it to the CSV parser.
 	for _, filename := range fileNames {
 		p.incomingFileCh <- (&util.UncompressedFile{}).WithFile(filename)
@@ -232,9 +211,9 @@ func (p *Processor) ingestWithCSV(fileReader io.Reader) error {
 			return err
 		}
 		// Update statistics.
-		p.certProcessor.ReadBytes.Add(int64(len(rawBytes)))
-		p.certProcessor.ReadCerts.Inc()
-		p.certProcessor.UncachedCerts.Inc()
+		p.upManager.Stats.ReadBytes.Add(int64(len(rawBytes)))
+		p.upManager.Stats.ReadCerts.Add(1)
+		p.upManager.Stats.UncachedCerts.Add(1)
 
 		// Get the leaf certificate ID.
 		certID := common.SHA256Hash32Bytes(rawBytes)
@@ -262,8 +241,8 @@ func (p *Processor) ingestWithCSV(fileReader io.Reader) error {
 				return fmt.Errorf("at line %d: %s\n%s", lineNo, err, fields[CertChainColumn])
 			}
 			// Update statistics.
-			p.certProcessor.ReadBytes.Add(int64(len(rawBytes)))
-			p.certProcessor.ReadCerts.Inc()
+			p.upManager.Stats.ReadBytes.Add(int64(len(rawBytes)))
+			p.upManager.Stats.ReadCerts.Add(1)
 			// Check if the parent certificate is in the cache.
 			id := common.SHA256Hash32Bytes(rawBytes)
 			if !p.cache.Contains(&id) {
@@ -273,11 +252,11 @@ func (p *Processor) ingestWithCSV(fileReader io.Reader) error {
 					return fmt.Errorf("at line %d: %s\n%s", lineNo, err, fields[CertChainColumn])
 				}
 				p.cache.AddIDs([]*common.SHA256Output{&id})
-				p.certProcessor.UncachedCerts.Inc()
+				p.upManager.Stats.UncachedCerts.Add(1)
 			}
 			chainIDs[i] = &id
 		}
-		p.certWithChainChan <- &CertWithChainData{
+		p.certWithChainChan <- &updater.CertWithChainData{
 			Cert:          cert,
 			CertID:        &certID,
 			ChainPayloads: chain,
@@ -319,7 +298,7 @@ func (p *Processor) ingestWithCSV(fileReader io.Reader) error {
 	}
 	close(recordsChan)
 	wg.Wait()
-	p.certProcessor.TotalFilesRead.Add(1) // one more file had been read
+	p.upManager.Stats.TotalFilesRead.Add(1) // one more file had been read
 
 	return nil
 }

@@ -48,9 +48,8 @@ func TestInsertDeadlock(t *testing.T) {
 	// All go routines in "clashing_ids" must be inserting simultaneously for the deadlock
 	// error to show up.
 	NDomains := 1_000
-	allDomainIDs := make([]*common.SHA256Output, NDomains)
+	allDomainIDs := make([]common.SHA256Output, NDomains)
 	for i := 0; i < NDomains; i++ {
-		allDomainIDs[i] = new(common.SHA256Output)
 		binary.LittleEndian.PutUint64(allDomainIDs[i][:], uint64(i))
 	}
 	t.Log("Mock data ready in memory")
@@ -70,7 +69,7 @@ func TestInsertDeadlock(t *testing.T) {
 		_, err = conn.DB().ExecContext(ctx, str)
 		require.NoError(t, err)
 
-		callFuncPerIDBatch(32, 100_000, allDomainIDs, func(workerID int, IDs []*common.SHA256Output) {
+		callFuncPerIDBatch(32, 100_000, allDomainIDs, func(workerID int, IDs []common.SHA256Output) {
 			err := insertIntoDirty(ctx, conn, "dirty_test", IDs)
 			require.NoError(t, err)
 		})
@@ -138,10 +137,10 @@ func TestInsertDeadlock(t *testing.T) {
 
 		// Create a slice with all the same IDs.
 		sameIDs := allDomainIDs[:0]
-		firstID := *allDomainIDs[0]
+		firstID := allDomainIDs[0]
 		for i := 0; i < len(allDomainIDs); i++ {
 			localCopy := firstID
-			sameIDs = append(sameIDs, &localCopy)
+			sameIDs = append(sameIDs, localCopy)
 		}
 		err = insertIntoDirty(ctx, conn, "dirty_test", sameIDs)
 		require.NoError(t, err)
@@ -178,9 +177,8 @@ func BenchmarkInsertPerformance(b *testing.B) {
 		"multiple of BatchSize, modify either of them")
 	// From xenon2025h1 we have an average of 1100b/cert
 	PayloadSize := 1_100
-	allCertIDs := make([]*common.SHA256Output, NCerts)
+	allCertIDs := make([]common.SHA256Output, NCerts)
 	for i := 0; i < NCerts; i++ {
-		allCertIDs[i] = new(common.SHA256Output)
 		binary.LittleEndian.PutUint64(allCertIDs[i][:], uint64(i))
 	}
 	rand.Shuffle(len(allCertIDs), func(i, j int) {
@@ -227,7 +225,7 @@ func BenchmarkInsertPerformance(b *testing.B) {
 		_, err = conn.DB().ExecContext(ctx, str)
 		require.NoError(b, err)
 
-		callFuncPerIDBatch(NWorkers, BatchSize, allCertIDs, func(workerID int, IDs []*common.SHA256Output) {
+		callFuncPerIDBatch(NWorkers, BatchSize, allCertIDs, func(workerID int, IDs []common.SHA256Output) {
 			insertCerts(ctx, b, conn, "insert_test", IDs, mockExp, mockPayload)
 		})
 
@@ -260,7 +258,7 @@ func BenchmarkInsertPerformance(b *testing.B) {
 		_, err = conn.DB().ExecContext(ctx, str)
 		require.NoError(b, err)
 
-		callFuncPerIDBatch(NWorkers, BatchSize, allCertIDs, func(workerID int, IDs []*common.SHA256Output) {
+		callFuncPerIDBatch(NWorkers, BatchSize, allCertIDs, func(workerID int, IDs []common.SHA256Output) {
 			insertCerts(ctx, b, conn, "insert_test", IDs, mockExp, mockPayload)
 		})
 	})
@@ -284,7 +282,7 @@ func BenchmarkInsertPerformance(b *testing.B) {
 		_, err = conn.DB().ExecContext(ctx, str)
 		require.NoError(b, err)
 
-		callFuncPerIDBatch(NWorkers, BatchSize, allCertIDs, func(workerID int, IDs []*common.SHA256Output) {
+		callFuncPerIDBatch(NWorkers, BatchSize, allCertIDs, func(workerID int, IDs []common.SHA256Output) {
 			insertCerts(ctx, b, conn, "insert_test", IDs, mockExp, mockPayload)
 		})
 
@@ -774,15 +772,10 @@ func BenchmarkReadPerformance(b *testing.B) {
 		loadDataWithCSV(ctx, t, conn, filepath)
 	}
 
-	allCertIDs := make([]*common.SHA256Output, NCerts)
+	allCertIDs := random.RandomIDsForTest(b, NCerts)
 	// Create lots of data to insert into the `certs` table.
 	// From xenon2025h1 we have an average of 1100b/cert
 	PayloadSize := 1_100
-	for i := 0; i < NCerts; i++ {
-		allCertIDs[i] = new(common.SHA256Output)
-		// Random, valid IDs.
-		copy(allCertIDs[i][:], random.RandomBytesForTest(b, 32))
-	}
 	// Shuffle the order of certificates.
 	rand.Shuffle(len(allCertIDs), func(i, j int) {
 		allCertIDs[i], allCertIDs[j] = allCertIDs[j], allCertIDs[i]
@@ -813,7 +806,7 @@ func BenchmarkReadPerformance(b *testing.B) {
 	}
 
 	// Function to retrieve certificate payloads, given their IDs.
-	retrieve := func(b *testing.B, NWorkers int, IDs []*common.SHA256Output) {
+	retrieve := func(b *testing.B, NWorkers int, IDs []common.SHA256Output) {
 		defer tests.ExtendTimeForBenchmark(b)()
 		wg := sync.WaitGroup{}
 		wg.Add(NWorkers)
@@ -966,7 +959,7 @@ func BenchmarkReadPerformance(b *testing.B) {
 			// Enlarge the query to have many more items.
 			allCertIDs := allCertIDs
 			orig := allCertIDs
-			extra := make([]*common.SHA256Output, len(orig))
+			extra := make([]common.SHA256Output, len(orig))
 			copy(extra, allCertIDs)
 			multiplier := 4
 			for rep := 0; rep < multiplier; rep++ {
@@ -993,12 +986,12 @@ func exec(ctx context.Context, t tests.T, conn db.Conn, query string, args ...an
 func callFuncPerIDBatch(
 	numWorkers int,
 	batchSize int,
-	IDs []*common.SHA256Output,
-	theFunc func(workerID int, IDs []*common.SHA256Output),
+	IDs []common.SHA256Output,
+	theFunc func(workerID int, IDs []common.SHA256Output),
 ) {
 
 	N := len(IDs)
-	ch := make(chan []*common.SHA256Output)
+	ch := make(chan []common.SHA256Output)
 
 	// Receive batches.
 	wg := sync.WaitGroup{}
@@ -1034,7 +1027,7 @@ func insertCerts(
 	t tests.T,
 	conn db.Conn,
 	tableName string,
-	certIDs []*common.SHA256Output,
+	certIDs []common.SHA256Output,
 	mockExp time.Time,
 	mockPayload []byte,
 ) {
@@ -1044,7 +1037,7 @@ func insertCerts(
 		mysql.RepeatStmt(len(certIDs), 3)) // 3 columns
 	data := make([]interface{}, 3*len(certIDs))
 	for i := range certIDs {
-		id := *certIDs[i]
+		id := certIDs[i]
 		data[i*3] = id[:]         // ID
 		data[i*3+1] = mockExp     // Expiration
 		data[i*3+2] = mockPayload // Payload
@@ -1060,7 +1053,7 @@ func retrieveCertificatePayloads(
 	ctx context.Context,
 	t tests.T,
 	conn db.Conn,
-	IDs []*common.SHA256Output,
+	IDs []common.SHA256Output,
 ) {
 	if len(IDs) == 0 {
 		return
@@ -1085,7 +1078,7 @@ func retrieveCertificatePayloads(
 	// Sort them in the same order as the IDs.
 	payloads := make([][]byte, len(IDs))
 	for i, id := range IDs {
-		payloads[i] = m[*id]
+		payloads[i] = m[id]
 	}
 	require.Equal(t, len(IDs), len(payloads))
 }
@@ -1094,12 +1087,12 @@ func insertIntoDirty(
 	ctx context.Context,
 	conn db.Conn,
 	tableName string,
-	domainIDs []*common.SHA256Output) error {
+	domainIDs []common.SHA256Output) error {
 
 	// Make the list of domain IDs unique.
 	domainIDsSet := make(map[common.SHA256Output]struct{})
 	for _, id := range domainIDs {
-		domainIDsSet[*id] = struct{}{}
+		domainIDsSet[id] = struct{}{}
 	}
 
 	// It fails with all of them: "REPLACE INTO", "INSERT", or "INSERT IGNORE",
@@ -1238,7 +1231,7 @@ func writeSortedChunkedCsv(
 }
 
 func recordsFromCertIDs(
-	IDs []*common.SHA256Output,
+	IDs []common.SHA256Output,
 	mockExp time.Time,
 	mockPayload []byte,
 ) [][]string {
@@ -1305,7 +1298,7 @@ func removeChunkedCsv(t tests.T, fName func(int) string, N int) {
 	}
 }
 
-func mockTestData(t tests.T, NCerts int) []*common.SHA256Output {
+func mockTestData(t tests.T, NCerts int) []common.SHA256Output {
 	return random.RandomIDsForTest(t, NCerts)
 }
 
