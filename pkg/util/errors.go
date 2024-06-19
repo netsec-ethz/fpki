@@ -6,21 +6,47 @@ import (
 )
 
 func ErrorsCoalesce(errs ...error) error {
-	// First find if there is any error at all (common case is "no").
-	nonNilErrors := make([]error, 0, len(errs))
+	cerr := CoalescedErrors{}
 	for _, err := range errs {
-		if err != nil {
-			nonNilErrors = append(nonNilErrors, err)
-		}
+		cerr.addError(err)
+
 	}
-	if len(nonNilErrors) == 0 {
+	if len(cerr.Errs) == 0 {
 		return nil
 	}
+	return cerr
+}
 
-	// When there are errors, write a line with each one of them and returned the coalesced one.
-	msgs := make([]string, len(nonNilErrors))
-	for i, err := range nonNilErrors {
+type CoalescedErrors struct {
+	Errs []error
+}
+
+var _ error = CoalescedErrors{}
+
+func (e CoalescedErrors) Error() string {
+	switch len(e.Errs) {
+	case 0:
+		return ""
+	case 1:
+		return e.Errs[0].Error()
+	}
+
+	// When there multiple errors, write a line with each one of them and returned the coalesced one.
+	msgs := make([]string, len(e.Errs))
+	for i, err := range e.Errs {
 		msgs[i] = err.Error()
 	}
-	return fmt.Errorf("multiple (%d) errors:\n%s", len(msgs), strings.Join(msgs, "\n"))
+	return fmt.Sprintf("multiple (%d) errors:\n%s", len(msgs), strings.Join(msgs, "\n"))
+}
+
+func (e *CoalescedErrors) addError(err error) {
+	if err == nil {
+		return
+	}
+	switch v := err.(type) {
+	case CoalescedErrors:
+		e.Errs = append(e.Errs, v.Errs...)
+	default:
+		e.Errs = append(e.Errs, err)
+	}
 }
