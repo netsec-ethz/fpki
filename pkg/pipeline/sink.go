@@ -1,5 +1,6 @@
 package pipeline
 
+// SinkBase is the base class of a sink stage (doesn't propagate data).
 type SinkBase[IN any] struct {
 	base *Base // Reference to Base.
 
@@ -11,8 +12,17 @@ type SinkBase[IN any] struct {
 
 var _ StageLike = &SinkBase[int]{}
 
-func NewSink[IN any]() *SinkBase[IN] {
-	return nil
+func NewSink[IN any](
+	base *Base, // Reference to the one in Base.
+	options ...sinkOption[IN],
+) *SinkBase[IN] {
+	s := &SinkBase[IN]{
+		base: base,
+	}
+	for _, opt := range options {
+		opt(s)
+	}
+	return s
 }
 
 type sinkOption[IN any] func(*SinkBase[IN])
@@ -34,6 +44,7 @@ func (s *SinkBase[IN]) Resume() {
 }
 
 func (s *SinkBase[IN]) StopAndWait() error {
+	// TODO
 	return nil
 }
 
@@ -59,5 +70,6 @@ readIncoming:
 }
 
 func (s *SinkBase[IN]) breakPipeline(errorAtSink error) {
-	s.base.ErrCh <- errorAtSink
+	// Propagate error backwards:
+	s.base.breakPipeline(errorAtSink)
 }

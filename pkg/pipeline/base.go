@@ -44,3 +44,11 @@ func debugPrintf(format string, args ...any) {
 	// }
 	fmt.Printf(format, args...)
 }
+
+type noError struct{}
+
+func (noError) Error() string { return "" }
+
+var NoMoreData = noError{}
+var SentNoError = noError{}
+var StopNoError = noError{}
