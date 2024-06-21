@@ -29,7 +29,8 @@ func TestPipeline(t *testing.T) {
 				"a",
 				WithGeneratorFunction(func() (int, error) {
 					// As a source of data.
-					inData := []int{1, 2, 3, 4, 5}
+					inData := []int{1, 2, 3}
+					debugPrintf("[TEST] source index %d\n", currentIndex)
 					if currentIndex >= len(inData) {
 						return 0, NoMoreData
 					}
@@ -41,11 +42,11 @@ func TestPipeline(t *testing.T) {
 				"b",
 				WithProcessFunction(func(in int) (int, error) {
 					// This b stage fails when it receives a 4.
-					if in == 4 && firstTimeErrorAtB {
+					if in == 2 && firstTimeErrorAtB {
 						firstTimeErrorAtB = false
 						return 0, fmt.Errorf("error at stage b")
 					}
-					return in + 2, nil
+					return in + 1, nil
 				}),
 			),
 			NewSink[int](
@@ -64,14 +65,55 @@ func TestPipeline(t *testing.T) {
 	err := p.Wait()
 	debugPrintf("[TEST] error 1: %s\n", err)
 	require.Error(t, err)
-	currentIndex -= 2 // Because of the error at b, and a failing to send the next item.
+
+	// Check pipelines have been closed.
+	a := p.Stages[0].(*Source[int])
+	b := p.Stages[1].(*Stage[int, int])
+	c := p.Stages[2].(*Sink[int])
+	checkClosed(t, a.ErrCh)
+	checkClosed(t, b.ErrCh)
+	checkClosed(t, c.ErrCh)
+	checkClosed(t, a.StopCh)
+	checkClosed(t, b.StopCh)
+	checkClosed(t, c.StopCh)
+	checkClosed(t, a.IncomingCh)
+	checkClosed(t, b.IncomingCh)
+	checkClosed(t, c.IncomingCh)
+	checkClosed(t, a.OutgoingCh)
+	checkClosed(t, b.OutgoingCh)
+	checkClosed(t, c.OutgoingCh)
+	checkClosed(t, a.NextErrCh)
+	checkClosed(t, b.NextErrCh)
+	checkClosed(t, c.NextErrCh)
+
+	currentIndex = len(gotValues) // Because of the errors, recover.
 
 	// We can now resume.
 	debugPrintf("------------------------ RESUMING ----------------------\n")
 	p.Resume()
 	err = p.Wait()
 	require.NoError(t, err)
-	require.Equal(t, []int{3, 4, 5, 6, 7}, gotValues)
+	require.Equal(t, []int{2, 3, 4}, gotValues)
+
+	// Check pipelines have been closed.
+	a = p.Stages[0].(*Source[int])
+	b = p.Stages[1].(*Stage[int, int])
+	c = p.Stages[2].(*Sink[int])
+	checkClosed(t, a.ErrCh)
+	checkClosed(t, b.ErrCh)
+	checkClosed(t, c.ErrCh)
+	checkClosed(t, a.StopCh)
+	checkClosed(t, b.StopCh)
+	checkClosed(t, c.StopCh)
+	checkClosed(t, a.IncomingCh)
+	checkClosed(t, b.IncomingCh)
+	checkClosed(t, c.IncomingCh)
+	checkClosed(t, a.OutgoingCh)
+	checkClosed(t, b.OutgoingCh)
+	checkClosed(t, c.OutgoingCh)
+	checkClosed(t, a.NextErrCh)
+	checkClosed(t, b.NextErrCh)
+	checkClosed(t, c.NextErrCh)
 }
 
 func checkClosed[T any](t *testing.T, ch chan T) {
