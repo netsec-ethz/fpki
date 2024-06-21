@@ -1,75 +1,63 @@
 package pipeline
 
-// SinkBase is the base class of a sink stage (doesn't propagate data).
-type SinkBase[IN any] struct {
-	base *Base // Reference to Base.
-
-	// Own fields.
-	IncomingCh chan IN // Incoming data channel to process.
-
-	SinkFunc func(in IN) error
+// type Sink[IN any] Stage[IN, none]
+type Sink[IN any] struct {
+	Stage[IN, none]
 }
-
-var _ StageLike = &SinkBase[int]{}
 
 func NewSink[IN any](
-	base *Base, // Reference to the one in Base.
-	options ...sinkOption[IN],
-) *SinkBase[IN] {
-	s := &SinkBase[IN]{
-		base: base,
+	name string,
+	options ...stageOption[IN, none],
+) *Sink[IN] {
+	return &Sink[IN]{
+		Stage: *NewStage[IN, none](name, options...),
 	}
-	for _, opt := range options {
-		opt(s)
-	}
-	return s
+	// return (*Sink[IN])(NewStage[IN, none](name, options...))
 }
-
-type sinkOption[IN any] func(*SinkBase[IN])
 
 func WithSinkFunction[IN any](
-	sinkFunc func(IN) error,
-) sinkOption[IN] {
-	return func(s *SinkBase[IN]) {
-		s.SinkFunc = sinkFunc
-	}
-}
+	processFunc func(in IN) error,
+) stageOption[IN, none] {
 
-func (s *SinkBase[IN]) Prepare() {
-	s.IncomingCh = make(chan IN)
-}
-
-func (s *SinkBase[IN]) Resume() {
-	go s.sinkData()
-}
-
-func (s *SinkBase[IN]) StopAndWait() error {
-	// TODO
-	return nil
-}
-
-func (s *SinkBase[IN]) sinkData() {
-	var err error
-readIncoming:
-	for {
-		select {
-		case data, ok := <-s.IncomingCh:
-			if !ok {
-				// Incoming channel was closed. No data to be written to outgoing channel.
-				break readIncoming
-			}
-			err = s.SinkFunc(data)
-			if err != nil {
-				break readIncoming
-			}
-		case <-s.base.StopCh:
-			return
+	return func(s *Stage[IN, none]) {
+		// Just set the process function to call the user's one.
+		s.ProcessFunc = func(in IN) (none, error) {
+			err := processFunc(in)
+			return none{}, err
 		}
 	}
-	s.breakPipeline(err)
 }
 
-func (s *SinkBase[IN]) breakPipeline(errorAtSink error) {
-	// Propagate error backwards:
-	s.base.breakPipeline(errorAtSink)
+func (s *Sink[IN]) Prepare() {
+	// Regular stage preparation:
+	SinkAsStage(s).Prepare()
+
+	// As a sink, our process function is already called every time there is new data.
+	// But we need to keep the stage going allowing to send none{} to the outgoing channel.
+	// We create a dummy channel for that.
+	// This channel will be closed by the stage during processing in case of no more data,
+	// error, or stop.
+	// The next error channel can be closed after no more processing is done.
+	s.OutgoingCh = make(chan none)
+	s.NextErrCh = make(chan error)
+	go func() {
+		// Block until the processing has closed the outgoing channel.
+		for range s.OutgoingCh {
+		}
+		close(s.NextErrCh)
+	}()
+
+}
+
+func (s *Sink[IN]) Resume() {
+	SinkAsStage(s).Resume()
+}
+
+func (s *Sink[IN]) StopAndWait() error {
+	return SinkAsStage(s).StopAndWait()
+}
+
+func SinkAsStage[IN any](s *Sink[IN]) *Stage[IN, none] {
+	// return (*Stage[IN, none])(s)
+	return &s.Stage
 }

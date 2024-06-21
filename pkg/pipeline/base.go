@@ -1,7 +1,9 @@
 package pipeline
 
 import (
+	"bufio"
 	"fmt"
+	"os"
 )
 
 type Base struct {
@@ -38,11 +40,12 @@ func (b *Base) breakPipeline(err error) error {
 }
 
 func debugPrintf(format string, args ...any) {
-	// fmt.Fprintf(os.Stdout, format, args...)
-	// if err := os.Stdout.Sync(); err != nil {
-	// 	panic(err)
-	// }
-	fmt.Printf(format, args...)
+	var stdout = bufio.NewWriter(os.Stdout)
+	fmt.Fprintf(stdout, format, args...)
+	if err := stdout.Flush(); err != nil {
+		panic(err)
+	}
+	// fmt.Printf(format, args...)
 }
 
 type noError struct{}

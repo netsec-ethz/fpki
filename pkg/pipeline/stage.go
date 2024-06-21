@@ -1,17 +1,22 @@
 package pipeline
 
+import (
+	"github.com/netsec-ethz/fpki/pkg/util"
+)
+
 type StageLike interface {
 	Prepare()
 	Resume()
 	StopAndWait() error
+	ErrorChannel() chan error
 }
 
 type Stage[IN, OUT any] struct {
 	*Base // Common fields.
-	// SinkBase[IN]    // It behaves (partially) as a sink, ingesting IN data.
-	SourceBase[OUT] // It behaves (partially) as a source, spitting OUT data.
 
-	IncomingCh chan IN // Incoming data channel to process.
+	IncomingCh chan IN    // Incoming data channel to process.
+	OutgoingCh chan OUT   // Data to the next stage goes here.
+	NextErrCh  chan error // Next stage's error channel.
 
 	ProcessFunc func(in IN) (OUT, error) // From IN to OUT.
 }
@@ -24,10 +29,8 @@ func NewStage[IN, OUT any](
 ) *Stage[IN, OUT] {
 
 	base := NewBase(name)
-	source := NewSourceBase[OUT](base)
 	s := &Stage[IN, OUT]{
-		Base:       base,
-		SourceBase: *source,
+		Base: base,
 	}
 	for _, opt := range options {
 		opt(s)
@@ -45,39 +48,32 @@ func WithProcessFunction[IN, OUT any](
 	}
 }
 
-func WithOutChannelSelector[IN, OUT any](
-	outChSelector func(OUT) int,
-) stageOption[IN, OUT] {
-	return func(s *Stage[IN, OUT]) {
-		s.OutChSelector = outChSelector
-	}
-}
-
 func LinkStages[IN, OUT, LAST any](
 	prev *Stage[IN, OUT],
 	next *Stage[OUT, LAST],
 ) {
+	debugPrintf("linking [%s]:%p with [%s]:%p\n",
+		prev.Name, &prev.OutgoingCh,
+		next.Name, &next.IncomingCh,
+	)
 	prev.OutgoingCh = next.IncomingCh
+	debugPrintf("linking [%s]:%p with [%s]:%p\n",
+		prev.Name, &prev.NextErrCh,
+		next.Name, &next.ErrCh,
+	)
 	prev.NextErrCh = next.ErrCh
 }
 
 func (s *Stage[IN, OUT]) Prepare() {
 	s.Base.Prepare()
-	s.SourceBase.Prepare()
 	s.IncomingCh = make(chan IN)
-
-	s.SourceBase.GenerateFunc = s.generateFunc
+	s.OutgoingCh = make(chan OUT)
 }
 
 // Resume resumes processing from this stage.
 // This function creates new channels for the incoming data, error and stop channels.
 func (s *Stage[IN, OUT]) Resume() {
-	s.SourceBase.Resume()
-	// Deleteme replace make chan with Source.Resume()
-	// s.Source.Resume()
-	// s.StopCh = make(chan none)
-
-	// go s.processThisStage()
+	go s.processThisStage()
 }
 
 // StopAndWait stops this and following stages by closing this stage's outgoing channel.
@@ -93,133 +89,79 @@ func (s *Stage[IN, OUT]) StopAndWait() error {
 	return s.breakPipelineAndWait(nil)
 }
 
+func (s *Stage[IN, OUT]) ErrorChannel() chan error {
+	return s.Base.ErrCh
+}
+
 func (s *Stage[IN, OUT]) breakPipelineAndWait(initialErr error) error {
-	// // Indicate next stage to stop.
-	// close(s.OutgoingCh())
-	// // Read its status:
-	// err := <-s.NextErrCh
-	// // Coalesce with any error at this stage.
-	// err = util.ErrorsCoalesce(initialErr, err)
-	// // Propagate error backwards.
-	// s.ErrCh <- err
-	// // Close our own error channel.
-	// close(s.ErrCh)
-	// // Close the stop channel indicator.
-	// close(s.StopCh)
-	// return err
+	debugPrintf("[%s] closing output channel %p\n", s.Base.Name, &s.OutgoingCh)
+	// time.Sleep(10 * time.Millisecond)
+	// Indicate next stage to stop.
+	close(s.OutgoingCh)
+	// Read its status:
+	debugPrintf("[%s] waiting for next stage's error\n", s.Base.Name)
+	err := <-s.NextErrCh
+	debugPrintf("[%s] read next stage's error: %v\n", s.Base.Name, err)
+	// Coalesce with any error at this stage.
+	err = util.ErrorsCoalesce(initialErr, err)
 
-	return nil
+	// Propagate error backwards.
+	s.Base.breakPipeline(err)
+	return err
 }
 
-func (s *Stage[IN, OUT]) generateFunc() (OUT, error) {
-	var emptyOut OUT
-	select {
-	case in, ok := <-s.IncomingCh:
-		if !ok {
-			// Incoming channel was closed. No data to be written to outgoing channel.
-			debugPrintf("[%s] no more data\n", s.Name)
-			return emptyOut, NoMoreData
+func (s *Stage[IN, OUT]) processThisStage() {
+	var foundError error
+readIncoming:
+	for {
+
+		select {
+		case <-s.StopCh:
+			// We have been instructed to stop, without reading any other channel.
+			debugPrintf("[%s] generate function indicates to stop\n", s.Base.Name)
+			return
+
+		case err := <-s.NextErrCh:
+			debugPrintf("[%s] got error while reading incoming from next stage\n", s.Name)
+			foundError = err
+			break readIncoming
+		case in, ok := <-s.IncomingCh:
+			if !ok {
+				// Incoming channel was closed. No data to be written to outgoing channel.
+				debugPrintf("[%s] generate function indicates no more data\n", s.Base.Name)
+				break readIncoming
+			}
+			debugPrintf("[%s] incoming %v\n", s.Base.Name, in)
+
+			out, err := s.ProcessFunc(in)
+			if err == NoMoreData {
+				// No more data, no error.
+				break readIncoming
+			}
+			if err != nil {
+				// Processing failed.
+				foundError = err
+				break readIncoming
+			}
+			// We attempt to write the out data to the outgoing channel.
+			// Because this can block, we must also listen to any error coming from the
+			// next stage, plus our own stop signal.
+			debugPrintf("[%s] attempting to send %v\n", s.Base.Name, out)
+			select {
+			case s.OutgoingCh <- out:
+				// Success writing to the outgoing channel, nothing else to do.
+				debugPrintf("[%s] sent %v\n", s.Base.Name, out)
+			case err := <-s.NextErrCh:
+				debugPrintf("[%s] ERROR while sending %v: %s\n", s.Base.Name, out, err)
+				// We received an error from next stage while trying to write to it.
+				foundError = err
+				break readIncoming
+			case <-s.Base.StopCh:
+				// We have been instructed to stop, without reading any other channel.
+				debugPrintf("[%s] instructed to stop\n", s.Base.Name)
+				return
+			}
 		}
-		debugPrintf("[%s] incoming %v\n", s.Base.Name, in)
-		return s.ProcessFunc(in)
-
-	case <-s.StopCh:
-		// We have been instructed to stop, without reading any other channel.
-		return emptyOut, StopNoError
-
-	case err := <-s.NextErrCh:
-		debugPrintf("[%s] got error while reading incoming from next stage\n", s.Name)
-		return emptyOut, err
 	}
+	s.breakPipelineAndWait(foundError)
 }
-
-// func (s *Stage[IN, OUT]) processThisStage() {
-// 	var foundError error
-// readChannels:
-// 	for {
-// 		out, err := s.SourceBase.GenerateFunc()
-// 		switch err {
-// 		case NoMoreData:
-// 			// Incoming channel was closed. No data to be written to the outgoing channel.
-// 			debugPrintf("[%s] breaking processing\n", s.Name)
-// 			break readChannels
-// 		case StopNoError:
-// 			// We have been instructed to stop, without reading any other channel.
-// 			return
-// 		case nil:
-// 			// Data is ready to be sent.
-// 			err := s.sendStopOrErrFromNext(out)
-// 			switch err {
-// 			case SentNoError:
-// 				// Success writing to the outgoing channel, nothing else to do.
-// 			case StopNoError:
-// 				// We have been instructed to stop, without reading any other channel.
-// 				return
-// 			default:
-// 				// We received an error from next stage while trying to write to it.
-// 				foundError = err
-// 				break readChannels
-// 				// deleteme TODO: unify the stop and errFromNextStage cases
-// 			}
-// 		default:
-// 			// We have received an error from the next stage while trying to read incoming.
-// 			foundError = err
-// 			break readChannels
-// 		}
-// 	}
-
-// 	// Discard the coalesced error, as the function below propagates the error backwards already.
-// 	s.breakPipelineAndWait(foundError)
-
-// 	debugPrintf("[%s] done\n", s.Name)
-// }
-
-// func (s *Stage[IN, OUT]) processThisStage2() {
-// 	var foundError error
-// 	var out OUT
-// readChannels:
-// 	for {
-// 		select {
-// 		case data, ok := <-s.IncomingCh:
-// 			fmt.Printf("incoming %v at %s\n", data, s.Name)
-// 			if !ok {
-// 				// Incoming channel was closed. No data to be written to outgoing channel.
-// 				fmt.Printf("breaking processing at %s\n", s.Name)
-// 				break readChannels
-// 			}
-
-// 			out, foundError = s.ProcessFunc(data)
-// 			if foundError != nil {
-// 				fmt.Printf("ORIGINAL error at %s\n", s.Name)
-// 				break readChannels
-// 			}
-
-// 			foundError = s.sendStopOrErrFromNext(out)
-// 			switch foundError {
-// 			case SentNoError:
-// 				// Success writing to the outgoing channel, nothing else to do.
-// 			case StopNoError:
-// 				// We have been instructed to stop, without reading any other channel.
-// 				return
-// 			default:
-// 				// We received an error from next stage while trying to write to it.
-// 				break readChannels
-// 				// deleteme TODO: unify the stop and errFromNextStage cases
-// 			}
-
-// 			fmt.Printf("sent result %v at %s\n", out, s.Name)
-// 			continue
-// 		case foundError = <-s.nextErrCh:
-// 			fmt.Printf("got error from next stage at %s\n", s.Name)
-// 			break readChannels
-// 		case <-s.stopCh:
-// 			// We have been instructed to stop, without reading any other channel.
-// 			return
-// 		}
-// 	}
-
-// 	// Discard the coalesced error, as the function below propagates the error backwards already.
-// 	s.breakPipelineAndWait(foundError)
-
-// 	fmt.Printf("done at %s\n", s.Name)
-// }

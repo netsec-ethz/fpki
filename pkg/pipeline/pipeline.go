@@ -41,7 +41,12 @@ func (p *Pipeline) Resume() {
 }
 
 func (p *Pipeline) Wait() error {
-	return nil
+	// The first stage is a source?
+	if source, ok := p.Stages[0].(SourceLike); ok {
+		return source.Wait()
+	}
+	// It is not a source, just treat it as a stage.
+	return <-p.Stages[0].ErrorChannel()
 }
 
 func (p *Pipeline) prepare() {
