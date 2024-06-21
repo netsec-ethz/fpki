@@ -100,6 +100,7 @@ func (s *Stage[IN, OUT]) ErrorChannel() chan error {
 }
 
 func (s *Stage[IN, OUT]) breakPipelineAndWait(initialErr error) error {
+	debugPrintf("[%s] exiting _____________________________\n", s.Name)
 	debugPrintf("[%s] closing output channel %p\n", s.Name, &s.OutgoingCh)
 	// time.Sleep(10 * time.Millisecond)
 	// Indicate next stage to stop.
