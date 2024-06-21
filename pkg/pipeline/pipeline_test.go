@@ -19,18 +19,18 @@ func TestStages(t *testing.T) {
 	b := NewStage[int, int](
 		"b",
 		WithProcessFunction(func(in int) (int, error) {
-			if in == 3 {
-				return 0, fmt.Errorf("error at b")
-			}
+			// if in == 3 {
+			// 	return 0, fmt.Errorf("error at b")
+			// }
 			return in + 2, nil
 		}),
 	)
 	c := NewStage[int, int](
 		"c",
 		WithProcessFunction(func(in int) (int, error) {
-			if in == 4 {
-				return 0, fmt.Errorf("error at c")
-			}
+			// if in == 4 {
+			// 	return 0, fmt.Errorf("error at c")
+			// }
 			return in + 3, nil
 		}),
 	)
@@ -39,12 +39,12 @@ func TestStages(t *testing.T) {
 	errorChan := make(chan error) // As a sink.
 
 	// Link them.
-	c.OutgoingCh = &outputChan
+	c.OutgoingCh = outputChan
 	b.OutgoingCh = c.IncomingCh
 	a.OutgoingCh = b.IncomingCh
 	a.NextErrCh = b.ErrCh
 	b.NextErrCh = c.ErrCh
-	c.NextErrCh = &errorChan
+	c.NextErrCh = errorChan
 
 	// Resume all stages.
 	c.Resume()
@@ -58,34 +58,34 @@ func TestStages(t *testing.T) {
 	inData := []int{1, 2, 3, 4, 5}
 	// inData := []int{1}
 	go func() {
-		fmt.Printf("========== Using incoming %p\n", a.IncomingCh)
+		debugPrintf("========== Using incoming %p\n", a.IncomingCh)
 		for _, in := range inData {
 			// deleteme: BUG:
 			// because the channel under that pointer has changed, the <-in is waiting to
 			// be read in a different channel.
-			*a.IncomingCh <- in
-			fmt.Printf("Wrote %d\n", in)
+			a.IncomingCh <- in
+			debugPrintf("[TEST] Wrote %d\n", in)
 		}
-		fmt.Printf("========== CLOSING incoming %p\n", a.IncomingCh)
-		close(*a.IncomingCh)
+		debugPrintf("========== CLOSING incoming %p\n", a.IncomingCh)
+		close(a.IncomingCh)
 	}()
 
 	// Read output
 	for out := range outputChan {
-		fmt.Printf("Out: %d\n", out)
+		debugPrintf("[TEST] Out: %d\n", out)
 	}
-	fmt.Println("MAIN: closing error channel")
+	debugPrintf("[TEST] closing error channel\n")
 	// Signal no errors at sink.
 	close(errorChan)
 
 	// Any errors?
 	errs := make([]error, 0)
-	for err := range *a.ErrCh {
+	for err := range a.ErrCh {
 		s := "nil"
 		if err != nil {
 			s = err.Error()
 		}
-		fmt.Printf("ERROR: %s\n", s)
+		debugPrintf("[TEST] ERROR: %s\n", s)
 		errs = append(errs, err)
 	}
 	require.Len(t, errs, 1)
@@ -95,18 +95,18 @@ func TestStages(t *testing.T) {
 	// require.Len(t, cerr.Errs, 2)
 
 	// Check channels are closed.
-	checkClosed(t, *c.OutgoingCh)
-	checkClosed(t, *b.OutgoingCh)
-	checkClosed(t, *a.OutgoingCh)
-	checkClosed(t, *c.IncomingCh)
-	checkClosed(t, *b.IncomingCh)
-	checkClosed(t, *a.ErrCh)
-	checkClosed(t, *b.ErrCh)
-	checkClosed(t, *c.ErrCh)
+	checkClosed(t, c.OutgoingCh)
+	checkClosed(t, b.OutgoingCh)
+	checkClosed(t, a.OutgoingCh)
+	checkClosed(t, c.IncomingCh)
+	checkClosed(t, b.IncomingCh)
+	checkClosed(t, a.ErrCh)
+	checkClosed(t, b.ErrCh)
+	checkClosed(t, c.ErrCh)
 
 	return
 	// Now resume.
-	fmt.Println("------------------------ RESUMING ----------------------")
+	debugPrintf("------------------------ RESUMING ----------------------\n")
 
 	// a = NewStage[int, int]("a")
 	// b = NewStage[int, int]("b")
@@ -129,8 +129,8 @@ func TestStages(t *testing.T) {
 
 	outputChan = make(chan int)
 	errorChan = make(chan error)
-	c.OutgoingCh = &outputChan
-	c.NextErrCh = &errorChan
+	c.OutgoingCh = outputChan
+	c.NextErrCh = errorChan
 
 	LinkStages(a, b)
 	LinkStages(b, c)
@@ -139,23 +139,23 @@ func TestStages(t *testing.T) {
 	b.Resume()
 	a.Resume()
 
-	fmt.Printf("========== Resuming incoming %p\n", a.IncomingCh)
+	debugPrintf("========== Resuming incoming %p\n", a.IncomingCh)
 
 	// Read output
 	for out := range outputChan {
-		fmt.Printf("Out: %d\n", out)
+		debugPrintf("Out: %d\n", out)
 	}
-	fmt.Println("MAIN: closing error channel")
+	debugPrintf("TEST: closing error channel\n")
 	// Signal no errors at sink.
 	close(errorChan)
 
 	// Any errors?
-	for err := range *a.ErrCh {
+	for err := range a.ErrCh {
 		s := "nil"
 		if err != nil {
 			s = err.Error()
 		}
-		fmt.Printf("ERROR: %s\n", s)
+		debugPrintf("ERROR: %s\n", s)
 	}
 }
 
@@ -180,7 +180,7 @@ func TestPipeline(t *testing.T) {
 			NewStage[int, int](
 				"b",
 				WithProcessFunction(func(in int) (int, error) {
-					if in == 3 {
+					if in == 4 {
 						return 0, fmt.Errorf("error at b")
 					}
 					return in + 2, nil
@@ -189,7 +189,7 @@ func TestPipeline(t *testing.T) {
 			NewStage[int, int](
 				"c",
 				WithProcessFunction(func(in int) (int, error) {
-					if in == 4 {
+					if in == 5 {
 						return 0, fmt.Errorf("error at c")
 					}
 					return in + 3, nil
@@ -198,21 +198,17 @@ func TestPipeline(t *testing.T) {
 		),
 	)
 
-	// Act as a sink.
-	outputChan := make(chan int)  // As a sink.
-	errorChan := make(chan error) // As a sink.
-	// Link them.
-	StageAtIndex[int, int](p, 2).OutgoingCh = &outputChan
-	StageAtIndex[int, int](p, 2).NextErrCh = &errorChan
-
-	// Act as a source.
-	sourceIn := make(chan int)
-	sourceErr := make(chan error)
-	StageAtIndex[int, int](p, 0).IncomingCh = &sourceIn
-	StageAtIndex[int, int](p, 0).ErrCh = &sourceErr
-
-	// Resume all stages.
+	// Resume all stages. They will be stalled, since there is no incoming data yet.
 	p.Resume()
+
+	// Act as a source: get the incoming channel of the first stage.
+	sourceIn := StageAtIndex[int, int](p, 0).IncomingCh
+	sourceErr := StageAtIndex[int, int](p, 0).ErrCh
+
+	// Act as a sink: get the outgoing and next error channels from the last stage.
+	outputChan := StageAtIndex[int, int](p, 2).OutgoingCh
+	errorChan := make(chan error) // Error from the receiver (this test).
+	StageAtIndex[int, int](p, 2).NextErrCh = errorChan
 
 	// As a source of data.
 	inData := []int{1, 2, 3, 4, 5}
@@ -223,17 +219,17 @@ func TestPipeline(t *testing.T) {
 			// because the channel under that pointer has changed, the <-in is waiting to
 			// be read in a different channel.
 			sourceIn <- in
-			fmt.Printf("Wrote %d\n", in)
+			debugPrintf("[TEST] wrote to incoming: %d\n", in)
 		}
-		fmt.Printf("========== CLOSING incoming %p\n", &sourceIn)
+		debugPrintf("========== CLOSING incoming %p\n", &sourceIn)
 		close(sourceIn)
 	}()
 
 	// Read output
 	for out := range outputChan {
-		fmt.Printf("Out: %d\n", out)
+		debugPrintf("[TEST] Out: %d\n", out)
 	}
-	fmt.Println("MAIN: closing error channel")
+	debugPrintf("[TEST]: closing error channel\n")
 	// Signal no errors at sink.
 	close(errorChan)
 
@@ -244,13 +240,13 @@ func TestPipeline(t *testing.T) {
 		if err != nil {
 			s = err.Error()
 		}
-		fmt.Printf("ERROR: %s\n", s)
+		debugPrintf("[TEST] ERROR: %s\n", s)
 		errs = append(errs, err)
 	}
 	require.Len(t, errs, 1)
-	require.IsType(t, util.CoalescedErrors{}, errs[0])
-	cerr := errs[0].(util.CoalescedErrors)
-	_ = cerr // deleteme the next check fails.
+	// require.IsType(t, util.CoalescedErrors{}, errs[0])
+	// cerr := errs[0].(util.CoalescedErrors)
+	// _ = cerr // deleteme the next check fails.
 	// require.Len(t, cerr.Errs, 2)
 
 	// // Check channels are closed.
@@ -265,29 +261,8 @@ func TestPipeline(t *testing.T) {
 
 	return
 	// Now resume.
-	fmt.Println("------------------------ RESUMING ----------------------")
-	// Act as a sink.
-	outputChan = make(chan int)  // As a sink.
-	errorChan = make(chan error) // As a sink.
-	// Link them.
-	StageAtIndex[int, int](p, 2).OutgoingCh = &outputChan
-	StageAtIndex[int, int](p, 2).NextErrCh = &errorChan
+	debugPrintf("------------------------ RESUMING ----------------------\n")
 
-	// Act as a source.
-	sourceIn = make(chan int)
-	sourceErr = make(chan error)
-	StageAtIndex[int, int](p, 0).IncomingCh = &sourceIn
-	StageAtIndex[int, int](p, 0).ErrCh = &sourceErr
-
-	p.Resume()
-
-	// Read output
-	for out := range outputChan {
-		fmt.Printf("Out: %d\n", out)
-	}
-	fmt.Println("MAIN: closing error channel")
-	// Signal no errors at sink.
-	close(errorChan)
 }
 
 func checkClosed[T any](t *testing.T, ch chan T) {

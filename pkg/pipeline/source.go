@@ -1,58 +1,175 @@
 package pipeline
 
+import (
+	"github.com/netsec-ethz/fpki/pkg/util"
+)
+
 type Source[OUT any] struct {
-	Name       string
-	OutgoingCh *chan OUT
-
-	ErrCh *chan error
-
-	GenerateFunc func() (OUT, error)
+	Base
+	SourceBase[OUT]
 }
 
 var _ StageLike = &Source[int]{}
 
-func NewSource[OUT any](
-	name string,
-	options ...sourceOptions[OUT],
-) {
-
+func (s *Source[OUT]) Prepare() {
+	s.Base.Prepare()
+	s.SourceBase.Prepare()
 }
 
-type sourceOptions[OUT any] func(*Source[OUT])
+func (s *Source[OUT]) Resume() {
+	s.SourceBase.Resume()
+}
+
+func NewSource[OUT any](
+	name string,
+	options ...sourceOption[OUT],
+) *Source[OUT] {
+	base := Base{
+		Name: name,
+	}
+	return &Source[OUT]{
+		Base:       base,
+		SourceBase: *NewSourceBase[OUT](&base, options...),
+	}
+}
+
+// SourceBase is the base class of a source stage.
+type SourceBase[OUT any] struct {
+	base *Base // Reference to Base:
+
+	// Own fields:
+	OutgoingCh chan OUT   // Data to the next stage goes here.
+	NextErrCh  chan error // Next stage's error channel.
+
+	GenerateFunc  func() (OUT, error)
+	OutChSelector func(data OUT) int // Selects which outgoing channel to use.
+}
+
+func NewSourceBase[OUT any](
+	base *Base, // Reference to the one in Base.
+	options ...sourceOption[OUT],
+) *SourceBase[OUT] {
+	s := &SourceBase[OUT]{
+		base: base,
+	}
+	for _, opt := range options {
+		opt(s)
+	}
+	return s
+}
+
+type sourceOption[OUT any] func(*SourceBase[OUT])
 
 func WithGenerateFunction[OUT any](
 	generateFunc func() (OUT, error),
-) sourceOptions[OUT] {
-	return func(s *Source[OUT]) {
+) sourceOption[OUT] {
+	return func(s *SourceBase[OUT]) {
 		s.GenerateFunc = generateFunc
 	}
 }
 
-func (s *Source[OUT]) Resume() {
-	*s.ErrCh = make(chan error)
+func (s *SourceBase[OUT]) Prepare() {
+	s.OutgoingCh = make(chan OUT)
+}
+
+func (s *SourceBase[OUT]) Resume() {
 	go s.generateData()
 }
 
-func (s *Source[OUT]) StopAndWait() error {
+func (s *SourceBase[OUT]) StopAndWait() error {
 	return nil
 }
 
-func (s *Source[OUT]) generateData() {
+func (s *SourceBase[OUT]) generateData() {
+	var foundError error
+generateData:
 	for {
-		d, err := s.GenerateFunc()
-		if err == NoMoreData {
-			break
-		}
-		if err != nil {
+		out, err := s.GenerateFunc()
+		switch err {
+		case nil:
+		case NoMoreData:
+			debugPrintf("[%s] generate function indicates no more data\n", s.base.Name)
+			break generateData
+		case StopNoError:
+			debugPrintf("[%s] generate function indicates to stop\n", s.base.Name)
+			return
+		default:
 			// Stop processing pipeline.
-			close(*s.OutgoingCh)
+			debugPrintf("[%s] received error from generate function: %s\n", s.base.Name, err)
+			foundError = err
+			break generateData
 		}
-		*s.OutgoingCh <- d
+
+		// We got data, nil error.
+		err = s.sendStopOrErrFromNext(out)
+		switch err {
+		case SentNoError:
+			// Success writing to the outgoing channel, nothing else to do.
+			debugPrintf("[%s] sent %v\n", s.base.Name, out)
+		case StopNoError:
+			// We have been instructed to stop, without reading any other channel.
+			debugPrintf("[%s] instructed to stop\n", s.base.Name)
+			return
+		default:
+			debugPrintf("[%s] ERROR while sending %v: %s\n", s.base.Name, out, err)
+			// We received an error from next stage while trying to write to it.
+			foundError = err
+			break generateData
+			// deleteme TODO: unify the stop and errFromNextStage cases
+		}
+	}
+	s.breakPipelineAndWait(foundError)
+}
+
+func (s *SourceBase[OUT]) sendStopOrErrFromNext(out OUT) error {
+	// We attempt to write the out data to the outgoing channel.
+	// Because this can block, we must also listen to any error coming from the
+	// next stage, plus our own stop signal.
+	debugPrintf("[%s] attempting to send %v\n", s.base.Name, out)
+	select {
+	case s.OutgoingCh <- out:
+		// Success writing to the outgoing channel, nothing else to do.
+		return SentNoError
+	case err := <-s.NextErrCh:
+		// We received an error from next stage while trying to write to it.
+		return err
+	// case <-s.StopCh:
+	case <-s.base.StopCh:
+		// We have been instructed to stop, without reading any other channel.
+		return StopNoError
 	}
 }
 
-type noMoreDataError struct{}
+func (s *SourceBase[OUT]) breakPipelineAndWait(initialErr error) error {
+	debugPrintf("[%s] closing output channel\n", s.base.Name)
+	// Indicate next stage to stop.
+	close(s.OutgoingCh)
+	// Read its status:
+	debugPrintf("[%s] waiting for next stage's error\n", s.base.Name)
+	err := <-s.NextErrCh
+	debugPrintf("[%s] read next stage's error: %v\n", s.base.Name, err)
+	// Coalesce with any error at this stage.
+	err = util.ErrorsCoalesce(initialErr, err)
 
-func (noMoreDataError) Error() string { return "" }
+	s.base.breakPipeline(initialErr)
+	// // Propagate error backwards.
+	// s.ErrCh <- err
+	// // Close our own error channel.
+	// close(s.ErrCh)
 
-var NoMoreData = noMoreDataError{}
+	// // Close the stop channel indicator.
+	// close(s.StopCh)
+	return err
+}
+
+type noError struct{}
+
+func (noError) Error() string { return "" }
+
+var NoMoreData = noError{}
+var SentNoError = noError{}
+var StopNoError = noError{}
+
+// func IsNoError(err error) (noError, bool) {
+// 	noErr,ok:= err.(noError)
+// }

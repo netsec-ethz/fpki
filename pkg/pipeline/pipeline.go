@@ -32,6 +32,7 @@ func StageAtIndex[IN, OUT any](p *Pipeline, index int) *Stage[IN, OUT] {
 }
 
 func (p *Pipeline) Resume() {
+	p.prepare()
 	p.LinkFunc(p)
 	// Now resume in reverse order
 	for i := len(p.Stages) - 1; i >= 0; i-- {
@@ -41,4 +42,10 @@ func (p *Pipeline) Resume() {
 
 func (p *Pipeline) Wait() error {
 	return nil
+}
+
+func (p *Pipeline) prepare() {
+	for _, s := range p.Stages {
+		s.Prepare()
+	}
 }
