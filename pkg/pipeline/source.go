@@ -19,12 +19,12 @@ func NewSource[OUT any](
 }
 
 func WithGeneratorFunction[OUT any](
-	generator func() (OUT, error),
+	generator func() (OUT, int, error),
 ) stageOption[none, OUT] {
 	return func(s *Stage[none, OUT]) {
-		s.ProcessFunc = func(in none) (OUT, error) {
-			out, err := generator()
-			return out, err
+		s.ProcessFunc = func(in none) (OUT, int, error) {
+			out, outChIndex, err := generator()
+			return out, outChIndex, err
 		}
 	}
 }

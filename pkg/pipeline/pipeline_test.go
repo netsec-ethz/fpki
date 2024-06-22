@@ -28,26 +28,27 @@ func TestPipeline(t *testing.T) {
 		WithStages(
 			NewSource[int](
 				"a",
-				WithGeneratorFunction(func() (int, error) {
+				WithGeneratorFunction(func() (int, int, error) {
 					// As a source of data.
 					inData := []int{1, 2, 3}
 					debugPrintf("[TEST] source index %d\n", currentIndex)
 					if currentIndex >= len(inData) {
-						return 0, NoMoreData
+						return 0, 0, NoMoreData
 					}
 					defer func() { currentIndex++ }()
-					return inData[currentIndex], nil
+					return inData[currentIndex], 0, nil
 				}),
 			),
 			NewStage[int, int](
 				"b",
-				WithProcessFunction(func(in int) (int, error) {
+				WithProcessFunction(func(in int) (int, int, error) {
 					// This b stage fails when it receives a 4.
 					if in == 2 && firstTimeErrorAtB {
 						firstTimeErrorAtB = false
-						return 0, fmt.Errorf("error at stage b")
+						debugPrintf("[TEST] emitting error ([b] stage)\n")
+						return 0, 0, fmt.Errorf("error at stage b")
 					}
-					return in + 1, nil
+					return in + 1, 0, nil
 				}),
 			),
 			NewSink[int](
@@ -64,7 +65,7 @@ func TestPipeline(t *testing.T) {
 	// Resume all stages. There is nobody reading the last channel, so the pipeline will stall.
 	p.Resume()
 	err := p.Wait()
-	debugPrintf("[TEST] error 1: %s\n", err)
+	debugPrintf("[TEST] error 1: %v\n", err)
 	require.Error(t, err)
 
 	// Check pipelines have been closed.
@@ -80,12 +81,12 @@ func TestPipeline(t *testing.T) {
 	checkClosed(t, a.IncomingCh)
 	checkClosed(t, b.IncomingCh)
 	checkClosed(t, c.IncomingCh)
-	checkClosed(t, a.OutgoingCh)
-	checkClosed(t, b.OutgoingCh)
-	checkClosed(t, c.OutgoingCh)
-	checkClosed(t, a.NextErrCh)
-	checkClosed(t, b.NextErrCh)
-	checkClosed(t, c.NextErrCh)
+	checkAllClosed(t, a.OutgoingChs)
+	checkAllClosed(t, b.OutgoingChs)
+	checkAllClosed(t, c.OutgoingChs)
+	checkAllClosed(t, a.NextErrChs)
+	checkAllClosed(t, b.NextErrChs)
+	checkAllClosed(t, c.NextErrChs)
 
 	currentIndex = len(gotValues) // Because of the errors, recover.
 
@@ -109,12 +110,12 @@ func TestPipeline(t *testing.T) {
 	checkClosed(t, a.IncomingCh)
 	checkClosed(t, b.IncomingCh)
 	checkClosed(t, c.IncomingCh)
-	checkClosed(t, a.OutgoingCh)
-	checkClosed(t, b.OutgoingCh)
-	checkClosed(t, c.OutgoingCh)
-	checkClosed(t, a.NextErrCh)
-	checkClosed(t, b.NextErrCh)
-	checkClosed(t, c.NextErrCh)
+	checkAllClosed(t, a.OutgoingChs)
+	checkAllClosed(t, b.OutgoingChs)
+	checkAllClosed(t, c.OutgoingChs)
+	checkAllClosed(t, a.NextErrChs)
+	checkAllClosed(t, b.NextErrChs)
+	checkAllClosed(t, c.NextErrChs)
 }
 
 func TestStop(t *testing.T) {
@@ -138,19 +139,19 @@ func TestStop(t *testing.T) {
 		WithStages(
 			NewSource[int](
 				"a",
-				WithGeneratorFunction(func() (int, error) {
+				WithGeneratorFunction(func() (int, int, error) {
 					// As a source of data.
-					return 1, nil
+					return 1, 0, nil
 				}),
 			),
 			NewStage[int, int](
 				"b",
-				WithProcessFunction(func(in int) (int, error) {
+				WithProcessFunction(func(in int) (int, int, error) {
 					defer func() { processedAtBcount++ }()
 					if processedAtBcount == 10 {
 						stopB.Done()
 					}
-					return in + 1, nil
+					return in + 1, 0, nil
 				}),
 			),
 			NewSink[int](
@@ -193,19 +194,19 @@ func TestBundleSize(t *testing.T) {
 		WithStages(
 			NewSource[int](
 				"a",
-				WithGeneratorFunction(func() (int, error) {
+				WithGeneratorFunction(func() (int, int, error) {
 					// As a source of data.
-					return 1, nil
+					return 1, 0, nil
 				}),
 			),
 			NewStage[int, int](
 				"b",
-				WithProcessFunction(func(in int) (int, error) {
+				WithProcessFunction(func(in int) (int, int, error) {
 					defer func() { processedAtBcount++ }()
 					if processedAtBcount == bundleSize {
-						return 0, NoMoreData
+						return 0, 0, NoMoreData
 					}
-					return in + 1, nil
+					return in + 1, 0, nil
 				}),
 			),
 			NewSink[int](
@@ -230,4 +231,10 @@ func TestBundleSize(t *testing.T) {
 func checkClosed[T any](t *testing.T, ch chan T) {
 	_, ok := <-ch
 	require.False(t, ok)
+}
+
+func checkAllClosed[T any](t *testing.T, chs []chan T) {
+	for _, ch := range chs {
+		checkClosed(t, ch)
+	}
 }

@@ -21,9 +21,9 @@ func WithSinkFunction[IN any](
 
 	return func(s *Stage[IN, none]) {
 		// Just set the process function to call the user's one.
-		s.ProcessFunc = func(in IN) (none, error) {
+		s.ProcessFunc = func(in IN) (none, int, error) {
 			err := processFunc(in)
-			return none{}, err
+			return none{}, 0, err
 		}
 	}
 }
@@ -38,13 +38,13 @@ func (s *Sink[IN]) Prepare() {
 	// This channel will be closed by the stage during processing in case of no more data,
 	// error, or stop.
 	// The next error channel can be closed after no more processing is done.
-	s.OutgoingCh = make(chan none)
-	s.NextErrCh = make(chan error)
+	s.OutgoingChs = []chan none{make(chan none)}
+	s.NextErrChs = []chan error{make(chan error)}
 	go func() {
 		// Block until the processing has closed the outgoing channel.
-		for range s.OutgoingCh {
+		for range s.OutgoingChs[0] {
 		}
-		close(s.NextErrCh)
+		close(s.NextErrChs[0])
 	}()
 
 }
