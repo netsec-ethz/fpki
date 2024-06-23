@@ -1,0 +1,56 @@
+package pipeline
+
+type Pipeline struct {
+	LinkFunc func(p *Pipeline)
+	Stages   []StageLike
+}
+
+func NewPipeline(
+	linkFunc func(p *Pipeline),
+	options ...pipelineOptions) *Pipeline {
+	p := &Pipeline{
+		LinkFunc: linkFunc,
+	}
+	for _, opt := range options {
+		opt(p)
+	}
+	return p
+}
+
+type pipelineOptions func(*Pipeline)
+
+func WithStages(stages ...StageLike) pipelineOptions {
+	return func(p *Pipeline) {
+		stages := stages
+		p.Stages = make([]StageLike, len(stages))
+		copy(p.Stages, stages)
+	}
+}
+
+func StageAtIndex[IN, OUT any](p *Pipeline, index int) *Stage[IN, OUT] {
+	return p.Stages[index].(*Stage[IN, OUT])
+}
+
+func (p *Pipeline) Resume() {
+	p.prepare()
+	p.LinkFunc(p)
+	// Now resume in reverse order
+	for i := len(p.Stages) - 1; i >= 0; i-- {
+		p.Stages[i].Resume()
+	}
+}
+
+func (p *Pipeline) Wait() error {
+	// The first stage is a source?
+	if source, ok := p.Stages[0].(SourceLike); ok {
+		return source.Wait()
+	}
+	// It is not a source, just treat it as a stage.
+	return <-p.Stages[0].ErrorChannel()
+}
+
+func (p *Pipeline) prepare() {
+	for _, s := range p.Stages {
+		s.Prepare()
+	}
+}
