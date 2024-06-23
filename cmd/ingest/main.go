@@ -145,22 +145,25 @@ func mainFunction() int {
 
 		dbManager := updater.NewManager(ctx, NumDBWriters, conn, MultiInsertSize,
 			2*time.Second, printStats)
-		proc := NewProcessor(dbManager)
+		proc := NewProcessor()
 		// Set parameters to the processor.
-		proc.BundleMaxSize = *bundleSize
-		proc.OnBundleFinished = func() {
-			// Called for intermediate bundles. Need to coalesce, update SMT and clean dirty.
-			fmt.Println("Another bundle ingestion finished.")
-			coalescePayloadsForDirtyDomains(ctx, conn)
-			updateSMT(ctx, conn)
-			cleanupDirty(ctx, conn)
-		}
+		// proc.BundleMaxSize = *bundleSize
+		// proc.OnBundleFinished = func() {
+		// 	// Called for intermediate bundles. Need to coalesce, update SMT and clean dirty.
+		// 	fmt.Println("Another bundle ingestion finished.")
+		// 	coalescePayloadsForDirtyDomains(ctx, conn)
+		// 	updateSMT(ctx, conn)
+		// 	cleanupDirty(ctx, conn)
+		// }
 
 		// Add the files to the processor.
 		proc.AddGzFiles(gzFiles)
 		proc.AddCsvFiles(csvFiles)
 
 		// Update certificates and chains, and wait until finished.
+		// Resume in reverse order.
+		dbManager.Resume()
+		proc.Resume()
 		exitIfError(proc.Wait())
 	}
 
