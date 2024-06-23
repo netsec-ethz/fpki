@@ -11,7 +11,7 @@ import (
 // a CSV file.
 // This structure contains the certificate itself, plus all its parents.
 type CertWithChainData struct {
-	CertID        *common.SHA256Output   // The ID (the SHA256) of the certificate.
+	CertID        common.SHA256Output    // The ID (the SHA256) of the certificate.
 	Cert          *ctx509.Certificate    // The payload of the certificate.
 	ChainPayloads []*ctx509.Certificate  // The payloads of the chain. Is nil if already cached.
 	ChainIDs      []*common.SHA256Output // The trust chain of the certificate.

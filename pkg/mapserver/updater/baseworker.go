@@ -41,6 +41,8 @@ func (w *baseWorker) Wait() error {
 	for e := range w.errChan {
 		if e != nil {
 			err = e
+			// deleteme test this and change comment of this function.
+			break
 		}
 	}
 	return err

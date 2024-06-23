@@ -26,7 +26,6 @@ type Manager struct {
 
 	IncomingCertChan   chan Certificate // Certificates arrive from this channel
 	IncomingDomainChan chan DirtyDomain // Not a pointer! domains are taken ownership here.
-	errChan            chan error
 }
 
 // NewManager creates a new manager and its workers.
@@ -52,7 +51,6 @@ func NewManager(
 		Stats:           NewStatistics(statsUpdateFreq, statsUpdateFunc),
 		ShardFuncCert:   selectPartition,
 		ShardFuncDomain: selectPartition,
-		errChan:         make(chan error),
 	}
 	m.CertWorkers = make([]*CertWorker, workerCount)
 	for i := 0; i < workerCount; i++ {
@@ -90,7 +88,16 @@ func (m *Manager) Stop() {
 }
 
 func (m *Manager) Wait() error {
-	return <-m.errChan
+	// If there is any error from the cert or domain workers, stop everything early.
+	err := m.reportAnyError()
+	if err != nil {
+		// Stop all workers. This closes the incoming channel for all of them.
+		m.stopCertWorkers()
+		m.stopDomainWorkers()
+	}
+
+	// Report this error (or nil).
+	return err
 }
 
 func (m *Manager) resume() {
@@ -107,9 +114,6 @@ func (m *Manager) resume() {
 	pipelineWaitGroup := sync.WaitGroup{}
 	pipelineWaitGroup.Add(2) // Two concurrent pipelines
 
-	var errInCerts error
-	var errInDomains error
-
 	// Second pipeline: domain workers read from here and send to the sink (the DB).
 	go func() {
 		// Second pipeline: move domains to workers' second pipeline.
@@ -122,7 +126,7 @@ func (m *Manager) resume() {
 		}
 
 		// After closing the incoming domain channel, wait for all domains to be processed.
-		errInDomains = m.stopAndWaitForDomainWorkers()
+		m.stopDomainWorkers()
 	}()
 
 	// First pipeline: cert workers will read from here and send to the second pipeline.
@@ -138,7 +142,7 @@ func (m *Manager) resume() {
 			m.CertWorkers[w].IncomingChan <- c
 		}
 
-		errInCerts = m.stopAndWaitForCertWorkers()
+		m.stopCertWorkers()
 
 		// Since all certificates have been processed already, no worker will send a domain
 		// to the manager's incoming domain channel. We can close it now.
@@ -146,13 +150,8 @@ func (m *Manager) resume() {
 		close(m.IncomingDomainChan)
 	}()
 
-	m.Stats.Start()
+	// m.Stats.Start()
 	pipelineWaitGroup.Wait()
-
-	m.Stats.Stop() // stop statistics printing
-
-	// Unblock any previous steps in the pipeline and return last error
-	m.errChan <- util.ErrorsCoalesce(errInCerts, errInDomains)
 }
 
 func (m *Manager) resumeCertWorkers() {
@@ -183,38 +182,75 @@ func (m *Manager) resumeDomainWorkers() {
 	wg.Wait()
 }
 
-// stopAndWaitForCertWorkers waits for all workers to process all certificates.
+// stopCertWorkers waits for all workers to process all certificates.
 // It closes their cert incoming channel, and waits for them to finish.
-func (m *Manager) stopAndWaitForCertWorkers() error {
+func (m *Manager) stopCertWorkers() {
 	wg := sync.WaitGroup{}
 	wg.Add(len(m.CertWorkers))
 
-	errors := make([]error, len(m.CertWorkers))
-	for i, w := range m.CertWorkers {
-		i, w := i, w
+	for _, w := range m.CertWorkers {
+		w := w
 		go func() {
 			defer wg.Done()
 			w.Stop()
-			errors[i] = w.Wait()
 		}()
 	}
-	wg.Wait() // until all workers have processed all certs
-	return util.ErrorsCoalesce(errors...)
+	wg.Wait() // until we signaled all workers to stop.
 }
 
-func (m *Manager) stopAndWaitForDomainWorkers() error {
+func (m *Manager) stopDomainWorkers() {
 	wg := sync.WaitGroup{}
 	wg.Add(len(m.DomainWorkers))
 
-	errors := make([]error, len(m.CertWorkers))
-	for i, w := range m.DomainWorkers {
-		i, w := i, w
+	for _, w := range m.DomainWorkers {
+		w := w
 		go func() {
 			defer wg.Done()
 			w.Stop()
-			errors[i] = w.Wait()
 		}()
 	}
-	wg.Wait() // until all workers have processed all domains
-	return util.ErrorsCoalesce(errors...)
+	wg.Wait() // until we signaled all workers to stop.
+}
+
+// reportAnyError returns the first non nil error encountered, or nil if none was found.
+func (m *Manager) reportAnyError() error {
+	// The errFound channel will have the first non-nil error available, or nil if none to report.
+	errFound := make(chan error)
+
+	// We will use the wait group to wait for all reports.
+	wg := sync.WaitGroup{}
+
+	wg.Add(len(m.CertWorkers))
+	for _, w := range m.CertWorkers {
+		w := w
+		go func() {
+			defer wg.Done()
+			if err := w.Wait(); err != nil {
+				errFound <- err
+				return
+			}
+		}()
+	}
+
+	wg.Add(len(m.DomainWorkers))
+	for _, w := range m.DomainWorkers {
+		w := w
+		go func() {
+			defer wg.Done()
+			if err := w.Wait(); err != nil {
+				errFound <- err // Report non-nil error.
+			}
+		}()
+	}
+
+	// Now, we wait for all the previous routines to finish, but in a goroutine.
+	go func() {
+		wg.Wait()
+		// At this point, we finished waiting for all the reports and none had errors.
+		// This means no routine wrote to errFound. Write nil here to unblock the function.
+		errFound <- nil
+	}()
+
+	return <-errFound
+
 }
