@@ -9,6 +9,7 @@ import (
 )
 
 func TestPipeline(t *testing.T) {
+	defer printAllDebugLines()
 	// Prepare test.
 	gotValues := make([]int, 0)
 	currentIndex := 0
@@ -22,8 +23,8 @@ func TestPipeline(t *testing.T) {
 			b := p.Stages[1].(*Stage[int, int])
 			c := p.Stages[2].(*Sink[int])
 
-			LinkStages(SourceAsStage(a), b)
-			LinkStages(b, SinkAsStage(c))
+			LinkStagesFanOut(SourceAsStage(a), b)
+			LinkStagesFanOut(b, SinkAsStage(c))
 		},
 		WithStages(
 			NewSource[int](
@@ -45,7 +46,7 @@ func TestPipeline(t *testing.T) {
 					// This b stage fails when it receives a 4.
 					if in == 2 && firstTimeErrorAtB {
 						firstTimeErrorAtB = false
-						debugPrintf("[TEST] emitting error ([b] stage)\n")
+						debugPrintf("[TEST] emitting ERROR ([b] stage)\n")
 						return 0, 0, fmt.Errorf("error at stage b")
 					}
 					return in + 1, 0, nil
@@ -78,9 +79,9 @@ func TestPipeline(t *testing.T) {
 	checkClosed(t, a.StopCh)
 	checkClosed(t, b.StopCh)
 	checkClosed(t, c.StopCh)
-	checkClosed(t, a.IncomingCh)
-	checkClosed(t, b.IncomingCh)
-	checkClosed(t, c.IncomingCh)
+	checkAllClosed(t, a.IncomingChs)
+	checkAllClosed(t, b.IncomingChs)
+	checkAllClosed(t, c.IncomingChs)
 	checkAllClosed(t, a.OutgoingChs)
 	checkAllClosed(t, b.OutgoingChs)
 	checkAllClosed(t, c.OutgoingChs)
@@ -107,9 +108,9 @@ func TestPipeline(t *testing.T) {
 	checkClosed(t, a.StopCh)
 	checkClosed(t, b.StopCh)
 	checkClosed(t, c.StopCh)
-	checkClosed(t, a.IncomingCh)
-	checkClosed(t, b.IncomingCh)
-	checkClosed(t, c.IncomingCh)
+	checkAllClosed(t, a.IncomingChs)
+	checkAllClosed(t, b.IncomingChs)
+	checkAllClosed(t, c.IncomingChs)
 	checkAllClosed(t, a.OutgoingChs)
 	checkAllClosed(t, b.OutgoingChs)
 	checkAllClosed(t, c.OutgoingChs)
@@ -119,6 +120,7 @@ func TestPipeline(t *testing.T) {
 }
 
 func TestStop(t *testing.T) {
+	defer printAllDebugLines()
 	// Prepare test.
 	gotValues := make([]int, 0)
 	processedAtBcount := 0
@@ -133,8 +135,8 @@ func TestStop(t *testing.T) {
 			b := p.Stages[1].(*Stage[int, int])
 			c := p.Stages[2].(*Sink[int])
 
-			LinkStages(SourceAsStage(a), b)
-			LinkStages(b, SinkAsStage(c))
+			LinkStagesFanOut(SourceAsStage(a), b)
+			LinkStagesFanOut(b, SinkAsStage(c))
 		},
 		WithStages(
 			NewSource[int](
@@ -175,6 +177,7 @@ func TestStop(t *testing.T) {
 }
 
 func TestBundleSize(t *testing.T) {
+	defer printAllDebugLines()
 	// Prepare test.
 	gotValues := make([]int, 0)
 	bundleSize := 4
@@ -188,8 +191,8 @@ func TestBundleSize(t *testing.T) {
 			b := p.Stages[1].(*Stage[int, int])
 			c := p.Stages[2].(*Sink[int])
 
-			LinkStages(SourceAsStage(a), b)
-			LinkStages(b, SinkAsStage(c))
+			LinkStagesFanOut(SourceAsStage(a), b)
+			LinkStagesFanOut(b, SinkAsStage(c))
 		},
 		WithStages(
 			NewSource[int](
@@ -226,6 +229,82 @@ func TestBundleSize(t *testing.T) {
 	err := p.Wait()
 	require.NoError(t, err)
 	require.Equal(t, len(gotValues), bundleSize)
+}
+
+func TestMultiChannel(t *testing.T) {
+	defer printAllDebugLines()
+	// Prepare test.
+	gotValues := make([]int, 0)
+	currentIndex := 0
+	firstTimeErrorAtB := true
+
+	// Create pipeline.
+	p := NewPipeline(
+		func(p *Pipeline) {
+			// 1->2->3->4
+			//    ⎣_>4
+			s1 := p.Stages[0].(*Source[int])
+			s2 := p.Stages[1].(*Stage[int, int])
+			s3 := p.Stages[2].(*Stage[int, int])
+			s4 := p.Stages[3].(*Sink[int])
+
+			LinkStagesFanOut(SourceAsStage(s1), s2)
+			LinkStagesAt(s2, 0, s3, 0)
+			LinkStagesAt(s2, 1, SinkAsStage(s4), 0)
+			LinkStagesAt(s3, 0, SinkAsStage(s4), 1)
+		},
+		WithStages(
+			NewSource[int](
+				"1-source",
+				WithGeneratorFunction(func() (int, int, error) {
+					// As a source of data.
+					inData := []int{1, 2, 3}
+					debugPrintf("[TEST] source index %d\n", currentIndex)
+					if currentIndex >= len(inData) {
+						return 0, 0, NoMoreData
+					}
+					defer func() { currentIndex++ }()
+					return inData[currentIndex], 0, nil
+				}),
+			),
+			// Stage 2 has two output channels, to 3 and to 4.
+			NewStage[int, int](
+				"2-add1",
+				WithProcessFunction(func(in int) (int, int, error) {
+					// This b stage fails when it receives a 4.
+					_ = firstTimeErrorAtB
+					// if in == 2 && firstTimeErrorAtB {
+					// 	firstTimeErrorAtB = false
+					// 	debugPrintf("[TEST] emitting error ([b] stage)\n")
+					// 	return 0, 0, fmt.Errorf("error at stage b")
+					// }
+					return in + 1, 0, nil
+				}),
+				WithMultiOutputChannels[int, int](2), // to 3 and 4
+			),
+			NewStage[int, int](
+				"3-multiply2",
+				WithProcessFunction(func(in int) (int, int, error) {
+					return in * 2, 0, nil
+				}),
+			),
+			NewSink[int](
+				"4-sink",
+				WithSinkFunction(func(in int) error {
+					gotValues = append(gotValues, in)
+					debugPrintf("[TEST] got %d\n", in)
+					return nil
+				}),
+				WithMultiInputChannels[int, none](2),
+			),
+		),
+	)
+
+	// Resume all stages. There is nobody reading the last channel, so the pipeline will stall.
+	p.Resume()
+	err := p.Wait()
+	debugPrintf("[TEST] error 1: %v\n", err)
+	require.NoError(t, err)
 }
 
 func checkClosed[T any](t *testing.T, ch chan T) {

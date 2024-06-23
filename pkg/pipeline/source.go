@@ -13,9 +13,13 @@ func NewSource[OUT any](
 	name string,
 	options ...stageOption[none, OUT],
 ) *Source[OUT] {
-	return &Source[OUT]{
+	s := &Source[OUT]{
 		Stage: *NewStage[none, OUT](name, options...),
 	}
+	for _, opt := range options {
+		opt(SourceAsStage(s))
+	}
+	return s
 }
 
 func WithGeneratorFunction[OUT any](
@@ -44,10 +48,10 @@ func (s *Source[OUT]) Prepare() {
 	go func() {
 		for {
 			select {
-			case s.IncomingCh <- none{}:
+			case s.IncomingChs[0] <- none{}:
 			case err := <-s.ErrCh:
 				// Close incoming.
-				close(s.IncomingCh)
+				close(s.IncomingChs[0])
 				s.TopErrCh <- err // might block, but this goroutine is done anyways.
 				return
 			}

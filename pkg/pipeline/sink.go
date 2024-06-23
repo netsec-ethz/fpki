@@ -1,6 +1,5 @@
 package pipeline
 
-// type Sink[IN any] Stage[IN, none]
 type Sink[IN any] struct {
 	Stage[IN, none]
 }
@@ -9,10 +8,13 @@ func NewSink[IN any](
 	name string,
 	options ...stageOption[IN, none],
 ) *Sink[IN] {
-	return &Sink[IN]{
+	s := &Sink[IN]{
 		Stage: *NewStage[IN, none](name, options...),
 	}
-	// return (*Sink[IN])(NewStage[IN, none](name, options...))
+	for _, opt := range options {
+		opt(SinkAsStage(s))
+	}
+	return s
 }
 
 func WithSinkFunction[IN any](
@@ -58,6 +60,5 @@ func (s *Sink[IN]) StopAndWait() error {
 }
 
 func SinkAsStage[IN any](s *Sink[IN]) *Stage[IN, none] {
-	// return (*Stage[IN, none])(s)
 	return &s.Stage
 }

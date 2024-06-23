@@ -1,10 +1,10 @@
 package pipeline
 
 import (
-	"bufio"
 	"fmt"
-	"os"
+	"sort"
 	"sync"
+	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
@@ -21,9 +21,10 @@ type Stage[IN, OUT any] struct {
 	ErrCh  chan error // To be read by the previous stage (or trigger, if this is Source).
 	StopCh chan none  // Indicates to this stage to stop.
 
-	IncomingCh  chan IN      // Incoming data channel to process.
-	OutgoingChs []chan OUT   // Data to the next stages goes here.
-	NextErrChs  []chan error // Next stage's error channel.
+	IncomingChs               []chan IN    // Incoming data channel to process.
+	OutgoingChs               []chan OUT   // Data to the next stages goes here.
+	NextErrChs                []chan error // Next stage's error channel.
+	NextStagesAggregatedErrCh chan error   // Aggregated nexErrChs
 
 	ProcessFunc func(in IN) (OUT, int, error) // From IN to OUT, using outIndex.
 }
@@ -37,7 +38,8 @@ func NewStage[IN, OUT any](
 
 	s := &Stage[IN, OUT]{
 		Name:        name,
-		OutgoingChs: make([]chan OUT, 1), // Per default, just one channel
+		IncomingChs: make([]chan IN, 1),  // Per default, just one channel.
+		OutgoingChs: make([]chan OUT, 1), // Per default, just one channel.
 	}
 	for _, opt := range options {
 		opt(s)
@@ -64,8 +66,36 @@ func WithMultiOutputChannels[IN, OUT any](
 	}
 }
 
-// LinkStages links the possibly many outgoing channels to the incoming of the next ones.
-func LinkStages[IN, OUT, LAST any](
+func WithMultiInputChannels[IN, OUT any](
+	numberOfChannels int) stageOption[IN, OUT] {
+
+	return func(s *Stage[IN, OUT]) {
+		s.IncomingChs = make([]chan IN, numberOfChannels)
+	}
+}
+
+// LinkStagesAt links an outgoing channel of a stage to an incoming one of another.
+func LinkStagesAt[IN, OUT, LAST any](
+	prev *Stage[IN, OUT],
+	outIndex int,
+	next *Stage[OUT, LAST],
+	inIndex int,
+) {
+	debugPrintf("linking [%s]:%p with [%s]:%p\n",
+		prev.Name, &prev.OutgoingChs[outIndex],
+		next.Name, &next.IncomingChs[inIndex],
+	)
+	prev.OutgoingChs[outIndex] = next.IncomingChs[inIndex]
+	debugPrintf("linking [%s]:%p with [%s]:%p\n",
+		prev.Name, &prev.NextErrChs,
+		next.Name, &next.ErrCh,
+	)
+	prev.NextErrChs[outIndex] = next.ErrCh
+}
+
+// LinkStagesFanOut connects the multiple output channels of a stage to the next stages.
+// The next stages channel index 0 is always used.
+func LinkStagesFanOut[IN, OUT, LAST any](
 	prev *Stage[IN, OUT],
 	nextStages ...*Stage[OUT, LAST],
 ) {
@@ -73,34 +103,31 @@ func LinkStages[IN, OUT, LAST any](
 		panic("Incorrect number of outgoing channels and next stages")
 	}
 	for i, next := range nextStages {
-
-		debugPrintf("linking [%s]:%p with [%s]:%p\n",
-			prev.Name, &prev.OutgoingChs[i],
-			next.Name, &next.IncomingCh,
-		)
-		prev.OutgoingChs[i] = next.IncomingCh
-		debugPrintf("linking [%s]:%p with [%s]:%p\n",
-			prev.Name, &prev.NextErrChs,
-			next.Name, &next.ErrCh,
-		)
-		prev.NextErrChs[i] = next.ErrCh
+		LinkStagesAt(prev, i, next, 0)
 	}
 }
 
 func (s *Stage[IN, OUT]) Prepare() {
 	s.ErrCh = make(chan error)
 	s.StopCh = make(chan none)
-	s.IncomingCh = make(chan IN)
-	s.OutgoingChs = make([]chan OUT, len(s.OutgoingChs))
+
+	for i := range s.IncomingChs {
+		s.IncomingChs[i] = make(chan IN)
+	}
 	for i := range s.OutgoingChs {
 		s.OutgoingChs[i] = make(chan OUT)
 	}
 	s.NextErrChs = make([]chan error, len(s.OutgoingChs))
+
+	// Cannot aggregate the error channels here, as they will be inserted after linking.
 }
 
 // Resume resumes processing from this stage.
 // This function creates new channels for the incoming data, error and stop channels.
 func (s *Stage[IN, OUT]) Resume() {
+	// The aggregated channel will receive error messages from the N next stage error channels.
+	// All the nextStageErrCh are created and ready at this point.
+	s.NextStagesAggregatedErrCh = s.aggregateNextErrChannels()
 	go s.processThisStage()
 }
 
@@ -122,7 +149,7 @@ func (s *Stage[IN, OUT]) ErrorChannel() chan error {
 }
 
 func (s *Stage[IN, OUT]) breakPipelineAndWait(initialErr error) error {
-	debugPrintf("[%s] exiting _____________________________\n", s.Name)
+	debugPrintf("[%s] exiting _____________________________ err=%v\n", s.Name, initialErr)
 	debugPrintf("[%s] closing output channel %p\n", s.Name, &s.OutgoingChs)
 	// time.Sleep(10 * time.Millisecond)
 	// Indicate next stage to stop.
@@ -131,12 +158,10 @@ func (s *Stage[IN, OUT]) breakPipelineAndWait(initialErr error) error {
 	}
 	// Read its status:
 	debugPrintf("[%s] waiting for next stage's error\n", s.Name)
-	for _, nextErrCh := range s.NextErrChs {
-		err := <-nextErrCh
-		debugPrintf("[%s] read next stage's error: %v\n", s.Name, err)
-		// Coalesce with any error at this stage.
-		initialErr = util.ErrorsCoalesce(initialErr, err)
-	}
+	err := <-s.NextStagesAggregatedErrCh
+	debugPrintf("[%s] read next stage's error: %v\n", s.Name, err)
+	// Coalesce with any error at this stage.
+	initialErr = util.ErrorsCoalesce(initialErr, err)
 
 	// Propagate error backwards.
 	debugPrintf("[%s] Base: breaking pipeline\n", s.Name)
@@ -153,23 +178,23 @@ func (s *Stage[IN, OUT]) breakPipelineAndWait(initialErr error) error {
 }
 
 func (s *Stage[IN, OUT]) processThisStage() {
-	// The aggregated channel will receive error messages from the N next stage error channels.
-	nextStagesAggregatedErrCh := s.aggregateNextErrChannels()
+
+	// The aggregated channel will receive all incoming data.
+	aggregatedIncomeCh := s.aggregateIncomingChannels()
 	var foundError error
 readIncoming:
 	for {
-
 		select {
 		case <-s.StopCh:
 			// We have been instructed to stop, without reading any other channel.
 			debugPrintf("[%s] generate function indicates to stop\n", s.Name)
 			return
 
-		case err := <-nextStagesAggregatedErrCh:
+		case err := <-s.NextStagesAggregatedErrCh:
 			debugPrintf("[%s] got ERROR while reading incoming from next stage\n", s.Name)
 			foundError = err
 			break readIncoming
-		case in, ok := <-s.IncomingCh:
+		case in, ok := <-aggregatedIncomeCh:
 			if !ok {
 				// Incoming channel was closed. No data to be written to outgoing channel.
 				debugPrintf("[%s] generate function indicates no more data\n", s.Name)
@@ -195,7 +220,7 @@ readIncoming:
 			case s.OutgoingChs[outChIndex] <- out:
 				// Success writing to the outgoing channel, nothing else to do.
 				debugPrintf("[%s] sent %v\n", s.Name, out)
-			case err := <-nextStagesAggregatedErrCh:
+			case err := <-s.NextStagesAggregatedErrCh:
 				debugPrintf("[%s] ERROR while sending at channel %d the value %v: %v\n",
 					s.Name, outChIndex, out, err)
 				// We received an error from next stage while trying to write to it.
@@ -241,13 +266,34 @@ func (s *Stage[IN, OUT]) aggregateNextErrChannels() chan error {
 	return nextStagesAggregatedErrCh
 }
 
-func debugPrintf(format string, args ...any) {
-	var stdout = bufio.NewWriter(os.Stdout)
-	fmt.Fprintf(stdout, format, args...)
-	if err := stdout.Flush(); err != nil {
-		panic(err)
+func (s *Stage[IN, OUT]) aggregateIncomingChannels() chan IN {
+	// Create a new channel to aggregate all the incoming data from different channels.
+	aggregated := make(chan IN)
+
+	// The wait group serves to know when all incoming channels have been closed.
+	wg := sync.WaitGroup{}
+	wg.Add(len(s.IncomingChs))
+
+	// Aggregate any possible incoming data into the aggregated channel.
+	for _, incomingCh := range s.IncomingChs {
+		incomingCh := incomingCh // Local copy for the capture of the goroutine next.
+		go func() {
+			defer wg.Done()
+			for in := range incomingCh {
+				aggregated <- in
+			}
+			// When the incomingCh number i is closed, signal the wait group.
+		}()
 	}
-	// fmt.Printf(format, args...)
+
+	// Spin a goroutine to close the aggregated channel when all the incoming ones are closed.
+	go func() {
+		// Wait until all incomingCh have been closed.
+		wg.Wait()
+		// Now close the aggregated channel.
+		close(aggregated)
+	}()
+	return aggregated
 }
 
 type none struct{}
@@ -258,5 +304,34 @@ func (noError) Error() string { return "" }
 
 var NoMoreData = noError{}
 
-// var sentNoError = noError{}
-// var stopNoError = noError{}
+type debugLine struct {
+	Time time.Time
+	Line string
+}
+
+var debugLines []debugLine
+var debugLinesMu sync.Mutex
+
+func debugPrintf(format string, args ...any) {
+	t := time.Now()
+	line := fmt.Sprintf(format, args...)
+	debugLinesMu.Lock()
+	defer debugLinesMu.Unlock()
+	debugLines = append(debugLines, debugLine{
+		Time: t,
+		Line: line,
+	})
+}
+
+func printAllDebugLines() {
+	sort.Slice(debugLines, func(i, j int) bool {
+		return debugLines[i].Time.Before(debugLines[j].Time)
+	})
+	for i, d := range debugLines {
+		fmt.Printf("[%3d] [%30s] %s",
+			i,
+			d.Time.Format(time.StampNano),
+			d.Line,
+		)
+	}
+}
