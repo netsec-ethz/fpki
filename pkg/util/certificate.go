@@ -125,7 +125,7 @@ func UnfoldCerts(leafCerts []ctx509.Certificate, chains [][]*ctx509.Certificate,
 // Additionally, if the payload of any of the ancestors of the certificate is nil, this function
 // interprets it as the ancestor is already present in the DB, and thus will omit returning it
 // and any posterior ancestors.
-func UnfoldCert(leafCert *ctx509.Certificate, certID *common.SHA256Output,
+func UnfoldCert(leafCert *ctx509.Certificate, certID common.SHA256Output,
 	chain []*ctx509.Certificate, chainIDs []*common.SHA256Output,
 ) (
 	certs []ctx509.Certificate,
@@ -141,7 +141,7 @@ func UnfoldCert(leafCert *ctx509.Certificate, certID *common.SHA256Output,
 
 	// Always add the leaf certificate.
 	certs = append(certs, *leafCert)
-	certIDs = append(certIDs, *certID)
+	certIDs = append(certIDs, certID)
 	parentIDs = append(parentIDs, chainIDs[0])
 	names = append(names, ExtractCertDomains(leafCert))
 	// Add the intermediate certs iff their payload is not nil.
