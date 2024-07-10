@@ -295,7 +295,7 @@ func TestMultiChannel(t *testing.T) {
 					debugPrintf("[TEST] got %d\n", in)
 					return nil
 				}),
-				WithMultiInputChannels[int, none](2),
+				WithMultiInputChannels[int, None](2),
 			),
 		),
 	)

@@ -5,16 +5,16 @@ type SourceLike interface {
 }
 
 type Source[OUT any] struct {
-	Stage[none, OUT]
+	Stage[None, OUT]
 	TopErrCh chan error // This error is not propagated to other stages.
 }
 
 func NewSource[OUT any](
 	name string,
-	options ...stageOption[none, OUT],
+	options ...stageOption[None, OUT],
 ) *Source[OUT] {
 	s := &Source[OUT]{
-		Stage: *NewStage[none, OUT](name, options...),
+		Stage: *NewStage[None, OUT](name, options...),
 	}
 	for _, opt := range options {
 		opt(SourceAsStage(s))
@@ -24,11 +24,11 @@ func NewSource[OUT any](
 
 func WithGeneratorFunction[OUT any](
 	generator func() (OUT, int, error),
-) stageOption[none, OUT] {
-	return func(s *Stage[none, OUT]) {
-		s.ProcessFunc = func(in none) (OUT, int, error) {
+) stageOption[None, OUT] {
+	return func(s *Stage[None, OUT]) {
+		s.ProcessFunc = func(in None) ([]OUT, []int, error) {
 			out, outChIndex, err := generator()
-			return out, outChIndex, err
+			return []OUT{out}, []int{outChIndex}, err
 		}
 	}
 }
@@ -48,7 +48,7 @@ func (s *Source[OUT]) Prepare() {
 	go func() {
 		for {
 			select {
-			case s.IncomingChs[0] <- none{}:
+			case s.IncomingChs[0] <- None{}:
 			case err := <-s.ErrCh:
 				// Close incoming.
 				close(s.IncomingChs[0])
@@ -67,6 +67,6 @@ func (s *Source[OUT]) StopAndWait() error {
 	return SourceAsStage(s).StopAndWait()
 }
 
-func SourceAsStage[OUT any](s *Source[OUT]) *Stage[none, OUT] {
+func SourceAsStage[OUT any](s *Source[OUT]) *Stage[None, OUT] {
 	return &s.Stage
 }

@@ -1,15 +1,15 @@
 package pipeline
 
 type Sink[IN any] struct {
-	Stage[IN, none]
+	Stage[IN, None]
 }
 
 func NewSink[IN any](
 	name string,
-	options ...stageOption[IN, none],
+	options ...stageOption[IN, None],
 ) *Sink[IN] {
 	s := &Sink[IN]{
-		Stage: *NewStage[IN, none](name, options...),
+		Stage: *NewStage[IN, None](name, options...),
 	}
 	for _, opt := range options {
 		opt(SinkAsStage(s))
@@ -19,13 +19,13 @@ func NewSink[IN any](
 
 func WithSinkFunction[IN any](
 	processFunc func(in IN) error,
-) stageOption[IN, none] {
+) stageOption[IN, None] {
 
-	return func(s *Stage[IN, none]) {
+	return func(s *Stage[IN, None]) {
 		// Just set the process function to call the user's one.
-		s.ProcessFunc = func(in IN) (none, int, error) {
+		s.ProcessFunc = func(in IN) ([]None, []int, error) {
 			err := processFunc(in)
-			return none{}, 0, err
+			return nil, nil, err
 		}
 	}
 }
@@ -40,7 +40,7 @@ func (s *Sink[IN]) Prepare() {
 	// This channel will be closed by the stage during processing in case of no more data,
 	// error, or stop.
 	// The next error channel can be closed after no more processing is done.
-	s.OutgoingChs = []chan none{make(chan none)}
+	s.OutgoingChs = []chan None{make(chan None)}
 	s.NextErrChs = []chan error{make(chan error)}
 	go func() {
 		// Block until the processing has closed the outgoing channel.
@@ -59,6 +59,6 @@ func (s *Sink[IN]) StopAndWait() error {
 	return SinkAsStage(s).StopAndWait()
 }
 
-func SinkAsStage[IN any](s *Sink[IN]) *Stage[IN, none] {
+func SinkAsStage[IN any](s *Sink[IN]) *Stage[IN, None] {
 	return &s.Stage
 }

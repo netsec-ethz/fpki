@@ -14,19 +14,22 @@ type StageLike interface {
 	Resume()
 	StopAndWait() error
 	ErrorChannel() chan error
+	IncomingChanCount() int
+	OutgoingChanCount() int
 }
 
 type Stage[IN, OUT any] struct {
 	Name   string     // Name of the stage.
 	ErrCh  chan error // To be read by the previous stage (or trigger, if this is Source).
-	StopCh chan none  // Indicates to this stage to stop.
+	StopCh chan None  // Indicates to this stage to stop.
 
 	IncomingChs               []chan IN    // Incoming data channel to process.
 	OutgoingChs               []chan OUT   // Data to the next stages goes here.
 	NextErrChs                []chan error // Next stage's error channel.
 	NextStagesAggregatedErrCh chan error   // Aggregated nexErrChs
 
-	ProcessFunc func(in IN) (OUT, int, error) // From IN to OUT, using outIndex.
+	ProcessFunc    func(in IN) ([]OUT, []int, error) // From 1 IN to n OUT, using n channels.
+	onStopPipeline func(processErr error) error      // Event before stopping the pipeline.
 }
 
 var _ StageLike = &Stage[int, string]{}
@@ -40,6 +43,9 @@ func NewStage[IN, OUT any](
 		Name:        name,
 		IncomingChs: make([]chan IN, 1),  // Per default, just one channel.
 		OutgoingChs: make([]chan OUT, 1), // Per default, just one channel.
+		onStopPipeline: func(processErr error) error { // Noop.
+			return processErr
+		},
 	}
 	for _, opt := range options {
 		opt(s)
@@ -51,6 +57,18 @@ type stageOption[IN, OUT any] func(*Stage[IN, OUT])
 
 func WithProcessFunction[IN, OUT any](
 	processFunc func(IN) (OUT, int, error),
+) stageOption[IN, OUT] {
+
+	return func(s *Stage[IN, OUT]) {
+		s.ProcessFunc = func(in IN) ([]OUT, []int, error) {
+			out, ix, err := processFunc(in)
+			return []OUT{out}, []int{ix}, err
+		}
+	}
+}
+
+func WithProcessFunctionMultipleOutputs[IN, OUT any](
+	processFunc func(IN) ([]OUT, []int, error),
 ) stageOption[IN, OUT] {
 
 	return func(s *Stage[IN, OUT]) {
@@ -71,6 +89,14 @@ func WithMultiInputChannels[IN, OUT any](
 
 	return func(s *Stage[IN, OUT]) {
 		s.IncomingChs = make([]chan IN, numberOfChannels)
+	}
+}
+
+func WithOnStopPipeline[IN, OUT any](
+	handler func(processErr error) error,
+) stageOption[IN, OUT] {
+	return func(s *Stage[IN, OUT]) {
+		s.onStopPipeline = handler
 	}
 }
 
@@ -107,9 +133,17 @@ func LinkStagesFanOut[IN, OUT, LAST any](
 	}
 }
 
+func (s *Stage[IN, OUT]) IncomingChanCount() int {
+	return len(s.IncomingChs)
+}
+
+func (s *Stage[IN, OUT]) OutgoingChanCount() int {
+	return len(s.OutgoingChs)
+}
+
 func (s *Stage[IN, OUT]) Prepare() {
 	s.ErrCh = make(chan error)
-	s.StopCh = make(chan none)
+	s.StopCh = make(chan None)
 
 	for i := range s.IncomingChs {
 		s.IncomingChs[i] = make(chan IN)
@@ -139,7 +173,7 @@ func (s *Stage[IN, OUT]) StopAndWait() error {
 	// Also stop sending data to the outgoing channel. This means effectively, stop the
 	// working resume goroutine. We explicitly indicate the goroutine to finish and
 	// not to read any state from the next stage. We will do that here.
-	s.StopCh <- none{}
+	s.StopCh <- None{}
 
 	return s.breakPipelineAndWait(nil)
 }
@@ -178,7 +212,6 @@ func (s *Stage[IN, OUT]) breakPipelineAndWait(initialErr error) error {
 }
 
 func (s *Stage[IN, OUT]) processThisStage() {
-
 	// The aggregated channel will receive all incoming data.
 	aggregatedIncomeCh := s.aggregateIncomingChannels()
 	var foundError error
@@ -202,7 +235,7 @@ readIncoming:
 			}
 			debugPrintf("[%s] incoming %v\n", s.Name, in)
 
-			out, outChIndex, err := s.ProcessFunc(in)
+			outs, outChIndxs, err := s.ProcessFunc(in)
 			if err == NoMoreData {
 				// No more data, no error.
 				break readIncoming
@@ -212,27 +245,56 @@ readIncoming:
 				foundError = err
 				break readIncoming
 			}
-			// We attempt to write the out data to the outgoing channel.
-			// Because this can block, we must also listen to any error coming from the
-			// next stage, plus our own stop signal.
-			debugPrintf("[%s] attempting to send %v\n", s.Name, out)
-			select {
-			case s.OutgoingChs[outChIndex] <- out:
-				// Success writing to the outgoing channel, nothing else to do.
-				debugPrintf("[%s] sent %v\n", s.Name, out)
-			case err := <-s.NextStagesAggregatedErrCh:
-				debugPrintf("[%s] ERROR while sending at channel %d the value %v: %v\n",
-					s.Name, outChIndex, out, err)
-				// We received an error from next stage while trying to write to it.
-				foundError = err
-				break readIncoming
-			case <-s.StopCh:
-				// We have been instructed to stop, without reading any other channel.
-				debugPrintf("[%s] instructed to stop\n", s.Name)
+
+			// For each output spawn a go routine sending it to the appropriate channel.
+			wg := sync.WaitGroup{}
+			wg.Add(len(outs))
+			var shouldBreak bool
+			var shouldReturn bool
+
+			for i := range outs {
+				i := i
+				go func() {
+					defer wg.Done()
+					out := outs[i]
+					outChIndex := outChIndxs[i]
+					// We attempt to write the out data to the outgoing channel.
+					// Because this can block, we must also listen to any error coming from the
+					// next stage, plus our own stop signal.
+					debugPrintf("[%s] attempting to send %v\n", s.Name, out)
+					select {
+					case s.OutgoingChs[outChIndex] <- out:
+						// Success writing to the outgoing channel, nothing else to do.
+						debugPrintf("[%s] sent %v\n", s.Name, out)
+					case err := <-s.NextStagesAggregatedErrCh:
+						debugPrintf("[%s] ERROR while sending at channel %d the value %v: %v\n",
+							s.Name, outChIndex, out, err)
+						// We received an error from next stage while trying to write to it.
+						foundError = err
+						shouldBreak = true
+					case <-s.StopCh:
+						// We have been instructed to stop, without reading any other channel.
+						debugPrintf("[%s] instructed to stop\n", s.Name)
+						shouldReturn = true
+					}
+				}()
+			}
+			// Wait for all outputs to be sent.
+			wg.Wait()
+			// Determine the next action to do.
+			if shouldReturn {
 				return
 			}
-		}
-	}
+			if shouldBreak {
+				break readIncoming
+			}
+		} // end of select
+	} // end-for infinite loop with label readIncoming.
+
+	// Flag the about-to-stop pipeline event and use its error.
+	foundError = s.onStopPipeline(foundError)
+
+	// Stop pipeline.
 	s.breakPipelineAndWait(foundError)
 }
 
@@ -296,7 +358,7 @@ func (s *Stage[IN, OUT]) aggregateIncomingChannels() chan IN {
 	return aggregated
 }
 
-type none struct{}
+type None struct{}
 
 type noError struct{}
 
