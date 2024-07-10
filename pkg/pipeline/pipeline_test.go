@@ -307,6 +307,62 @@ func TestMultiChannel(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestMultipleOutputs(t *testing.T) {
+	defer printAllDebugLines()
+	// Prepare test.
+	gotValues := make([]int, 0)
+	currentIndex := 0
+
+	// Create pipeline.
+	p := NewPipeline(
+		func(p *Pipeline) {
+			// A->B->C
+			a := p.Stages[0].(*Source[int])
+			b := p.Stages[1].(*Stage[int, int])
+			c := p.Stages[2].(*Sink[int])
+
+			LinkStagesFanOut(SourceAsStage(a), b)
+			LinkStagesFanOut(b, SinkAsStage(c))
+		},
+		WithStages(
+			NewSource[int](
+				"a",
+				WithGeneratorFunction(func() (int, int, error) {
+					// As a source of data.
+					inData := []int{1, 2, 3}
+					debugPrintf("[TEST] source index %d\n", currentIndex)
+					if currentIndex >= len(inData) {
+						return 0, 0, NoMoreData
+					}
+					defer func() { currentIndex++ }()
+					return inData[currentIndex], 0, nil
+				}),
+			),
+			NewStage[int, int](
+				"b",
+				WithProcessFunctionMultipleOutputs(func(in int) ([]int, []int, error) {
+					return []int{in, in + 1}, []int{0, 0}, nil
+				}),
+			),
+			NewSink[int](
+				"c",
+				WithSinkFunction(func(in int) error {
+					debugPrintf("[TEST] got %d\n", in)
+					gotValues = append(gotValues, in)
+					return nil
+				}),
+			),
+		),
+	)
+
+	// Resume all stages. There is nobody reading the last channel, so the pipeline will stall.
+	p.Resume()
+	// Wait to stop the pipeline in the middle of the process.
+	err := p.Wait()
+	require.NoError(t, err)
+	require.ElementsMatch(t, []int{1, 2, 2, 3, 3, 4}, gotValues)
+}
+
 func checkClosed[T any](t *testing.T, ch chan T) {
 	_, ok := <-ch
 	require.False(t, ok)
