@@ -28,8 +28,9 @@ type Stage[IN, OUT any] struct {
 	NextErrChs                []chan error // Next stage's error channel.
 	NextStagesAggregatedErrCh chan error   // Aggregated nexErrChs
 
-	ProcessFunc    func(in IN) ([]OUT, []int, error) // From 1 IN to n OUT, using n channels.
-	onStopPipeline func(processErr error) error      // Event before stopping the pipeline.
+	ProcessFunc func(in IN) ([]OUT, []int, error) // From 1 IN to n OUT, using n channels.
+	// Before stopping the pipeline. This function allows processing before stopping the pipeline.
+	onNoMoreData func() ([]OUT, []int, error)
 }
 
 var _ StageLike = &Stage[int, string]{}
@@ -43,8 +44,8 @@ func NewStage[IN, OUT any](
 		Name:        name,
 		IncomingChs: make([]chan IN, 1),  // Per default, just one channel.
 		OutgoingChs: make([]chan OUT, 1), // Per default, just one channel.
-		onStopPipeline: func(processErr error) error { // Noop.
-			return processErr
+		onNoMoreData: func() ([]OUT, []int, error) { // Noop.
+			return nil, nil, nil
 		},
 	}
 	for _, opt := range options {
@@ -92,11 +93,11 @@ func WithMultiInputChannels[IN, OUT any](
 	}
 }
 
-func WithOnStopPipeline[IN, OUT any](
-	handler func(processErr error) error,
+func WithOnNoMoreData[IN, OUT any](
+	handler func() ([]OUT, []int, error),
 ) stageOption[IN, OUT] {
 	return func(s *Stage[IN, OUT]) {
-		s.onStopPipeline = handler
+		s.onNoMoreData = handler
 	}
 }
 
@@ -228,20 +229,34 @@ readIncoming:
 			foundError = err
 			break readIncoming
 		case in, ok := <-aggregatedIncomeCh:
+			debugPrintf("[%s] incoming? %v, data: %v\n", s.Name, ok, in)
+
+			var shouldBreakReadingIncoming bool
+			var shouldReturn bool
+
+			var outs []OUT
+			var outChIndxs []int
+			var err error
 			if !ok {
 				// Incoming channel was closed. No data to be written to outgoing channel.
 				debugPrintf("[%s] generate function indicates no more data\n", s.Name)
-				break readIncoming
+				outs, outChIndxs, err = s.onNoMoreData()
+				shouldBreakReadingIncoming = true // Regardless of err, request to break.
+			} else {
+				outs, outChIndxs, err = s.ProcessFunc(in)
 			}
-			debugPrintf("[%s] incoming %v\n", s.Name, in)
 
-			outs, outChIndxs, err := s.ProcessFunc(in)
-			if err == NoMoreData {
+			switch err {
+			case nil:
+			case NoMoreData:
 				// No more data, no error.
-				break readIncoming
-			}
-			if err != nil {
-				// Processing failed.
+				// Flag the about-to-stop pipeline event and use its error.
+				debugPrintf("[%s] about to call OnNoMoreData\n", s.Name)
+				outs, outChIndxs, foundError = s.onNoMoreData()
+				// Break out of the reading loop, after processing output.
+				shouldBreakReadingIncoming = true
+			default:
+				// Processing failed, break immediately.
 				foundError = err
 				break readIncoming
 			}
@@ -249,8 +264,6 @@ readIncoming:
 			// For each output spawn a go routine sending it to the appropriate channel.
 			wg := sync.WaitGroup{}
 			wg.Add(len(outs))
-			var shouldBreak bool
-			var shouldReturn bool
 
 			for i := range outs {
 				i := i
@@ -271,7 +284,7 @@ readIncoming:
 							s.Name, outChIndex, out, err)
 						// We received an error from next stage while trying to write to it.
 						foundError = err
-						shouldBreak = true
+						shouldBreakReadingIncoming = true
 					case <-s.StopCh:
 						// We have been instructed to stop, without reading any other channel.
 						debugPrintf("[%s] instructed to stop\n", s.Name)
@@ -285,14 +298,11 @@ readIncoming:
 			if shouldReturn {
 				return
 			}
-			if shouldBreak {
+			if shouldBreakReadingIncoming {
 				break readIncoming
 			}
 		} // end of select
 	} // end-for infinite loop with label readIncoming.
-
-	// Flag the about-to-stop pipeline event and use its error.
-	foundError = s.onStopPipeline(foundError)
 
 	// Stop pipeline.
 	s.breakPipelineAndWait(foundError)

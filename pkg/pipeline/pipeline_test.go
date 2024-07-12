@@ -363,6 +363,63 @@ func TestMultipleOutputs(t *testing.T) {
 	require.ElementsMatch(t, []int{1, 2, 2, 3, 3, 4}, gotValues)
 }
 
+func TestOnNoMoreData(t *testing.T) {
+	defer printAllDebugLines()
+	// Prepare test.
+	gotValues := make([]int, 0)
+	currentIndex := 0
+	bufferForB := make([]int, 0, 2048)
+
+	// Create pipeline.
+	p := NewPipeline(
+		func(p *Pipeline) {
+			// A->B
+			// B keeps a buffer of 10 elements.
+			a := p.Stages[0].(*Source[int])
+			b := p.Stages[1].(*Sink[int])
+
+			LinkStagesFanOut(SourceAsStage(a), SinkAsStage(b))
+		},
+		WithStages(
+			NewSource[int](
+				"a",
+				WithGeneratorFunction(func() (int, int, error) {
+					// As a source of data.
+					inData := []int{1, 2, 3}
+					debugPrintf("[TEST] source index %d\n", currentIndex)
+					if currentIndex >= len(inData) {
+						return 0, 0, NoMoreData
+					}
+					defer func() { currentIndex++ }()
+					return inData[currentIndex], 0, nil
+				}),
+			),
+			NewSink[int](
+				"b",
+				WithSinkFunction(func(in int) error {
+					bufferForB = append(bufferForB, in)
+					debugPrintf("[TEST in b] got %d\n", in)
+					debugPrintf("%v\n", bufferForB)
+					return nil
+				}),
+				WithOnNoMoreData[int, None](func() ([]None, []int, error) {
+					debugPrintf("B->OnNoMoreData called!\n")
+					// Now set the values from the "internal" buffer.
+					gotValues = append(gotValues[:0], bufferForB...)
+					bufferForB = bufferForB[:0]
+					return nil, nil, nil
+				}),
+			),
+		),
+	)
+
+	// Resume all stages.
+	p.Resume()
+	err := p.Wait()
+	require.NoError(t, err)
+	require.Equal(t, []int{1, 2, 3}, gotValues)
+}
+
 func checkClosed[T any](t *testing.T, ch chan T) {
 	_, ok := <-ch
 	require.False(t, ok)
