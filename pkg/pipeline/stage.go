@@ -68,6 +68,8 @@ func WithProcessFunction[IN, OUT any](
 	}
 }
 
+// WithProcessFunctionMultipleOutputs allows the stage to create multiple outputs per given input.
+// The outputs are sent to the next stage _with no order_.
 func WithProcessFunctionMultipleOutputs[IN, OUT any](
 	processFunc func(IN) ([]OUT, []int, error),
 ) stageOption[IN, OUT] {
@@ -93,6 +95,9 @@ func WithMultiInputChannels[IN, OUT any](
 	}
 }
 
+// WithOnNoMoreData acts as WithProcessFunctionMultipleOutputs, but it is called without any input,
+// when this stage has detected no more incoming data.
+// The outputs are sent to the next stage _in no particular order_.
 func WithOnNoMoreData[IN, OUT any](
 	handler func() ([]OUT, []int, error),
 ) stageOption[IN, OUT] {

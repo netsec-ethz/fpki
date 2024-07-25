@@ -369,16 +369,19 @@ func TestOnNoMoreData(t *testing.T) {
 	gotValues := make([]int, 0)
 	currentIndex := 0
 	bufferForB := make([]int, 0, 2048)
+	outIndexesForB := make([]int, 0, len(bufferForB))
 
 	// Create pipeline.
 	p := NewPipeline(
 		func(p *Pipeline) {
-			// A->B
-			// B keeps a buffer of 10 elements.
+			// A->B->C
+			// B keeps a preallocated buffer elements.
 			a := p.Stages[0].(*Source[int])
-			b := p.Stages[1].(*Sink[int])
+			b := p.Stages[1].(*Stage[int, int])
+			c := p.Stages[2].(*Sink[int])
 
-			LinkStagesFanOut(SourceAsStage(a), SinkAsStage(b))
+			LinkStagesFanOut(SourceAsStage(a), b)
+			LinkStagesFanOut(b, SinkAsStage(c))
 		},
 		WithStages(
 			NewSource[int](
@@ -394,20 +397,25 @@ func TestOnNoMoreData(t *testing.T) {
 					return inData[currentIndex], 0, nil
 				}),
 			),
-			NewSink[int](
+			NewStage[int, int](
 				"b",
-				WithSinkFunction(func(in int) error {
+				WithProcessFunctionMultipleOutputs(func(in int) ([]int, []int, error) {
 					bufferForB = append(bufferForB, in)
+					outIndexesForB = append(outIndexesForB, 0) // Always same out channel
 					debugPrintf("[TEST in b] got %d\n", in)
 					debugPrintf("%v\n", bufferForB)
-					return nil
-				}),
-				WithOnNoMoreData[int, None](func() ([]None, []int, error) {
-					debugPrintf("B->OnNoMoreData called!\n")
-					// Now set the values from the "internal" buffer.
-					gotValues = append(gotValues[:0], bufferForB...)
-					bufferForB = bufferForB[:0]
 					return nil, nil, nil
+				}),
+				WithOnNoMoreData[int, int](func() ([]int, []int, error) {
+					debugPrintf("B->OnNoMoreData called!\n")
+					return bufferForB, outIndexesForB, nil
+				}),
+			),
+			NewSink[int](
+				"c",
+				WithSinkFunction(func(in int) error {
+					gotValues = append(gotValues, in)
+					return nil
 				}),
 			),
 		),
@@ -417,7 +425,7 @@ func TestOnNoMoreData(t *testing.T) {
 	p.Resume()
 	err := p.Wait()
 	require.NoError(t, err)
-	require.Equal(t, []int{1, 2, 3}, gotValues)
+	require.ElementsMatch(t, []int{1, 2, 3}, gotValues)
 }
 
 func checkClosed[T any](t *testing.T, ch chan T) {
