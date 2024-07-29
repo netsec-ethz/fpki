@@ -232,118 +232,121 @@ func TestManagerResume(t *testing.T) {
 	}
 }
 
-// TestMinimalAllocs checks that the calls to deduplicate elements in DomainWorker do not
-// need special memory allocations, due to the static member cloneDomainIDs, etc.
-func TestMinimalAllocs(t *testing.T) {
-	t.Run("cert", func(t *testing.T) {
-		// Cert worker use of allocations.
+// TestMinimalAllocsCertWorker checks that the calls to deduplicate elements in CertWorker
+// do not need special memory allocations, due to the static fields present in the struct.
+func TestMinimalAllocsCertWorker(t *testing.T) {
+	// Cert worker use of allocation calls.
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	defer cancelF()
 
-		ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
-		defer cancelF()
+	// Mock the DB.
+	ctrl := gomock.NewController(t)
+	conn := mock_db.NewMockConn(ctrl)
 
-		// Mock the DB.
-		ctrl := gomock.NewController(t)
-		conn := mock_db.NewMockConn(ctrl)
+	conn.EXPECT().UpdateCerts(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(),
+		gomock.Any()).AnyTimes().Return(nil)
 
-		conn.EXPECT().UpdateCerts(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(),
-			gomock.Any()).AnyTimes().Return(nil)
+	// Create mock certificates.
+	N := 10
+	certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
 
-		// Create mock certificates.
-		N := 10
-		certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
+	// Prepare the manager and worker for the test.
+	manager := updater.NewManager(ctx, 1, conn, 1000, 1, nil)
 
-		// Prepare the manager and worker for the test.
-		manager := updater.NewManager(ctx, 1, conn, 1000, 1, nil)
-		worker := manager.CertWorkers[0]
-		// Mimic behavior of receiving the domains at the manager.
+	// The only interesting stage for this test is the one with the certificate worker.
+	// For that purpose, we mock the source and sink.
+	worker := updater.NewCertWorker(ctx, 0, manager, conn, 1)
 
-		manager.IncomingDomainChan = make(chan updater.DirtyDomain)
-		go func() {
-			// Read all the sent domains.
-			for range manager.IncomingDomainChan {
+	// Bundle the mock data.
+	worker.Certs = certs
 
-			}
-		}()
-
-		// Bundle the mock data.
-
-		// Measure allocations done in the mock library.
-		extraAllocs := testing.AllocsPerRun(1, func() {
-			conn.UpdateCerts(
-				ctx,
-				worker.CloneCerts(),
-				worker.CloneParents(),
-				worker.CloneExpirations(),
-				worker.ClonePayloads(),
-			)
-		})
-		require.Equal(t, 7.0, extraAllocs)
-
-		// Measure the test function.
-		allocsPerRun := testing.AllocsPerRun(1, func() {
-			worker.ProcessBundle(certs)
-		})
-		// Subtract the extra allocations not from the function.
-		allocsPerRun -= extraAllocs
-
-		// We should have 0 new allocations.
-		t.Logf("%f allocations", allocsPerRun)
-		require.Equal(t, 0.0, allocsPerRun)
+	// Measure allocations done in the mock library.
+	extraAllocs := testing.AllocsPerRun(1, func() {
+		conn.UpdateCerts(
+			ctx,
+			worker.CacheIds(),
+			worker.CacheParents(),
+			worker.CacheExpirations(),
+			worker.CachePayloads(),
+		)
 	})
+	require.Equal(t, 7.0, extraAllocs)
 
-	t.Run("domain", func(t *testing.T) {
-		// Domain worker use of allocations.
-
-		ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
-		defer cancelF()
-
-		ctrl := gomock.NewController(t)
-		conn := mock_db.NewMockConn(ctrl)
-
-		conn.EXPECT().UpdateDomains(
-			gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
-		conn.EXPECT().InsertDomainsIntoDirty(
-			gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
-		conn.EXPECT().UpdateDomainCerts(
-			gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
-
-		// Create mock certificates.
-		N := 10
-		certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
-
-		// Prepare the manager and worker for the test.
-		manager := updater.NewManager(ctx, 1, conn, 1000, 1, nil)
-		worker := manager.DomainWorkers[0]
-
-		// Bundle the mock data.
-		bundle := extractDomains(certs)
-		bundle = bundle[:min(len(bundle), manager.MultiInsertSize)] // limit to the size of the bundle
-
-		// Measure allocations done in the mock library.
-		extraAllocs := testing.AllocsPerRun(1, func() {
-			conn.InsertDomainsIntoDirty(ctx, worker.CloneDomainIDs())
-		})
-		require.Equal(t, 4.0, extraAllocs)
-		extraAllocs += testing.AllocsPerRun(1, func() {
-			conn.UpdateDomains(ctx, worker.CloneDomainIDs(), worker.CloneNames())
-		})
-		require.Equal(t, 4.0+5.0, extraAllocs)
-		extraAllocs += testing.AllocsPerRun(1, func() {
-			conn.UpdateDomainCerts(ctx, worker.CloneDomainIDs(), worker.CloneCertIDs())
-		})
-		require.Equal(t, 4.0+5.0+5.0, extraAllocs)
-
-		// Measure the test function.
-		allocsPerRun := testing.AllocsPerRun(1, func() {
-			worker.ProcessBundle(bundle)
-		})
-		// Subtract the extra allocations not from the function.
-		allocsPerRun -= extraAllocs
-
-		// We should have 0 new allocations.
-		t.Logf("%f allocations", allocsPerRun)
-		require.Equal(t, 0.0, allocsPerRun)
+	// Measure the test function.
+	worker.Certs = certs
+	allocsPerRun := testing.AllocsPerRun(1, func() {
+		worker.ProcessBundle()
+		conn.UpdateCerts(
+			ctx,
+			worker.CacheIds(),
+			worker.CacheParents(),
+			worker.CacheExpirations(),
+			worker.CachePayloads(),
+		)
 	})
+	// Subtract the extra allocations not from the function.
+	allocsPerRun -= extraAllocs
+
+	// We should have 0 new allocations.
+	t.Logf("%f allocations", allocsPerRun)
+	require.Equal(t, 0.0, allocsPerRun)
+}
+
+// TestMinimalAllocsDomainWorker checks that the calls to deduplicate elements in DomainWorker
+// do not need special memory allocations, due to the static fields present in the struct.
+func TestMinimalAllocsDomainWorker(t *testing.T) {
+	// Domain worker use of allocation calls.
+
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	defer cancelF()
+
+	ctrl := gomock.NewController(t)
+	conn := mock_db.NewMockConn(ctrl)
+
+	conn.EXPECT().UpdateDomains(
+		gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
+	conn.EXPECT().InsertDomainsIntoDirty(
+		gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
+	conn.EXPECT().UpdateDomainCerts(
+		gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
+
+	// Create mock certificates.
+	N := 10
+	certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
+
+	// Prepare the manager and worker for the test.
+	manager := updater.NewManager(ctx, 1, conn, 1000, 1, nil)
+	worker := updater.NewDomainWorker(ctx, 0, manager, conn, 1)
+
+	// Measure allocations done in the mock library.
+	extraAllocs := testing.AllocsPerRun(1, func() {
+		conn.InsertDomainsIntoDirty(ctx, worker.CloneDomainIDs())
+	})
+	require.Equal(t, 4.0, extraAllocs)
+	extraAllocs += testing.AllocsPerRun(1, func() {
+		conn.UpdateDomains(ctx, worker.CloneDomainIDs(), worker.CloneNames())
+	})
+	require.Equal(t, 4.0+5.0, extraAllocs)
+	extraAllocs += testing.AllocsPerRun(1, func() {
+		conn.UpdateDomainCerts(ctx, worker.CloneDomainIDs(), worker.CloneCertIDs())
+	})
+	require.Equal(t, 4.0+5.0+5.0, extraAllocs)
+
+	// Bundle the mock data.
+	bundle := extractDomains(certs)
+	bundle = bundle[:min(len(bundle), manager.MultiInsertSize)] // limit to the size of the bundle
+	worker.Domains = bundle
+
+	// Measure the test function.
+	allocsPerRun := testing.AllocsPerRun(1, func() {
+		worker.ProcessBundle()
+	})
+	// Subtract the extra allocations not from the function.
+	allocsPerRun -= extraAllocs
+
+	// We should have 0 new allocations.
+	t.Logf("%f allocations", allocsPerRun)
+	require.Equal(t, 0.0, allocsPerRun)
 }
 
 func diffAncestryHierarchy(t tests.T, leaves ...string) []updater.Certificate {

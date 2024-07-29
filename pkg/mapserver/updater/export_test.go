@@ -6,21 +6,25 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/common"
 )
 
-func (w *CertWorker) CloneCerts() []common.SHA256Output {
+func (w *CertWorker) ProcessBundle() error {
+	return w.processBundle()
+}
+
+func (w *CertWorker) CacheIds() []common.SHA256Output {
 	return w.cacheIds
 }
-func (w *CertWorker) CloneParents() []*common.SHA256Output {
+func (w *CertWorker) CacheParents() []*common.SHA256Output {
 	return w.cacheParents
 }
-func (w *CertWorker) CloneExpirations() []time.Time {
+func (w *CertWorker) CacheExpirations() []time.Time {
 	return w.cacheExpirations
 }
-func (w *CertWorker) ClonePayloads() [][]byte {
+func (w *CertWorker) CachePayloads() [][]byte {
 	return w.cachePayloads
 }
 
-func (w *DomainWorker) ProcessBundle(domains []DirtyDomain) error {
-	return w.processBundle(domains)
+func (w *DomainWorker) ProcessBundle() error {
+	return w.processBundle()
 }
 
 func (w *DomainWorker) CloneDomainIDs() []common.SHA256Output {

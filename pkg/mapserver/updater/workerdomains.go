@@ -66,7 +66,7 @@ func NewDomainWorker(
 				w.Domains = append(w.Domains, domain)
 				// Only if we have filled a complete bundle, process.
 				if len(w.Domains) == m.MultiInsertSize {
-					err = w.processBundle(w.Domains)
+					err = w.processBundle()
 					// Continue reading certificates until incomingChan is closed.
 					w.Domains = w.Domains[:0] // Reuse storage, but reset elements
 				}
@@ -77,7 +77,7 @@ func NewDomainWorker(
 		pip.WithOnNoMoreData[DirtyDomain, pip.None](
 			func() ([]pip.None, []int, error) {
 				// Process the last (possibly empty) batch.
-				err := w.processBundle(w.Domains)
+				err := w.processBundle()
 				w.Domains = w.Domains[:0]
 				return nil, nil, err
 			},
@@ -87,15 +87,15 @@ func NewDomainWorker(
 	return w
 }
 
-func (w *DomainWorker) processBundle(domains []DirtyDomain) error {
-	if len(domains) == 0 {
+func (w *DomainWorker) processBundle() error {
+	if len(w.Domains) == 0 {
 		return nil
 	}
 
-	w.domainIDs = w.domainIDs[:len(domains)] // keep storage
-	w.certIDs = w.certIDs[:len(domains)]
-	w.names = w.names[:len(domains)]
-	for i, d := range domains {
+	w.domainIDs = w.domainIDs[:len(w.Domains)] // keep storage
+	w.certIDs = w.certIDs[:len(w.Domains)]
+	w.names = w.names[:len(w.Domains)]
+	for i, d := range w.Domains {
 		w.domainIDs[i] = d.DomainID
 		w.names[i] = d.Name
 		w.certIDs[i] = d.CertID
