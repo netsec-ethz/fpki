@@ -6,10 +6,6 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/common"
 )
 
-func (w *CertWorker) ProcessBundle(certs []Certificate) error {
-	return w.processBundle(certs)
-}
-
 func (w *CertWorker) CloneCerts() []common.SHA256Output {
 	return w.cacheIds
 }

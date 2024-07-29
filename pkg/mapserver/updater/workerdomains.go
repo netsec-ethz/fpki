@@ -6,15 +6,19 @@ import (
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
+	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
 type DomainWorker struct {
 	baseWorker
-	IncomingChan chan DirtyDomain
-	domainIDs    []common.SHA256Output // do not call make more than once.
-	certIDs      []common.SHA256Output // do not call make more than once.
-	names        []string              // do not call make more than once.
+	pip.Sink[DirtyDomain]
+
+	Domains []DirtyDomain // Created once, reused.
+
+	domainIDs []common.SHA256Output // do not call make more than once.
+	certIDs   []common.SHA256Output // do not call make more than once.
+	names     []string              // do not call make more than once.
 
 	cloneDomainIDs []common.SHA256Output // to avoid calling malloc when we run dedup.
 	cloneCertIDs   []common.SHA256Output // to avoid calling malloc when we run dedup.
@@ -25,9 +29,18 @@ type DomainWorker struct {
 	dedupTwoIdsStorage map[[2]common.SHA256Output]struct{} // For dedup to not allocate.
 }
 
-func NewDomainWorker(ctx context.Context, id int, m *Manager, conn db.Conn) *DomainWorker {
+func NewDomainWorker(
+	ctx context.Context,
+	id int,
+	m *Manager,
+	conn db.Conn,
+	workerCount int,
+) *DomainWorker {
 	w := &DomainWorker{
 		baseWorker: *newBaseWorker(ctx, id, m, conn),
+
+		// Create a certificate slice where all the received certificates will end up.
+		Domains: make([]DirtyDomain, 0, m.MultiInsertSize),
 
 		domainIDs: make([]common.SHA256Output, 0, m.MultiInsertSize),
 		certIDs:   make([]common.SHA256Output, 0, m.MultiInsertSize),
@@ -42,38 +55,36 @@ func NewDomainWorker(ctx context.Context, id int, m *Manager, conn db.Conn) *Dom
 		dedupTwoIdsStorage: make(map[[2]common.SHA256Output]struct{}, m.MultiInsertSize),
 	}
 
+	// Each domain worker needs N channels, one per cert worker, where they receive the domain
+	// from that specific cert worker. When the cert worker is done, it will close only that
+	// specific channel.
+	w.Sink = *pip.NewSink(
+		fmt.Sprintf("domain_worker_%2d", id),
+		pip.WithSinkFunction(
+			func(domain DirtyDomain) error {
+				var err error
+				w.Domains = append(w.Domains, domain)
+				// Only if we have filled a complete bundle, process.
+				if len(w.Domains) == m.MultiInsertSize {
+					err = w.processBundle(w.Domains)
+					// Continue reading certificates until incomingChan is closed.
+					w.Domains = w.Domains[:0] // Reuse storage, but reset elements
+				}
+				return err
+			},
+		),
+		pip.WithMultiInputChannels[DirtyDomain, pip.None](workerCount),
+		pip.WithOnNoMoreData[DirtyDomain, pip.None](
+			func() ([]pip.None, []int, error) {
+				// Process the last (possibly empty) batch.
+				err := w.processBundle(w.Domains)
+				w.Domains = w.Domains[:0]
+				return nil, nil, err
+			},
+		),
+	)
+
 	return w
-}
-
-func (w *DomainWorker) Resume() {
-	w.baseWorker.Resume()
-	w.IncomingChan = make(chan DirtyDomain)
-	go w.resume()
-}
-
-// Stop stops processing. This function doesn't wait for the worker to finish. For that, see Wait().
-func (w *DomainWorker) Stop() {
-	close(w.IncomingChan)
-}
-
-func (w *DomainWorker) resume() {
-	// Create a certificate slice where all the received certificates will end up.
-	domains := make([]DirtyDomain, 0, w.Manager.MultiInsertSize)
-
-	for domain := range w.IncomingChan {
-		domains = append(domains, domain)
-		if len(domains) == w.Manager.MultiInsertSize {
-			w.addError(w.processBundle(domains))
-			// Continue reading certificates until incomingChan is closed.
-			domains = domains[:0] // Reuse storage, but reset elements
-		}
-	}
-
-	// Process the last (possibly empty) batch.
-	w.addError(w.processBundle(domains))
-
-	// Signal that we have finished working.
-	w.closeErrors()
 }
 
 func (w *DomainWorker) processBundle(domains []DirtyDomain) error {
@@ -90,7 +101,6 @@ func (w *DomainWorker) processBundle(domains []DirtyDomain) error {
 		w.certIDs[i] = d.CertID
 	}
 
-	// Update dirty table.
 	// Remove duplicates for the dirty table insertion.
 	w.cloneDomainIDs = append(w.cloneDomainIDs[:0], w.domainIDs...)
 	util.DeduplicateSliceWithStorage(
@@ -98,11 +108,12 @@ func (w *DomainWorker) processBundle(domains []DirtyDomain) error {
 		util.WithSlice(w.cloneDomainIDs),
 		util.Wrap(&w.cloneDomainIDs),
 	)
+
+	// Update dirty table.
 	if err := w.Conn.InsertDomainsIntoDirty(w.Ctx, w.cloneDomainIDs); err != nil {
 		return fmt.Errorf("inserting domains at worker %d: %w", w.Id, err)
 	}
 
-	// Update domains table.
 	// Remove duplicates (domainID,name)
 	w.cloneDomainIDs = append(w.cloneDomainIDs[:0], w.domainIDs...) // clone again (was modified).
 	w.cloneNames = append(w.cloneNames[:0], w.names...)
@@ -119,6 +130,7 @@ func (w *DomainWorker) processBundle(domains []DirtyDomain) error {
 		util.Wrap(&w.cloneNames),
 	)
 
+	// Update domains table.
 	if err := w.Conn.UpdateDomains(w.Ctx, w.cloneDomainIDs, w.cloneNames); err != nil {
 		return fmt.Errorf("inserting domains at worker %d: %w", w.Id, err)
 	}

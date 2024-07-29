@@ -7,13 +7,19 @@ import (
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
+	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
 type CertWorker struct {
 	baseWorker
-	IncomingChan chan Certificate
-	hasher       common.Hasher
+	// IncomingChan chan Certificate
+	pip.Stage[Certificate, DirtyDomain]
+	hasher common.Hasher
+
+	Certs   []Certificate // Created once, reused.
+	Domains []DirtyDomain // Created once, reused. Output.
+	outChs  []int         // Reuse the out channel indices slice.
 
 	// Cache storage arrays used to unfold Certificate objects into the DB fields.
 	cacheIds         []common.SHA256Output
@@ -24,10 +30,20 @@ type CertWorker struct {
 	dedupStorage map[common.SHA256Output]struct{} // For dedup to not allocate.
 }
 
-func NewCertWorker(ctx context.Context, id int, m *Manager, conn db.Conn) *CertWorker {
+func NewCertWorker(
+	ctx context.Context,
+	id int,
+	m *Manager,
+	conn db.Conn,
+	workerCount int,
+) *CertWorker {
 	w := &CertWorker{
 		baseWorker: *newBaseWorker(ctx, id, m, conn),
 		hasher:     *common.NewHasher(),
+
+		Certs:   make([]Certificate, 0, m.MultiInsertSize),
+		Domains: make([]DirtyDomain, 0, m.MultiInsertSize*3), // Estimated no more than 3 per cert.
+		outChs:  make([]int, 0, m.MultiInsertSize*3),         // Same size as the output domains
 
 		cacheIds:         make([]common.SHA256Output, 0, m.MultiInsertSize),
 		cacheParents:     make([]*common.SHA256Output, 0, m.MultiInsertSize),
@@ -36,65 +52,64 @@ func NewCertWorker(ctx context.Context, id int, m *Manager, conn db.Conn) *CertW
 
 		dedupStorage: make(map[common.SHA256Output]struct{}, m.MultiInsertSize),
 	}
+	w.Stage = *pip.NewStage(
+		fmt.Sprintf("cert_worker_%2d", id),
+		pip.WithMultiOutputChannels[Certificate, DirtyDomain](workerCount),
+		pip.WithProcessFunctionMultipleOutputs(
+			func(cert Certificate) ([]DirtyDomain, []int, error) {
+				var err error
+				w.Certs = append(w.Certs, cert)
+				// Only if we have filled a complete bundle, process.
+				if len(w.Certs) == m.MultiInsertSize {
+					err = w.processBundle()
+					if err != nil {
+						return nil, nil, err
+					}
+					// Return the extracted domains.
+					return w.Domains, w.outChs, nil
+				}
+				return nil, nil, nil
+			},
+		),
+		pip.WithOnNoMoreData[Certificate, DirtyDomain](
+			func() ([]DirtyDomain, []int, error) {
+				err := w.processBundle()
+				return w.Domains, w.outChs, err
+			},
+		),
+	)
 
 	return w
 }
 
-func (w *CertWorker) Resume() {
-	w.baseWorker.Resume()
-	w.IncomingChan = make(chan Certificate)
-	go w.resume()
-}
-
-// Stop stops processing. This function doesn't wait for the worker to finish. For that, see Wait().
-func (w *CertWorker) Stop() {
-	close(w.IncomingChan)
-}
-
-func (w *CertWorker) resume() {
-	// Create a certificate slice where all the received certificates will end up.
-	certs := make([]Certificate, 0, w.Manager.MultiInsertSize)
-
-	for cert := range w.IncomingChan {
-		certs = append(certs, cert)
-		if len(certs) == w.Manager.MultiInsertSize {
-			w.addError(w.processBundle(certs))
-			// Continue reading certificates until incomingChan is closed.
-			certs = certs[:0] // Reuse storage, but reset elements
-		}
-	}
-
-	// Process the last (possibly empty) batch.
-	w.addError(w.processBundle(certs))
-
-	// Signal that we have finished working.
-	w.closeErrors()
-}
-
-func (w *CertWorker) processBundle(certs []Certificate) error {
-	if len(certs) == 0 {
+// processBundle processes a bundle of certificates and extracts their associated domains.
+// The function resets the certificate bundle slice to zero size after it is done.
+func (w *CertWorker) processBundle() error {
+	if len(w.Certs) == 0 {
 		return nil
 	}
 
 	// Insert the certificates into the DB.
-	if err := w.insertCertificates(certs); err != nil {
+	if err := w.insertCertificates(); err != nil {
 		return fmt.Errorf("inserting certificates at worker %d: %w", w.Id, err)
 	}
 
-	// Send the associated domain objects to the manager.
-	w.sendDomains(certs)
+	// Extract the associated domain objects. The domains stay in w.Domains.
+	w.extractDomains()
+
+	w.Certs = w.Certs[:0] // Reuse storage, but reset slice.
 
 	return nil
 }
 
-func (w *CertWorker) insertCertificates(certs []Certificate) error {
+func (w *CertWorker) insertCertificates() error {
 	// Reuse storage for the data translation.
-	w.cacheIds = w.cacheIds[:len(certs)]
-	w.cacheParents = w.cacheParents[:len(certs)]
-	w.cacheExpirations = w.cacheExpirations[:len(certs)]
-	w.cachePayloads = w.cachePayloads[:len(certs)]
+	w.cacheIds = w.cacheIds[:len(w.Certs)]
+	w.cacheParents = w.cacheParents[:len(w.Certs)]
+	w.cacheExpirations = w.cacheExpirations[:len(w.Certs)]
+	w.cachePayloads = w.cachePayloads[:len(w.Certs)]
 
-	for i, c := range certs {
+	for i, c := range w.Certs {
 		w.cacheIds[i] = c.CertID
 		w.cacheParents[i] = c.ParentID
 		w.cacheExpirations[i] = c.Cert.NotAfter
@@ -122,16 +137,24 @@ func (w *CertWorker) insertCertificates(certs []Certificate) error {
 	)
 }
 
-func (w *CertWorker) sendDomains(certs []Certificate) {
+// extractDomains extract the associated domains stored in the Certs field and places them in the
+// Domains and outChs fields.
+func (w *CertWorker) extractDomains() {
+	// Reuse the storage.
+	w.Domains = w.Domains[:0]
+	w.outChs = w.outChs[:0]
+
 	// For each name in each cert, generate a DirtyDomain object and send it to the manager.
-	for _, c := range certs {
+	for _, c := range w.Certs {
 		for _, name := range c.Names {
-			w.Manager.IncomingDomainChan <- DirtyDomain{
+			w.Domains = append(w.Domains, DirtyDomain{
 				DomainID: w.hasher.HashStringCopy(name),
 				CertID:   c.CertID,
 				Name:     name,
-			}
-
+			})
+			w.outChs = append(w.outChs,
+				int(w.Manager.ShardFuncDomain(&w.Domains[len(w.Domains)-1].DomainID)),
+			)
 		}
 	}
 }
