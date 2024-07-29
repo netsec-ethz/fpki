@@ -191,15 +191,17 @@ func (s *Stage[IN, OUT]) ErrorChannel() chan error {
 func (s *Stage[IN, OUT]) breakPipelineAndWait(initialErr error) error {
 	debugPrintf("[%s] exiting _____________________________ err=%v\n", s.Name, initialErr)
 	debugPrintf("[%s] closing output channel %p\n", s.Name, &s.OutgoingChs)
-	// time.Sleep(10 * time.Millisecond)
+
 	// Indicate next stage to stop.
 	for _, outCh := range s.OutgoingChs {
 		close(outCh)
 	}
+
 	// Read its status:
 	debugPrintf("[%s] waiting for next stage's error\n", s.Name)
 	err := <-s.NextStagesAggregatedErrCh
 	debugPrintf("[%s] read next stage's error: %v\n", s.Name, err)
+
 	// Coalesce with any error at this stage.
 	initialErr = util.ErrorsCoalesce(initialErr, err)
 
@@ -209,8 +211,10 @@ func (s *Stage[IN, OUT]) breakPipelineAndWait(initialErr error) error {
 		// Propagate error backwards.
 		s.ErrCh <- initialErr
 	}
+
 	// Close our own error channel.
 	close(s.ErrCh)
+
 	// Close the stop channel indicator.
 	close(s.StopCh)
 	debugPrintf("[%s] Base: all done\n", s.Name)
@@ -273,9 +277,10 @@ readIncoming:
 			for i := range outs {
 				i := i
 				go func() {
-					defer wg.Done()
 					out := outs[i]
 					outChIndex := outChIndxs[i]
+
+					defer wg.Done()
 					// We attempt to write the out data to the outgoing channel.
 					// Because this can block, we must also listen to any error coming from the
 					// next stage, plus our own stop signal.
@@ -381,6 +386,7 @@ func (noError) Error() string { return "" }
 
 var NoMoreData = noError{}
 
+// deleteme: remove all this debug infrastructure.
 type debugLine struct {
 	Time time.Time
 	Line string

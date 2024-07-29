@@ -236,7 +236,6 @@ func TestMultiChannel(t *testing.T) {
 	// Prepare test.
 	gotValues := make([]int, 0)
 	currentIndex := 0
-	firstTimeErrorAtB := true
 
 	// Create pipeline.
 	p := NewPipeline(
@@ -271,13 +270,6 @@ func TestMultiChannel(t *testing.T) {
 			NewStage[int, int](
 				"2-add1",
 				WithProcessFunction(func(in int) (int, int, error) {
-					// This b stage fails when it receives a 4.
-					_ = firstTimeErrorAtB
-					// if in == 2 && firstTimeErrorAtB {
-					// 	firstTimeErrorAtB = false
-					// 	debugPrintf("[TEST] emitting error ([b] stage)\n")
-					// 	return 0, 0, fmt.Errorf("error at stage b")
-					// }
 					return in + 1, 0, nil
 				}),
 				WithMultiOutputChannels[int, int](2), // to 3 and 4
