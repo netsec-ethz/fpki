@@ -6,22 +6,25 @@
 Based on [https://linuxhint.com/installing_mysql_workbench_ubuntu/](https://linuxhint.com/installing_mysql_workbench_ubuntu/).
 - Download [mysql-apt-config](https://dev.mysql.com/downloads/repo/apt/) and install it with e.g. `sudo apt install mysql-apt-config_0.8.22-1_all.deb`.
 - Select the version if the preselected one is not good.
-- Install "mysql-server"
-- Install "mysql-workbench-community"
+- Install "mysql-server" `sudo apt install mysql-community-server`
 - Allow local config for apparmor mysqld:
 ```bash
 sudo sed -i 's/#include <local\/usr.sbin.mysqld>/include <local\/usr.sbin.mysqld>/' /etc/apparmor.d/usr.sbin.mysqld
 sudo systemctl restart apparmor.service
 ```
-- Ensure that the apparmor configuration allows access to the data mount point.
+- Ensure that the apparmor configuration allows access to the data mount point (necessary for LOAD DATA INFILE).
   E.g., add `/mnt/data/mysql` to `/etc/apparmor.d/local/usr.sbin.mysqld`:
 ```bash
 echo "# Site-specific additions and overrides for usr.sbin.mysqld.
 # For more details, please see /etc/apparmor.d/local/README.
 
 # Allow access to files:
-/mnt/data/ r,
-/mnt/data/** rw,
+  /mnt/data/ r,
+  /mnt/data/** rw,
+  /tmp/ r,
+  /tmp/** rw,
+  /mnt/data/tmp/ r,
+  /mnt/data/tmp/**  rw,
 " | sudo tee -a /etc/apparmor.d/local/usr.sbin.mysqld
 sudo systemctl restart apparmor.service
 ```
@@ -32,20 +35,6 @@ echo "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '';
 FLUSH PRIVILEGES;" | sudo mysql
 # you should see "mysql_native_password" as plugin for root when displaying the root user:
 mysql -u root -e "SELECT user,authentication_string,plugin,host FROM mysql.user;"
-```
-
-In Ubuntu, in order to be able to read files (necessary for LOAD DATA INFILE), we have to modify
-the apparmor configuration for the mysql daemon.
-
-```bash
-echo "# Allow MySQL to read files from /tmp/ and /mnt/data/tmp/
-  /tmp/ r,
-  /tmp/** rw,
-  /mnt/data/tmp/ r,
-  /mnt/data/tmp/**  rw,
-" | sudo tee -a /etc/apparmor.d/local/usr.sbin.mysqld
-sudo sed -i 's/#include <local\/usr.sbin.mysqld>/include <local\/usr.sbin.mysqld>/' /etc/apparmor.d/usr.sbin.mysqld
-sudo systemctl restart apparmor.service
 ```
 
 
