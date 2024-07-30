@@ -1,9 +1,13 @@
 package util
 
-import "math/rand"
+import (
+	"math/rand"
+
+	"golang.org/x/exp/constraints"
+)
 
 // Qsort is a quick sort in place in pure Go. Does not allocate.
-func Qsort(a []int) []int {
+func Qsort[T constraints.Ordered](a []T) []T {
 	if len(a) < 2 {
 		return a
 	}
