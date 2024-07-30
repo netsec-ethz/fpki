@@ -1,7 +1,6 @@
 package util
 
 import (
-	"fmt"
 	"os"
 	"testing"
 
@@ -78,11 +77,6 @@ func TestUnfoldCerts(t *testing.T) {
 		{&c, &d},
 	}
 	allCerts, IDs, parentIDs, names := UnfoldCerts(certs, chains)
-
-	fmt.Printf("[%p %p %p %p]\n", &a, &b, &c, &d)
-	fmt.Printf("%v\n", allCerts)
-	fmt.Printf("%v\n", IDs)
-	fmt.Printf("%v\n", parentIDs)
 
 	assert.Len(t, allCerts, 4)
 	assert.Len(t, IDs, 4)

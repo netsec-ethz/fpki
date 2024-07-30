@@ -143,13 +143,13 @@ func TestHasherAllocations(t *testing.T) {
 		h := NewHasher()
 
 		// Check allocations when we hash.
-		allocs := testing.AllocsPerRun(1, func() {
+		allocs := tests.AllocsPerRun(func() {
 			for _, d := range data {
 				h.Hash(&ownStorage, d)
 			}
 		})
 
-		require.Equal(t, 0.0, allocs)
+		require.Equal(t, 0, allocs)
 	})
 
 	t.Run("copy", func(t *testing.T) {
@@ -164,13 +164,13 @@ func TestHasherAllocations(t *testing.T) {
 		h := NewHasher()
 
 		// Check allocations when we hash.
-		allocs := testing.AllocsPerRun(1, func() {
+		allocs := tests.AllocsPerRun(func() {
 			for _, d := range data {
 				h.HashCopy(d)
 			}
 		})
 
-		require.Equal(t, 0.0, allocs)
+		require.Equal(t, 0, allocs)
 	})
 
 	t.Run("string", func(t *testing.T) {
@@ -183,13 +183,13 @@ func TestHasherAllocations(t *testing.T) {
 
 		var ownStorage SHA256Output
 		h := NewHasher()
-		allocs := testing.AllocsPerRun(1, func() {
+		allocs := tests.AllocsPerRun(func() {
 			for _, name := range names {
 				h.HashString(&ownStorage, name)
 			}
 		})
 
-		require.Equal(t, 0.0, allocs)
+		require.Equal(t, 0, allocs)
 	})
 
 	t.Run("string-copy", func(t *testing.T) {
@@ -201,13 +201,13 @@ func TestHasherAllocations(t *testing.T) {
 		}
 
 		h := NewHasher()
-		allocs := testing.AllocsPerRun(1, func() {
+		allocs := tests.AllocsPerRun(func() {
 			for _, name := range names {
 				h.HashStringCopy(name)
 			}
 		})
 
-		require.Equal(t, 0.0, allocs)
+		require.Equal(t, 0, allocs)
 	})
 
 	t.Run("domains", func(t *testing.T) {
@@ -219,14 +219,14 @@ func TestHasherAllocations(t *testing.T) {
 		}
 
 		h := NewHasher()
-		allocs := testing.AllocsPerRun(1, func() {
+		allocs := tests.AllocsPerRun(func() {
 			for _, d := range domains {
 				// h.HashString(&d.DomainID, d.Name)
 				d.DomainID = h.HashStringCopy(d.Name)
 			}
 		})
 
-		require.Equal(t, 0.0, allocs)
+		require.Equal(t, 0, allocs)
 	})
 }
 

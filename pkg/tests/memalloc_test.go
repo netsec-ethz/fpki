@@ -10,10 +10,10 @@ import (
 func TestAllocsPerRunGlobal(t *testing.T) {
 	var a []int
 	// Test noop.
-	allocs := tests.AllocsPerRunGlobal(func() {})
+	allocs := tests.AllocsPerRun(func() {})
 	require.Equal(t, 0, allocs)
 	// Test simple function.
-	allocs = tests.AllocsPerRunGlobal(func() {
+	allocs = tests.AllocsPerRun(func() {
 		a = make([]int, 1)
 	})
 	require.Equal(t, 1, allocs)
@@ -24,14 +24,14 @@ func TestAllocsPerRunGlobal(t *testing.T) {
 	fcn := func() {
 		a = make([]int, 3)
 	}
-	allocs = tests.AllocsPerRunGlobal(func() {
+	allocs = tests.AllocsPerRun(func() {
 		fcn()
 	})
 	require.Equal(t, 1, allocs)
 
 	// Test noop goroutine.
 	done := make(chan struct{})
-	allocs = tests.AllocsPerRunGlobal(func() {
+	allocs = tests.AllocsPerRun(func() {
 		go func() {
 			done <- struct{}{}
 		}()
@@ -43,7 +43,7 @@ func TestAllocsPerRunGlobal(t *testing.T) {
 
 	// Test noop goroutine again.
 	done = make(chan struct{})
-	allocs = tests.AllocsPerRunGlobal(func() {
+	allocs = tests.AllocsPerRun(func() {
 		go func() {
 			done <- struct{}{}
 		}()
@@ -55,7 +55,7 @@ func TestAllocsPerRunGlobal(t *testing.T) {
 
 	// Test goroutine.
 	done = make(chan struct{})
-	allocs = tests.AllocsPerRunGlobal(func() {
+	allocs = tests.AllocsPerRun(func() {
 		go func() {
 			fcn()
 			done <- struct{}{}

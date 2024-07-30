@@ -44,7 +44,7 @@ func TestMemAllocationOverhead(t *testing.T) {
 	time.Sleep(time.Second)
 
 	var err error
-	allocs := tests.AllocsPerRunGlobal(func() {
+	allocs := tests.AllocsPerRun(func() {
 		go source()
 		err = <-stage.ErrorChannel()
 	})

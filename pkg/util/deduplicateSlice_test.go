@@ -1,7 +1,6 @@
 package util_test
 
 import (
-	"fmt"
 	"math/rand"
 	"testing"
 
@@ -19,7 +18,7 @@ func TestDeduplicate(t *testing.T) {
 			3,
 			1,
 		}
-		allocs := testing.AllocsPerRun(1, func() {
+		allocs := tests.AllocsPerRun(func() {
 			util.DeduplicateSlice(
 				util.WithSlice(a),
 				util.Wrap(&a),
@@ -32,7 +31,7 @@ func TestDeduplicate(t *testing.T) {
 		// equality using ElementsMatch.
 		require.ElementsMatch(t, []int{1, 2, 3}, a)
 
-		require.Equal(t, 0.0, allocs)
+		require.Equal(t, 0, allocs)
 	})
 
 	t.Run("value2", func(t *testing.T) {
@@ -55,7 +54,7 @@ func TestDeduplicate(t *testing.T) {
 			ptr(0),
 		}
 
-		allocs := testing.AllocsPerRun(1, func() {
+		allocs := tests.AllocsPerRun(func() {
 			util.DeduplicateSlice(
 				util.WithSlice(a),
 				util.Wrap(&a),
@@ -73,7 +72,7 @@ func TestDeduplicate(t *testing.T) {
 		require.ElementsMatch(t, []int{11, 22}, b)
 		require.ElementsMatch(t, []*int{ptr(0), ptr(1)}, c)
 
-		require.Equal(t, 0.0, allocs)
+		require.Equal(t, 0, allocs)
 	})
 
 	t.Run("valueStruct1", func(t *testing.T) {
@@ -83,7 +82,7 @@ func TestDeduplicate(t *testing.T) {
 			{2},
 		}
 
-		allocs := testing.AllocsPerRun(1, func() {
+		allocs := tests.AllocsPerRun(func() {
 			util.DeduplicateSlice(
 				util.WithSlice(a),
 				util.Wrap(&a),
@@ -94,7 +93,7 @@ func TestDeduplicate(t *testing.T) {
 
 		require.ElementsMatch(t, []myType{{1}, {2}}, a)
 
-		require.Equal(t, 0.0, allocs)
+		require.Equal(t, 0, allocs)
 	})
 
 	t.Run("valueStruct2", func(t *testing.T) {
@@ -109,7 +108,7 @@ func TestDeduplicate(t *testing.T) {
 			2,
 		}
 
-		allocs := testing.AllocsPerRun(1, func() {
+		allocs := tests.AllocsPerRun(func() {
 			util.DeduplicateSlice(
 				util.WithSlice(a),
 				util.Wrap(&a),
@@ -124,7 +123,7 @@ func TestDeduplicate(t *testing.T) {
 		require.ElementsMatch(t, []myType{{1}, {2}}, a)
 		require.ElementsMatch(t, []int{0, 2}, b)
 
-		require.Equal(t, 0.0, allocs)
+		require.Equal(t, 0, allocs)
 	})
 
 	t.Run("valueStruct3", func(t *testing.T) {
@@ -156,7 +155,7 @@ func TestDeduplicate(t *testing.T) {
 			ptr(4),
 		}
 
-		allocs := testing.AllocsPerRun(1, func() {
+		allocs := tests.AllocsPerRun(func() {
 			util.DeduplicateSlice(
 				util.WithSlice(a),
 				util.Wrap(&a),
@@ -174,7 +173,7 @@ func TestDeduplicate(t *testing.T) {
 		require.ElementsMatch(t, []int{11, 22, 33, 44, 55}, b)
 		require.ElementsMatch(t, []*int{ptr(0), ptr(1), ptr(2), ptr(3), ptr(4)}, c)
 
-		require.Equal(t, 0.0, allocs)
+		require.Equal(t, 0, allocs)
 	})
 
 	t.Run("valueStruct4", func(t *testing.T) {
@@ -206,7 +205,7 @@ func TestDeduplicate(t *testing.T) {
 			ptr(myType{11}),
 		}
 
-		allocs := testing.AllocsPerRun(1, func() {
+		allocs := tests.AllocsPerRun(func() {
 			util.DeduplicateSlice(
 				util.WithSlice(a),
 				util.Wrap(&a),
@@ -224,7 +223,7 @@ func TestDeduplicate(t *testing.T) {
 		require.ElementsMatch(t, []int{11, 22, 33}, b)
 		require.ElementsMatch(t, []*myType{ptr(myType{11}), ptr(myType{22}), ptr(myType{33})}, c)
 
-		require.Equal(t, 0.0, allocs)
+		require.Equal(t, 0, allocs)
 	})
 
 	t.Run("pointer1", func(t *testing.T) {
@@ -235,7 +234,7 @@ func TestDeduplicate(t *testing.T) {
 			ptr(3),
 		}
 
-		allocs := testing.AllocsPerRun(1, func() {
+		allocs := tests.AllocsPerRun(func() {
 			util.DeduplicateSlice(
 				util.WithSlicePtr(a),
 				util.Wrap(&a),
@@ -246,7 +245,7 @@ func TestDeduplicate(t *testing.T) {
 
 		require.ElementsMatch(t, []*int{ptr(1), ptr(3)}, a)
 
-		require.Equal(t, 0.0, allocs)
+		require.Equal(t, 0, allocs)
 	})
 
 	t.Run("pointer2", func(t *testing.T) {
@@ -269,7 +268,7 @@ func TestDeduplicate(t *testing.T) {
 			0,
 		}
 
-		allocs := testing.AllocsPerRun(1, func() {
+		allocs := tests.AllocsPerRun(func() {
 			util.DeduplicateSlice(
 				util.WithSlicePtr(a),
 				util.Wrap(&a),
@@ -283,7 +282,7 @@ func TestDeduplicate(t *testing.T) {
 		require.ElementsMatch(t, []*int{ptr(1), ptr(3)}, a)
 		require.ElementsMatch(t, []int{0, 2}, b)
 
-		require.Equal(t, 0.0, allocs)
+		require.Equal(t, 0, allocs)
 	})
 
 	t.Run("ids1", func(t *testing.T) {
@@ -328,7 +327,7 @@ func TestDeduplicate(t *testing.T) {
 			ptr(myType{1}),
 		}
 
-		allocs := testing.AllocsPerRun(1, func() {
+		allocs := tests.AllocsPerRun(func() {
 			util.DeduplicateSlice(
 				util.WithSlicePtr(a),
 				util.Wrap(&a),
@@ -350,7 +349,7 @@ func TestDeduplicate(t *testing.T) {
 			func(x, y *myType) bool { return x.Count < y.Count },
 		)
 
-		require.Equal(t, 0.0, allocs)
+		require.Equal(t, 0, allocs)
 	})
 
 	t.Run("complex1", func(t *testing.T) {
@@ -382,7 +381,7 @@ func TestDeduplicate(t *testing.T) {
 			21, // dup
 		}
 
-		allocs := testing.AllocsPerRun(1, func() {
+		allocs := tests.AllocsPerRun(func() {
 			util.DeduplicateSlice(
 				func(i int) [2]int {
 					return [2]int{
@@ -408,7 +407,6 @@ func TestDeduplicate(t *testing.T) {
 			},
 			a,
 			func(c1, c2 *certificate) bool {
-				fmt.Printf("comparing %v AND %v\n", c1.Names, c2.Names)
 				return *c1.Domain < *c2.Domain &&
 					*c1.Cert < *c2.Cert &&
 					c1.Names[0] < c2.Names[0]
@@ -416,7 +414,7 @@ func TestDeduplicate(t *testing.T) {
 		)
 		require.ElementsMatch(t, []int{11, 12, 21, 22}, b)
 
-		require.Equal(t, 0.0, allocs)
+		require.Equal(t, 0, allocs)
 	})
 
 	t.Run("complex2", func(t *testing.T) {
@@ -457,7 +455,7 @@ func TestDeduplicate(t *testing.T) {
 			"1,1",
 		}
 
-		allocs := testing.AllocsPerRun(1, func() {
+		allocs := tests.AllocsPerRun(func() {
 			util.DeduplicateSlice(
 				func(i int) [2]int {
 					return [2]int{
@@ -480,7 +478,7 @@ func TestDeduplicate(t *testing.T) {
 		require.ElementsMatch(t, []*int{ptr(1), ptr(1), ptr(2), ptr(2)}, b)
 		require.ElementsMatch(t, []string{"1,1", "1,2", "2,1", "2,2"}, c)
 
-		require.Equal(t, 0.0, allocs)
+		require.Equal(t, 0, allocs)
 	})
 }
 
@@ -488,20 +486,20 @@ func TestAllocs(t *testing.T) {
 	t.Run("maps", func(t *testing.T) {
 		a := make([]int, 1000)
 		clear(a)
-		allocs := testing.AllocsPerRun(10, func() {
+		allocs := tests.AllocsPerRun(func() {
 			for i := range a {
 				a[i] = i
 			}
 		})
-		require.Equal(t, 0.0, allocs)
+		require.Equal(t, 0, allocs)
 
 		clear(a)
-		allocs = testing.AllocsPerRun(10, func() {
+		allocs = tests.AllocsPerRun(func() {
 			for i := range a {
 				a[i] = i
 			}
 		})
-		require.Equal(t, 0.0, allocs)
+		require.Equal(t, 0, allocs)
 	})
 	t.Run("without", func(t *testing.T) {
 		// Without storage.
@@ -509,14 +507,14 @@ func TestAllocs(t *testing.T) {
 		for i := range a {
 			a[i] = i
 		}
-		allocs := testing.AllocsPerRun(1, func() {
+		allocs := tests.AllocsPerRun(func() {
 			util.DeduplicateSlice(
 				util.WithSlice(a),
 				util.Wrap(&a),
 			)
 		})
 
-		require.Greater(t, allocs, 0.0)
+		require.Greater(t, allocs, 0)
 	})
 	t.Run("own_storage", func(t *testing.T) {
 		// With storage.
@@ -527,7 +525,7 @@ func TestAllocs(t *testing.T) {
 			a[i] = i
 		}
 		storage := make(map[int]struct{}, cap)
-		allocs := testing.AllocsPerRun(1, func() {
+		allocs := tests.AllocsPerRun(func() {
 			util.DeduplicateSliceWithStorage(
 				storage,
 				util.WithSlice(a),
@@ -535,7 +533,7 @@ func TestAllocs(t *testing.T) {
 			)
 		})
 
-		require.Less(t, allocs, 0.1)
+		require.Equal(t, 0, allocs)
 	})
 }
 
