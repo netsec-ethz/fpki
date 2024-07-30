@@ -396,6 +396,10 @@ var debugLines []debugLine
 var debugLinesMu sync.Mutex
 
 func debugPrintf(format string, args ...any) {
+	// debugPrintfReal(format, args...)
+}
+
+func debugPrintfReal(format string, args ...any) {
 	t := time.Now()
 	line := fmt.Sprintf(format, args...)
 	debugLinesMu.Lock()
