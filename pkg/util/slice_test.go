@@ -21,7 +21,7 @@ func TestRemoveElemFromSlice(t *testing.T) {
 }
 
 func TestRemoveElementsFromSlice(t *testing.T) {
-	testcases := map[string]struct {
+	testCases := map[string]struct {
 		slice    []int
 		indices  []int
 		expected []int
@@ -47,8 +47,8 @@ func TestRemoveElementsFromSlice(t *testing.T) {
 		},
 		"head": {
 			slice:    []int{0, 1, 2, 3, 4, 5},
-			indices:  []int{0, 1, 2, 3},
-			expected: []int{4, 5},
+			indices:  []int{0, 1, 2},
+			expected: []int{3, 4, 5},
 		},
 		"tail": {
 			slice:    []int{0, 1, 2, 3, 4, 5},
@@ -60,13 +60,23 @@ func TestRemoveElementsFromSlice(t *testing.T) {
 			indices:  []int{0, 2, 4},
 			expected: []int{1, 3, 5},
 		},
+		"interleaved2": {
+			slice:    []int{0, 1, 2, 3, 4, 5},
+			indices:  []int{1, 3, 5},
+			expected: []int{0, 2, 4},
+		},
 		"all": {
 			slice:    []int{0, 1, 2, 3, 4, 5},
 			indices:  []int{0, 1, 2, 3, 4, 5},
 			expected: []int{},
 		},
+		"hole": {
+			slice:    []int{0, 1, 2, 3, 4, 5},
+			indices:  []int{0, 1, 4, 5},
+			expected: []int{2, 3},
+		},
 	}
-	for name, tc := range testcases {
+	for name, tc := range testCases {
 		name, tc := name, tc
 		t.Run(name, func(t *testing.T) {
 			// XXX: Do not run in parallel.

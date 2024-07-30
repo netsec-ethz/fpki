@@ -21,27 +21,25 @@ func RemoveElementsFromSlice[T any](slice *[]T, indices []int) {
 		return
 	}
 
-	// This is the boundary starting from the end and moving to the beginning of the slice,
-	// that separates data to be removed [0,1,... N,...] from N+1 to end.
-	N := len(*slice) - 1
-
-	// Start from the beginning of the slice, pick the first element to remove, find the end-most
+	// Starts from the beginning of the slice, picks the first element to remove, finds the end-most
 	// element staying, and swap them.
 	j := len(indices) - 1 // j starts from the end of the indices.
-	i := 0
-	for ; i <= j && i < len(*slice)-len(indices); i++ { // i starts from the beginning of the indices.
+	i := 0                // i starts from the beginning of the indices.
+	// The variable toStay represents the last candidate index that will remain in the slice.
+	toStay := len(*slice) - i - len(indices) + j
+	for ; i <= j && i < len(*slice)-len(indices); i, toStay = i+1, toStay-1 {
 		// Find an element that will not be removed.
-		for ; j >= i; j-- {
+		// The variable j decrements as we discard elements.
+		// toStay = len(*slice) - i - len(indices) + j
+		for ; j >= i; j, toStay = j-1, toStay-1 {
 			// An element stays if there are no indices pointing to it; which is equivalent to
 			// find an index that is smaller than that element.
-			if indices[j] < N-i {
+			if indices[j] < toStay {
 				break
-			} else {
-				N--
 			}
 		}
-		// We found an element that will not be removed, swap it with N-i.
-		toStay := N - i
+
+		// We found an element that will not be removed, swap it with i.
 		toDelete := indices[i]
 		(*slice)[toDelete] = (*slice)[toStay]
 	}
