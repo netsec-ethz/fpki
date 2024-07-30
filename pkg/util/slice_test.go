@@ -42,32 +42,32 @@ func TestRemoveElementsFromSlice(t *testing.T) {
 		},
 		"head-tail": {
 			slice:    []int{0, 1, 2},
-			indices:  []int{0, 2},
+			indices:  []int{2, 0},
 			expected: []int{1},
 		},
 		"head": {
 			slice:    []int{0, 1, 2, 3, 4, 5},
-			indices:  []int{0, 1, 2},
+			indices:  []int{0, 2, 1},
 			expected: []int{3, 4, 5},
 		},
 		"tail": {
 			slice:    []int{0, 1, 2, 3, 4, 5},
-			indices:  []int{2, 3, 4, 5},
+			indices:  []int{3, 2, 5, 4},
 			expected: []int{0, 1},
 		},
 		"interleaved": {
 			slice:    []int{0, 1, 2, 3, 4, 5},
-			indices:  []int{0, 2, 4},
+			indices:  []int{4, 2, 0},
 			expected: []int{1, 3, 5},
 		},
 		"interleaved2": {
 			slice:    []int{0, 1, 2, 3, 4, 5},
-			indices:  []int{1, 3, 5},
+			indices:  []int{1, 5, 3},
 			expected: []int{0, 2, 4},
 		},
 		"all": {
 			slice:    []int{0, 1, 2, 3, 4, 5},
-			indices:  []int{0, 1, 2, 3, 4, 5},
+			indices:  []int{1, 0, 3, 2, 5, 4},
 			expected: []int{},
 		},
 		"hole": {

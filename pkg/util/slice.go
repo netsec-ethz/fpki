@@ -10,16 +10,17 @@ func RemoveElemFromSlice[T any](slice *[]T, index int) {
 }
 
 // RemoveElementsFromSlice removes the elements at indices' positions by replacing them with
-// other elements that will not be removed. For that purpose, every time we find a new index
-// to be moved, we have to find the corresponding index that will stay, starting from the end
-// of the slice.
+// other elements that will not be removed.
 // The indices to remove must not repeat, must be inside bounds of the slice,
-// and in increasing order.
+// but can be unordered.
 func RemoveElementsFromSlice[T any](slice *[]T, indices []int) {
 	if len(indices) >= len(*slice) {
 		*slice = (*slice)[:0]
 		return
 	}
+
+	// We need to sort the indices.
+	indices = Qsort(indices)
 
 	// Starts from the beginning of the slice, picks the first element to remove, finds the end-most
 	// element staying, and swap them.
@@ -30,7 +31,6 @@ func RemoveElementsFromSlice[T any](slice *[]T, indices []int) {
 	for ; i <= j && i < len(*slice)-len(indices); i, toStay = i+1, toStay-1 {
 		// Find an element that will not be removed.
 		// The variable j decrements as we discard elements.
-		// toStay = len(*slice) - i - len(indices) + j
 		for ; j >= i; j, toStay = j-1, toStay-1 {
 			// An element stays if there are no indices pointing to it; which is equivalent to
 			// find an index that is smaller than that element.
