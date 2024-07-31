@@ -384,12 +384,12 @@ func (s *Stage[IN, OUT]) sendOutputsCyclesAllowed(
 			// We attempt to write the out data to the outgoing channel.
 			// Because this can block, we must also listen to any error coming from the
 			// next stage, plus our own stop signal.
-			debugPrintf("[%s] attempting to send %v\n", s.Name, out)
+			debugPrintf("[%s] attempting to send to channel %d\n", s.Name, outChIndex)
 			select {
 			case s.OutgoingChs[outChIndex] <- out:
 				// Success writing to the outgoing channel, nothing else to do.
 				s.cacheCompletedOutgoingIndices = append(s.cacheCompletedOutgoingIndices, i)
-				debugPrintf("[%s] sent %v\n", s.Name, out)
+				debugPrintf("[%s] sent to channel %d\n", s.Name, outChIndex)
 			case err := <-s.NextStagesAggregatedErrCh:
 				debugPrintf("[%s] ERROR while sending at channel %d the value %v: %v\n",
 					s.Name, outChIndex, out, err)
@@ -512,7 +512,7 @@ func debugPrintfReal(format string, args ...any) {
 	})
 }
 
-func printAllDebugLines() {
+func PrintAllDebugLines() {
 	sort.Slice(debugLines, func(i, j int) bool {
 		return debugLines[i].Time.Before(debugLines[j].Time)
 	})

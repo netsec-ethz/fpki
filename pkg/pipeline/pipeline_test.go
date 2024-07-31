@@ -9,7 +9,7 @@ import (
 )
 
 func TestPipeline(t *testing.T) {
-	defer printAllDebugLines()
+	defer PrintAllDebugLines()
 	// Prepare test.
 	gotValues := make([]int, 0)
 	currentIndex := 0
@@ -120,7 +120,7 @@ func TestPipeline(t *testing.T) {
 }
 
 func TestStop(t *testing.T) {
-	defer printAllDebugLines()
+	defer PrintAllDebugLines()
 	// Prepare test.
 	gotValues := make([]int, 0)
 	processedAtBcount := 0
@@ -177,7 +177,7 @@ func TestStop(t *testing.T) {
 }
 
 func TestBundleSize(t *testing.T) {
-	defer printAllDebugLines()
+	defer PrintAllDebugLines()
 	// Prepare test.
 	gotValues := make([]int, 0)
 	bundleSize := 4
@@ -232,7 +232,7 @@ func TestBundleSize(t *testing.T) {
 }
 
 func TestMultiChannel(t *testing.T) {
-	defer printAllDebugLines()
+	defer PrintAllDebugLines()
 	// Prepare test.
 	gotValues := make([]int, 0)
 	currentIndex := 0
@@ -300,7 +300,7 @@ func TestMultiChannel(t *testing.T) {
 }
 
 func TestMultipleOutputs(t *testing.T) {
-	defer printAllDebugLines()
+	defer PrintAllDebugLines()
 	// Prepare test.
 	gotValues := make([]int, 0)
 	currentIndex := 0
@@ -356,7 +356,7 @@ func TestMultipleOutputs(t *testing.T) {
 }
 
 func TestOnNoMoreData(t *testing.T) {
-	defer printAllDebugLines()
+	defer PrintAllDebugLines()
 	// Prepare test.
 	gotValues := make([]int, 0)
 	currentIndex := 0
