@@ -57,11 +57,10 @@ func NewCertWorker(
 		pip.WithMultiOutputChannels[Certificate, DirtyDomain](workerCount),
 		pip.WithProcessFunctionMultipleOutputs(
 			func(cert Certificate) ([]DirtyDomain, []int, error) {
-				var err error
 				w.Certs = append(w.Certs, cert)
 				// Only if we have filled a complete bundle, process.
 				if len(w.Certs) == m.MultiInsertSize {
-					err = w.processBundle()
+					err := w.processBundle()
 					if err != nil {
 						return nil, nil, err
 					}

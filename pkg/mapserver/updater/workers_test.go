@@ -2,30 +2,27 @@ package updater_test
 
 import (
 	"context"
+	"runtime"
 	"testing"
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
-	"github.com/netsec-ethz/fpki/pkg/db/mock_db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
+	"github.com/netsec-ethz/fpki/pkg/tests"
+	"github.com/netsec-ethz/fpki/pkg/tests/noopdb"
 	"github.com/netsec-ethz/fpki/pkg/tests/random"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
 )
 
-// TestMinimalAllocsCertWorker checks that the calls to deduplicate elements in CertWorker
+// TestAllocsCertWorkerProcessBundle checks that the calls to deduplicate elements in CertWorker
 // do not need special memory allocations, due to the static fields present in the struct.
-func TestMinimalAllocsCertWorker(t *testing.T) {
+func TestAllocsCertWorkerProcessBundle(t *testing.T) {
 	// Cert worker use of allocation calls.
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
 	defer cancelF()
 
-	// Mock the DB.
-	ctrl := gomock.NewController(t)
-	conn := mock_db.NewMockConn(ctrl)
-
-	conn.EXPECT().UpdateCerts(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(),
-		gomock.Any()).AnyTimes().Return(nil)
+	// DB with no operation.
+	conn := &noopdb.Conn{}
 
 	// Create mock certificates.
 	N := 10
@@ -41,21 +38,9 @@ func TestMinimalAllocsCertWorker(t *testing.T) {
 	// Bundle the mock data.
 	worker.Certs = certs
 
-	// Measure allocations done in the mock library.
-	extraAllocs := testing.AllocsPerRun(1, func() {
-		conn.UpdateCerts(
-			ctx,
-			worker.CacheIds(),
-			worker.CacheParents(),
-			worker.CacheExpirations(),
-			worker.CachePayloads(),
-		)
-	})
-	require.Equal(t, 7.0, extraAllocs)
-
 	// Measure the test function.
 	worker.Certs = certs
-	allocsPerRun := testing.AllocsPerRun(1, func() {
+	allocsPerRun := tests.AllocsPerRun(func() {
 		worker.ProcessBundle()
 		conn.UpdateCerts(
 			ctx,
@@ -65,31 +50,81 @@ func TestMinimalAllocsCertWorker(t *testing.T) {
 			worker.CachePayloads(),
 		)
 	})
-	// Subtract the extra allocations not from the function.
-	allocsPerRun -= extraAllocs
 
 	// We should have 0 new allocations.
-	t.Logf("%f allocations", allocsPerRun)
-	require.Equal(t, 0.0, allocsPerRun)
+	t.Logf("%d allocations", allocsPerRun)
+	require.Equal(t, 0, allocsPerRun)
 }
 
-// TestMinimalAllocsDomainWorker checks that the calls to deduplicate elements in DomainWorker
+// TestCertWorkerOverhead checks the extra amount of memory that the certificate worker uses,
+// other than that used by the main processing function processBundle.
+func TestCertWorkerAllocationsOverhead(t *testing.T) {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	defer cancelF()
+
+	// DB with no operations.
+	conn := &noopdb.Conn{}
+
+	// Create mock certificates.
+	N := 100
+	certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
+
+	manager := updater.NewManager(ctx, 1, conn, 10, 1, nil)
+
+	// Create a cert worker stage. Input channel of Certificate, output of DirtyDomain.
+	worker := updater.NewCertWorker(ctx, 0, manager, conn, 1)
+
+	// Mock a sink.
+	sinkErrCh := make(chan error)
+	go func() {
+		for range worker.OutgoingChs[0] {
+		}
+		close(sinkErrCh)
+	}()
+
+	// Mock a source. Don't run it yet.
+	sendCertsCh := make(chan struct{})
+	go func() {
+		<-sendCertsCh
+		for _, cert := range certs {
+			worker.IncomingChs[0] <- cert
+		}
+		close(worker.IncomingChs[0])
+	}()
+
+	// Resume stage but not yet source.
+	worker.Prepare()
+	worker.NextErrChs[0] = sinkErrCh
+	worker.Resume()
+
+	time.Sleep(100 * time.Millisecond)
+	runtime.GC()
+	time.Sleep(100 * time.Millisecond)
+
+	var err error
+	allocs := tests.AllocsPerRun(func() {
+		// All is set up. Start processing and measure allocations.
+		sendCertsCh <- struct{}{}
+		// Wait for completion.
+		err = <-worker.Stage.ErrorChannel()
+	})
+	require.NoError(t, err)
+	t.Logf("allocs = %d", allocs)
+	// allocs -= extraAllocs
+	// The test is flaky: sometimes we get 0 allocations, sometimes 1 or even more.
+	require.LessOrEqual(t, allocs, N/10)
+}
+
+// TestAllocsDomainWorkerProcessBundle checks that the calls to deduplicate elements in DomainWorker
 // do not need special memory allocations, due to the static fields present in the struct.
-func TestMinimalAllocsDomainWorker(t *testing.T) {
+func TestAllocsDomainWorkerProcessBundle(t *testing.T) {
 	// Domain worker use of allocation calls.
 
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
 	defer cancelF()
 
-	ctrl := gomock.NewController(t)
-	conn := mock_db.NewMockConn(ctrl)
-
-	conn.EXPECT().UpdateDomains(
-		gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
-	conn.EXPECT().InsertDomainsIntoDirty(
-		gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
-	conn.EXPECT().UpdateDomainCerts(
-		gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
+	// DB with no operations.
+	conn := &noopdb.Conn{}
 
 	// Create mock certificates.
 	N := 10
@@ -99,35 +134,19 @@ func TestMinimalAllocsDomainWorker(t *testing.T) {
 	manager := updater.NewManager(ctx, 1, conn, 1000, 1, nil)
 	worker := updater.NewDomainWorker(ctx, 0, manager, conn, 1)
 
-	// Measure allocations done in the mock library.
-	extraAllocs := testing.AllocsPerRun(1, func() {
-		conn.InsertDomainsIntoDirty(ctx, worker.CloneDomainIDs())
-	})
-	require.Equal(t, 4.0, extraAllocs)
-	extraAllocs += testing.AllocsPerRun(1, func() {
-		conn.UpdateDomains(ctx, worker.CloneDomainIDs(), worker.CloneNames())
-	})
-	require.Equal(t, 4.0+5.0, extraAllocs)
-	extraAllocs += testing.AllocsPerRun(1, func() {
-		conn.UpdateDomainCerts(ctx, worker.CloneDomainIDs(), worker.CloneCertIDs())
-	})
-	require.Equal(t, 4.0+5.0+5.0, extraAllocs)
-
 	// Bundle the mock data.
 	bundle := extractDomains(certs)
 	bundle = bundle[:min(len(bundle), manager.MultiInsertSize)] // limit to the size of the bundle
 	worker.Domains = bundle
 
 	// Measure the test function.
-	allocsPerRun := testing.AllocsPerRun(1, func() {
+	allocsPerRun := tests.AllocsPerRun(func() {
 		worker.ProcessBundle()
 	})
-	// Subtract the extra allocations not from the function.
-	allocsPerRun -= extraAllocs
 
 	// We should have 0 new allocations.
-	t.Logf("%f allocations", allocsPerRun)
-	require.Equal(t, 0.0, allocsPerRun)
+	t.Logf("%d allocations", allocsPerRun)
+	require.Equal(t, 0, allocsPerRun)
 }
 
 func extractDomains(certs []updater.Certificate) []updater.DirtyDomain {
