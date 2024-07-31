@@ -14,7 +14,9 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
+	"github.com/netsec-ethz/fpki/pkg/pipeline"
 	"github.com/netsec-ethz/fpki/pkg/tests"
+	"github.com/netsec-ethz/fpki/pkg/tests/noopdb"
 	"github.com/netsec-ethz/fpki/pkg/tests/random"
 	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
 )
@@ -103,6 +105,8 @@ func TestManagerStart(t *testing.T) {
 		name, tc := name, tc
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
+
+			defer pipeline.PrintAllDebugLines()
 
 			ctx, cancelF := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancelF()
@@ -228,6 +232,34 @@ func TestManagerResume(t *testing.T) {
 			verifyDB(ctx, t, conn, tc.NLeafDomains+2, tc.NLeafDomains+2)
 		})
 	}
+}
+
+func TestMinimalAllocsManager(t *testing.T) {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	defer cancelF()
+
+	// DB with no operations.
+	conn := &noopdb.Conn{}
+
+	// Create mock certificates.
+	N := 100
+	certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
+	// Prepare the manager and worker for the test.
+	manager := updater.NewManager(ctx, 1, conn, 10, 1, nil)
+
+	// Now check the number of allocations happening inside the manager, once it runs.
+	var err error
+	manager.Resume()
+	processCertificates(manager, certs)
+	time.Sleep(100 * time.Millisecond)
+	allocsPerRun := tests.AllocsPerRun(func() {
+		manager.Stop()
+		err = manager.Wait()
+	})
+	require.NoError(t, err)
+	t.Logf("allocations = %d", allocsPerRun)
+	// The test is noisy, we sometimes get 2 allocations, etc.
+	require.LessOrEqual(t, allocsPerRun, N/10)
 }
 
 func diffAncestryHierarchy(t tests.T, leaves ...string) []updater.Certificate {
