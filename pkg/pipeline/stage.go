@@ -252,7 +252,7 @@ readIncoming:
 			foundError = err
 			break readIncoming
 		case in, ok := <-aggregatedIncomeCh:
-			debugPrintf("[%s] incoming? %v, data: %v\n", s.Name, ok, in)
+			debugPrintf("[%s] incoming? %v\n", s.Name, ok)
 
 			var shouldBreakReadingIncoming bool
 			var shouldReturn bool
@@ -403,7 +403,6 @@ func (s *Stage[IN, OUT]) sendOutputsCyclesAllowed(
 				*shouldReturn = true
 			default: // the outCh is not ready, try with next value/channel
 				debugPrintf("[%s] out channel %d not ready\n", s.Name, outChIndex)
-				// break eachOutput
 			}
 		}
 		util.RemoveElementsFromSlice(&outs, s.cacheCompletedOutgoingIndices)
