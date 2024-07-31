@@ -110,7 +110,6 @@ func TestCertWorkerAllocationsOverhead(t *testing.T) {
 	})
 	require.NoError(t, err)
 	t.Logf("allocs = %d", allocs)
-	// allocs -= extraAllocs
 	// The test is flaky: sometimes we get 0 allocations, sometimes 1 or even more.
 	require.LessOrEqual(t, allocs, N/10)
 }
@@ -147,6 +146,56 @@ func TestAllocsDomainWorkerProcessBundle(t *testing.T) {
 	// We should have 0 new allocations.
 	t.Logf("%d allocations", allocsPerRun)
 	require.Equal(t, 0, allocsPerRun)
+}
+
+// TestDomainWorkerOverhead checks the extra amount of memory that the domain worker uses,
+// other than that used by the main processing function processBundle.
+func TestDomainWorkerAllocationsOverhead(t *testing.T) {
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	defer cancelF()
+
+	// DB with no operations.
+	conn := &noopdb.Conn{}
+
+	// Create mock certificates.
+	N := 100
+	certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
+	domains := extractDomains(certs)
+
+	manager := updater.NewManager(ctx, 1, conn, 10, 1, nil)
+
+	// Create a cert worker stage. Input channel of Certificate, output of DirtyDomain.
+	worker := updater.NewDomainWorker(ctx, 0, manager, conn, 1)
+
+	// Mock a source. Don't run it yet.
+	sendDomainsCh := make(chan struct{})
+	go func() {
+		<-sendDomainsCh
+		for _, domain := range domains {
+			worker.IncomingChs[0] <- domain
+		}
+		close(worker.IncomingChs[0])
+	}()
+
+	// Resume stage but not yet source.
+	worker.Prepare()
+	worker.Resume()
+
+	time.Sleep(100 * time.Millisecond)
+	runtime.GC()
+	time.Sleep(100 * time.Millisecond)
+
+	var err error
+	allocs := tests.AllocsPerRun(func() {
+		// All is set up. Start processing and measure allocations.
+		sendDomainsCh <- struct{}{}
+		// Wait for completion.
+		err = <-worker.Stage.ErrorChannel()
+	})
+	require.NoError(t, err)
+	t.Logf("allocs = %d", allocs)
+	// The test is flaky: sometimes we get 0 allocations, sometimes 1 or even more.
+	require.LessOrEqual(t, allocs, N/10)
 }
 
 func extractDomains(certs []updater.Certificate) []updater.DirtyDomain {
