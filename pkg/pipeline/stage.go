@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"fmt"
+	"runtime"
 	"sort"
 	"sync"
 	"time"
@@ -23,14 +24,16 @@ type Stage[IN, OUT any] struct {
 	ErrCh  chan error // To be read by the previous stage (or trigger, if this is Source).
 	StopCh chan None  // Indicates to this stage to stop.
 
-	IncomingChs               []chan IN    // Incoming data channel to process.
-	OutgoingChs               []chan OUT   // Data to the next stages goes here.
-	NextErrChs                []chan error // Next stage's error channel.
-	NextStagesAggregatedErrCh chan error   // Aggregated nexErrChs
+	IncomingChs                   []chan IN    // Incoming data channel to process.
+	OutgoingChs                   []chan OUT   // Data to the next stages goes here.
+	NextErrChs                    []chan error // Next stage's error channel.
+	NextStagesAggregatedErrCh     chan error   // Aggregated nexErrChs
+	cacheCompletedOutgoingIndices []int        // Cache to reuse space.
 
 	ProcessFunc func(in IN) ([]OUT, []int, error) // From 1 IN to n OUT, using n channels.
 	// Before stopping the pipeline. This function allows processing before stopping the pipeline.
 	onNoMoreData func() ([]OUT, []int, error)
+	sendOutputs  func([]OUT, []int, *bool, *bool, *error) // Selectable by With* modifier.
 }
 
 var _ StageLike = &Stage[int, string]{}
@@ -41,13 +44,15 @@ func NewStage[IN, OUT any](
 ) *Stage[IN, OUT] {
 
 	s := &Stage[IN, OUT]{
-		Name:        name,
-		IncomingChs: make([]chan IN, 1),  // Per default, just one channel.
-		OutgoingChs: make([]chan OUT, 1), // Per default, just one channel.
+		Name:                          name,
+		IncomingChs:                   make([]chan IN, 1),  // Per default, just one channel.
+		OutgoingChs:                   make([]chan OUT, 1), // Per default, just one channel.
+		cacheCompletedOutgoingIndices: make([]int, 16),     // Max 16 outputs per process call.
 		onNoMoreData: func() ([]OUT, []int, error) { // Noop.
 			return nil, nil, nil
 		},
 	}
+	s.sendOutputs = s.sendOutputsCyclesAllowed
 	for _, opt := range options {
 		opt(s)
 	}
@@ -103,6 +108,15 @@ func WithOnNoMoreData[IN, OUT any](
 ) stageOption[IN, OUT] {
 	return func(s *Stage[IN, OUT]) {
 		s.onNoMoreData = handler
+	}
+}
+
+// WithConcurrentOutputs changes the default sending logic to use a goroutine per output.
+// This allows for an unordered, non-blocking delivery of the outputs to the next stages,
+// at the expense of some allocations being made.
+func WithConcurrentOutputs[IN, OUT any]() stageOption[IN, OUT] {
+	return func(s *Stage[IN, OUT]) {
+		s.sendOutputs = s.sendOutputConcurrent
 	}
 }
 
@@ -270,40 +284,27 @@ readIncoming:
 				break readIncoming
 			}
 
-			// For each output spawn a go routine sending it to the appropriate channel.
-			wg := sync.WaitGroup{}
-			wg.Add(len(outs))
+			// We have multiple outputs to multiple channels.
+			// For conformance, we cannot block on a channel if another is ready.
+			// But for performance reasons, we cannot spawn a goroutine for each send operation,
+			// as it triggers memory allocations (see unit test).
 
-			for i := range outs {
-				i := i
-				go func() {
-					out := outs[i]
-					outChIndex := outChIndxs[i]
+			// s.sendOutputConcurrent(
+			// 	outs,
+			// 	outChIndxs,
+			// 	&shouldReturn,
+			// 	&shouldBreakReadingIncoming,
+			// 	&foundError,
+			// )
 
-					defer wg.Done()
-					// We attempt to write the out data to the outgoing channel.
-					// Because this can block, we must also listen to any error coming from the
-					// next stage, plus our own stop signal.
-					debugPrintf("[%s] attempting to send %v\n", s.Name, out)
-					select {
-					case s.OutgoingChs[outChIndex] <- out:
-						// Success writing to the outgoing channel, nothing else to do.
-						debugPrintf("[%s] sent %v\n", s.Name, out)
-					case err := <-s.NextStagesAggregatedErrCh:
-						debugPrintf("[%s] ERROR while sending at channel %d the value %v: %v\n",
-							s.Name, outChIndex, out, err)
-						// We received an error from next stage while trying to write to it.
-						foundError = err
-						shouldBreakReadingIncoming = true
-					case <-s.StopCh:
-						// We have been instructed to stop, without reading any other channel.
-						debugPrintf("[%s] instructed to stop\n", s.Name)
-						shouldReturn = true
-					}
-				}()
-			}
-			// Wait for all outputs to be sent.
-			wg.Wait()
+			s.sendOutputsCyclesAllowed(
+				outs,
+				outChIndxs,
+				&shouldReturn,
+				&shouldBreakReadingIncoming,
+				&foundError,
+			)
+
 			// Determine the next action to do.
 			if shouldReturn {
 				return
@@ -316,6 +317,107 @@ readIncoming:
 
 	// Stop pipeline.
 	s.breakPipelineAndWait(foundError)
+}
+
+func (s *Stage[IN, OUT]) sendOutputConcurrent(
+	outs []OUT,
+	outChIndxs []int,
+	shouldReturn *bool,
+	shouldBreakReadingIncoming *bool,
+	foundError *error,
+) {
+	// For each output spawn a go routine sending it to the appropriate channel.
+	wg := sync.WaitGroup{}
+	wg.Add(len(outs))
+
+	for i := range outs {
+		i := i
+		go func() {
+			out := outs[i]
+			outChIndex := outChIndxs[i]
+
+			defer wg.Done()
+			// We attempt to write the out data to the outgoing channel.
+			// Because this can block, we must also listen to any error coming from the
+			// next stage, plus our own stop signal.
+			debugPrintf("[%s] attempting to send %v\n", s.Name, out)
+			select {
+			case s.OutgoingChs[outChIndex] <- out:
+				// Success writing to the outgoing channel, nothing else to do.
+				debugPrintf("[%s] sent %v\n", s.Name, out)
+			case err := <-s.NextStagesAggregatedErrCh:
+				debugPrintf("[%s] ERROR while sending at channel %d the value %v: %v\n",
+					s.Name, outChIndex, out, err)
+				// We received an error from next stage while trying to write to it.
+				*foundError = err
+				*shouldBreakReadingIncoming = true
+			case <-s.StopCh:
+				// We have been instructed to stop, without reading any other channel.
+				debugPrintf("[%s] instructed to stop\n", s.Name)
+				*shouldReturn = true
+			}
+		}()
+	}
+	// Wait for all outputs to be sent.
+	wg.Wait()
+}
+
+// sendOutputsCyclesAllowed sends the output to each of the output channels, in a single
+// goroutine, trying to send on each channel without blocking.
+// This function allows the stages to conform a graph with cycles in it.
+func (s *Stage[IN, OUT]) sendOutputsCyclesAllowed(
+	outs []OUT,
+	outChIndxs []int,
+	shouldReturn *bool,
+	shouldBreakReadingIncoming *bool,
+	foundError *error,
+) {
+	// For each value/channel, try to send if it doesn't block, otherwise bail and go to
+	// the next value/channel.
+	shouldStopSending := false
+	for {
+		s.cacheCompletedOutgoingIndices = s.cacheCompletedOutgoingIndices[:0]
+	eachOutput:
+		for i := range outs {
+			out := outs[i]
+			outChIndex := outChIndxs[i]
+			// We attempt to write the out data to the outgoing channel.
+			// Because this can block, we must also listen to any error coming from the
+			// next stage, plus our own stop signal.
+			debugPrintf("[%s] attempting to send %v\n", s.Name, out)
+			select {
+			case s.OutgoingChs[outChIndex] <- out:
+				// Success writing to the outgoing channel, nothing else to do.
+				s.cacheCompletedOutgoingIndices = append(s.cacheCompletedOutgoingIndices, i)
+				debugPrintf("[%s] sent %v\n", s.Name, out)
+			case err := <-s.NextStagesAggregatedErrCh:
+				debugPrintf("[%s] ERROR while sending at channel %d the value %v: %v\n",
+					s.Name, outChIndex, out, err)
+				// We received an error from next stage while trying to write to it.
+				*foundError = err
+				shouldStopSending = true
+				break eachOutput
+			case <-s.StopCh:
+				// We have been instructed to stop, without reading any other channel.
+				debugPrintf("[%s] instructed to stop\n", s.Name)
+				*shouldReturn = true
+			default: // the outCh is not ready, try with next value/channel
+				debugPrintf("[%s] out channel %d not ready\n", s.Name, outChIndex)
+				// break eachOutput
+			}
+		}
+		util.RemoveElementsFromSlice(&outs, s.cacheCompletedOutgoingIndices)
+		util.RemoveElementsFromSlice(&outChIndxs, s.cacheCompletedOutgoingIndices)
+		if len(outs) == 0 || *shouldReturn || shouldStopSending {
+			debugPrintf("[%s] len(outs) = %d, shouldReturn = %v, shouldBreak = %v\n",
+				s.Name, len(outs), *shouldReturn, *shouldBreakReadingIncoming)
+			break
+		}
+		runtime.Gosched() // Yield processor before we attempt to send again.
+	}
+
+	// Aggregate the stop-sending-flag to also stop reading.
+	*shouldBreakReadingIncoming = *shouldBreakReadingIncoming || shouldStopSending
 }
 
 func (s *Stage[IN, OUT]) aggregateNextErrChannels() chan error {
@@ -396,6 +498,7 @@ var debugLines []debugLine
 var debugLinesMu sync.Mutex
 
 func debugPrintf(format string, args ...any) {
+	// fmt.Printf(format, args...)
 	// debugPrintfReal(format, args...)
 }
 
