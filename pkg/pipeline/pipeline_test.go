@@ -171,7 +171,7 @@ func TestStop(t *testing.T) {
 	p.Resume()
 	// Wait to stop the pipeline in the middle of the process.
 	stopB.Wait()
-	err := p.Stages[1].StopAndWait()
+	err := StageAtIndex[int, int](p, 1).StopAndWait()
 	require.NoError(t, err)
 	require.LessOrEqual(t, 10, len(gotValues))
 }
@@ -418,6 +418,78 @@ func TestOnNoMoreData(t *testing.T) {
 	err := p.Wait()
 	require.NoError(t, err)
 	require.ElementsMatch(t, []int{1, 2, 3}, gotValues)
+}
+
+func TestWithSequentialOutputs(t *testing.T) {
+	defer PrintAllDebugLines()
+	// Prepare test.
+	gotValues := make([]int, 0)
+	currentIndex := 0
+
+	// Create pipeline.
+	p := NewPipeline(
+		func(p *Pipeline) {
+			// 1->2->3->4
+			//    ⎣_>4
+			s1 := p.Stages[0].(*Source[int])
+			s2 := p.Stages[1].(*Stage[int, int])
+			s3 := p.Stages[2].(*Stage[int, int])
+			s4 := p.Stages[3].(*Sink[int])
+
+			LinkStagesFanOut(SourceAsStage(s1), s2)
+			LinkStagesAt(s2, 0, s3, 0)
+			LinkStagesAt(s2, 1, SinkAsStage(s4), 0)
+			LinkStagesAt(s3, 0, SinkAsStage(s4), 1)
+		},
+		WithStages(
+			NewSource[int](
+				"1-source",
+				WithGeneratorFunction(func() (int, int, error) {
+					// As a source of data.
+					inData := []int{1, 2, 3}
+					debugPrintf("[TEST] source index %d\n", currentIndex)
+					if currentIndex >= len(inData) {
+						return 0, 0, NoMoreData
+					}
+					defer func() { currentIndex++ }()
+					return inData[currentIndex], 0, nil
+				}),
+				WithSequentialOutputs[None, int](),
+			),
+			// Stage 2 has two output channels, to 3 and to 4.
+			NewStage[int, int](
+				"2-add1",
+				WithProcessFunction(func(in int) (int, int, error) {
+					return in + 1, 0, nil
+				}),
+				WithMultiOutputChannels[int, int](2), // to 3 and 4
+				WithSequentialOutputs[int, int](),
+			),
+			NewStage[int, int](
+				"3-multiply2",
+				WithProcessFunction(func(in int) (int, int, error) {
+					return in * 2, 0, nil
+				}),
+				WithSequentialOutputs[int, int](),
+			),
+			NewSink[int](
+				"4-sink",
+				WithSinkFunction(func(in int) error {
+					gotValues = append(gotValues, in)
+					debugPrintf("[TEST] got %d\n", in)
+					return nil
+				}),
+				WithMultiInputChannels[int, None](2),
+				WithSequentialOutputs[int, None](),
+			),
+		),
+	)
+
+	// Resume all stages. There is nobody reading the last channel, so the pipeline will stall.
+	p.Resume()
+	err := p.Wait()
+	debugPrintf("[TEST] error 1: %v\n", err)
+	require.NoError(t, err)
 }
 
 func checkClosed[T any](t *testing.T, ch chan T) {

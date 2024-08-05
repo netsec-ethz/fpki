@@ -13,10 +13,7 @@ import (
 type StageLike interface {
 	Prepare()
 	Resume()
-	StopAndWait() error
 	ErrorChannel() chan error
-	IncomingChanCount() int
-	OutgoingChanCount() int
 }
 
 type Stage[IN, OUT any] struct {
@@ -117,6 +114,16 @@ func WithOnNoMoreData[IN, OUT any](
 func WithConcurrentOutputs[IN, OUT any]() stageOption[IN, OUT] {
 	return func(s *Stage[IN, OUT]) {
 		s.sendOutputs = s.sendOutputConcurrent
+	}
+}
+
+// WithSequentialOutputs changes the sending logic to the sequential propagation, which is the
+// simplest one, but does not allow cycles in the stage connection graph.
+// The sequential propagation is the cheapest method in terms of CPU consumption, but can reduce
+// concurrency if few stages in a layer are receiving most of the data.
+func WithSequentialOutputs[IN, OUT any]() stageOption[IN, OUT] {
+	return func(s *Stage[IN, OUT]) {
+		s.sendOutputs = s.sendOutputsSequential
 	}
 }
 
@@ -319,6 +326,44 @@ readIncoming:
 	s.breakPipelineAndWait(foundError)
 }
 
+// sendOutputsSequential sends the outputs to their channels, one by one, and blocking at each one.
+// This would prevent correct functioning (deadlock) when cycles exist in the stage graph:
+// E.g. if the output at this stage is blocked, and the next stage's output is blocked from this stage
+// not reading from its input.
+func (s *Stage[IN, OUT]) sendOutputsSequential(
+	outs []OUT,
+	outChIndxs []int,
+	shouldReturn *bool,
+	shouldBreakReadingIncoming *bool,
+	foundError *error,
+) {
+	for i := range outs {
+		out := outs[i]
+		outChIndex := outChIndxs[i]
+
+		// We attempt to write the out data to the outgoing channel.
+		// Because this can block, we must also listen to any error coming from the
+		// next stage, plus our own stop signal.
+		debugPrintf("[%s] attempting to send %v\n", s.Name, out)
+		select {
+		case s.OutgoingChs[outChIndex] <- out:
+			// Success writing to the outgoing channel, nothing else to do.
+			debugPrintf("[%s] sent %v\n", s.Name, out)
+		case err := <-s.NextStagesAggregatedErrCh:
+			debugPrintf("[%s] ERROR while sending at channel %d the value %v: %v\n",
+				s.Name, outChIndex, out, err)
+			// We received an error from next stage while trying to write to it.
+			*foundError = err
+			*shouldBreakReadingIncoming = true
+		case <-s.StopCh:
+			// We have been instructed to stop, without reading any other channel.
+			debugPrintf("[%s] instructed to stop\n", s.Name)
+			*shouldReturn = true
+		}
+	}
+}
+
+// sendOutputConcurrent sends the possibly multiple outputs to each out channel concurrently.
 func (s *Stage[IN, OUT]) sendOutputConcurrent(
 	outs []OUT,
 	outChIndxs []int,
