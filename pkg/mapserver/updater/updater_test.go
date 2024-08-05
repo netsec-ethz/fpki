@@ -21,6 +21,7 @@ import (
 // TestUpdateWithKeepExisting checks that the UpdateWithKeepExisting function can update a large
 // number of certificates and policy objects.
 func TestUpdateWithKeepExisting(t *testing.T) {
+	t0 := time.Now()
 	// Because we are using "random" bytes deterministically here, set a fixed seed.
 	rand.Seed(111)
 
@@ -34,6 +35,9 @@ func TestUpdateWithKeepExisting(t *testing.T) {
 	// Connect to the DB.
 	conn := testdb.Connect(t, config)
 	defer conn.Close()
+
+	t.Logf("creating DB: %s", time.Since(t0))
+	t0 = time.Now()
 
 	// leafCerts contains the names of the leaf certificates we will test.
 	leafCerts := []string{
@@ -67,6 +71,8 @@ func TestUpdateWithKeepExisting(t *testing.T) {
 	// Coalescing of payloads.
 	err = CoalescePayloadsForDirtyDomains(ctx, conn)
 	require.NoError(t, err)
+
+	t.Logf("storing data: %s", time.Since(t0))
 
 	// Check the certificate coalescing: under leaf there must be 4 IDs, for the certs.
 	for i, leaf := range leafCerts {
