@@ -130,13 +130,13 @@ func TestManagerStart(t *testing.T) {
 			}
 			t.Logf("IDs:\n%s", strings.Join(IDs, "\n"))
 
-			tests.TestOrTimeout(t, func(t tests.T) {
+			tests.TestOrTimeout(t, tests.WithContext(ctx), func(t tests.T) {
 				manager.Resume()
 				processCertificates(manager, certs)
 				manager.Stop()
 				err := manager.Wait()
 				require.NoError(t, err)
-			}, tests.WithContext(ctx))
+			})
 			verifyDB(ctx, t, conn, tc.expectedNCerts, tc.expectedNDomains)
 		})
 	}
@@ -211,7 +211,7 @@ func TestManagerResume(t *testing.T) {
 
 			stageSize := len(certs) / tc.NStages
 			for stage := 0; stage < tc.NStages; stage++ {
-				tests.TestOrTimeout(t, func(t tests.T) {
+				tests.TestOrTimeout(t, tests.WithContext(ctx), func(t tests.T) {
 					t.Logf("Starting stage %d/%d", stage, tc.NStages)
 					S := stage * stageSize
 					E := S + stageSize
@@ -225,7 +225,7 @@ func TestManagerResume(t *testing.T) {
 					manager.Stop()
 					err := manager.Wait()
 					require.NoError(t, err)
-				}, tests.WithContext(ctx))
+				})
 			}
 
 			t.Log("All stages finished")

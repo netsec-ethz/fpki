@@ -10,7 +10,7 @@ import (
 
 // TestTestOrTimeout checks that, even with "-race" enabled, the TestOrTimeout function works.
 func TestTestOrTimeout(t *testing.T) {
-	tests.TestOrTimeout(t, func(t tests.T) {
+	tests.TestOrTimeout(t, tests.WithTimeout(time.Millisecond), func(t tests.T) {
 		require.True(t, true)
-	}, tests.WithTimeout(time.Millisecond))
+	})
 }

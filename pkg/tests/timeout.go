@@ -6,9 +6,9 @@ import (
 	"time"
 )
 
-func TestOrTimeout(t *testing.T, fcn func(T), timeoutFunc timeoutFcn) {
+func TestOrTimeout(t *testing.T, option timeoutOption, fcn func(T)) {
 	t.Helper()
-	timeout := timeoutFunc()
+	timeout := option()
 
 	finished := make(chan struct{})
 	go func() {
@@ -22,12 +22,12 @@ func TestOrTimeout(t *testing.T, fcn func(T), timeoutFunc timeoutFcn) {
 
 	select {
 	case <-time.After(timeout):
-		t.Errorf("Timeout!!: %s", t.Name())
+		t.Fatalf("Timeout!!: %s", t.Name())
 	case <-finished:
 	}
 }
 
-type timeoutFcn func() time.Duration
+type timeoutOption func() time.Duration
 
 func WithTimeout(timeout time.Duration) func() time.Duration {
 	return func() time.Duration {
