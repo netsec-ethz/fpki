@@ -6,7 +6,7 @@
 Based on [https://linuxhint.com/installing_mysql_workbench_ubuntu/](https://linuxhint.com/installing_mysql_workbench_ubuntu/).
 - Download [mysql-apt-config](https://dev.mysql.com/downloads/repo/apt/) and install it with e.g. `sudo apt install mysql-apt-config_0.8.22-1_all.deb`.
 - Select the version if the preselected one is not good.
-- Install "mysql-server" `sudo apt install mysql-community-server`
+- Install "mysql-community-server" `sudo apt install mysql-community-server`
 - Allow local config for apparmor mysqld:
 ```bash
 sudo sed -i 's/#include <local\/usr.sbin.mysqld>/include <local\/usr.sbin.mysqld>/' /etc/apparmor.d/usr.sbin.mysqld
