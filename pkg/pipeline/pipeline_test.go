@@ -241,7 +241,7 @@ func TestMultiChannel(t *testing.T) {
 	p := NewPipeline(
 		func(p *Pipeline) {
 			// 1->2->3->4
-			//    ⎣_>4
+			//     ╲⎯⎯╱
 			s1 := p.Stages[0].(*Source[int])
 			s2 := p.Stages[1].(*Stage[int, int])
 			s3 := p.Stages[2].(*Stage[int, int])
@@ -254,7 +254,7 @@ func TestMultiChannel(t *testing.T) {
 		},
 		WithStages(
 			NewSource[int](
-				"1-source",
+				"1", // source.
 				WithGeneratorFunction(func() (int, int, error) {
 					// As a source of data.
 					inData := []int{1, 2, 3}
@@ -268,20 +268,20 @@ func TestMultiChannel(t *testing.T) {
 			),
 			// Stage 2 has two output channels, to 3 and to 4.
 			NewStage[int, int](
-				"2-add1",
-				WithProcessFunction(func(in int) (int, int, error) {
-					return in + 1, 0, nil
+				"2", // adds 1.
+				WithProcessFunctionMultipleOutputs(func(in int) ([]int, []int, error) {
+					return []int{in + 1, in + 1}, []int{0, 1}, nil
 				}),
 				WithMultiOutputChannels[int, int](2), // to 3 and 4
 			),
 			NewStage[int, int](
-				"3-multiply2",
+				"3", // multiply by 2.
 				WithProcessFunction(func(in int) (int, int, error) {
 					return in * 2, 0, nil
 				}),
 			),
 			NewSink[int](
-				"4-sink",
+				"4", // sink.
 				WithSinkFunction(func(in int) error {
 					gotValues = append(gotValues, in)
 					debugPrintf("[TEST] got %d\n", in)
@@ -430,7 +430,7 @@ func TestWithSequentialOutputs(t *testing.T) {
 	p := NewPipeline(
 		func(p *Pipeline) {
 			// 1->2->3->4
-			//    ⎣_>4
+			//     ╲⎯⎯╱
 			s1 := p.Stages[0].(*Source[int])
 			s2 := p.Stages[1].(*Stage[int, int])
 			s3 := p.Stages[2].(*Stage[int, int])
@@ -443,7 +443,7 @@ func TestWithSequentialOutputs(t *testing.T) {
 		},
 		WithStages(
 			NewSource[int](
-				"1-source",
+				"1", // source.
 				WithGeneratorFunction(func() (int, int, error) {
 					// As a source of data.
 					inData := []int{1, 2, 3}
@@ -454,33 +454,29 @@ func TestWithSequentialOutputs(t *testing.T) {
 					defer func() { currentIndex++ }()
 					return inData[currentIndex], 0, nil
 				}),
-				WithSequentialOutputs[None, int](),
 			),
 			// Stage 2 has two output channels, to 3 and to 4.
 			NewStage[int, int](
-				"2-add1",
-				WithProcessFunction(func(in int) (int, int, error) {
-					return in + 1, 0, nil
+				"2", // adds 1.
+				WithProcessFunctionMultipleOutputs(func(in int) ([]int, []int, error) {
+					return []int{in + 1, in + 1}, []int{0, 1}, nil
 				}),
 				WithMultiOutputChannels[int, int](2), // to 3 and 4
-				WithSequentialOutputs[int, int](),
 			),
 			NewStage[int, int](
-				"3-multiply2",
+				"3", // multiply by 2.
 				WithProcessFunction(func(in int) (int, int, error) {
 					return in * 2, 0, nil
 				}),
-				WithSequentialOutputs[int, int](),
 			),
 			NewSink[int](
-				"4-sink",
+				"4", // sink.
 				WithSinkFunction(func(in int) error {
 					gotValues = append(gotValues, in)
 					debugPrintf("[TEST] got %d\n", in)
 					return nil
 				}),
 				WithMultiInputChannels[int, None](2),
-				WithSequentialOutputs[int, None](),
 			),
 		),
 	)

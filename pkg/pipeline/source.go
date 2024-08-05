@@ -16,9 +16,6 @@ func NewSource[OUT any](
 	s := &Source[OUT]{
 		Stage: *NewStage[None, OUT](name, options...),
 	}
-	for _, opt := range options {
-		opt(SourceAsStage(s))
-	}
 	return s
 }
 

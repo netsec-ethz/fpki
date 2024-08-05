@@ -11,9 +11,6 @@ func NewSink[IN any](
 	s := &Sink[IN]{
 		Stage: *NewStage[IN, None](name, options...),
 	}
-	for _, opt := range options {
-		opt(SinkAsStage(s))
-	}
 	return s
 }
 

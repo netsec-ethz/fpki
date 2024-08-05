@@ -29,8 +29,9 @@ type Stage[IN, OUT any] struct {
 
 	ProcessFunc func(in IN) ([]OUT, []int, error) // From 1 IN to n OUT, using n channels.
 	// Before stopping the pipeline. This function allows processing before stopping the pipeline.
-	onNoMoreData func() ([]OUT, []int, error)
-	sendOutputs  func([]OUT, []int, *bool, *bool, *error) // Selectable by With* modifier.
+	onNoMoreData         func() ([]OUT, []int, error)
+	buildAggregatedInput func() chan IN                           // Alter by With* modifier.
+	sendOutputs          func([]OUT, []int, *bool, *bool, *error) // Selectable by With* modifier.
 }
 
 var _ StageLike = &Stage[int, string]{}
@@ -49,6 +50,7 @@ func NewStage[IN, OUT any](
 			return nil, nil, nil
 		},
 	}
+	s.buildAggregatedInput = s.readIncomingConcurrently
 	s.sendOutputs = s.sendOutputsCyclesAllowed
 	for _, opt := range options {
 		opt(s)
@@ -105,6 +107,16 @@ func WithOnNoMoreData[IN, OUT any](
 ) stageOption[IN, OUT] {
 	return func(s *Stage[IN, OUT]) {
 		s.onNoMoreData = handler
+	}
+}
+
+// WithSequentialInputs changes the reading logic of the stage to always read its incoming channels
+// in index order, starting with 0 and wrapping around len(s.IncomingChs).
+// This means that if channel i-1 is blocked, the stage won't read channel i until that one is
+// either unblocked, closed, or the stop signal for this stage is called.
+func WithSequentialInputs[IN, OUT any]() stageOption[IN, OUT] {
+	return func(s *Stage[IN, OUT]) {
+		s.buildAggregatedInput = s.readIncomingSequentially
 	}
 }
 
@@ -209,6 +221,8 @@ func (s *Stage[IN, OUT]) ErrorChannel() chan error {
 	return s.ErrCh
 }
 
+// breakPipelineAndWait closes the outgoing channels in index order, and stops to read the
+// next stages' error channels, in whichever order (no sorting of the error channels).
 func (s *Stage[IN, OUT]) breakPipelineAndWait(initialErr error) error {
 	debugPrintf("[%s] exiting _____________________________ err=%v\n", s.Name, initialErr)
 	debugPrintf("[%s] closing output channel %p\n", s.Name, &s.OutgoingChs)
@@ -465,6 +479,11 @@ func (s *Stage[IN, OUT]) sendOutputsCyclesAllowed(
 }
 
 func (s *Stage[IN, OUT]) aggregateNextErrChannels() chan error {
+	if len(s.NextErrChs) == 1 {
+		// Optimized case for just one error channel.
+		return s.NextErrChs[0]
+	}
+
 	// Create an error channel to aggregate all the next stages' error channels.
 	nextStagesAggregatedErrCh := make(chan error)
 
@@ -495,6 +514,16 @@ func (s *Stage[IN, OUT]) aggregateNextErrChannels() chan error {
 }
 
 func (s *Stage[IN, OUT]) aggregateIncomingChannels() chan IN {
+	if len(s.IncomingChs) == 1 {
+		// Optimized case for just one incoming channel.
+		return s.IncomingChs[0]
+	}
+
+	return s.buildAggregatedInput()
+}
+
+func (s *Stage[IN, OUT]) readIncomingConcurrently() chan IN {
+	debugPrintf("[%s] concurrent input, stage = %p\n", s.Name, s)
 	// Create a new channel to aggregate all the incoming data from different channels.
 	aggregated := make(chan IN)
 
@@ -508,6 +537,7 @@ func (s *Stage[IN, OUT]) aggregateIncomingChannels() chan IN {
 		go func() {
 			defer wg.Done()
 			for in := range incomingCh {
+				debugPrintf("[%s] aggregating incoming data\n", s.Name)
 				aggregated <- in
 			}
 			// When the incomingCh number i is closed, signal the wait group.
@@ -519,6 +549,32 @@ func (s *Stage[IN, OUT]) aggregateIncomingChannels() chan IN {
 		// Wait until all incomingCh have been closed.
 		wg.Wait()
 		// Now close the aggregated channel.
+		close(aggregated)
+	}()
+	return aggregated
+}
+
+func (s *Stage[IN, OUT]) readIncomingSequentially() chan IN {
+	// Create a slice of input channels.
+	inChannels := make([]chan IN, len(s.IncomingChs))
+	copy(inChannels, s.IncomingChs)
+
+	// Create aggregated channel.
+	aggregated := make(chan IN)
+	go func() {
+		for i := 0; i < len(inChannels); i++ {
+			in, ok := <-s.IncomingChs[i]
+			if ok {
+				aggregated <- in
+				debugPrintf("[%s] aggregated input: data on channel %d\n", s.Name, i)
+				continue
+			}
+			debugPrintf("[%s] aggregated input: channel %d closed\n", s.Name, i)
+			// This incoming channel was closed.
+			util.RemoveElemFromSlice(&inChannels, i)
+			i--
+		}
+		// All channels have closed.
 		close(aggregated)
 	}()
 	return aggregated
