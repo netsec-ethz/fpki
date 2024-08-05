@@ -30,6 +30,16 @@ func WithGeneratorFunction[OUT any](
 	}
 }
 
+func WithGeneratorFunctionMultipleOutputs[OUT any](
+	generator func() ([]OUT, []int, error),
+) stageOption[None, OUT] {
+	return func(s *Stage[None, OUT]) {
+		s.ProcessFunc = func(in None) ([]OUT, []int, error) {
+			return generator()
+		}
+	}
+}
+
 func (s *Source[OUT]) Wait() error {
 	return <-s.TopErrCh
 }
