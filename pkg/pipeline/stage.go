@@ -29,7 +29,8 @@ type Stage[IN, OUT any] struct {
 
 	ProcessFunc func(in IN) ([]OUT, []int, error) // From 1 IN to n OUT, using n channels.
 	// Before stopping the pipeline. This function allows processing before stopping the pipeline.
-	onNoMoreData         func() ([]OUT, []int, error)
+	onNoMoreData func() ([]OUT, []int, error)
+
 	buildAggregatedInput func() chan IN                           // Alter by With* modifier.
 	sendOutputs          func([]OUT, []int, *bool, *bool, *error) // Selectable by With* modifier.
 }
@@ -51,10 +52,12 @@ func NewStage[IN, OUT any](
 		},
 	}
 	s.buildAggregatedInput = s.readIncomingConcurrently
-	s.sendOutputs = s.sendOutputsCyclesAllowed
+	s.sendOutputs = s.sendOutputsSequential
+
 	for _, opt := range options {
 		opt(s)
 	}
+
 	return s
 }
 
@@ -107,6 +110,15 @@ func WithOnNoMoreData[IN, OUT any](
 ) stageOption[IN, OUT] {
 	return func(s *Stage[IN, OUT]) {
 		s.onNoMoreData = handler
+	}
+}
+
+// WithConcurrentInputs sets the input channels reading logic to spawn one goroutine per channel,
+// allowing any incoming message to be passed to the stage, and not keeping any order.
+// This is the default.
+func WithConcurrentInputs[IN, OUT any]() stageOption[IN, OUT] {
+	return func(s *Stage[IN, OUT]) {
+		s.buildAggregatedInput = s.readIncomingConcurrently
 	}
 }
 
@@ -202,7 +214,8 @@ func (s *Stage[IN, OUT]) Prepare() {
 	}
 	s.NextErrChs = make([]chan error, len(s.OutgoingChs))
 
-	// Cannot aggregate the error channels here, as they will be inserted after linking.
+	// Cannot aggregate the error channels here, as they will be inserted after linking with
+	// other stages.
 }
 
 // Resume resumes processing from this stage.
@@ -269,7 +282,11 @@ func (s *Stage[IN, OUT]) breakPipelineAndWait(initialErr error) error {
 func (s *Stage[IN, OUT]) processThisStage() {
 	// The aggregated channel will receive all incoming data.
 	aggregatedIncomeCh := s.aggregateIncomingChannels()
+
 	var foundError error
+	var shouldReturn bool
+	var shouldBreakReadingIncoming bool
+
 readIncoming:
 	for {
 		select {
@@ -282,11 +299,9 @@ readIncoming:
 			debugPrintf("[%s] got ERROR while reading incoming from next stage\n", s.Name)
 			foundError = err
 			break readIncoming
+
 		case in, ok := <-aggregatedIncomeCh:
 			debugPrintf("[%s] incoming? %v\n", s.Name, ok)
-
-			var shouldBreakReadingIncoming bool
-			var shouldReturn bool
 
 			var outs []OUT
 			var outChIndxs []int
@@ -301,7 +316,7 @@ readIncoming:
 			}
 
 			switch err {
-			case nil:
+			case nil: // do nothing
 			case NoMoreData:
 				// No more data, no error.
 				// Flag the about-to-stop pipeline event and use its error.
@@ -332,7 +347,7 @@ readIncoming:
 				break readIncoming
 			}
 		} // end of select
-	} // end-for infinite loop with label readIncoming.
+	} // end of for-loop readIncoming
 
 	// Stop pipeline.
 	s.breakPipelineAndWait(foundError)

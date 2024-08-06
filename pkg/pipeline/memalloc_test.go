@@ -10,12 +10,17 @@ import (
 )
 
 func TestMemAllocationOverhead(t *testing.T) {
+	defer pipeline.PrintAllDebugLines()
+
 	stage := pipeline.NewStage[int, int](
 		"worker",
 		pipeline.WithProcessFunctionMultipleOutputs(func(int) ([]int, []int, error) {
 			return nil, nil, nil
 		}),
-		pipeline.WithCyclesAllowedSequentialOutputs[int, int](),
+		pipeline.WithSequentialInputs[int, int](),
+		// pipeline.WithConcurrentInputs[int, int](),
+		// pipeline.WithCyclesAllowedSequentialOutputs[int, int](),
+		// pipeline.WithSequentialOutputs[int, int](),
 	)
 	stage.Prepare()
 
@@ -32,7 +37,7 @@ func TestMemAllocationOverhead(t *testing.T) {
 	stage.Resume()
 
 	// Mock a source.
-	N := 100
+	N := 1000
 	startSourceCh := make(chan struct{})
 	go func() {
 		<-startSourceCh
