@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
+	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
@@ -9,13 +10,47 @@ import (
 // inside the DB and SMT. It is composed of several different stages,
 // described in the `start` method.
 type Processor struct {
-	pipeCsvToChains   *CsvToChainsPipeline
+	pipeCsvToChains   *csvToChainsWorker
 	pipeChainsToCerts *ChainsToCertificatesPipeline
 	pipeDB            *updater.Manager
+
+	stats      *updater.Stats
+	NumWorkers int
+	// Pipeline, keeping the order of the certificates.
+	// CsvFile ┌-> line1 -> Chain1 ┌-> Cert1.1
+	//         |                   |-> Cert1.2
+	//         |                  ...
+	//         |-> line2 -> Chain2 ┌-> Cert2.1
+	//         |                   |-> Cert2.2
+	//         |                  ...
+	//        ...
+	Pipeline *pip.Pipeline
 }
 
-func NewProcessor() *Processor {
-	p := &Processor{}
+func NewProcessor(numParsers int) *Processor {
+	p := &Processor{
+		NumWorkers: numParsers,
+		Pipeline: pip.NewPipeline(
+			func(p *pip.Pipeline) {
+				// link function
+			},
+			pip.WithStages(
+				pip.NewSource[util.CsvFile](
+					"files",
+					pip.WithGeneratorFunction(
+						func() (util.CsvFile, int, error) {
+							return "", 0, nil
+						},
+					),
+				),
+				pip.NewStage[util.CsvFile, string](
+					"csv_lines",
+					// pip.WithProcessFunctionMultipleOutputs()
+					pip.WithMultiOutputChannels[util.CsvFile, string](numParsers),
+				),
+			),
+		),
+	}
 
 	return p
 }
