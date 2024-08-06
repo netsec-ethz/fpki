@@ -12,15 +12,17 @@ import (
 func TestMemAllocationOverhead(t *testing.T) {
 	defer pipeline.PrintAllDebugLines()
 
+	outs := []int{1}
+	outChs := []int{0}
+
 	stage := pipeline.NewStage[int, int](
 		"worker",
-		pipeline.WithProcessFunctionMultipleOutputs(func(int) ([]int, []int, error) {
-			return nil, nil, nil
+		pipeline.WithProcessFunctionMultipleOutputs(func(in int) ([]int, []int, error) {
+			outs[0] = in + 1
+			return outs, outChs, nil
 		}),
 		pipeline.WithSequentialInputs[int, int](),
-		// pipeline.WithConcurrentInputs[int, int](),
-		// pipeline.WithCyclesAllowedSequentialOutputs[int, int](),
-		// pipeline.WithSequentialOutputs[int, int](),
+		pipeline.WithSequentialOutputs[int, int](),
 	)
 	stage.Prepare()
 
