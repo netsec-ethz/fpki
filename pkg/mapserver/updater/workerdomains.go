@@ -12,7 +12,7 @@ import (
 
 type DomainWorker struct {
 	baseWorker
-	pip.Sink[DirtyDomain]
+	*pip.Sink[DirtyDomain]
 
 	Domains []DirtyDomain // Created once, reused.
 
@@ -58,7 +58,7 @@ func NewDomainWorker(
 	// Each domain worker needs N channels, one per cert worker, where they receive the domain
 	// from that specific cert worker. When the cert worker is done, it will close only that
 	// specific channel.
-	w.Sink = *pip.NewSink(
+	w.Sink = pip.NewSink(
 		fmt.Sprintf("domain_worker_%2d", id),
 		pip.WithSinkFunction(
 			func(domain DirtyDomain) error {

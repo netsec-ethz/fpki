@@ -59,7 +59,7 @@ func NewManager(
 	domainStages := make([]pip.StageLike, workerCount)
 	for i := range domainWorkers {
 		domainWorkers[i] = NewDomainWorker(ctx, i, m, conn, workerCount)
-		domainStages[i] = &domainWorkers[i].Sink
+		domainStages[i] = domainWorkers[i].Sink
 	}
 
 	// Prepare the certificate processing stages.
@@ -68,7 +68,7 @@ func NewManager(
 	certStages := make([]pip.StageLike, workerCount)
 	for i := range certWorkers {
 		certWorkers[i] = NewCertWorker(ctx, i, m, conn, workerCount)
-		certStages[i] = &certWorkers[i].Stage
+		certStages[i] = certWorkers[i].Stage
 	}
 
 	// Get the Certificate from the channel and pass it along.

@@ -13,8 +13,7 @@ import (
 
 type CertWorker struct {
 	baseWorker
-	// IncomingChan chan Certificate
-	pip.Stage[Certificate, DirtyDomain]
+	*pip.Stage[Certificate, DirtyDomain]
 	hasher common.Hasher
 
 	Certs   []Certificate // Created once, reused.
@@ -52,7 +51,7 @@ func NewCertWorker(
 
 		dedupStorage: make(map[common.SHA256Output]struct{}, m.MultiInsertSize),
 	}
-	w.Stage = *pip.NewStage(
+	w.Stage = pip.NewStage(
 		fmt.Sprintf("cert_worker_%2d", id),
 		pip.WithMultiOutputChannels[Certificate, DirtyDomain](workerCount),
 		pip.WithProcessFunctionMultipleOutputs(
