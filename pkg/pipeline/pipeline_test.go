@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/netsec-ethz/fpki/pkg/tests"
 	"github.com/stretchr/testify/require"
 )
 
@@ -64,10 +66,12 @@ func TestPipeline(t *testing.T) {
 	)
 
 	// Resume all stages. There is nobody reading the last channel, so the pipeline will stall.
-	p.Resume()
-	err := p.Wait()
-	debugPrintf("[TEST] error 1: %v\n", err)
-	require.Error(t, err)
+	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
+		p.Resume()
+		err := p.Wait()
+		debugPrintf("[TEST] error 1: %v\n", err)
+		require.Error(t, err)
+	})
 
 	// Check pipelines have been closed.
 	a := p.Stages[0].(*Source[int])
@@ -92,10 +96,13 @@ func TestPipeline(t *testing.T) {
 	currentIndex = len(gotValues) // Because of the errors, recover.
 
 	// We can now resume.
+
 	debugPrintf("------------------------ RESUMING ----------------------\n")
-	p.Resume()
-	err = p.Wait()
-	require.NoError(t, err)
+	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
+		p.Resume()
+		err := p.Wait()
+		require.NoError(t, err)
+	})
 	require.Equal(t, []int{2, 3, 4}, gotValues)
 
 	// Check pipelines have been closed.

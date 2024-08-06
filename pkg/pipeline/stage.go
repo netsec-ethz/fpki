@@ -224,11 +224,12 @@ func (s *Stage[IN, OUT]) ErrorChannel() chan error {
 // breakPipelineAndWait closes the outgoing channels in index order, and stops to read the
 // next stages' error channels, in whichever order (no sorting of the error channels).
 func (s *Stage[IN, OUT]) breakPipelineAndWait(initialErr error) error {
-	debugPrintf("[%s] exiting _____________________________ err=%v\n", s.Name, initialErr)
-	debugPrintf("[%s] closing output channel %p\n", s.Name, &s.OutgoingChs)
+	debugPrintf("[%s] exiting _____________________________ initial err=%v\n", s.Name, initialErr)
 
 	// Indicate next stage to stop.
-	for _, outCh := range s.OutgoingChs {
+	for i, outCh := range s.OutgoingChs {
+		debugPrintf("[%s] closing output channel index %d\n", s.Name, i)
+		// time.Sleep(time.Second) // deleteme
 		close(outCh)
 	}
 
@@ -306,19 +307,9 @@ readIncoming:
 			}
 
 			// We have multiple outputs to multiple channels.
-			// For conformance, we cannot block on a channel if another is ready.
-			// But for performance reasons, we cannot spawn a goroutine for each send operation,
-			// as it triggers memory allocations (see unit test).
-
-			// s.sendOutputConcurrent(
-			// 	outs,
-			// 	outChIndxs,
-			// 	&shouldReturn,
-			// 	&shouldBreakReadingIncoming,
-			// 	&foundError,
-			// )
-
-			s.sendOutputsCyclesAllowed(
+			// s.sendOutputs = s.sendOutputsCyclesAllowed // deleteme
+			// s.sendOutputs = s.sendOutputsSequential // deleteme
+			s.sendOutputs(
 				outs,
 				outChIndxs,
 				&shouldReturn,
@@ -467,7 +458,7 @@ func (s *Stage[IN, OUT]) sendOutputsCyclesAllowed(
 		util.RemoveElementsFromSlice(&outs, s.cacheCompletedOutgoingIndices)
 		util.RemoveElementsFromSlice(&outChIndxs, s.cacheCompletedOutgoingIndices)
 		if len(outs) == 0 || *shouldReturn || shouldStopSending {
-			debugPrintf("[%s] len(outs) = %d, shouldReturn = %v, shouldBreak = %v\n",
+			debugPrintf("[%s] break sending: len(outs) = %d, shouldReturn = %v, shouldBreak = %v\n",
 				s.Name, len(outs), *shouldReturn, *shouldBreakReadingIncoming)
 			break
 		}
@@ -492,11 +483,13 @@ func (s *Stage[IN, OUT]) aggregateNextErrChannels() chan error {
 	wg.Add(len(s.NextErrChs))
 
 	// Aggregate any possible error coming from any next stage into the aggregated channel.
-	for _, nextErrCh := range s.NextErrChs {
+	for i, nextErrCh := range s.NextErrChs {
+		i := i
 		nextErrCh := nextErrCh // Local copy for the capture of the goroutine next.
 		go func() {
 			defer wg.Done()
 			for err := range nextErrCh {
+				debugPrintf("[%s] got error from next stage at channel %d\n", s.Name, i)
 				nextStagesAggregatedErrCh <- err
 			}
 			// When the nextErrCh of next stage i is closed, this goroutine signals the wg.
@@ -599,7 +592,7 @@ var debugLinesMu sync.Mutex
 
 func debugPrintf(format string, args ...any) {
 	// fmt.Printf(format, args...)
-	// debugPrintfReal(format, args...)
+	debugPrintfReal(format, args...)
 }
 
 func debugPrintfReal(format string, args ...any) {
@@ -618,6 +611,11 @@ func PrintAllDebugLines() {
 		return debugLines[i].Time.Before(debugLines[j].Time)
 	})
 	for i, d := range debugLines {
+		if i > 999 {
+			// Max of 1000 lines of output.
+			fmt.Printf("... more output (%d lines omitted) ...\n", len(debugLines)-1000)
+			break
+		}
 		fmt.Printf("[%3d] [%30s] %s",
 			i,
 			d.Time.Format(time.StampNano),

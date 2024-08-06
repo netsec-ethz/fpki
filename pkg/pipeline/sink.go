@@ -8,10 +8,9 @@ func NewSink[IN any](
 	name string,
 	options ...stageOption[IN, None],
 ) *Sink[IN] {
-	s := &Sink[IN]{
+	return &Sink[IN]{
 		Stage: *NewStage[IN, None](name, options...),
 	}
-	return s
 }
 
 func WithSinkFunction[IN any](

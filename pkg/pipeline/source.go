@@ -13,10 +13,9 @@ func NewSource[OUT any](
 	name string,
 	options ...stageOption[None, OUT],
 ) *Source[OUT] {
-	s := &Source[OUT]{
+	return &Source[OUT]{
 		Stage: *NewStage[None, OUT](name, options...),
 	}
-	return s
 }
 
 func WithGeneratorFunction[OUT any](
