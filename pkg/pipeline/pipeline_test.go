@@ -248,7 +248,7 @@ func TestMultiChannel(t *testing.T) {
 	p := NewPipeline(
 		func(p *Pipeline) {
 			// 1->2->3->4
-			//     ╲⎯⎯╱
+			//     \__/
 			s1 := p.Stages[0].(*Source[int])
 			s2 := p.Stages[1].(*Stage[int, int])
 			s3 := p.Stages[2].(*Stage[int, int])
@@ -437,7 +437,7 @@ func TestWithSequentialOutputs(t *testing.T) {
 	p := NewPipeline(
 		func(p *Pipeline) {
 			// 1->2->3->4
-			//     ╲⎯⎯╱
+			//     \__/
 			s1 := p.Stages[0].(*Source[int])
 			s2 := p.Stages[1].(*Stage[int, int])
 			s3 := p.Stages[2].(*Stage[int, int])
@@ -461,6 +461,7 @@ func TestWithSequentialOutputs(t *testing.T) {
 					defer func() { currentIndex++ }()
 					return inData[currentIndex], 0, nil
 				}),
+				WithSequentialOutputs[None, int](),
 			),
 			// Stage 2 has two output channels, to 3 and to 4.
 			NewStage[int, int](
@@ -469,12 +470,14 @@ func TestWithSequentialOutputs(t *testing.T) {
 					return []int{in + 1, in + 1}, []int{0, 1}, nil
 				}),
 				WithMultiOutputChannels[int, int](2), // to 3 and 4
+				WithSequentialOutputs[int, int](),
 			),
 			NewStage[int, int](
 				"3", // multiply by 2.
 				WithProcessFunction(func(in int) (int, int, error) {
 					return in * 2, 0, nil
 				}),
+				WithSequentialOutputs[int, int](),
 			),
 			NewSink[int](
 				"4", // sink.
@@ -484,6 +487,7 @@ func TestWithSequentialOutputs(t *testing.T) {
 					return nil
 				}),
 				WithMultiInputChannels[int, None](2),
+				WithSequentialOutputs[int, None](),
 			),
 		),
 	)
@@ -493,6 +497,84 @@ func TestWithSequentialOutputs(t *testing.T) {
 	err := p.Wait()
 	debugPrintf("[TEST] error 1: %v\n", err)
 	require.NoError(t, err)
+}
+
+// TestWithSequentialIO checks that the processing is done in order, since all inputs and outputs
+// are read sequentially and in order.
+func TestWithSequentialIO(t *testing.T) {
+	defer PrintAllDebugLines()
+	// Prepare test.
+	gotValues := make([]int, 0)
+	currentIndex := 0
+
+	// Create pipeline.
+	p := NewPipeline(
+		func(p *Pipeline) {
+			// 1 ->2 ->4
+			//  \->3_/
+			s1 := p.Stages[0].(*Source[int])
+			s2 := p.Stages[1].(*Stage[int, int])
+			s3 := p.Stages[2].(*Stage[int, int])
+			s4 := p.Stages[3].(*Sink[int])
+
+			LinkStagesAt(SourceAsStage(s1), 0, s2, 0)
+			LinkStagesAt(SourceAsStage(s1), 1, s3, 0)
+			LinkStagesAt(s2, 0, SinkAsStage(s4), 0)
+			LinkStagesAt(s3, 0, SinkAsStage(s4), 1)
+		},
+		WithStages(
+			NewSource[int](
+				"1", // source.
+				WithGeneratorFunction(func() (int, int, error) {
+					// As a source of data.
+					inData := []int{1, 2, 3, 4}
+					debugPrintf("[TEST] source index %d\n", currentIndex)
+					if currentIndex >= len(inData) {
+						return 0, 0, NoMoreData
+					}
+					defer func() { currentIndex++ }()
+					return inData[currentIndex], currentIndex % 2, nil
+				}),
+				WithSequentialOutputs[None, int](),
+				WithMultiOutputChannels[None, int](2),
+			),
+			// Stage 2 has two output channels, to 3 and to 4.
+			NewStage[int, int](
+				"2", // adds 1.
+				WithProcessFunction(func(in int) (int, int, error) {
+					time.Sleep(100 * time.Millisecond) // be slower than the other branch.
+					return in + 1, 0, nil
+				}),
+				WithSequentialOutputs[int, int](),
+			),
+			NewStage[int, int](
+				"3", // multiply by 2.
+				WithProcessFunction(func(in int) (int, int, error) {
+					return in * 2, 0, nil
+				}),
+				WithSequentialOutputs[int, int](),
+			),
+			NewSink[int](
+				"4", // sink.
+				WithSinkFunction(func(in int) error {
+					gotValues = append(gotValues, in)
+					debugPrintf("[TEST] got %d\n", in)
+					return nil
+				}),
+				WithMultiInputChannels[int, None](2),
+				WithSequentialInputs[int, None](),
+			),
+		),
+	)
+
+	// Resume all stages. There is nobody reading the last channel, so the pipeline will stall.
+	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
+		p.Resume()
+		err := p.Wait()
+		debugPrintf("[TEST] error 1: %v\n", err)
+		require.NoError(t, err)
+	})
+	require.Equal(t, []int{2, 4, 4, 8}, gotValues)
 }
 
 func checkClosed[T any](t *testing.T, ch chan T) {

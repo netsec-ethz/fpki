@@ -15,6 +15,7 @@ func TestMemAllocationOverhead(t *testing.T) {
 		pipeline.WithProcessFunctionMultipleOutputs(func(int) ([]int, []int, error) {
 			return nil, nil, nil
 		}),
+		pipeline.WithCyclesAllowedSequentialOutputs[int, int](),
 	)
 	stage.Prepare()
 

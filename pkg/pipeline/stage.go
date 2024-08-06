@@ -120,6 +120,16 @@ func WithSequentialInputs[IN, OUT any]() stageOption[IN, OUT] {
 	}
 }
 
+// WithCyclesAllowedSequentialOutputs sends the output on each output channel without allocating
+// memory, and not blocking, at the expense of a higher CPU cost for this stage, as it continuously
+// spins checking if the output channels are ready.
+// This is the default.
+func WithCyclesAllowedSequentialOutputs[IN, OUT any]() stageOption[IN, OUT] {
+	return func(s *Stage[IN, OUT]) {
+		s.sendOutputs = s.sendOutputsCyclesAllowed
+	}
+}
+
 // WithConcurrentOutputs changes the default sending logic to use a goroutine per output.
 // This allows for an unordered, non-blocking delivery of the outputs to the next stages,
 // at the expense of some allocations being made.
@@ -265,7 +275,7 @@ readIncoming:
 		select {
 		case <-s.StopCh:
 			// We have been instructed to stop, without reading any other channel.
-			debugPrintf("[%s] generate function indicates to stop\n", s.Name)
+			debugPrintf("[%s] stop requested\n", s.Name)
 			return
 
 		case err := <-s.NextStagesAggregatedErrCh:
@@ -283,7 +293,7 @@ readIncoming:
 			var err error
 			if !ok {
 				// Incoming channel was closed. No data to be written to outgoing channel.
-				debugPrintf("[%s] generate function indicates no more data\n", s.Name)
+				debugPrintf("[%s] input indicates no more data\n", s.Name)
 				outs, outChIndxs, err = s.onNoMoreData()
 				shouldBreakReadingIncoming = true // Regardless of err, request to break.
 			} else {
@@ -552,17 +562,20 @@ func (s *Stage[IN, OUT]) readIncomingSequentially() chan IN {
 	// Create aggregated channel.
 	aggregated := make(chan IN)
 	go func() {
-		for i := 0; i < len(inChannels); i++ {
+		for i := 0; ; i = (i + 1) % len(inChannels) {
 			in, ok := <-s.IncomingChs[i]
-			if ok {
+			if !ok {
+				debugPrintf("[%s] aggregated input: channel %d closed\n", s.Name, i)
+				// This incoming channel was closed.
+				util.RemoveElemFromSlice(&inChannels, i)
+				if len(inChannels) == 0 { // no more open channels, break out of loop.
+					break
+				}
+				i--
+			} else {
 				aggregated <- in
 				debugPrintf("[%s] aggregated input: data on channel %d\n", s.Name, i)
-				continue
 			}
-			debugPrintf("[%s] aggregated input: channel %d closed\n", s.Name, i)
-			// This incoming channel was closed.
-			util.RemoveElemFromSlice(&inChannels, i)
-			i--
 		}
 		// All channels have closed.
 		close(aggregated)
