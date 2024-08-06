@@ -5,7 +5,7 @@ type SourceLike interface {
 }
 
 type Source[OUT any] struct {
-	Stage[None, OUT]
+	*Stage[None, OUT]
 	TopErrCh chan error // This error is not propagated to other stages.
 }
 
@@ -14,7 +14,7 @@ func NewSource[OUT any](
 	options ...stageOption[None, OUT],
 ) *Source[OUT] {
 	return &Source[OUT]{
-		Stage: *NewStage[None, OUT](name, options...),
+		Stage: NewStage[None, OUT](name, options...),
 	}
 }
 
@@ -74,5 +74,5 @@ func (s *Source[OUT]) StopAndWait() error {
 }
 
 func SourceAsStage[OUT any](s *Source[OUT]) *Stage[None, OUT] {
-	return &s.Stage
+	return s.Stage
 }

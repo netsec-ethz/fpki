@@ -229,7 +229,6 @@ func (s *Stage[IN, OUT]) breakPipelineAndWait(initialErr error) error {
 	// Indicate next stage to stop.
 	for i, outCh := range s.OutgoingChs {
 		debugPrintf("[%s] closing output channel index %d\n", s.Name, i)
-		// time.Sleep(time.Second) // deleteme
 		close(outCh)
 	}
 
@@ -307,8 +306,6 @@ readIncoming:
 			}
 
 			// We have multiple outputs to multiple channels.
-			// s.sendOutputs = s.sendOutputsCyclesAllowed // deleteme
-			// s.sendOutputs = s.sendOutputsSequential // deleteme
 			s.sendOutputs(
 				outs,
 				outChIndxs,
@@ -592,7 +589,7 @@ var debugLinesMu sync.Mutex
 
 func debugPrintf(format string, args ...any) {
 	// fmt.Printf(format, args...)
-	debugPrintfReal(format, args...)
+	// debugPrintfReal(format, args...)
 }
 
 func debugPrintfReal(format string, args ...any) {
