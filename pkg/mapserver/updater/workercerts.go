@@ -54,7 +54,7 @@ func NewCertWorker(
 	w.Stage = pip.NewStage(
 		fmt.Sprintf("cert_worker_%2d", id),
 		pip.WithMultiOutputChannels[Certificate, DirtyDomain](workerCount),
-		pip.WithProcessFunctionMultipleOutputs(
+		pip.WithProcessFunction(
 			func(cert Certificate) ([]DirtyDomain, []int, error) {
 				w.Certs = append(w.Certs, cert)
 				// Only if we have filled a complete bundle, process.

@@ -290,6 +290,7 @@ readIncoming:
 
 		case in, ok := <-aggregatedIncomeCh:
 			debugPrintf("[%s] incoming? %v\n", s.Name, ok)
+			// debugPrintf("[%s] incoming value = %v\n", s.Name, in)
 
 			var outs []OUT
 			var outChIndxs []int
@@ -307,10 +308,7 @@ readIncoming:
 			case nil: // do nothing
 			case NoMoreData:
 				// No more data, no error.
-				// Flag the about-to-stop pipeline event and use its error.
-				debugPrintf("[%s] about to call OnNoMoreData\n", s.Name)
-				outs, outChIndxs, foundError = s.onNoMoreData()
-				// Break out of the reading loop, after processing output.
+				// Break out of the reading loop, after processing (possibly empty) output.
 				shouldBreakReadingIncoming = true
 			default:
 				// Processing failed, break immediately.

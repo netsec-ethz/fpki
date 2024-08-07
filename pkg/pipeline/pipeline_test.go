@@ -31,15 +31,15 @@ func TestPipeline(t *testing.T) {
 		WithStages(
 			NewSource[int](
 				"a",
-				WithGeneratorFunction(func() (int, int, error) {
+				WithGeneratorFunction(func() ([]int, []int, error) {
 					// As a source of data.
 					inData := []int{1, 2, 3}
 					debugPrintf("[TEST] source index %d\n", currentIndex)
 					if currentIndex >= len(inData) {
-						return 0, 0, NoMoreData
+						return nil, nil, NoMoreData
 					}
 					defer func() { currentIndex++ }()
-					return inData[currentIndex], 0, nil
+					return inData[currentIndex : currentIndex+1], []int{0}, nil
 				}),
 			),
 			NewStage[int, int](
@@ -148,9 +148,9 @@ func TestStop(t *testing.T) {
 		WithStages(
 			NewSource[int](
 				"a",
-				WithGeneratorFunction(func() (int, int, error) {
+				WithGeneratorFunction(func() ([]int, []int, error) {
 					// As a source of data.
-					return 1, 0, nil
+					return []int{1}, []int{0}, nil
 				}),
 			),
 			NewStage[int, int](
@@ -205,24 +205,21 @@ func TestBundleSize(t *testing.T) {
 		WithStages(
 			NewSource[int](
 				"a",
-				WithGeneratorFunction(func() (int, int, error) {
+				WithGeneratorFunction(func() ([]int, []int, error) {
 					// As a source of data.
 					defer func() { sourceValue++ }()
-					return sourceValue, 0, nil
+					return []int{sourceValue}, []int{0}, nil
 				}),
 			),
 			NewStage[int, int](
 				"b",
 				WithProcessFunction(func(in int) ([]int, []int, error) {
 					defer func() { processedAtBcount++ }()
-					t.Logf("processed count = %d", processedAtBcount)
+					var err error
 					if (processedAtBcount+1)%bundleSize == 0 {
-						return nil, nil, NoMoreData
+						err = NoMoreData
 					}
-					return []int{in + 1}, []int{0}, nil
-				}),
-				WithOnNoMoreData[int, int](func() ([]int, []int, error) {
-					return []int{42}, []int{0}, nil
+					return []int{in + 1}, []int{0}, err
 				}),
 			),
 			NewSink[int](
@@ -243,14 +240,14 @@ func TestBundleSize(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, bundleSize, len(gotValues))
 	// Check that the values were inserted in the correct order.
-	require.Equal(t, []int{1, 2, 3, 42}, gotValues)
+	require.Equal(t, []int{1, 2, 3, 4}, gotValues)
 
 	// Continue processing one more bundle.
 	p.Resume()
 	err = p.Wait()
 	require.NoError(t, err)
 	require.Equal(t, 2*bundleSize, len(gotValues))
-	// require.Equal(t, []int{1, 2, 3, 42, 5, 6, 7, 42}, gotValues)
+	// require.Equal(t, []int{1, 2, 3, 4, 5, 6, 7, 8}, gotValues)
 }
 
 func TestMultiChannel(t *testing.T) {
@@ -277,15 +274,15 @@ func TestMultiChannel(t *testing.T) {
 		WithStages(
 			NewSource[int](
 				"1", // source.
-				WithGeneratorFunction(func() (int, int, error) {
+				WithGeneratorFunction(func() ([]int, []int, error) {
 					// As a source of data.
 					inData := []int{1, 2, 3}
 					debugPrintf("[TEST] source index %d\n", currentIndex)
 					if currentIndex >= len(inData) {
-						return 0, 0, NoMoreData
+						return nil, nil, NoMoreData
 					}
 					defer func() { currentIndex++ }()
-					return inData[currentIndex], 0, nil
+					return inData[currentIndex : currentIndex+1], []int{0}, nil
 				}),
 			),
 			// Stage 2 has two output channels, to 3 and to 4.
@@ -341,15 +338,15 @@ func TestMultipleOutputs(t *testing.T) {
 		WithStages(
 			NewSource[int](
 				"a",
-				WithGeneratorFunction(func() (int, int, error) {
+				WithGeneratorFunction(func() ([]int, []int, error) {
 					// As a source of data.
 					inData := []int{1, 2, 3}
 					debugPrintf("[TEST] source index %d\n", currentIndex)
 					if currentIndex >= len(inData) {
-						return 0, 0, NoMoreData
+						return nil, nil, NoMoreData
 					}
 					defer func() { currentIndex++ }()
-					return inData[currentIndex], 0, nil
+					return inData[currentIndex : currentIndex+1], []int{0}, nil
 				}),
 			),
 			NewStage[int, int](
@@ -400,15 +397,15 @@ func TestOnNoMoreData(t *testing.T) {
 		WithStages(
 			NewSource[int](
 				"a",
-				WithGeneratorFunction(func() (int, int, error) {
+				WithGeneratorFunction(func() ([]int, []int, error) {
 					// As a source of data.
 					inData := []int{1, 2, 3}
 					debugPrintf("[TEST] source index %d\n", currentIndex)
 					if currentIndex >= len(inData) {
-						return 0, 0, NoMoreData
+						return nil, nil, NoMoreData
 					}
 					defer func() { currentIndex++ }()
-					return inData[currentIndex], 0, nil
+					return inData[currentIndex : currentIndex+1], []int{0}, nil
 				}),
 			),
 			NewStage[int, int](
@@ -466,15 +463,15 @@ func TestWithSequentialOutputs(t *testing.T) {
 		WithStages(
 			NewSource[int](
 				"1", // source.
-				WithGeneratorFunction(func() (int, int, error) {
+				WithGeneratorFunction(func() ([]int, []int, error) {
 					// As a source of data.
 					inData := []int{1, 2, 3}
 					debugPrintf("[TEST] source index %d\n", currentIndex)
 					if currentIndex >= len(inData) {
-						return 0, 0, NoMoreData
+						return nil, nil, NoMoreData
 					}
 					defer func() { currentIndex++ }()
-					return inData[currentIndex], 0, nil
+					return inData[currentIndex : currentIndex+1], []int{0}, nil
 				}),
 				WithSequentialOutputs[None, int](),
 			),
@@ -540,15 +537,15 @@ func TestWithSequentialIO(t *testing.T) {
 		WithStages(
 			NewSource[int](
 				"1", // source.
-				WithGeneratorFunction(func() (int, int, error) {
+				WithGeneratorFunction(func() ([]int, []int, error) {
 					// As a source of data.
 					inData := []int{1, 2, 3, 4}
 					debugPrintf("[TEST] source index %d\n", currentIndex)
 					if currentIndex >= len(inData) {
-						return 0, 0, NoMoreData
+						return nil, nil, NoMoreData
 					}
 					defer func() { currentIndex++ }()
-					return inData[currentIndex], currentIndex % 2, nil
+					return inData[currentIndex : currentIndex+1], []int{currentIndex % 2}, nil
 				}),
 				WithSequentialOutputs[None, int](),
 				WithMultiOutputChannels[None, int](2),

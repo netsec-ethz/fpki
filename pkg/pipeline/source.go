@@ -19,17 +19,6 @@ func NewSource[OUT any](
 }
 
 func WithGeneratorFunction[OUT any](
-	generator func() (OUT, int, error),
-) stageOption[None, OUT] {
-	return func(s *Stage[None, OUT]) {
-		s.ProcessFunc = func(in None) ([]OUT, []int, error) {
-			out, outChIndex, err := generator()
-			return []OUT{out}, []int{outChIndex}, err
-		}
-	}
-}
-
-func WithGeneratorFunctionMultipleOutputs[OUT any](
 	generator func() ([]OUT, []int, error),
 ) stageOption[None, OUT] {
 	return func(s *Stage[None, OUT]) {
