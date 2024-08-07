@@ -17,9 +17,11 @@ type StageLike interface {
 }
 
 type StageBase struct {
-	Name   string     // Name of the stage.
-	ErrCh  chan error // To be read by the previous stage (or trigger, if this is Source).
-	StopCh chan None  // Indicates to this stage to stop.
+	Name                      string       // Name of the stage.
+	ErrCh                     chan error   // To be read by the previous stage (or trigger, if this is Source).
+	StopCh                    chan None    // Indicates to this stage to stop.
+	NextErrChs                []chan error // Next stage's error channel.
+	NextStagesAggregatedErrCh chan error   // Aggregated nexErrChs
 }
 
 func (s *StageBase) Base() *StageBase {
@@ -27,12 +29,12 @@ func (s *StageBase) Base() *StageBase {
 }
 
 type Stage[IN, OUT any] struct {
-	StageBase
-	IncomingChs                   []chan IN    // Incoming data channel to process.
-	OutgoingChs                   []chan OUT   // Data to the next stages goes here.
-	NextErrChs                    []chan error // Next stage's error channel.
-	NextStagesAggregatedErrCh     chan error   // Aggregated nexErrChs
-	cacheCompletedOutgoingIndices []int        // Cache to reuse space.
+	StageBase                     // Non type dependent fields.
+	IncomingChs        []chan IN  // Incoming data channel to process.
+	OutgoingChs        []chan OUT // Data to the next stages goes here.
+	AggregatedIncomeCh chan IN    // Aggregated input channel.
+
+	cacheCompletedOutgoingIndices []int // Cache to reuse space.
 
 	ProcessFunc func(in IN) ([]OUT, []int, error) // From 1 IN to n OUT, using n channels.
 	// Before stopping the pipeline. This function allows processing before stopping the pipeline.
@@ -42,7 +44,7 @@ type Stage[IN, OUT any] struct {
 	sendOutputs          func([]OUT, []int, *bool, *bool, *error) // Selectable by With* modifier.
 }
 
-var _ StageLike = &Stage[int, string]{}
+var _ StageLike = (*Stage[int, string])(nil)
 
 func NewStage[IN, OUT any](
 	name string,
@@ -199,9 +201,14 @@ func (s *Stage[IN, OUT]) Prepare() {
 	for i := range s.IncomingChs {
 		s.IncomingChs[i] = make(chan IN)
 	}
+	// The aggregated channel will receive all incoming data.
+	debugPrintf("[%s] aggregated input\n", s.Name)
+	s.AggregatedIncomeCh = s.aggregateIncomingChannels()
+
 	for i := range s.OutgoingChs {
 		s.OutgoingChs[i] = make(chan OUT)
 	}
+
 	s.NextErrChs = make([]chan error, len(s.OutgoingChs))
 
 	// Cannot aggregate the error channels here, as they will be inserted after linking with
@@ -214,6 +221,7 @@ func (s *Stage[IN, OUT]) Resume() {
 	// The aggregated channel will receive error messages from the N next stage error channels.
 	// All the nextStageErrCh are created and ready at this point.
 	s.NextStagesAggregatedErrCh = s.aggregateNextErrChannels()
+
 	go s.processThisStage()
 }
 
@@ -266,9 +274,6 @@ func (s *Stage[IN, OUT]) breakPipelineAndWait(initialErr error) error {
 }
 
 func (s *Stage[IN, OUT]) processThisStage() {
-	// The aggregated channel will receive all incoming data.
-	aggregatedIncomeCh := s.aggregateIncomingChannels()
-
 	var foundError error
 	var shouldReturn bool
 	var shouldBreakReadingIncoming bool
@@ -286,9 +291,9 @@ readIncoming:
 			foundError = err
 			break readIncoming
 
-		case in, ok := <-aggregatedIncomeCh:
+		case in, ok := <-s.AggregatedIncomeCh:
 			debugPrintf("[%s] incoming? %v\n", s.Name, ok)
-			// debugPrintf("[%s] incoming value = %v\n", s.Name, in)
+			debugPrintf("[%s] incoming value = %v\n", s.Name, in)
 
 			var outs []OUT
 			var outChIndxs []int
@@ -601,10 +606,10 @@ var debugLinesMu sync.Mutex
 
 func debugPrintf(format string, args ...any) {
 	// fmt.Printf(format, args...)
-	// debugPrintfReal(format, args...)
+	// debugPrintFunc(format, args...)
 }
 
-func debugPrintfReal(format string, args ...any) {
+func debugPrintFunc(format string, args ...any) {
 	t := time.Now()
 	line := fmt.Sprintf(format, args...)
 	debugLinesMu.Lock()

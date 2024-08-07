@@ -146,6 +146,9 @@ func WithAutoResumeAtStage(
 					newErrCh = make(chan error)
 					p.Stages[targetStage].Base().ErrCh = newErrCh
 					p.Stages[targetStage].Base().StopCh = make(chan None)
+					if sink, ok := p.Stages[targetStage].(SinkLike); ok {
+						sink.PrepareSink()
+					}
 					debugPrintf("[autoresume] stages prepared\n")
 
 					relink(p)

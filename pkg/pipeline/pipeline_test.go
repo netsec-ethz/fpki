@@ -714,13 +714,106 @@ func TestAutoResume(t *testing.T) {
 		),
 	)
 
-	// tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
-	tests.TestOrTimeout(t, tests.WithTimeout(time.Hour), func(t tests.T) { // deleteme
+	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
 		p.Resume()
 		err := p.Wait()
 		require.NoError(t, err)
 	})
 	require.Equal(t, []int{2, 3, 4, 5}, gotValues)
+}
+
+func TestAutoResumeAtSink(t *testing.T) {
+	defer PrintAllDebugLines()
+	// Prepare test.
+	sourceIndex := 0
+	itemCountAtSink := 0
+	incomingAtSinkIsClosed := false
+	gotValues := []int{}
+
+	// In this pipeline, the B stage will stop accepting values every 2 items.
+	p := NewPipeline(
+		func(p *Pipeline) {
+			// A -> B -> D
+			//  \__ C __/
+			a := SourceStage[int](p)          // sends to either b or c, alternatively
+			b := StageAtIndex[int, int](p, 1) // adds 10
+			c := StageAtIndex[int, int](p, 2) // adds 20
+			d := SinkStage[int](p)
+
+			LinkStagesAt(a, 0, b, 0)
+			LinkStagesAt(a, 1, c, 0)
+
+			LinkStagesAt(b, 0, d, 0)
+			LinkStagesAt(c, 0, d, 1)
+		},
+		WithStages(
+			NewSource[int](
+				"a",
+				WithMultiOutputChannels[None, int](2),
+				WithSequentialOutputs[None, int](),
+				WithSourceFunction(func() ([]int, []int, error) {
+					defer func() { sourceIndex++ }()
+					inData := []int{1, 2, 3, 4, 5, 6, 7}
+					if sourceIndex >= len(inData) {
+						return nil, nil, NoMoreData
+					}
+					return inData[sourceIndex : sourceIndex+1], []int{sourceIndex % 2}, nil
+				}),
+			),
+			NewStage[int, int](
+				"b",
+				WithProcessFunction(func(in int) ([]int, []int, error) {
+					return []int{in + 10}, []int{0}, nil
+				}),
+			),
+			NewStage[int, int](
+				"c",
+				WithProcessFunction(func(in int) ([]int, []int, error) {
+					return []int{in + 20}, []int{0}, nil
+				}),
+			),
+			NewSink[int](
+				"d",
+				WithMultiInputChannels[int, None](2),
+				WithSequentialInputs[int, None](),
+				WithSinkFunction(func(in int) error {
+					gotValues = append(gotValues, in)
+					var err error
+					itemCountAtSink++
+					if itemCountAtSink%3 == 0 {
+						debugPrintf("[TEST] [d] bundle reached: %v\n", gotValues)
+						err = NoMoreData
+					}
+					return err
+				}),
+				WithOnNoMoreData[int, None](func() ([]None, []int, error) {
+					debugPrintf("[TEST] [d] no more data called\n")
+					incomingAtSinkIsClosed = true
+					return nil, nil, nil
+				}),
+			),
+		),
+		// Sink stage can stop the pipeline, and it will auto resume.
+		WithAutoResumeAtStage(
+			3, // D
+			func() bool {
+				debugPrintf("[TEST] should auto resume? %v\n", !incomingAtSinkIsClosed)
+				return !incomingAtSinkIsClosed
+			},
+			func(p *Pipeline) {
+				debugPrintf("[TEST] Relinking Sink\n")
+			},
+			// Affects no one.
+		),
+	)
+
+	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
+		p.Resume()
+		err := p.Wait()
+		require.NoError(t, err)
+	})
+	require.Len(t, gotValues, 7)
+	require.Equal(t, []int{11, 22, 13, 24, 15, 26, 17}, gotValues)
 }
 
 func checkClosed[T any](t *testing.T, ch chan T) {
