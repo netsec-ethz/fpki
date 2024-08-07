@@ -74,7 +74,7 @@ func NewManager(
 	// Get the Certificate from the channel and pass it along.
 	source := pip.NewSource(
 		"source",
-		pip.WithGeneratorFunction(func() ([]Certificate, []int, error) {
+		pip.WithSourceFunction(func() ([]Certificate, []int, error) {
 			for cert := range m.IncomingCertChan {
 				outChIndex := m.ShardFuncCert(&cert.CertID)
 				return []Certificate{cert}, []int{int(outChIndex)}, nil

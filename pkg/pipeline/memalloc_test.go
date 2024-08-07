@@ -56,7 +56,7 @@ func TestMemAllocationOverhead(t *testing.T) {
 	var err error
 	allocs := tests.AllocsPerRun(func() {
 		startSourceCh <- struct{}{}
-		err = <-stage.ErrorChannel()
+		err = <-stage.Base().ErrCh
 	})
 	require.NoError(t, err)
 	// The test is flaky: sometimes we get 0 allocations, sometimes 1.

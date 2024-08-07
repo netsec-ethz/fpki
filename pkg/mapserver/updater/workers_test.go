@@ -106,7 +106,7 @@ func TestCertWorkerAllocationsOverhead(t *testing.T) {
 		// All is set up. Start processing and measure allocations.
 		sendCertsCh <- struct{}{}
 		// Wait for completion.
-		err = <-worker.Stage.ErrorChannel()
+		err = <-worker.Stage.ErrCh
 	})
 	require.NoError(t, err)
 	t.Logf("allocs = %d", allocs)
@@ -190,7 +190,7 @@ func TestDomainWorkerAllocationsOverhead(t *testing.T) {
 		// All is set up. Start processing and measure allocations.
 		sendDomainsCh <- struct{}{}
 		// Wait for completion.
-		err = <-worker.Stage.ErrorChannel()
+		err = <-worker.Stage.ErrCh
 	})
 	require.NoError(t, err)
 	t.Logf("allocs = %d", allocs)

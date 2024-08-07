@@ -42,6 +42,7 @@ func (s *Sink[IN]) Prepare() {
 		// Block until the processing has closed the outgoing channel.
 		for range s.OutgoingChs[0] {
 		}
+		debugPrintf("[%s] sink about to close next error channel (no more output)\n", s.Name)
 		close(s.NextErrChs[0])
 	}()
 

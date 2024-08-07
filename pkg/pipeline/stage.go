@@ -13,14 +13,21 @@ import (
 type StageLike interface {
 	Prepare()
 	Resume()
-	ErrorChannel() chan error
+	Base() *StageBase
 }
 
-type Stage[IN, OUT any] struct {
+type StageBase struct {
 	Name   string     // Name of the stage.
 	ErrCh  chan error // To be read by the previous stage (or trigger, if this is Source).
 	StopCh chan None  // Indicates to this stage to stop.
+}
 
+func (s *StageBase) Base() *StageBase {
+	return s
+}
+
+type Stage[IN, OUT any] struct {
+	StageBase
 	IncomingChs                   []chan IN    // Incoming data channel to process.
 	OutgoingChs                   []chan OUT   // Data to the next stages goes here.
 	NextErrChs                    []chan error // Next stage's error channel.
@@ -43,10 +50,12 @@ func NewStage[IN, OUT any](
 ) *Stage[IN, OUT] {
 
 	s := &Stage[IN, OUT]{
-		Name:                          name,
+		StageBase: StageBase{
+			Name: name,
+		},
 		IncomingChs:                   make([]chan IN, 1),  // Per default, just one channel.
 		OutgoingChs:                   make([]chan OUT, 1), // Per default, just one channel.
-		cacheCompletedOutgoingIndices: make([]int, 16),     // Max 16 outputs per process call.
+		cacheCompletedOutgoingIndices: make([]int, 0, 16),  // Init to 16 outputs per process call.
 		onNoMoreData: func() ([]OUT, []int, error) { // Noop.
 			return nil, nil, nil
 		},
@@ -161,6 +170,7 @@ func LinkStagesAt[IN, OUT, LAST any](
 		next.Name, &next.IncomingChs[inIndex],
 	)
 	prev.OutgoingChs[outIndex] = next.IncomingChs[inIndex]
+
 	debugPrintf("linking [%s]:%p with [%s]:%p\n",
 		prev.Name, &prev.NextErrChs,
 		next.Name, &next.ErrCh,
@@ -180,14 +190,6 @@ func LinkStagesFanOut[IN, OUT, LAST any](
 	for i, next := range nextStages {
 		LinkStagesAt(prev, i, next, 0)
 	}
-}
-
-func (s *Stage[IN, OUT]) IncomingChanCount() int {
-	return len(s.IncomingChs)
-}
-
-func (s *Stage[IN, OUT]) OutgoingChanCount() int {
-	return len(s.OutgoingChs)
 }
 
 func (s *Stage[IN, OUT]) Prepare() {
@@ -228,10 +230,6 @@ func (s *Stage[IN, OUT]) StopAndWait() error {
 	return s.breakPipelineAndWait(nil)
 }
 
-func (s *Stage[IN, OUT]) ErrorChannel() chan error {
-	return s.ErrCh
-}
-
 // breakPipelineAndWait closes the outgoing channels in index order, and stops to read the
 // next stages' error channels, in whichever order (no sorting of the error channels).
 func (s *Stage[IN, OUT]) breakPipelineAndWait(initialErr error) error {
@@ -252,7 +250,7 @@ func (s *Stage[IN, OUT]) breakPipelineAndWait(initialErr error) error {
 	initialErr = util.ErrorsCoalesce(initialErr, err)
 
 	// Propagate error backwards.
-	debugPrintf("[%s] Base: breaking pipeline\n", s.Name)
+	debugPrintf("[%s] closing error channel, previous stage will be notified\n", s.Name)
 	if initialErr != nil {
 		// Propagate error backwards.
 		s.ErrCh <- initialErr
@@ -263,7 +261,7 @@ func (s *Stage[IN, OUT]) breakPipelineAndWait(initialErr error) error {
 
 	// Close the stop channel indicator.
 	close(s.StopCh)
-	debugPrintf("[%s] Base: all done\n", s.Name)
+	debugPrintf("[%s] all done, stage is stopped\n", s.Name)
 	return initialErr
 }
 
@@ -363,7 +361,7 @@ func (s *Stage[IN, OUT]) sendOutputsSequential(
 			// Success writing to the outgoing channel, nothing else to do.
 			debugPrintf("[%s] sent %v\n", s.Name, out)
 		case err := <-s.NextStagesAggregatedErrCh:
-			debugPrintf("[%s] ERROR while sending at channel %d the value %v: %v\n",
+			debugPrintf("[%s] ERROR while sending at channel %d the value %v, error: %v\n",
 				s.Name, outChIndex, out, err)
 			// We received an error from next stage while trying to write to it.
 			*foundError = err

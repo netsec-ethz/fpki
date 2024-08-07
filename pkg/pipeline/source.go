@@ -18,7 +18,7 @@ func NewSource[OUT any](
 	}
 }
 
-func WithGeneratorFunction[OUT any](
+func WithSourceFunction[OUT any](
 	generator func() ([]OUT, []int, error),
 ) stageOption[None, OUT] {
 	return func(s *Stage[None, OUT]) {

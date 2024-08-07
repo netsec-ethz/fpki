@@ -10,6 +10,58 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestSimple(t *testing.T) {
+	defer PrintAllDebugLines()
+	// Prepare test.
+	sourceIndex := 0
+	gotValues := []int{}
+
+	p := NewPipeline(
+		func(p *Pipeline) {
+			// A -> B -> C
+			a := SourceStage[int](p)
+			b := StageAtIndex[int, int](p, 1)
+			c := SinkStage[int](p)
+
+			LinkStagesFanOut(a, b)
+			LinkStagesFanOut(b, c)
+		},
+		WithStages(
+			NewSource[int](
+				"a",
+				WithSourceFunction(func() ([]int, []int, error) {
+					defer func() { sourceIndex++ }()
+					inData := []int{1, 2, 3, 4}
+					if sourceIndex >= len(inData) {
+						return nil, nil, NoMoreData
+					}
+					return inData[sourceIndex : sourceIndex+1], []int{0}, nil
+				}),
+			),
+			NewStage[int, int](
+				"b",
+				WithProcessFunction(func(in int) ([]int, []int, error) {
+					return []int{in + 1}, []int{0}, nil
+				}),
+			),
+			NewSink[int](
+				"c",
+				WithSinkFunction(func(in int) error {
+					gotValues = append(gotValues, in)
+					return nil
+				}),
+			),
+		),
+	)
+
+	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
+		p.Resume()
+		err := p.Wait()
+		require.NoError(t, err)
+	})
+	require.Equal(t, []int{2, 3, 4, 5}, gotValues)
+}
+
 func TestPipeline(t *testing.T) {
 	defer PrintAllDebugLines()
 	// Prepare test.
@@ -31,7 +83,7 @@ func TestPipeline(t *testing.T) {
 		WithStages(
 			NewSource[int](
 				"a",
-				WithGeneratorFunction(func() ([]int, []int, error) {
+				WithSourceFunction(func() ([]int, []int, error) {
 					// As a source of data.
 					inData := []int{1, 2, 3}
 					debugPrintf("[TEST] source index %d\n", currentIndex)
@@ -96,7 +148,6 @@ func TestPipeline(t *testing.T) {
 	currentIndex = len(gotValues) // Because of the errors, recover.
 
 	// We can now resume.
-
 	debugPrintf("------------------------ RESUMING ----------------------\n")
 	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
 		p.Resume()
@@ -148,7 +199,7 @@ func TestStop(t *testing.T) {
 		WithStages(
 			NewSource[int](
 				"a",
-				WithGeneratorFunction(func() ([]int, []int, error) {
+				WithSourceFunction(func() ([]int, []int, error) {
 					// As a source of data.
 					return []int{1}, []int{0}, nil
 				}),
@@ -205,7 +256,7 @@ func TestBundleSize(t *testing.T) {
 		WithStages(
 			NewSource[int](
 				"a",
-				WithGeneratorFunction(func() ([]int, []int, error) {
+				WithSourceFunction(func() ([]int, []int, error) {
 					// As a source of data.
 					defer func() { sourceValue++ }()
 					return []int{sourceValue}, []int{0}, nil
@@ -274,7 +325,7 @@ func TestMultiChannel(t *testing.T) {
 		WithStages(
 			NewSource[int](
 				"1", // source.
-				WithGeneratorFunction(func() ([]int, []int, error) {
+				WithSourceFunction(func() ([]int, []int, error) {
 					// As a source of data.
 					inData := []int{1, 2, 3}
 					debugPrintf("[TEST] source index %d\n", currentIndex)
@@ -338,7 +389,7 @@ func TestMultipleOutputs(t *testing.T) {
 		WithStages(
 			NewSource[int](
 				"a",
-				WithGeneratorFunction(func() ([]int, []int, error) {
+				WithSourceFunction(func() ([]int, []int, error) {
 					// As a source of data.
 					inData := []int{1, 2, 3}
 					debugPrintf("[TEST] source index %d\n", currentIndex)
@@ -397,7 +448,7 @@ func TestOnNoMoreData(t *testing.T) {
 		WithStages(
 			NewSource[int](
 				"a",
-				WithGeneratorFunction(func() ([]int, []int, error) {
+				WithSourceFunction(func() ([]int, []int, error) {
 					// As a source of data.
 					inData := []int{1, 2, 3}
 					debugPrintf("[TEST] source index %d\n", currentIndex)
@@ -463,7 +514,7 @@ func TestWithSequentialOutputs(t *testing.T) {
 		WithStages(
 			NewSource[int](
 				"1", // source.
-				WithGeneratorFunction(func() ([]int, []int, error) {
+				WithSourceFunction(func() ([]int, []int, error) {
 					// As a source of data.
 					inData := []int{1, 2, 3}
 					debugPrintf("[TEST] source index %d\n", currentIndex)
@@ -537,7 +588,7 @@ func TestWithSequentialIO(t *testing.T) {
 		WithStages(
 			NewSource[int](
 				"1", // source.
-				WithGeneratorFunction(func() ([]int, []int, error) {
+				WithSourceFunction(func() ([]int, []int, error) {
 					// As a source of data.
 					inData := []int{1, 2, 3, 4}
 					debugPrintf("[TEST] source index %d\n", currentIndex)
@@ -587,6 +638,89 @@ func TestWithSequentialIO(t *testing.T) {
 		require.NoError(t, err)
 	})
 	require.Equal(t, []int{2, 4, 4, 8}, gotValues)
+}
+
+// TestAutoResume checks that if one stage stops in the middle of the processing without errors,
+// the pipeline can resume automatically.
+func TestAutoResume(t *testing.T) {
+	defer PrintAllDebugLines()
+	// Prepare test.
+	sourceIndex := 0
+	itemCountAtB := 0
+	incomingAtBisClosed := false
+	gotValues := []int{}
+
+	// In this pipeline, the B stage will stop accepting values every 2 items.
+	p := NewPipeline(
+		func(p *Pipeline) {
+			// A -> B -> C
+			a := SourceStage[int](p)
+			b := StageAtIndex[int, int](p, 1)
+			c := SinkStage[int](p)
+
+			LinkStagesFanOut(a, b)
+			LinkStagesFanOut(b, c)
+		},
+		WithStages(
+			NewSource[int](
+				"a",
+				WithSourceFunction(func() ([]int, []int, error) {
+					defer func() { sourceIndex++ }()
+					inData := []int{1, 2, 3, 4}
+					if sourceIndex >= len(inData) {
+						return nil, nil, NoMoreData
+					}
+					return inData[sourceIndex : sourceIndex+1], []int{0}, nil
+				}),
+			),
+			NewStage[int, int](
+				"b",
+				WithProcessFunction(func(in int) ([]int, []int, error) {
+					var err error
+					itemCountAtB++
+					if itemCountAtB%2 == 0 {
+						err = NoMoreData
+					}
+					return []int{in + 1}, []int{0}, err
+				}),
+				WithOnNoMoreData[int, int](func() ([]int, []int, error) {
+					incomingAtBisClosed = true
+					return nil, nil, nil
+				}),
+			),
+			NewSink[int](
+				"c",
+				WithSinkFunction(func(in int) error {
+					gotValues = append(gotValues, in)
+					return nil
+				}),
+			),
+		),
+		// Stage B can stop the pipeline, and it will auto resume.
+		WithAutoResumeAtStage(
+			1, // B
+			func() bool {
+				debugPrintf("[TEST] should auto resume? %v\n", !incomingAtBisClosed)
+				return !incomingAtBisClosed
+			},
+			func(p *Pipeline) {
+				debugPrintf("[TEST] Relinking B->C\n")
+				// Relink B->C
+				b := StageAtIndex[int, int](p, 1)
+				c := SinkStage[int](p)
+				LinkStagesFanOut(b, c)
+			},
+			2, // Affects C.
+		),
+	)
+
+	// tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
+	tests.TestOrTimeout(t, tests.WithTimeout(time.Hour), func(t tests.T) { // deleteme
+		p.Resume()
+		err := p.Wait()
+		require.NoError(t, err)
+	})
+	require.Equal(t, []int{2, 3, 4, 5}, gotValues)
 }
 
 func checkClosed[T any](t *testing.T, ch chan T) {
