@@ -63,21 +63,9 @@ func NewStage[IN, OUT any](
 
 type stageOption[IN, OUT any] func(*Stage[IN, OUT])
 
-func WithProcessFunction[IN, OUT any](
-	processFunc func(IN) (OUT, int, error),
-) stageOption[IN, OUT] {
-
-	return func(s *Stage[IN, OUT]) {
-		s.ProcessFunc = func(in IN) ([]OUT, []int, error) {
-			out, ix, err := processFunc(in)
-			return []OUT{out}, []int{ix}, err
-		}
-	}
-}
-
-// WithProcessFunctionMultipleOutputs allows the stage to create multiple outputs per given input.
+// WithProcessFunction allows the stage to create multiple outputs per given input.
 // The outputs are sent to the next stage _with no order_.
-func WithProcessFunctionMultipleOutputs[IN, OUT any](
+func WithProcessFunction[IN, OUT any](
 	processFunc func(IN) ([]OUT, []int, error),
 ) stageOption[IN, OUT] {
 

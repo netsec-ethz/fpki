@@ -17,7 +17,7 @@ func TestMemAllocationOverhead(t *testing.T) {
 
 	stage := pipeline.NewStage[int, int](
 		"worker",
-		pipeline.WithProcessFunctionMultipleOutputs(func(in int) ([]int, []int, error) {
+		pipeline.WithProcessFunction(func(in int) ([]int, []int, error) {
 			outs[0] = in + 1
 			return outs, outChs, nil
 		}),
