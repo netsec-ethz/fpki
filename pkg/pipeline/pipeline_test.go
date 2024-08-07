@@ -213,10 +213,14 @@ func TestBundleSize(t *testing.T) {
 				"b",
 				WithProcessFunction(func(in int) (int, int, error) {
 					defer func() { processedAtBcount++ }()
-					if processedAtBcount == bundleSize {
+					t.Logf("processed count = %d", processedAtBcount)
+					if (processedAtBcount+1)%bundleSize == 0 {
 						return 0, 0, NoMoreData
 					}
 					return in + 1, 0, nil
+				}),
+				WithOnNoMoreData[int, int](func() ([]int, []int, error) {
+					return []int{42}, []int{0}, nil
 				}),
 			),
 			NewSink[int](
@@ -235,7 +239,16 @@ func TestBundleSize(t *testing.T) {
 	// Wait to stop the pipeline in the middle of the process.
 	err := p.Wait()
 	require.NoError(t, err)
-	require.Equal(t, len(gotValues), bundleSize)
+	require.Equal(t, bundleSize, len(gotValues))
+	// Check that the values were inserted in the correct order.
+	require.Equal(t, []int{2, 2, 2, 42}, gotValues)
+
+	// Continue processing one more bundle.
+	p.Resume()
+	err = p.Wait()
+	require.NoError(t, err)
+	require.Equal(t, 2*bundleSize, len(gotValues))
+	require.Equal(t, []int{2, 2, 2, 42, 2, 2, 2, 42}, gotValues)
 }
 
 func TestMultiChannel(t *testing.T) {
