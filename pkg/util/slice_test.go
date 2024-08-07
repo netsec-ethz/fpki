@@ -89,3 +89,68 @@ func TestRemoveElementsFromSlice(t *testing.T) {
 		})
 	}
 }
+
+func TestResizeSlice(t *testing.T) {
+	cases := map[string]struct {
+		nilSlice  bool
+		cap       int
+		len       int
+		requested int
+	}{
+		"noop": {
+			cap:       1,
+			len:       1,
+			requested: 1,
+		},
+		"zero": {
+			cap:       1,
+			len:       0,
+			requested: 0,
+		},
+		"reduce": {
+			cap:       2,
+			len:       2,
+			requested: 1,
+		},
+		"enlarge": {
+			cap:       4,
+			len:       1,
+			requested: 6,
+		},
+		"empty": {
+			cap:       0,
+			len:       0,
+			requested: 4,
+		},
+		"nil": {
+			nilSlice:  true,
+			requested: 6,
+		},
+	}
+	for name, tc := range cases {
+		name, tc := name, tc
+		t.Run(name, func(t *testing.T) {
+			var s []int
+			if !tc.nilSlice {
+				s = make([]int, tc.len, tc.cap)
+			}
+			origAddr := (*[0]int)(s)
+			t.Logf("ini addr = %p", origAddr)
+
+			util.ResizeSlice(&s, tc.requested, 0)
+			require.Equal(t, tc.requested, len(s))
+
+			gotAddr := (*[0]int)(s)
+			t.Logf("got addr = %p", gotAddr)
+			t.Logf("equal? %v", origAddr == gotAddr)
+
+			if tc.cap >= tc.requested {
+				// Expect reusing the storage.
+				require.True(t, origAddr == gotAddr)
+			} else {
+				// Expect storage to be different.
+				require.False(t, origAddr == gotAddr)
+			}
+		})
+	}
+}
