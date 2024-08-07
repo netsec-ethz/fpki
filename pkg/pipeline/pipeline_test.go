@@ -186,9 +186,10 @@ func TestStop(t *testing.T) {
 func TestBundleSize(t *testing.T) {
 	defer PrintAllDebugLines()
 	// Prepare test.
-	gotValues := make([]int, 0)
+	sourceValue := 0
 	bundleSize := 4
 	processedAtBcount := 0
+	gotValues := make([]int, 0)
 
 	// Create pipeline.
 	p := NewPipeline(
@@ -206,7 +207,8 @@ func TestBundleSize(t *testing.T) {
 				"a",
 				WithGeneratorFunction(func() (int, int, error) {
 					// As a source of data.
-					return 1, 0, nil
+					defer func() { sourceValue++ }()
+					return sourceValue, 0, nil
 				}),
 			),
 			NewStage[int, int](
@@ -241,14 +243,14 @@ func TestBundleSize(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, bundleSize, len(gotValues))
 	// Check that the values were inserted in the correct order.
-	require.Equal(t, []int{2, 2, 2, 42}, gotValues)
+	require.Equal(t, []int{1, 2, 3, 42}, gotValues)
 
 	// Continue processing one more bundle.
 	p.Resume()
 	err = p.Wait()
 	require.NoError(t, err)
 	require.Equal(t, 2*bundleSize, len(gotValues))
-	require.Equal(t, []int{2, 2, 2, 42, 2, 2, 2, 42}, gotValues)
+	require.Equal(t, []int{1, 2, 3, 42, 5, 6, 7, 42}, gotValues)
 }
 
 func TestMultiChannel(t *testing.T) {
