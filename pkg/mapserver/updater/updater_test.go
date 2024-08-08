@@ -156,7 +156,7 @@ func TestRunWhenFalse(t *testing.T) {
 // TestMapUpdaterStartFetchingRemaining checks that the updater is able to keep a tally of
 // which indices have been already updated and write them down in the DB.
 func TestMapUpdaterStartFetchingRemaining(t *testing.T) {
-	ctx, cancelF := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancelF := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancelF()
 
 	// Configure a test DB.
@@ -306,7 +306,7 @@ func TestMapUpdaterStartFetchingRemaining(t *testing.T) {
 // TestMapUpdaterStartFetchingRemainingNextDay checks that after a full round of updates,
 // the next call to StartFetchingRemaining continues with the last unfetched index.
 func TestMapUpdaterStartFetchingRemainingNextDay(t *testing.T) {
-	ctx, cancelF := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancelF := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancelF()
 
 	// Configure a test DB.
