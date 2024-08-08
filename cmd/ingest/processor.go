@@ -20,21 +20,47 @@ import (
 		   ...
 */
 type Processor struct {
-	stats      *updater.Stats
-	NumWorkers int
-	BundleSize uint64
-	CsvFiles   []util.CsvFile
+	stats            *updater.Stats
+	CsvFiles         []util.CsvFile
+	NumWorkers       int
+	BundleSize       uint64
+	OnBundleFinished func()
 
 	Pipeline *pip.Pipeline
 }
 
-func NewProcessor() *Processor {
+func NewProcessor(options ...processorOptions) *Processor {
 	// Create the processor that will hold all the information and the pipeline.
 	p := &Processor{
-		NumWorkers: 1,
-		BundleSize: math.MaxUint64, // Default to "no limit",
+		NumWorkers:       1,              // Default to just 1 worker.
+		BundleSize:       math.MaxUint64, // Default to "no limit",
+		OnBundleFinished: func() {},      // Default to noop.
 	}
+	for _, opt := range options {
+		opt(p)
+	}
+
 	return p
+}
+
+type processorOptions func(*Processor)
+
+func WithNumWorkers(numWorkers int) processorOptions {
+	return func(p *Processor) {
+		p.NumWorkers = numWorkers
+	}
+}
+
+func WithBundleSize(bundleSize uint64) processorOptions {
+	return func(p *Processor) {
+		p.BundleSize = bundleSize
+	}
+}
+
+func WithOnBundleFinished(fcn func()) processorOptions {
+	return func(p *Processor) {
+		p.OnBundleFinished = fcn
+	}
 }
 
 func (p *Processor) createPipeline() {
@@ -86,7 +112,9 @@ func (p *Processor) createPipeline() {
 			p.stats.WrittenBytes.Add(int64(len(in.Cert.Raw)))
 
 			if certProcessedCount >= p.BundleSize {
+				// Reset counters.
 				certProcessedCount = 0
+				// Request the next stages to stop.
 				err = pip.NoMoreData
 			}
 			return err
@@ -145,7 +173,14 @@ func (p *Processor) createPipeline() {
 		pip.WithStages(stages...),
 		pip.WithAutoResumeAtStage(
 			len(stages)-1,
-			func() bool { return !noMoreData }, // resume if not finished.
+			func() bool {
+				// Call for each bundle. This call is ensured to be performed after all the next
+				// stages have finished.
+				p.OnBundleFinished()
+
+				// resume if not finished.
+				return !noMoreData
+			},
 			func(p *pip.Pipeline) {
 				// Relink function, no affected stages.
 			},
