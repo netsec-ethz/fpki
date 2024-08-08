@@ -293,7 +293,7 @@ readIncoming:
 
 		case in, ok := <-s.AggregatedIncomeCh:
 			debugPrintf("[%s] incoming? %v\n", s.Name, ok)
-			debugPrintf("[%s] incoming value = %v\n", s.Name, in)
+			// debugPrintf("[%s] incoming value = %v\n", s.Name, in) // deleteme
 
 			var outs []OUT
 			var outChIndxs []int
