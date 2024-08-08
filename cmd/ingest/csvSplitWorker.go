@@ -12,49 +12,66 @@ type line struct {
 	number int      // line number
 }
 
+// csvSplitWorker is a processing stage that takes a CsvFile and outputs all its lines.
+// The distribution is done in a staggered fan-out way to the next stages, so that each next
+// stage i processes lines i, i+W, i+2W, etc (W being the number or next stages).
+// TODO: instead of returning all lines, just return W lines and only read lines from file to
+// memory when requested. This requires a change in pkg/pipeline.
 type csvSplitWorker struct {
 	*pip.Stage[util.CsvFile, line]
 
-	csvFile util.CsvFile // closed at end of processing.
+	channelsCache []int // reuse storage
 }
 
 func NewCsvSplitWorker(p *Processor) *csvSplitWorker {
-	w := &csvSplitWorker{}
+	w := &csvSplitWorker{
+		channelsCache: make([]int, 0),
+	}
 	w.Stage = pip.NewStage[util.CsvFile, line](
 		"csv_split",
 		pip.WithMultiOutputChannels[util.CsvFile, line](p.NumWorkers),
 		pip.WithSequentialOutputs[util.CsvFile, line](),
-		pip.WithProcessFunctionMultipleOutputs(
+		pip.WithProcessFunction(
 			func(in util.CsvFile) ([]line, []int, error) {
 				p.stats.TotalFilesRead.Add(1)
-				w.csvFile = in
-				lines, err := w.splitFile()
-				channels := make([]int, len(lines))
-				for i := 0; i < len(lines); i++ {
-					channels[i] = i % p.NumWorkers
+				// Split the file into multiple lines.
+				lines, err := w.splitFile(in)
+				if err != nil {
+					return nil, nil, err
 				}
-				return lines, channels, err
-			},
-		),
-		pip.WithOnNoMoreData[util.CsvFile, line](
-			func() ([]line, []int, error) {
-				err := w.csvFile.Close()
-				return nil, nil, err
+
+				// Prepare the staggered fan-out list of output channels.
+				w.channelsCache = w.channelsCache[:0]
+				for i := 0; i < len(lines); i++ {
+					w.channelsCache = append(w.channelsCache, i%p.NumWorkers)
+				}
+
+				return lines, w.channelsCache, nil
 			},
 		),
 	)
 	return w
 }
 
-func (w *csvSplitWorker) splitFile() ([]line, error) {
-	fileReader, err := w.csvFile.Open()
+func (w *csvSplitWorker) splitFile(f util.CsvFile) ([]line, error) {
+	fileReader, err := f.Open()
 	if err != nil {
 		return nil, err
 	}
 
 	r := csv.NewReader(fileReader)
 	r.FieldsPerRecord = -1 // don't check number of fields
+
+	// TODO: try to reuse storage by calling r.ReuseRecord and copying.
 	records, err := r.ReadAll()
+	if err != nil {
+		return nil, err
+	}
+
+	// Close the csv file.
+	if err := f.Close(); err != nil {
+		return nil, err
+	}
 
 	// Convert records to lines (cast each line).
 	lines := make([]line, len(records))
@@ -65,5 +82,5 @@ func (w *csvSplitWorker) splitFile() ([]line, error) {
 		}
 	}
 
-	return lines, err
+	return lines, nil
 }
