@@ -54,14 +54,6 @@ func (s *Source[OUT]) Prepare() {
 	}()
 }
 
-func (s *Source[OUT]) Resume() {
-	SourceAsStage(s).Resume()
-}
-
-func (s *Source[OUT]) StopAndWait() error {
-	return SourceAsStage(s).StopAndWait()
-}
-
 func SourceAsStage[OUT any](s *Source[OUT]) *Stage[None, OUT] {
 	return s.Stage
 }

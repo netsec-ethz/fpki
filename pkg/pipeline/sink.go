@@ -21,7 +21,6 @@ func NewSink[IN any](
 func WithSinkFunction[IN any](
 	processFunc func(in IN) error,
 ) stageOption[IN, None] {
-
 	return func(s *Stage[IN, None]) {
 		// Just set the process function to call the user's one.
 		s.ProcessFunc = func(in IN) ([]None, []int, error) {
@@ -55,14 +54,6 @@ func (s *Sink[IN]) Prepare() {
 
 	// Prepare the sink part.
 	s.PrepareSink()
-}
-
-func (s *Sink[IN]) Resume() {
-	SinkAsStage(s).Resume()
-}
-
-func (s *Sink[IN]) StopAndWait() error {
-	return SinkAsStage(s).StopAndWait()
 }
 
 func SinkAsStage[IN any](s *Sink[IN]) *Stage[IN, None] {
