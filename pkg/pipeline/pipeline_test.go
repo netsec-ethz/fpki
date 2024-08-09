@@ -16,7 +16,7 @@ func TestSimple(t *testing.T) {
 	sourceIndex := 0
 	gotValues := []int{}
 
-	p := NewPipeline(
+	p, err := NewPipeline(
 		func(p *Pipeline) {
 			// A -> B -> C
 			a := SourceStage[int](p)
@@ -53,6 +53,7 @@ func TestSimple(t *testing.T) {
 			),
 		),
 	)
+	require.NoError(t, err)
 
 	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
 		p.Resume()
@@ -70,7 +71,7 @@ func TestPipeline(t *testing.T) {
 	firstTimeErrorAtB := true
 
 	// Create pipeline.
-	p := NewPipeline(
+	p, err := NewPipeline(
 		func(p *Pipeline) {
 			// A->B->C
 			a := p.Stages[0].(*Source[int])
@@ -116,6 +117,7 @@ func TestPipeline(t *testing.T) {
 			),
 		),
 	)
+	require.NoError(t, err)
 
 	// Resume all stages. There is nobody reading the last channel, so the pipeline will stall.
 	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
@@ -177,6 +179,83 @@ func TestPipeline(t *testing.T) {
 	checkAllClosed(t, c.NextErrChs)
 }
 
+// TestSourceWithChannel creates a pipeline that has a source based on a channel.
+func TestSourceWithChannel(t *testing.T) {
+	defer PrintAllDebugLines()
+
+	// Prepare test.
+	gotValues := make([]int, 0)
+	incomingIndex := 0
+	incomingCh := make(chan int)
+	go func() {
+		inData := []int{1, 2, 3, 4}
+		for _, in := range inData {
+			incomingCh <- in
+		}
+		close(incomingCh)
+	}()
+
+	p, err := NewPipeline(
+		func(p *Pipeline) {
+			// Link function.
+			// A -> B -> D
+			//   \_ C _/
+			a := SourceStage[int](p)
+			b := StageAtIndex[int, int](p, 1)
+			c := StageAtIndex[int, int](p, 2)
+			d := SinkStage[int](p)
+
+			LinkStagesAt(a, 0, b, 0)
+			LinkStagesAt(a, 1, c, 0)
+			LinkStagesAt(b, 0, d, 0)
+			LinkStagesAt(c, 0, d, 1)
+		},
+		WithStages(
+			NewSource(
+				"a",
+				WithMultiOutputChannels[None, int](2),
+				WithSequentialOutputs[None, int](),
+				WithSourceChannel(
+					incomingCh,
+					func(in int) (int, error) {
+						defer func() { incomingIndex++ }()
+						return incomingIndex % 2, nil
+					},
+				),
+			),
+			NewStage(
+				"b",
+				WithProcessFunction(func(in int) ([]int, []int, error) {
+					return []int{in + 10}, []int{0}, nil
+				}),
+			),
+			NewStage(
+				"c",
+				WithProcessFunction(func(in int) ([]int, []int, error) {
+					return []int{in + 20}, []int{0}, nil
+				}),
+			),
+			NewSink(
+				"d",
+				WithMultiInputChannels[int, None](2),
+				WithSequentialInputs[int, None](),
+				WithSinkFunction(func(in int) error {
+					gotValues = append(gotValues, in)
+					return nil
+				}),
+			),
+		),
+	)
+	require.NoError(t, err)
+
+	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
+		p.Resume()
+		err := p.Wait()
+		require.NoError(t, err)
+	})
+	require.Equal(t, []int{11, 22, 13, 24}, gotValues)
+}
+
 func TestStop(t *testing.T) {
 	defer PrintAllDebugLines()
 	// Prepare test.
@@ -186,7 +265,7 @@ func TestStop(t *testing.T) {
 	stopB.Add(1) // The test waits until b tells it to stop the pipeline.
 
 	// Create pipeline.
-	p := NewPipeline(
+	p, err := NewPipeline(
 		func(p *Pipeline) {
 			// A->B->C
 			a := p.Stages[0].(*Source[int])
@@ -224,12 +303,13 @@ func TestStop(t *testing.T) {
 			),
 		),
 	)
+	require.NoError(t, err)
 
 	// Resume all stages. There is nobody reading the last channel, so the pipeline will stall.
 	p.Resume()
 	// Wait to stop the pipeline in the middle of the process.
 	stopB.Wait()
-	err := StageAtIndex[int, int](p, 1).StopAndWait()
+	err = StageAtIndex[int, int](p, 1).StopAndWait()
 	require.NoError(t, err)
 	require.LessOrEqual(t, 10, len(gotValues))
 }
@@ -243,7 +323,7 @@ func TestBundleSize(t *testing.T) {
 	gotValues := make([]int, 0)
 
 	// Create pipeline.
-	p := NewPipeline(
+	p, err := NewPipeline(
 		func(p *Pipeline) {
 			// A->B->C
 			a := p.Stages[0].(*Source[int])
@@ -258,19 +338,23 @@ func TestBundleSize(t *testing.T) {
 				"a",
 				WithSourceFunction(func() ([]int, []int, error) {
 					// As a source of data.
-					defer func() { sourceValue++ }()
+					sourceValue++
 					return []int{sourceValue}, []int{0}, nil
+				}),
+				WithOnErrorSending[None, int](func(err error, failedIndices []int) {
+					debugPrintf("[a] [TEST] error sending data, rewinding.\n")
+					sourceValue--
 				}),
 			),
 			NewStage[int, int](
 				"b",
 				WithProcessFunction(func(in int) ([]int, []int, error) {
-					defer func() { processedAtBcount++ }()
+					processedAtBcount++
 					var err error
-					if (processedAtBcount+1)%bundleSize == 0 {
+					if processedAtBcount%bundleSize == 0 {
 						err = NoMoreData
 					}
-					return []int{in + 1}, []int{0}, err
+					return []int{in + 10}, []int{0}, err
 				}),
 			),
 			NewSink[int](
@@ -283,22 +367,32 @@ func TestBundleSize(t *testing.T) {
 			),
 		),
 	)
+	require.NoError(t, err)
 
 	// Resume all stages. There is nobody reading the last channel, so the pipeline will stall.
-	p.Resume()
-	// Wait to stop the pipeline in the middle of the process.
-	err := p.Wait()
-	require.NoError(t, err)
-	require.Equal(t, bundleSize, len(gotValues))
-	// Check that the values were inserted in the correct order.
-	require.Equal(t, []int{1, 2, 3, 4}, gotValues)
+	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
+		p.Resume()
+		// Wait to stop the pipeline in the middle of the process.
+		err := p.Wait()
+		require.NoError(t, err)
+		require.Equal(t, bundleSize, len(gotValues))
+		// Check that the values were inserted in the correct order.
+		require.Equal(t, []int{11, 12, 13, 14}, gotValues)
+	})
 
 	// Continue processing one more bundle.
-	p.Resume()
-	err = p.Wait()
-	require.NoError(t, err)
-	require.Equal(t, 2*bundleSize, len(gotValues))
-	// require.Equal(t, []int{1, 2, 3, 4, 5, 6, 7, 8}, gotValues)
+	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
+		debugPrintf("---------------- RESUMING ----------------\n")
+		p.Resume()
+		err := p.Wait()
+		require.NoError(t, err)
+		require.Equal(t, 2*bundleSize, len(gotValues))
+		// The value 4 broke the processing at B, but if A called the process function and
+		// failed to send the value, its OnErrorSending function will rewind the index.
+		// We thus expect sequential values always.
+		require.Equal(t, []int{11, 12, 13, 14, 15, 16, 17, 18}, gotValues)
+	})
+	debugPrintf("---------------- FINISHED ----------------\n")
 }
 
 func TestMultiChannel(t *testing.T) {
@@ -308,7 +402,7 @@ func TestMultiChannel(t *testing.T) {
 	currentIndex := 0
 
 	// Create pipeline.
-	p := NewPipeline(
+	p, err := NewPipeline(
 		func(p *Pipeline) {
 			// 1->2->3->4
 			//     \__/
@@ -361,12 +455,15 @@ func TestMultiChannel(t *testing.T) {
 			),
 		),
 	)
+	require.NoError(t, err)
 
 	// Resume all stages. There is nobody reading the last channel, so the pipeline will stall.
-	p.Resume()
-	err := p.Wait()
-	debugPrintf("[TEST] error 1: %v\n", err)
-	require.NoError(t, err)
+	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
+		p.Resume()
+		err := p.Wait()
+		debugPrintf("[TEST] error 1: %v\n", err)
+		require.NoError(t, err)
+	})
 }
 
 func TestMultipleOutputs(t *testing.T) {
@@ -376,7 +473,7 @@ func TestMultipleOutputs(t *testing.T) {
 	currentIndex := 0
 
 	// Create pipeline.
-	p := NewPipeline(
+	p, err := NewPipeline(
 		func(p *Pipeline) {
 			// A->B->C
 			a := p.Stages[0].(*Source[int])
@@ -416,12 +513,15 @@ func TestMultipleOutputs(t *testing.T) {
 			),
 		),
 	)
+	require.NoError(t, err)
 
 	// Resume all stages. There is nobody reading the last channel, so the pipeline will stall.
-	p.Resume()
-	// Wait to stop the pipeline in the middle of the process.
-	err := p.Wait()
-	require.NoError(t, err)
+	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
+		p.Resume()
+		// Wait to stop the pipeline in the middle of the process.
+		err := p.Wait()
+		require.NoError(t, err)
+	})
 	require.ElementsMatch(t, []int{1, 2, 2, 3, 3, 4}, gotValues)
 }
 
@@ -434,7 +534,7 @@ func TestOnNoMoreData(t *testing.T) {
 	outIndexesForB := make([]int, 0, len(bufferForB))
 
 	// Create pipeline.
-	p := NewPipeline(
+	p, err := NewPipeline(
 		func(p *Pipeline) {
 			// A->B->C
 			// B keeps a preallocated buffer elements.
@@ -482,11 +582,14 @@ func TestOnNoMoreData(t *testing.T) {
 			),
 		),
 	)
+	require.NoError(t, err)
 
 	// Resume all stages.
-	p.Resume()
-	err := p.Wait()
-	require.NoError(t, err)
+	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
+		p.Resume()
+		err := p.Wait()
+		require.NoError(t, err)
+	})
 	require.ElementsMatch(t, []int{1, 2, 3}, gotValues)
 }
 
@@ -497,7 +600,7 @@ func TestWithSequentialOutputs(t *testing.T) {
 	currentIndex := 0
 
 	// Create pipeline.
-	p := NewPipeline(
+	p, err := NewPipeline(
 		func(p *Pipeline) {
 			// 1->2->3->4
 			//     \__/
@@ -554,12 +657,15 @@ func TestWithSequentialOutputs(t *testing.T) {
 			),
 		),
 	)
+	require.NoError(t, err)
 
 	// Resume all stages. There is nobody reading the last channel, so the pipeline will stall.
-	p.Resume()
-	err := p.Wait()
-	debugPrintf("[TEST] error 1: %v\n", err)
-	require.NoError(t, err)
+	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
+		p.Resume()
+		err := p.Wait()
+		debugPrintf("[TEST] error 1: %v\n", err)
+		require.NoError(t, err)
+	})
 }
 
 // TestWithSequentialIO checks that the processing is done in order, since all inputs and outputs
@@ -571,7 +677,7 @@ func TestWithSequentialIO(t *testing.T) {
 	currentIndex := 0
 
 	// Create pipeline.
-	p := NewPipeline(
+	p, err := NewPipeline(
 		func(p *Pipeline) {
 			// 1 ->2 ->4
 			//  \->3_/
@@ -629,6 +735,7 @@ func TestWithSequentialIO(t *testing.T) {
 			),
 		),
 	)
+	require.NoError(t, err)
 
 	// Resume all stages. There is nobody reading the last channel, so the pipeline will stall.
 	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
@@ -651,7 +758,7 @@ func TestAutoResume(t *testing.T) {
 	gotValues := []int{}
 
 	// In this pipeline, the B stage will stop accepting values every 2 items.
-	p := NewPipeline(
+	p, err := NewPipeline(
 		func(p *Pipeline) {
 			// A -> B -> C
 			a := SourceStage[int](p)
@@ -713,6 +820,7 @@ func TestAutoResume(t *testing.T) {
 			2, // Affects C.
 		),
 	)
+	require.NoError(t, err)
 
 	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
 		p.Resume()
@@ -744,7 +852,7 @@ func TestAutoResumeAtSource(t *testing.T) {
 		LinkStagesAt(b, 0, d, 0)
 		LinkStagesAt(c, 0, d, 1)
 	}
-	p := NewPipeline(
+	p, err := NewPipeline(
 		linkFunc,
 		WithStages(
 			NewSource[int](
@@ -802,6 +910,7 @@ func TestAutoResumeAtSource(t *testing.T) {
 			1, 2, 3,
 		),
 	)
+	require.NoError(t, err)
 
 	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
 		p.Resume()
@@ -831,7 +940,7 @@ func TestAutoResumeAtSink(t *testing.T) {
 	gotValues := []int{}
 
 	// In this pipeline, the B stage will stop accepting values every 2 items.
-	p := NewPipeline(
+	p, err := NewPipeline(
 		func(p *Pipeline) {
 			// A -> B -> D
 			//  \__ C __/
@@ -906,6 +1015,7 @@ func TestAutoResumeAtSink(t *testing.T) {
 			// Affects no one.
 		),
 	)
+	require.NoError(t, err)
 
 	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
 		p.Resume()

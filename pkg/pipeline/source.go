@@ -26,6 +26,33 @@ func WithSourceFunction[OUT any](
 	}
 }
 
+// Sets this source to produce as much output as the incoming channel provides.
+// The processing function is called for each value to determine the output channel and error.
+func WithSourceChannel[OUT any](
+	incomingCh chan OUT,
+	processFunction func(in OUT) (int, error),
+) stageOption[None, OUT] {
+	return func(s *Stage[None, OUT]) {
+		incomingCh := incomingCh
+		processFunction := processFunction
+		outs := make([]OUT, 1)
+		outChs := make([]int, 1)
+		s.ProcessFunc = func(in None) ([]OUT, []int, error) {
+			for in := range incomingCh {
+				outCh, err := processFunction(in)
+				debugPrintf("[%s] source channel got value: %v, out ch: %d, err: %v\n",
+					s.Name, in, outCh, err)
+				outs[0] = in
+				outChs[0] = outCh
+				return outs, outChs, err
+			}
+			debugPrintf("[%s] source channel is closed, no more data\n", s.Name)
+			// When the incoming channel is closed, return no more data.
+			return nil, nil, NoMoreData
+		}
+	}
+}
+
 func (s *Source[OUT]) Wait() error {
 	return <-s.TopErrCh
 }
@@ -41,14 +68,14 @@ func (s *Source[OUT]) Prepare() {
 	// No other stage is reading from our ErrCh, since we are a source, there is no previous one.
 	go func(errCh chan error) {
 		debugPrintf("[%s] source.Prepare spawning continuous send, err chan: 0x%x\n",
-			s.Name, chanPtr(s.ErrCh))
+			s.Name, chanPtr(errCh))
 		for {
 			select {
 			case s.IncomingChs[0] <- None{}:
 				debugPrintf("[%s] source to itself None\n", s.Name)
 			case err := <-errCh:
 				debugPrintf("[%s] something at error channel (0x%x): %v. Stopping\n",
-					s.Name, chanPtr(s.ErrCh), err)
+					s.Name, chanPtr(errCh), err)
 				// Close incoming.
 				close(s.IncomingChs[0])
 				s.TopErrCh <- err // might block, but this goroutine is done anyways.

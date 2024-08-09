@@ -1,6 +1,8 @@
 package pipeline
 
 import (
+	"fmt"
+
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
@@ -69,19 +71,25 @@ import (
 type Pipeline struct {
 	linkFunc func(p *Pipeline)
 	Stages   []StageLike
+	Source   SourceLike
+	Sink     SinkLike
 }
 
 func NewPipeline(
 	linkFunc func(p *Pipeline),
 	options ...pipelineOptions,
-) *Pipeline {
+) (*Pipeline, error) {
 	p := &Pipeline{
 		linkFunc: linkFunc,
 	}
 	for _, opt := range options {
 		opt(p)
 	}
-	return p
+
+	// Check that the pipeline is conformant.
+	err := p.check()
+
+	return p, err
 }
 
 type pipelineOptions func(*Pipeline)
@@ -171,7 +179,6 @@ func WithAutoResumeAtStage(
 					debugPrintf("[autoresume] stages resumed\n")
 				}
 			}()
-
 		}
 	}
 }
@@ -215,4 +222,31 @@ func (p *Pipeline) prepare() {
 	for _, s := range p.Stages {
 		s.Prepare()
 	}
+}
+
+// check finds the source and sink of this pipeline, or reports an error.
+func (p *Pipeline) check() error {
+	p.Source = nil
+	for _, s := range p.Stages {
+		if s, ok := s.(SourceLike); ok {
+			p.Source = s
+			break
+		}
+	}
+	if p.Source == nil {
+		return fmt.Errorf("no source in pipeline")
+	}
+
+	p.Sink = nil
+	for _, s := range p.Stages {
+		if s, ok := s.(SinkLike); ok {
+			p.Sink = s
+			break
+		}
+	}
+	if p.Sink == nil {
+		return fmt.Errorf("no sink in pipeline")
+	}
+
+	return nil
 }
