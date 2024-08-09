@@ -102,6 +102,7 @@ func WithAutoResumeAtStage(
 ) pipelineOptions {
 	return func(p *Pipeline) {
 		origLinkFunc := p.linkFunc
+		// Sort the affected stages so that Resume can walk backwards.
 		affectedStages := util.Qsort(affectedStages)
 
 		p.linkFunc = func(p *Pipeline) {
@@ -114,10 +115,15 @@ func WithAutoResumeAtStage(
 			// But when the target closes its error channel, if shouldResumeNow indicates so,
 			// create a new error channel and keep the same behavior as before.
 
-			// Capture the error channels of the target stage (e.g. due to bundle size)
-			origErrCh := p.Stages[targetStage].Base().ErrCh
+			// Tag the target stage.
+			target := p.Stages[targetStage]
+
+			// Replace the salient error channel of the target stage.
+			origErrCh := target.Base().ErrCh
+			debugPrintf("[autoresume] orig error channel: 0x%x\n", chanPtr(origErrCh))
 			newErrCh := make(chan error)
-			p.Stages[targetStage].Base().ErrCh = newErrCh
+			target.Base().ErrCh = newErrCh
+			debugPrintf("[autoresume] new error channel: 0x%x\n", chanPtr(newErrCh))
 
 			go func() {
 				for {
@@ -138,15 +144,17 @@ func WithAutoResumeAtStage(
 					}
 
 					debugPrintf("[autoresume] request to resume\n")
-					// Auto resume was requested, prepare affected stages and relink.
+					// Auto resume was requested, prepare affected stages.
 					for i := len(affectedStages) - 1; i >= 0; i-- {
 						p.Stages[affectedStages[i]].Prepare()
 					}
+
 					// The target stage needs a new error and stop channels.
 					newErrCh = make(chan error)
-					p.Stages[targetStage].Base().ErrCh = newErrCh
-					p.Stages[targetStage].Base().StopCh = make(chan None)
-					if sink, ok := p.Stages[targetStage].(SinkLike); ok {
+					target.Base().ErrCh = newErrCh
+					target.Base().StopCh = make(chan None)
+
+					if sink, ok := target.(SinkLike); ok {
 						sink.PrepareSink()
 					}
 					debugPrintf("[autoresume] stages prepared\n")
@@ -159,7 +167,7 @@ func WithAutoResumeAtStage(
 						p.Stages[affectedStages[i]].Resume()
 					}
 					// Also the target stage.
-					p.Stages[targetStage].Resume()
+					target.Resume()
 					debugPrintf("[autoresume] stages resumed\n")
 				}
 			}()
@@ -192,9 +200,14 @@ func (p *Pipeline) Resume() {
 func (p *Pipeline) Wait() error {
 	// The first stage is a source?
 	if source, ok := p.Stages[0].(SourceLike); ok {
+		debugPrintf("[pipeline] Wait on a source, chan is: 0x%x.\n",
+			chanPtr(source.GetSourceBase().TopErrCh))
 		return source.Wait()
 	}
+
 	// It is not a source, just treat it as a stage.
+	debugPrintf("[pipeline] Wait on NON source, chan is: 0x%x.\n",
+		chanPtr(p.Stages[0].Base().ErrCh))
 	return <-p.Stages[0].Base().ErrCh
 }
 

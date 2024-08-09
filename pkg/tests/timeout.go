@@ -13,7 +13,6 @@ func TestOrTimeout(t *testing.T, option timeoutOption, fcn func(T)) {
 	finished := make(chan struct{})
 	go func() {
 		defer func() {
-			t.Logf("Test finished on time: %s", t.Name())
 			finished <- struct{}{}
 		}()
 

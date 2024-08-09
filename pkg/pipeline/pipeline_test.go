@@ -722,6 +722,96 @@ func TestAutoResume(t *testing.T) {
 	require.Equal(t, []int{2, 3, 4, 5}, gotValues)
 }
 
+func TestAutoResumeAtSource(t *testing.T) {
+	defer PrintAllDebugLines()
+	// Prepare test.
+	sourceIndex := 0
+	sourceIsFinished := false
+	gotValues := []int{}
+
+	// In this pipeline, the B stage will stop accepting values every 2 items.
+	linkFunc := func(p *Pipeline) {
+		// A -> B -> D
+		//  \__ C __/
+		a := SourceStage[int](p)          // sends to either b or c, alternatively
+		b := StageAtIndex[int, int](p, 1) // adds 10
+		c := StageAtIndex[int, int](p, 2) // adds 20
+		d := SinkStage[int](p)            // stores valkues
+
+		LinkStagesAt(a, 0, b, 0)
+		LinkStagesAt(a, 1, c, 0)
+
+		LinkStagesAt(b, 0, d, 0)
+		LinkStagesAt(c, 0, d, 1)
+	}
+	p := NewPipeline(
+		linkFunc,
+		WithStages(
+			NewSource[int](
+				"a",
+				WithMultiOutputChannels[None, int](2),
+				WithSequentialOutputs[None, int](),
+				WithSourceFunction(func() ([]int, []int, error) {
+					defer func() { sourceIndex++ }()
+					inData := []int{1, 2, 3, 4, 5, 6, 7}
+					if sourceIndex >= len(inData) {
+						sourceIsFinished = true
+						return nil, nil, NoMoreData
+					}
+
+					// There is data to send.
+					var err error
+					if (sourceIndex+1)%3 == 0 {
+						// Bundle completed.
+						err = NoMoreData
+					}
+					return inData[sourceIndex : sourceIndex+1], []int{sourceIndex % 2}, err
+				}),
+			),
+			NewStage[int, int](
+				"b",
+				WithProcessFunction(func(in int) ([]int, []int, error) {
+					return []int{in + 10}, []int{0}, nil
+				}),
+			),
+			NewStage[int, int](
+				"c",
+				WithProcessFunction(func(in int) ([]int, []int, error) {
+					return []int{in + 20}, []int{0}, nil
+				}),
+			),
+			NewSink[int](
+				"d",
+				WithMultiInputChannels[int, None](2),
+				WithSequentialInputs[int, None](),
+				WithSinkFunction(func(in int) error {
+					gotValues = append(gotValues, in)
+					return nil
+				}),
+			),
+		),
+		// Source stage can stop the pipeline, and it will auto resume.
+		WithAutoResumeAtStage(
+			0, // A
+			func() bool {
+				debugPrintf("[TEST] should auto resume? %v\n", !sourceIsFinished)
+				return !sourceIsFinished
+			},
+			linkFunc,
+			// Affects everybody else, i.e., B, C, and D.
+			1, 2, 3,
+		),
+	)
+
+	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
+		p.Resume()
+		err := p.Wait()
+		require.NoError(t, err)
+	})
+	require.Len(t, gotValues, 7)
+	require.Equal(t, []int{11, 22, 13, 24, 15, 26, 17}, gotValues)
+}
+
 func TestAutoResumeAtSink(t *testing.T) {
 	defer PrintAllDebugLines()
 	// Prepare test.

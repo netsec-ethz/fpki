@@ -6,6 +6,7 @@ import (
 	"sort"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
@@ -167,15 +168,13 @@ func LinkStagesAt[IN, OUT, LAST any](
 	next *Stage[OUT, LAST],
 	inIndex int,
 ) {
-	debugPrintf("linking [%s]:%p with [%s]:%p\n",
-		prev.Name, &prev.OutgoingChs[outIndex],
-		next.Name, &next.IncomingChs[inIndex],
+	debugPrintf("linking  data channels [%s] -> [%s]:0x%x\n",
+		prev.Name, next.Name, chanPtr(next.IncomingChs[inIndex]),
 	)
 	prev.OutgoingChs[outIndex] = next.IncomingChs[inIndex]
 
-	debugPrintf("linking [%s]:%p with [%s]:%p\n",
-		prev.Name, &prev.NextErrChs,
-		next.Name, &next.ErrCh,
+	debugPrintf("linking error channels [%s] <- [%s]:0x%x\n",
+		prev.Name, next.Name, chanPtr(next.ErrCh),
 	)
 	prev.NextErrChs[outIndex] = next.ErrCh
 }
@@ -202,7 +201,6 @@ func (s *Stage[IN, OUT]) Prepare() {
 		s.IncomingChs[i] = make(chan IN)
 	}
 	// The aggregated channel will receive all incoming data.
-	debugPrintf("[%s] aggregated input\n", s.Name)
 	s.AggregatedIncomeCh = s.aggregateIncomingChannels()
 
 	for i := range s.OutgoingChs {
@@ -258,7 +256,8 @@ func (s *Stage[IN, OUT]) breakPipelineAndWait(initialErr error) error {
 	initialErr = util.ErrorsCoalesce(initialErr, err)
 
 	// Propagate error backwards.
-	debugPrintf("[%s] closing error channel, previous stage will be notified\n", s.Name)
+	debugPrintf("[%s] closing error channel 0x%x, previous stage will be notified\n",
+		s.Name, chanPtr(s.ErrCh))
 	if initialErr != nil {
 		// Propagate error backwards.
 		s.ErrCh <- initialErr
@@ -360,11 +359,11 @@ func (s *Stage[IN, OUT]) sendOutputsSequential(
 		// We attempt to write the out data to the outgoing channel.
 		// Because this can block, we must also listen to any error coming from the
 		// next stage, plus our own stop signal.
-		debugPrintf("[%s] attempting to send %v\n", s.Name, out)
+		debugPrintf("[%s] attempting to send (channel %d) %v\n", s.Name, outChIndex, out)
 		select {
 		case s.OutgoingChs[outChIndex] <- out:
 			// Success writing to the outgoing channel, nothing else to do.
-			debugPrintf("[%s] sent %v\n", s.Name, out)
+			debugPrintf("[%s] sent (channel %d) %v\n", s.Name, outChIndex, out)
 		case err := <-s.NextStagesAggregatedErrCh:
 			debugPrintf("[%s] ERROR while sending at channel %d the value %v, error: %v\n",
 				s.Name, outChIndex, out, err)
@@ -401,11 +400,11 @@ func (s *Stage[IN, OUT]) sendOutputConcurrent(
 			// We attempt to write the out data to the outgoing channel.
 			// Because this can block, we must also listen to any error coming from the
 			// next stage, plus our own stop signal.
-			debugPrintf("[%s] attempting to send %v\n", s.Name, out)
+			debugPrintf("[%s] attempting to send (channel %d) %v\n", s.Name, outChIndex, out)
 			select {
 			case s.OutgoingChs[outChIndex] <- out:
 				// Success writing to the outgoing channel, nothing else to do.
-				debugPrintf("[%s] sent %v\n", s.Name, out)
+				debugPrintf("[%s] sent (channel %d) %v\n", s.Name, outChIndex, out)
 			case err := <-s.NextStagesAggregatedErrCh:
 				debugPrintf("[%s] ERROR while sending at channel %d the value %v: %v\n",
 					s.Name, outChIndex, out, err)
@@ -527,7 +526,6 @@ func (s *Stage[IN, OUT]) aggregateIncomingChannels() chan IN {
 }
 
 func (s *Stage[IN, OUT]) readIncomingConcurrently() chan IN {
-	debugPrintf("[%s] concurrent input, stage = %p\n", s.Name, s)
 	// Create a new channel to aggregate all the incoming data from different channels.
 	aggregated := make(chan IN)
 
@@ -567,9 +565,10 @@ func (s *Stage[IN, OUT]) readIncomingSequentially() chan IN {
 	aggregated := make(chan IN)
 	go func() {
 		for i := 0; ; i = (i + 1) % len(inChannels) {
-			in, ok := <-s.IncomingChs[i]
+			in, ok := <-inChannels[i]
 			if !ok {
-				debugPrintf("[%s] aggregated input: channel %d closed\n", s.Name, i)
+				debugPrintf("[%s] aggregated input: channel index %d 0x%x closed\n",
+					s.Name, i, chanPtr(inChannels[i]))
 				// This incoming channel was closed.
 				util.RemoveElemFromSlice(&inChannels, i)
 				if len(inChannels) == 0 { // no more open channels, break out of loop.
@@ -606,10 +605,10 @@ var debugLinesMu sync.Mutex
 
 func debugPrintf(format string, args ...any) {
 	// fmt.Printf(format, args...)
-	// debugPrintFunc(format, args...)
+	// _debugPrintFunc(format, args...)
 }
 
-func debugPrintFunc(format string, args ...any) {
+func _debugPrintFunc(format string, args ...any) {
 	t := time.Now()
 	line := fmt.Sprintf(format, args...)
 	debugLinesMu.Lock()
@@ -636,4 +635,8 @@ func PrintAllDebugLines() {
 			d.Line,
 		)
 	}
+}
+
+func chanPtr[T any](c chan T) uintptr {
+	return *(*uintptr)(unsafe.Pointer(&c))
 }

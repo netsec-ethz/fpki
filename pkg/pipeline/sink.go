@@ -1,6 +1,7 @@
 package pipeline
 
 type SinkLike interface {
+	StageLike
 	PrepareSink()
 }
 type Sink[IN any] struct {
