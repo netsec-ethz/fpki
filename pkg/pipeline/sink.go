@@ -12,23 +12,29 @@ var _ SinkLike = (*Sink[int])(nil)
 
 func NewSink[IN any](
 	name string,
-	options ...stageOption[IN, None],
+	options ...option[IN, None],
 ) *Sink[IN] {
-	return &Sink[IN]{
+	s := &Sink[IN]{
 		Stage: NewStage[IN, None](name, options...),
 	}
+
+	for _, opt := range options {
+		opt.sink(s)
+	}
+
+	return s
 }
 
 func WithSinkFunction[IN any](
 	processFunc func(in IN) error,
-) stageOption[IN, None] {
-	return func(s *Stage[IN, None]) {
+) option[IN, None] {
+	return newSinkOption(func(s *Sink[IN]) {
 		// Just set the process function to call the user's one.
 		s.ProcessFunc = func(in IN) ([]None, []int, error) {
 			err := processFunc(in)
 			return nil, nil, err
 		}
-	}
+	})
 }
 
 func (s *Sink[IN]) PrepareSink() {

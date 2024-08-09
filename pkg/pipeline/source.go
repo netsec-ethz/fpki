@@ -9,21 +9,28 @@ var _ SourceLike = (*Source[int])(nil)
 
 func NewSource[OUT any](
 	name string,
-	options ...stageOption[None, OUT],
+	options ...option[None, OUT],
 ) *Source[OUT] {
-	return &Source[OUT]{
+	s := &Source[OUT]{
 		Stage: NewStage[None, OUT](name, options...),
 	}
+
+	for _, opt := range options {
+		opt.source(s)
+	}
+
+	return s
 }
 
 func WithSourceFunction[OUT any](
 	generator func() ([]OUT, []int, error),
-) stageOption[None, OUT] {
-	return func(s *Stage[None, OUT]) {
+) option[None, OUT] {
+	return newSourceOption(func(s *Source[OUT]) {
 		s.ProcessFunc = func(in None) ([]OUT, []int, error) {
+			s.UsingIncomingChannel = false
 			return generator()
 		}
-	}
+	})
 }
 
 // Sets this source to produce as much output as the incoming channel provides.
@@ -31,26 +38,29 @@ func WithSourceFunction[OUT any](
 func WithSourceChannel[OUT any](
 	incomingCh chan OUT,
 	processFunction func(in OUT) (int, error),
-) stageOption[None, OUT] {
-	return func(s *Stage[None, OUT]) {
-		incomingCh := incomingCh
-		processFunction := processFunction
-		outs := make([]OUT, 1)
-		outChs := make([]int, 1)
-		s.ProcessFunc = func(in None) ([]OUT, []int, error) {
-			for in := range incomingCh {
-				outCh, err := processFunction(in)
-				debugPrintf("[%s] source channel got value: %v, out ch: %d, err: %v\n",
-					s.Name, in, outCh, err)
-				outs[0] = in
-				outChs[0] = outCh
-				return outs, outChs, err
+) option[None, OUT] {
+	return newSourceOption(
+		func(s *Source[OUT]) {
+			s.UsingIncomingChannel = true
+
+			incomingCh := incomingCh
+			processFunction := processFunction
+			outs := make([]OUT, 1)
+			outChs := make([]int, 1)
+			s.ProcessFunc = func(in None) ([]OUT, []int, error) {
+				for in := range incomingCh {
+					outCh, err := processFunction(in)
+					debugPrintf("[%s] source channel got value: %v, out ch: %d, err: %v\n",
+						s.Name, in, outCh, err)
+					outs[0] = in
+					outChs[0] = outCh
+					return outs, outChs, err
+				}
+				debugPrintf("[%s] source channel is closed, no more data\n", s.Name)
+				// When the incoming channel is closed, return no more data.
+				return nil, nil, NoMoreData
 			}
-			debugPrintf("[%s] source channel is closed, no more data\n", s.Name)
-			// When the incoming channel is closed, return no more data.
-			return nil, nil, NoMoreData
-		}
-	}
+		})
 }
 
 func (s *Source[OUT]) Wait() error {
@@ -92,7 +102,8 @@ type SourceLike interface {
 }
 
 type SourceBase struct {
-	TopErrCh chan error // This error is not propagated to other stages.
+	TopErrCh             chan error // This error is not propagated to other stages.
+	UsingIncomingChannel bool       // Set to true by WithSourceChannel()
 }
 
 func (s *SourceBase) GetSourceBase() *SourceBase {
