@@ -809,7 +809,17 @@ func TestAutoResumeAtSource(t *testing.T) {
 		require.NoError(t, err)
 	})
 	require.Len(t, gotValues, 7)
-	require.Equal(t, []int{11, 22, 13, 24, 15, 26, 17}, gotValues)
+	// Each batch must be sorted by channel number at the sink, in a staggered way.
+	// The sorting resets at each batch.
+	// From the sorted output arriving at the link point of view:
+	// Batch 1 looks like: [ch0]<-11, [ch1]<-22, [ch0]<-13
+	// Batch 2 looks like: [ch0]<-15, [ch1]<-24, [ch1]<-26
+	// Batch 3 looks like: [ch0]<-17
+	batches := []int{}
+	batches = append(batches, []int{11, 22, 13}...)
+	batches = append(batches, []int{15, 24, 26}...)
+	batches = append(batches, []int{17}...)
+	require.Equal(t, batches, gotValues)
 }
 
 func TestAutoResumeAtSink(t *testing.T) {
