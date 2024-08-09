@@ -39,10 +39,17 @@ type Stage[IN, OUT any] struct {
 
 	ProcessFunc func(in IN) ([]OUT, []int, error) // From 1 IN to n OUT, using n channels.
 	// Before stopping the pipeline. This function allows processing before stopping the pipeline.
-	onNoMoreData func() ([]OUT, []int, error)
+	onNoMoreData   func() ([]OUT, []int, error)
+	onErrorSending func(error, []int)
 
-	buildAggregatedInput func() chan IN                           // Alter by With* modifier.
-	sendOutputs          func([]OUT, []int, *bool, *bool, *error) // Selectable by With* modifier.
+	buildAggregatedInput func() chan IN // Alter by With* modifier.
+	sendOutputs          func(          // Selectable by With* modifier.
+		[]OUT,
+		[]int,
+		*bool,
+		*bool,
+		*error,
+	) []int
 }
 
 var _ StageLike = (*Stage[int, string])(nil)
@@ -62,9 +69,10 @@ func NewStage[IN, OUT any](
 		onNoMoreData: func() ([]OUT, []int, error) { // Noop.
 			return nil, nil, nil
 		},
+		onErrorSending: func(error, []int) {}, // Noop.
 	}
 	s.buildAggregatedInput = s.readIncomingConcurrently
-	s.sendOutputs = s.sendOutputsSequential
+	s.sendOutputs = s.sendOutputsCyclesAllowed
 
 	for _, opt := range options {
 		opt(s)
@@ -110,6 +118,14 @@ func WithOnNoMoreData[IN, OUT any](
 ) stageOption[IN, OUT] {
 	return func(s *Stage[IN, OUT]) {
 		s.onNoMoreData = handler
+	}
+}
+
+func WithOnErrorSending[IN, OUT any](
+	handler func(err error, failedIndices []int),
+) stageOption[IN, OUT] {
+	return func(s *Stage[IN, OUT]) {
+		s.onErrorSending = handler
 	}
 }
 
@@ -276,6 +292,7 @@ func (s *Stage[IN, OUT]) processThisStage() {
 	var foundError error
 	var shouldReturn bool
 	var shouldBreakReadingIncoming bool
+	var sendingError bool
 
 readIncoming:
 	for {
@@ -319,19 +336,22 @@ readIncoming:
 			}
 
 			// We have multiple outputs to multiple channels.
-			s.sendOutputs(
+			failedIndices := s.sendOutputs(
 				outs,
 				outChIndxs,
 				&shouldReturn,
-				&shouldBreakReadingIncoming,
+				&sendingError,
 				&foundError,
 			)
+			if sendingError {
+				s.onErrorSending(foundError, failedIndices)
+			}
 
 			// Determine the next action to do.
 			if shouldReturn {
 				return
 			}
-			if shouldBreakReadingIncoming {
+			if shouldBreakReadingIncoming || sendingError {
 				break readIncoming
 			}
 		} // end of select
@@ -351,7 +371,8 @@ func (s *Stage[IN, OUT]) sendOutputsSequential(
 	shouldReturn *bool,
 	shouldBreakReadingIncoming *bool,
 	foundError *error,
-) {
+) []int {
+	failedIndices := []int{}
 	for i := range outs {
 		out := outs[i]
 		outChIndex := outChIndxs[i]
@@ -370,12 +391,15 @@ func (s *Stage[IN, OUT]) sendOutputsSequential(
 			// We received an error from next stage while trying to write to it.
 			*foundError = err
 			*shouldBreakReadingIncoming = true
+			failedIndices = append(failedIndices, i)
 		case <-s.StopCh:
 			// We have been instructed to stop, without reading any other channel.
 			debugPrintf("[%s] instructed to stop\n", s.Name)
 			*shouldReturn = true
 		}
 	}
+
+	return failedIndices
 }
 
 // sendOutputConcurrent sends the possibly multiple outputs to each out channel concurrently.
@@ -385,10 +409,14 @@ func (s *Stage[IN, OUT]) sendOutputConcurrent(
 	shouldReturn *bool,
 	shouldBreakReadingIncoming *bool,
 	foundError *error,
-) {
+) []int {
+	failedIndices := []int{}
 	// For each output spawn a go routine sending it to the appropriate channel.
 	wg := sync.WaitGroup{}
 	wg.Add(len(outs))
+
+	muShouldReturn := sync.Mutex{}
+	muShouldBreakReadingIncoming := sync.Mutex{} // Also for foundError and indices.
 
 	for i := range outs {
 		i := i
@@ -409,17 +437,24 @@ func (s *Stage[IN, OUT]) sendOutputConcurrent(
 				debugPrintf("[%s] ERROR while sending at channel %d the value %v: %v\n",
 					s.Name, outChIndex, out, err)
 				// We received an error from next stage while trying to write to it.
+				muShouldBreakReadingIncoming.Lock()
 				*foundError = err
 				*shouldBreakReadingIncoming = true
+				failedIndices = append(failedIndices, i)
+				muShouldBreakReadingIncoming.Unlock()
 			case <-s.StopCh:
 				// We have been instructed to stop, without reading any other channel.
 				debugPrintf("[%s] instructed to stop\n", s.Name)
+				muShouldReturn.Lock()
 				*shouldReturn = true
+				muShouldReturn.Unlock()
 			}
 		}()
 	}
 	// Wait for all outputs to be sent.
 	wg.Wait()
+
+	return failedIndices
 }
 
 // sendOutputsCyclesAllowed sends the output to each of the output channels, in a single
@@ -431,7 +466,8 @@ func (s *Stage[IN, OUT]) sendOutputsCyclesAllowed(
 	shouldReturn *bool,
 	shouldBreakReadingIncoming *bool,
 	foundError *error,
-) {
+) []int {
+	failedIndices := []int{}
 	// For each value/channel, try to send if it doesn't block, otherwise bail and go to
 	// the next value/channel.
 	shouldStopSending := false
@@ -456,6 +492,7 @@ func (s *Stage[IN, OUT]) sendOutputsCyclesAllowed(
 				// We received an error from next stage while trying to write to it.
 				*foundError = err
 				shouldStopSending = true
+				failedIndices = append(failedIndices, i)
 				break eachOutput
 			case <-s.StopCh:
 				// We have been instructed to stop, without reading any other channel.
@@ -477,6 +514,8 @@ func (s *Stage[IN, OUT]) sendOutputsCyclesAllowed(
 
 	// Aggregate the stop-sending-flag to also stop reading.
 	*shouldBreakReadingIncoming = *shouldBreakReadingIncoming || shouldStopSending
+
+	return failedIndices
 }
 
 func (s *Stage[IN, OUT]) aggregateNextErrChannels() chan error {

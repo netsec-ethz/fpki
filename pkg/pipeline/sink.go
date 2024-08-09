@@ -40,13 +40,13 @@ func (s *Sink[IN]) PrepareSink() {
 	// The next error channel can be closed after no more processing is done.
 	s.OutgoingChs = []chan None{make(chan None)}  // Replace channels with just one.
 	s.NextErrChs = []chan error{make(chan error)} // Replace channels with just one.
-	go func() {
+	go func(outCh chan None, errCh chan error) {
 		// Block until the processing has closed the outgoing channel.
-		for range s.OutgoingChs[0] {
+		for range outCh {
 		}
 		debugPrintf("[%s] sink about to close next error channel (no more output)\n", s.Name)
-		close(s.NextErrChs[0])
-	}()
+		close(errCh)
+	}(s.OutgoingChs[0], s.NextErrChs[0])
 }
 
 func (s *Sink[IN]) Prepare() {
