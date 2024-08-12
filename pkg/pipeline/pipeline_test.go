@@ -37,12 +37,15 @@ func TestSimple(t *testing.T) {
 					}
 					return inData[sourceIndex : sourceIndex+1], []int{0}, nil
 				}),
+				WithSequentialOutputs[None, int](),
 			),
 			NewStage[int, int](
 				"b",
 				WithProcessFunction(func(in int) ([]int, []int, error) {
 					return []int{in + 1}, []int{0}, nil
 				}),
+				WithSequentialOutputs[int, int](),
+				WithSequentialInputs[int, int](),
 			),
 			NewSink[int](
 				"c",
@@ -50,6 +53,64 @@ func TestSimple(t *testing.T) {
 					gotValues = append(gotValues, in)
 					return nil
 				}),
+				WithSequentialInputs[int, None](),
+			),
+		),
+	)
+	require.NoError(t, err)
+
+	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
+		p.Resume()
+		err := p.Wait()
+		require.NoError(t, err)
+	})
+	require.Equal(t, []int{2, 3, 4, 5}, gotValues)
+}
+
+func TestSimpleAllSequential(t *testing.T) {
+	defer PrintAllDebugLines()
+	// Prepare test.
+	sourceIndex := 0
+	gotValues := []int{}
+
+	p, err := NewPipeline(
+		func(p *Pipeline) {
+			// A -> B -> C
+			a := SourceStage[int](p)
+			b := StageAtIndex[int, int](p, 1)
+			c := SinkStage[int](p)
+
+			LinkStagesFanOut(a, b)
+			LinkStagesFanOut(b, c)
+		},
+		WithStages(
+			NewSource[int](
+				"a",
+				WithSourceFunction(func() ([]int, []int, error) {
+					defer func() { sourceIndex++ }()
+					inData := []int{1, 2, 3, 4}
+					if sourceIndex >= len(inData) {
+						return nil, nil, NoMoreData
+					}
+					return inData[sourceIndex : sourceIndex+1], []int{0}, nil
+				}),
+				WithSequentialOutputs[None, int](),
+			),
+			NewStage[int, int](
+				"b",
+				WithProcessFunction(func(in int) ([]int, []int, error) {
+					return []int{in + 1}, []int{0}, nil
+				}),
+				WithSequentialOutputs[int, int](),
+				WithSequentialInputs[int, int](),
+			),
+			NewSink[int](
+				"c",
+				WithSinkFunction(func(in int) error {
+					gotValues = append(gotValues, in)
+					return nil
+				}),
+				WithSequentialInputs[int, None](),
 			),
 		),
 	)
