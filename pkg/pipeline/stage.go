@@ -1,12 +1,8 @@
 package pipeline
 
 import (
-	"fmt"
 	"runtime"
-	"sort"
 	"sync"
-	"time"
-	"unsafe"
 
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
@@ -213,7 +209,7 @@ readIncoming:
 
 		case in, ok := <-s.AggregatedIncomeCh:
 			debugPrintf("[%s] incoming? %v\n", s.Name, ok)
-			// debugPrintf("[%s] incoming value = %v\n", s.Name, in) // deleteme
+			debugPrintf("[%s] incoming value = %v\n", s.Name, in)
 
 			var outs []OUT
 			var outChIndxs []int
@@ -548,54 +544,3 @@ type noError struct{}
 func (noError) Error() string { return "" }
 
 var NoMoreData = noError{}
-
-// deleteme: remove all this debug infrastructure.
-type debugLine struct {
-	Time time.Time
-	Line string
-}
-
-var debugLines []debugLine
-var debugLinesMu sync.Mutex
-
-func debugPrintf(format string, args ...any) {
-	// fmt.Printf(format, args...)
-	// _debugPrintFunc(format, args...)
-}
-
-func _debugPrintFunc(format string, args ...any) {
-	t := time.Now()
-	line := fmt.Sprintf(format, args...)
-	debugLinesMu.Lock()
-	defer debugLinesMu.Unlock()
-	debugLines = append(debugLines, debugLine{
-		Time: t,
-		Line: line,
-	})
-}
-
-func PrintAllDebugLines() {
-	sort.Slice(debugLines, func(i, j int) bool {
-		return debugLines[i].Time.Before(debugLines[j].Time)
-	})
-	for i, d := range debugLines {
-		if i > 999 {
-			// Max of 1000 lines of output.
-			fmt.Printf("... more output (%d lines omitted) ...\n", len(debugLines)-1000)
-			break
-		}
-		fmt.Printf("[%3d] [%30s] %s",
-			i,
-			d.Time.Format(time.StampNano),
-			d.Line,
-		)
-	}
-}
-
-func chanUintPtr[T any](c chan T) uintptr {
-	return *(*uintptr)(unsafe.Pointer(&c))
-}
-
-func chanPtr[T any](c chan T) string {
-	return fmt.Sprintf("0x%x", chanUintPtr(c))
-}
