@@ -36,7 +36,7 @@ func NewManager(
 	multiInsertSize int,
 	statsUpdateFreq time.Duration,
 	statsUpdateFunc func(*Stats),
-) *Manager {
+) (*Manager, error) {
 	// Compute how many bits we need to cover N partitions (i.e. ceil(log2(N-1)),
 	// doable by computing the bit length of N-1 even if not a power of 2.
 	nBits := int(util.Log2(uint(workerCount - 1)))
@@ -74,14 +74,11 @@ func NewManager(
 	// Get the Certificate from the channel and pass it along.
 	source := pip.NewSource(
 		"source",
-		pip.WithSourceFunction(func() ([]Certificate, []int, error) {
-			for cert := range m.IncomingCertChan {
-				outChIndex := m.ShardFuncCert(&cert.CertID)
-				return []Certificate{cert}, []int{int(outChIndex)}, nil
-			}
-			return nil, nil, pip.NoMoreData
-		}),
 		pip.WithMultiOutputChannels[pip.None, Certificate](workerCount),
+		pip.WithSequentialOutputs[pip.None, Certificate](),
+		pip.WithSourceChannel(m.IncomingCertChan, func(in Certificate) (int, error) {
+			return int(m.ShardFuncCert(&in.CertID)), nil
+		}),
 	)
 
 	// Collect all stages.
@@ -91,7 +88,8 @@ func NewManager(
 	stages = append(stages, domainStages...)
 
 	// Create pipeline.
-	m.Pipeline = pip.NewPipeline(
+	var err error
+	m.Pipeline, err = pip.NewPipeline(
 		func(p *pip.Pipeline) {
 			// Link source with cert workers.
 			for i := 0; i < workerCount; i++ {
@@ -119,7 +117,7 @@ func NewManager(
 		},
 		pip.WithStages(stages...))
 
-	return m
+	return m, err
 }
 
 func (m *Manager) Resume() {
