@@ -128,10 +128,10 @@ func WithAutoResumeAtStage(
 
 			// Replace the salient error channel of the target stage.
 			origErrCh := target.Base().ErrCh
-			debugPrintf("[autoresume] orig error channel: 0x%x\n", chanPtr(origErrCh))
+			debugPrintf("[autoresume] orig error channel: %s\n", chanPtr(origErrCh))
 			newErrCh := make(chan error)
 			target.Base().ErrCh = newErrCh
-			debugPrintf("[autoresume] new error channel: 0x%x\n", chanPtr(newErrCh))
+			debugPrintf("[autoresume] new error channel: %s\n", chanPtr(newErrCh))
 
 			go func() {
 				for {
@@ -207,13 +207,13 @@ func (p *Pipeline) Resume() {
 func (p *Pipeline) Wait() error {
 	// The first stage is a source?
 	if source, ok := p.Stages[0].(SourceLike); ok {
-		debugPrintf("[pipeline] Wait on a source, chan is: 0x%x.\n",
+		debugPrintf("[pipeline] Wait on a source, chan is: %s.\n",
 			chanPtr(source.GetSourceBase().TopErrCh))
 		return source.Wait()
 	}
 
 	// It is not a source, just treat it as a stage.
-	debugPrintf("[pipeline] Wait on NON source, chan is: 0x%x.\n",
+	debugPrintf("[pipeline] Wait on NON source, chan is: %s.\n",
 		chanPtr(p.Stages[0].Base().ErrCh))
 	return <-p.Stages[0].Base().ErrCh
 }

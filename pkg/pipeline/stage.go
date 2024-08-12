@@ -88,12 +88,12 @@ func LinkStagesAt[IN, OUT, LAST any](
 	next *Stage[OUT, LAST],
 	inIndex int,
 ) {
-	debugPrintf("linking  data channels [%s] -> [%s]:0x%x\n",
+	debugPrintf("linking  data channels [%s] -> [%s]:%s\n",
 		prev.Name, next.Name, chanPtr(next.IncomingChs[inIndex]),
 	)
 	prev.OutgoingChs[outIndex] = next.IncomingChs[inIndex]
 
-	debugPrintf("linking error channels [%s] <- [%s]:0x%x\n",
+	debugPrintf("linking error channels [%s] <- [%s]:%s\n",
 		prev.Name, next.Name, chanPtr(next.ErrCh),
 	)
 	prev.NextErrChs[outIndex] = next.ErrCh
@@ -129,7 +129,7 @@ func (s *Stage[IN, OUT]) Prepare() {
 
 	s.NextErrChs = make([]chan error, len(s.OutgoingChs))
 
-	// Cannot aggregate the error channels here, as they will be inserted after linking with
+	// Cannot aggregate the error channels here, as they will be modified after linking with
 	// other stages.
 }
 
@@ -137,7 +137,7 @@ func (s *Stage[IN, OUT]) Prepare() {
 // This function creates new channels for the incoming data, error and stop channels.
 func (s *Stage[IN, OUT]) Resume() {
 	// The aggregated channel will receive error messages from the N next stage error channels.
-	// All the nextStageErrCh are created and ready at this point.
+	// All the nextStageErrCh are created and linked from other stages at this point.
 	s.NextStagesAggregatedErrCh = s.aggregateNextErrChannels()
 
 	go s.processThisStage()
@@ -176,7 +176,7 @@ func (s *Stage[IN, OUT]) breakPipelineAndWait(initialErr error) error {
 	initialErr = util.ErrorsCoalesce(initialErr, err)
 
 	// Propagate error backwards.
-	debugPrintf("[%s] closing error channel 0x%x, previous stage will be notified\n",
+	debugPrintf("[%s] closing error channel %s, previous stage will be notified\n",
 		s.Name, chanPtr(s.ErrCh))
 	if initialErr != nil {
 		// Propagate error backwards.
@@ -288,7 +288,8 @@ func (s *Stage[IN, OUT]) sendOutputsSequential(
 		select {
 		case s.OutgoingChs[outChIndex] <- out:
 			// Success writing to the outgoing channel, nothing else to do.
-			debugPrintf("[%s] sent (channel %d) %v\n", s.Name, outChIndex, out)
+			debugPrintf("[%s] sent to channel %d: %s\n",
+				s.Name, outChIndex, chanPtr(s.OutgoingChs[outChIndex]))
 		case err := <-s.NextStagesAggregatedErrCh:
 			debugPrintf("[%s] ERROR while sending at channel %d the value %v, error: %v\n",
 				s.Name, outChIndex, out, err)
@@ -336,7 +337,8 @@ func (s *Stage[IN, OUT]) sendOutputConcurrent(
 			select {
 			case s.OutgoingChs[outChIndex] <- out:
 				// Success writing to the outgoing channel, nothing else to do.
-				debugPrintf("[%s] sent (channel %d) %v\n", s.Name, outChIndex, out)
+				debugPrintf("[%s] sent to channel %d: %s\n",
+					s.Name, outChIndex, chanPtr(s.OutgoingChs[outChIndex]))
 			case err := <-s.NextStagesAggregatedErrCh:
 				debugPrintf("[%s] ERROR while sending at channel %d the value %v: %v\n",
 					s.Name, outChIndex, out, err)
@@ -389,7 +391,8 @@ func (s *Stage[IN, OUT]) sendOutputsCyclesAllowed(
 			case s.OutgoingChs[outChIndex] <- out:
 				// Success writing to the outgoing channel, nothing else to do.
 				s.cacheCompletedOutgoingIndices = append(s.cacheCompletedOutgoingIndices, i)
-				debugPrintf("[%s] sent to channel %d\n", s.Name, outChIndex)
+				debugPrintf("[%s] sent to channel %d: %s\n",
+					s.Name, outChIndex, chanPtr(s.OutgoingChs[outChIndex]))
 			case err := <-s.NextStagesAggregatedErrCh:
 				debugPrintf("[%s] ERROR while sending at channel %d the value %v: %v\n",
 					s.Name, outChIndex, out, err)
@@ -424,6 +427,8 @@ func (s *Stage[IN, OUT]) sendOutputsCyclesAllowed(
 
 func (s *Stage[IN, OUT]) aggregateNextErrChannels() chan error {
 	if len(s.NextErrChs) == 1 {
+		debugPrintf("[%s] aggregated next error channel is first next error channel: %s\n",
+			s.Name, chanPtr(s.NextErrChs[0]))
 		// Optimized case for just one error channel.
 		return s.NextErrChs[0]
 	}
@@ -439,13 +444,18 @@ func (s *Stage[IN, OUT]) aggregateNextErrChannels() chan error {
 	for i, nextErrCh := range s.NextErrChs {
 		i := i
 		nextErrCh := nextErrCh // Local copy for the capture of the goroutine next.
+		debugPrintf("[%s] aggregated next error channel %s uses channel %d: %s\n",
+			s.Name, chanPtr(nextStagesAggregatedErrCh), i, chanPtr(nextErrCh))
 		go func() {
 			defer wg.Done()
 			for err := range nextErrCh {
-				debugPrintf("[%s] got error from next stage at channel %d\n", s.Name, i)
+				debugPrintf("[%s] got error %v from next stage at channel %d: %s\n",
+					s.Name, err, i, chanPtr(nextErrCh))
 				nextStagesAggregatedErrCh <- err
 			}
 			// When the nextErrCh of next stage i is closed, this goroutine signals the wg.
+			debugPrintf("[%s] aggregated next error channel %s sees channel %d: %s is closed\n",
+				s.Name, chanPtr(nextStagesAggregatedErrCh), i, chanPtr(nextErrCh))
 		}()
 	}
 
@@ -462,6 +472,8 @@ func (s *Stage[IN, OUT]) aggregateNextErrChannels() chan error {
 func (s *Stage[IN, OUT]) aggregateIncomingChannels() chan IN {
 	if len(s.IncomingChs) == 1 {
 		// Optimized case for just one incoming channel.
+		debugPrintf("[%s] aggregated input is first channel: %s\n",
+			s.Name, chanPtr(s.IncomingChs[0]))
 		return s.IncomingChs[0]
 	}
 
@@ -510,7 +522,7 @@ func (s *Stage[IN, OUT]) readIncomingSequentially() chan IN {
 		for i := 0; ; i = (i + 1) % len(inChannels) {
 			in, ok := <-inChannels[i]
 			if !ok {
-				debugPrintf("[%s] aggregated input: channel index %d 0x%x closed\n",
+				debugPrintf("[%s] aggregated input: channel index %d %s closed\n",
 					s.Name, i, chanPtr(inChannels[i]))
 				// This incoming channel was closed.
 				util.RemoveElemFromSlice(&inChannels, i)
@@ -580,6 +592,10 @@ func PrintAllDebugLines() {
 	}
 }
 
-func chanPtr[T any](c chan T) uintptr {
+func chanUintPtr[T any](c chan T) uintptr {
 	return *(*uintptr)(unsafe.Pointer(&c))
+}
+
+func chanPtr[T any](c chan T) string {
+	return fmt.Sprintf("0x%x", chanUintPtr(c))
 }

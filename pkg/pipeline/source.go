@@ -3,6 +3,8 @@ package pipeline
 type Source[OUT any] struct {
 	*Stage[None, OUT]
 	SourceBase
+	// Channel used for the source, if configured with one.
+	sourceIncomingCh chan OUT
 }
 
 var _ SourceLike = (*Source[int])(nil)
@@ -27,7 +29,7 @@ func WithSourceFunction[OUT any](
 ) option[None, OUT] {
 	return newSourceOption(func(s *Source[OUT]) {
 		s.ProcessFunc = func(in None) ([]OUT, []int, error) {
-			s.UsingIncomingChannel = false
+			s.sourceIncomingCh = nil
 			return generator()
 		}
 	})
@@ -41,16 +43,18 @@ func WithSourceChannel[OUT any](
 ) option[None, OUT] {
 	return newSourceOption(
 		func(s *Source[OUT]) {
-			s.UsingIncomingChannel = true
+			s.sourceIncomingCh = incomingCh
 
-			incomingCh := incomingCh
 			processFunction := processFunction
 			outs := make([]OUT, 1)
 			outChs := make([]int, 1)
 			s.ProcessFunc = func(in None) ([]OUT, []int, error) {
-				for in := range incomingCh {
+				debugPrintf("[%s] source channel is: %s\n", s.Name, chanPtr(s.sourceIncomingCh))
+				for in := range s.sourceIncomingCh {
+					debugPrintf("[%s] source channel %s got value: %v\n",
+						s.Name, chanPtr(s.sourceIncomingCh), in)
 					outCh, err := processFunction(in)
-					debugPrintf("[%s] source channel got value: %v, out ch: %d, err: %v\n",
+					debugPrintf("[%s] source channel processed value: %v, out ch: %d, err: %v\n",
 						s.Name, in, outCh, err)
 					outs[0] = in
 					outChs[0] = outCh
@@ -72,20 +76,20 @@ func (s *Source[OUT]) Prepare() {
 	SourceAsStage(s).Prepare()
 
 	s.TopErrCh = make(chan error)
-	debugPrintf("[%s] TopErr is 0x%x\n", s.Name, chanPtr(s.TopErrCh))
+	debugPrintf("[%s] TopErr is %s\n", s.Name, chanPtr(s.TopErrCh))
 	// As a source, we generate data by sending none to our incoming channel,
 	// until our errCh is closed.
 	// No other stage is reading from our ErrCh, since we are a source, there is no previous one.
 	go func(errCh chan error) {
-		debugPrintf("[%s] source.Prepare spawning continuous send, err chan: 0x%x\n",
+		debugPrintf("[%s] source.Prepare spawning continuous send, err chan: %s\n",
 			s.Name, chanPtr(errCh))
 		for {
 			select {
 			case s.IncomingChs[0] <- None{}:
 				debugPrintf("[%s] source to itself None\n", s.Name)
 			case err := <-errCh:
-				debugPrintf("[%s] something at error channel (0x%x): %v. Stopping\n",
-					s.Name, chanPtr(errCh), err)
+				debugPrintf("[%s] source original error channel (%s): %v. Sending to TopChan %s\n",
+					s.Name, chanPtr(errCh), err, chanPtr(s.TopErrCh))
 				// Close incoming.
 				close(s.IncomingChs[0])
 				s.TopErrCh <- err // might block, but this goroutine is done anyways.
@@ -102,8 +106,7 @@ type SourceLike interface {
 }
 
 type SourceBase struct {
-	TopErrCh             chan error // This error is not propagated to other stages.
-	UsingIncomingChannel bool       // Set to true by WithSourceChannel()
+	TopErrCh chan error // This error is not propagated to other stages.
 }
 
 func (s *SourceBase) GetSourceBase() *SourceBase {
