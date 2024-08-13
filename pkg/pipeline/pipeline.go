@@ -136,11 +136,12 @@ func WithAutoResumeAtStage(
 			go func() {
 				for {
 					for err := range newErrCh {
-						debugPrintf("[autoresume] err from original channel: %v\n", err)
+						debugPrintf("[autoresume] err from target: %v\n", err)
 						// Pass it along.
 						origErrCh <- err
 					}
-					debugPrintf("[autoresume] original error channel has been closed\n")
+					debugPrintf("[autoresume] target error channel %s is closed\n",
+						chanPtr(newErrCh))
 
 					// The target closed the error channel, check whether to resume automatically.
 					if !shouldResumeNow() {
