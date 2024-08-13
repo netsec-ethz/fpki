@@ -29,6 +29,7 @@ func TestMemAllocationOverhead(t *testing.T) {
 	// Mock a sink.
 	sinkErrCh := make(chan error)
 	stage.NextErrChs[0] = sinkErrCh
+	stage.OutgoingChs[0] = make(chan int)
 	go func() {
 		for range stage.OutgoingChs[0] {
 		}

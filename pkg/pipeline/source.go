@@ -91,6 +91,7 @@ func (s *Source[OUT]) Prepare() {
 				debugPrintf("[%s] source original error channel (%s): %v. Sending to TopChan %s\n",
 					s.Name, chanPtr(errCh), err, chanPtr(s.TopErrCh))
 				// Close incoming.
+				debugPrintf("[%s] source closing incoming %s\n", s.Name, chanPtr(s.IncomingChs[0]))
 				close(s.IncomingChs[0])
 				s.TopErrCh <- err // might block, but this goroutine is done anyways.
 				return

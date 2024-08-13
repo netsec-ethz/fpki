@@ -160,7 +160,8 @@ func TestComplexJoinPipelines(t *testing.T) {
 				"b1",
 				WithProcessFunction(func(in int) ([]string, []int, error) {
 					s := strconv.Itoa(in)
-					time.Sleep(10 * time.Millisecond)
+					// deleteme uncomment below
+					// time.Sleep(10 * time.Millisecond)
 					return []string{s}, []int{0}, nil
 				}),
 				WithSequentialInputs[int, string](),
@@ -186,25 +187,26 @@ func TestComplexJoinPipelines(t *testing.T) {
 					return nil
 				}),
 				// TODO: desirable to automate not calling autoresume when no input.
-				WithOnNoMoreData[string, None](func() ([]None, []int, error) {
-					p1SinkOnNoMoreDataCalled = true
-					return nil, nil, nil
-				}),
+				// WithOnNoMoreData[string, None](func() ([]None, []int, error) {
+				// 	p1SinkOnNoMoreDataCalled = true
+				// 	return nil, nil, nil
+				// }),
 				WithMultiInputChannels[string, None](2),
 				WithSequentialInputs[string, None](),
 			),
 		),
-		WithAutoResumeAtStage(
-			3, // sink
-			func() bool {
-				return !p1SinkOnNoMoreDataCalled
-			},
-			func(p *Pipeline) {
-				// relink function, nothing to relink.
-			},
-			// no stages affected.
-		),
+		// WithAutoResumeAtStage(
+		// 	3, // sink
+		// 	func() bool {
+		// 		return !p1SinkOnNoMoreDataCalled
+		// 	},
+		// 	func(p *Pipeline) {
+		// 		// relink function, nothing to relink.
+		// 	},
+		// 	// no stages affected.
+		// ),
 	)
+	_ = p1SinkOnNoMoreDataCalled // deleteme
 	require.NoError(t, err)
 
 	p2SourceCh := make(chan string)

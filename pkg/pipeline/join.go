@@ -114,27 +114,26 @@ func (j *jointStage[T]) joinDataChannels() {
 	wg := sync.WaitGroup{}
 	wg.Add(len(j.sink.IncomingChs))
 	for i, sinkInCh := range j.sink.IncomingChs {
+		i, sinkInCh := i, sinkInCh
 		// outCh is the original channel, linked with the previous stage.
 		newSinkInCh := make(chan T)
 		debugPrintf("[%s] sink's orig incoming %d: %s, new: %s\n",
 			j.Name, i, chanPtr(sinkInCh), chanPtr(newSinkInCh))
 
-		go func(in chan T) {
+		go func(sinkInCh chan T, newSinkInCh chan T) {
 			defer wg.Done() // Signal the joint channel to close when all are closed.
 			for out := range sinkInCh {
-				debugPrintf("[%s] data on %s, sending to %s and %s\n",
-					j.Name, chanPtr(sinkInCh), chanPtr(newSinkInCh), chanPtr(j.dataCh))
+				debugPrintf("[%s] got '%v' on sink's %d: %s. Sending to %s & %s\n",
+					j.Name, out, i, chanPtr(sinkInCh), chanPtr(newSinkInCh), chanPtr(j.dataCh))
 				newSinkInCh <- out
-				debugPrintf("[%s] data on %s, sent to %s\n",
-					j.Name, chanPtr(sinkInCh), chanPtr(newSinkInCh))
 				j.dataCh <- out
-				debugPrintf("[%s] data on %s, sent to %s\n",
-					j.Name, chanPtr(sinkInCh), chanPtr(j.dataCh))
 			}
 			// When the original channel is closed, close the new one as well.
-			debugPrintf("[%s] closing new incoming channel: %s\n", j.Name, chanPtr(newSinkInCh))
+			debugPrintf("[%s] closing new incoming channel at %d: %s (old is %s)\n",
+				j.Name, i, chanPtr(newSinkInCh), chanPtr(sinkInCh))
 			close(newSinkInCh)
-		}(sinkInCh)
+		}(sinkInCh, newSinkInCh)
+
 		// Replace the original channel with the new one.
 		j.sink.IncomingChs[i] = newSinkInCh
 		debugPrintf("[%s] sink's %d incoming channel is now: %s\n",
@@ -211,6 +210,7 @@ func (j *jointStage[T]) joinErrorChannels() {
 				originalErrCh <- err
 			}
 		}
+		debugPrintf("[%s] closing original error channel %s\n", j.Name, chanPtr(originalErrCh))
 		close(originalErrCh)
 	}()
 }

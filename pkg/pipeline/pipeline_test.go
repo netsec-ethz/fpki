@@ -939,12 +939,14 @@ func TestAutoResumeAtSource(t *testing.T) {
 			),
 			NewStage[int, int](
 				"b",
+				WithSequentialOutputs[int, int](),
 				WithProcessFunction(func(in int) ([]int, []int, error) {
 					return []int{in + 10}, []int{0}, nil
 				}),
 			),
 			NewStage[int, int](
 				"c",
+				WithSequentialOutputs[int, int](),
 				WithProcessFunction(func(in int) ([]int, []int, error) {
 					return []int{in + 20}, []int{0}, nil
 				}),
@@ -978,7 +980,6 @@ func TestAutoResumeAtSource(t *testing.T) {
 		err := p.Wait()
 		require.NoError(t, err)
 	})
-	require.Len(t, gotValues, 7)
 	// Each batch must be sorted by channel number at the sink, in a staggered way.
 	// The sorting resets at each batch.
 	// From the sorted output arriving at the link point of view:
@@ -1032,12 +1033,14 @@ func TestAutoResumeAtSink(t *testing.T) {
 			),
 			NewStage[int, int](
 				"b",
+				WithSequentialOutputs[int, int](),
 				WithProcessFunction(func(in int) ([]int, []int, error) {
 					return []int{in + 10}, []int{0}, nil
 				}),
 			),
 			NewStage[int, int](
 				"c",
+				WithSequentialOutputs[int, int](),
 				WithProcessFunction(func(in int) ([]int, []int, error) {
 					return []int{in + 20}, []int{0}, nil
 				}),
@@ -1083,7 +1086,6 @@ func TestAutoResumeAtSink(t *testing.T) {
 		err := p.Wait()
 		require.NoError(t, err)
 	})
-	require.Len(t, gotValues, 7)
 	require.Equal(t, []int{11, 22, 13, 24, 15, 26, 17}, gotValues)
 }
 
