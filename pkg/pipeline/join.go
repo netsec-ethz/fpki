@@ -156,64 +156,7 @@ func (j *jointStage[T]) joinDataChannels() {
 // joinErrorChannels prepares the error channels so that if the sink's process function OR
 // the source error channel return an error, everything is stopped and the error returned to
 // the previous stages.
+// deleteme check that it is enough to just append the source's error to the sink's next errs.
 func (j *jointStage[T]) joinErrorChannels() {
-	// This is the original error channel, linked to previous stages.
-	// Only emits processing errors, but it's the one linked to previous stages.
-	origErrCh := j.sink.ErrCh
-
-	// This is the new error channel that will receive errors from the sink's processing and
-	// from other next stages, namely the source of the second pipeline.
-	newErrCh := make(chan error)
-
-	// Read errors from processing at the sink.
-	go func(origErrCh chan error) {
-		for err := range origErrCh {
-			debugPrintf("[%s] received error: %v at channel %s, resent to %s\n",
-				j.Name, err, chanPtr(origErrCh), chanPtr(newErrCh))
-			if err != nil {
-				// Sending an error to the sink's error channel forces the sink to make
-				// a call to breakPipelineAndWait.
-				newErrCh <- err
-
-				// At sink.breakPipelineAndWait, we close the outgoing sink channel.
-				// Also close the next pipeline source channel as well,
-				// to signal that next stage to stop. We will need the source's error channel at
-				// the sink's next stage error channel slice.
-				debugPrintf("[%s] closing joint source [%s] input channel %s\n",
-					j.Name, j.source.Name, chanPtr(j.source.sourceIncomingCh))
-				close(j.source.sourceIncomingCh)
-
-				// The sink's error channel will be closed by sink.breakPipelineAndWait when
-				// all next stage error channels have returned.
-				return
-			}
-		}
-		// Closing the sink's original error channel means the sink has finished completely,
-		// also reading the next stages error channels. Nothing to do then.
-
-	}(origErrCh)
-
-	// Replace original error channel with the new one. This pushes errors up the pipeline.
-	debugPrintf("[%s] replacing original error channel %s with %s\n",
-		j.Name, chanPtr(j.sink.ErrCh), chanPtr(newErrCh))
-	j.sink.ErrCh = newErrCh
-
-	// The sink will close its (single) next stage error channel once the out channel is closed.
-	// The next stages aggregated error is created right at Resume(), which means that we can
-	// create an extra next stage error with the new error channel and let the whole sink stage
-	// work as usual. The next stages aggregated error will close when both are closed.
 	j.sink.NextErrChs = append(j.sink.NextErrChs, j.source.TopErrCh)
-
-	// Now read any possible error from the new error channel at the sink, and pass it to the
-	// original error channel. Close the original when the new one is closed.
-	// This re-enables signaling errors to previous stages.
-	go func() {
-		for err := range newErrCh {
-			if err != nil {
-				origErrCh <- err
-			}
-		}
-		debugPrintf("[%s] closing original error channel %s\n", j.Name, chanPtr(origErrCh))
-		close(origErrCh)
-	}()
 }

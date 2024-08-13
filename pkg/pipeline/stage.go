@@ -185,7 +185,7 @@ func (s *Stage[IN, OUT]) breakPipelineAndWait(initialErr error) error {
 	}
 
 	// Close our own error channel.
-	debugPrintf("[%s] closing main error channel %s\n", s.Name, chanPtr(s.ErrCh))
+	debugPrintf("[%s] closed main error channel %s\n", s.Name, chanPtr(s.ErrCh))
 	close(s.ErrCh)
 
 	// Close the stop channel indicator.
