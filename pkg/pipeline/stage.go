@@ -19,6 +19,7 @@ type StageBase struct {
 	StopCh                    chan None    // Indicates to this stage to stop.
 	NextErrChs                []chan error // Next stage's error channel.
 	NextStagesAggregatedErrCh chan error   // Aggregated nexErrChs
+	onResume                  func()       // Called before Resume() starts.
 }
 
 func (s *StageBase) Base() *StageBase {
@@ -57,7 +58,8 @@ func NewStage[IN, OUT any](
 
 	s := &Stage[IN, OUT]{
 		StageBase: StageBase{
-			Name: name,
+			Name:     name,
+			onResume: func() {}, // Noop.
 		},
 		IncomingChs:                   make([]chan IN, 1),  // Per default, just one channel.
 		OutgoingChs:                   make([]chan OUT, 1), // Per default, just one channel.
@@ -134,6 +136,9 @@ func (s *Stage[IN, OUT]) Prepare() {
 // Resume resumes processing from this stage.
 // This function creates new channels for the incoming data, error and stop channels.
 func (s *Stage[IN, OUT]) Resume() {
+	// Just before resuming, call the internal event function.
+	s.onResume()
+
 	// The aggregated channel will receive all incoming data.
 	s.AggregatedIncomeCh = s.aggregateIncomingChannels()
 
