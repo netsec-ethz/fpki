@@ -169,7 +169,8 @@ func (s *Stage[IN, OUT]) breakPipelineAndWait(initialErr error) error {
 
 	// Indicate next stage to stop.
 	for i, outCh := range s.OutgoingChs {
-		debugPrintf("[%s] closing output channel index %d: %s\n", s.Name, i, chanPtr(outCh))
+		debugPrintf("[%s] closing output channel %d/%d: %s\n",
+			s.Name, i, len(s.OutgoingChs), chanPtr(outCh))
 		close(outCh)
 	}
 
