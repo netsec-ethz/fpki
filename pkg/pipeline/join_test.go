@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"fmt"
 	"strconv"
 	"testing"
 	"time"
@@ -8,6 +9,126 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/tests"
 	"github.com/stretchr/testify/require"
 )
+
+func chan2str[T any](c chan T) string {
+	return fmt.Sprintf("0x%x", chanUintPtr(c))
+}
+
+func TestReferences(t *testing.T) {
+	t.Run("capture", func(t *testing.T) {
+		t.Parallel()
+		// Capturing the channel inside the goroutine does not make a local copy of the reference.
+		// This means that at the time when the goroutine uses the channel, it could have changed.
+		goNowCh := make(chan struct{}) // unblock goroutine
+		inputCh := make(chan int)
+		testOkCh := make(chan struct{})
+		testFailCh := make(chan struct{})
+
+		go func() {
+			<-goNowCh
+
+			t.Logf("[goroutine] original: %s", chan2str(inputCh))
+			select {
+			case in := <-inputCh:
+				t.Logf("[goroutine] read from inputCh(%s): %v", chan2str(inputCh), in)
+				testOkCh <- struct{}{}
+			case <-time.After(50 * time.Millisecond):
+				testFailCh <- struct{}{} // inputCh should point to the new channel.
+			}
+		}()
+		t.Logf("[TEST] original: %s", chan2str(inputCh))
+		inputCh = make(chan int, 1)
+		t.Logf("[TEST] new: %s", chan2str(inputCh))
+		goNowCh <- struct{}{}
+		inputCh <- 1
+		select {
+		case <-testOkCh:
+		case <-testFailCh:
+			t.Fatal("failed: goroutine did not behave as expected")
+		}
+	})
+
+	t.Run("local_copy", func(t *testing.T) {
+		t.Parallel()
+		// A local copy of the captured channel ensures that the channel doesn't change,
+		// regardless of changes to the original reference that was captured.
+		goNowCh := make(chan int) // unblock setup
+		inputCh := make(chan int)
+		testOkCh := make(chan struct{})
+		testFailCh := make(chan struct{})
+
+		go func() {
+			// If we copy the reference, the change outside is not visible here.
+			t.Logf("[goroutine] original: %s", chan2str(inputCh))
+			inputCh := inputCh
+			t.Logf("[goroutine] copy: %s", chan2str(inputCh))
+			goNowCh <- 1 // goroutine ready
+			i := <-goNowCh
+			require.Equal(t, 2, i)
+
+			select {
+			case in := <-inputCh:
+				t.Logf("[goroutine] read from inputCh(%s): %v", chan2str(inputCh), in)
+				testFailCh <- struct{}{} // inputCh should point to the old channel.
+			case <-time.After(50 * time.Millisecond):
+				testOkCh <- struct{}{}
+			}
+		}()
+
+		// Replace channel in the reference "inputCh"
+		t.Logf("[TEST] original: %s", chan2str(inputCh))
+		i := <-goNowCh // wait until the goroutine is running.
+		require.Equal(t, 1, i)
+		inputCh = make(chan int, 1)
+		t.Logf("[TEST] new: %s", chan2str(inputCh))
+		goNowCh <- 2
+		inputCh <- 1
+		select {
+		case <-testOkCh:
+		case <-testFailCh:
+			t.Fatal("failed: goroutine did not behave as expected")
+		}
+	})
+
+	t.Run("argument", func(t *testing.T) {
+		t.Parallel()
+		// A local copy of the captured channel ensures that the channel doesn't change,
+		// regardless of changes to the original reference that was captured.
+		goNowCh := make(chan int) // unblock setup
+		inputCh := make(chan int)
+		testOkCh := make(chan struct{})
+		testFailCh := make(chan struct{})
+
+		go func(inputCh chan int) {
+			goNowCh <- 1   // signal ready
+			i := <-goNowCh // wait for main to be ready
+			require.Equal(t, 2, i)
+
+			t.Logf("[goroutine] parameter: %s", chan2str(inputCh))
+			select {
+			case in := <-inputCh:
+				t.Logf("[goroutine] read from inputCh(%s): %v", chan2str(inputCh), in)
+				testFailCh <- struct{}{} // inputCh should point to the old channel.
+			case <-time.After(50 * time.Millisecond):
+				testOkCh <- struct{}{}
+			}
+		}(inputCh)
+
+		// Replace channel in the reference "inputCh"
+		t.Logf("[TEST] original: %s", chan2str(inputCh))
+		i := <-goNowCh // wait until the goroutine is running.
+		require.Equal(t, 1, i)
+		inputCh = make(chan int, 1)
+		t.Logf("[TEST] new: %s", chan2str(inputCh))
+		goNowCh <- 2 // signal ready
+		inputCh <- 1
+		select {
+		case <-testOkCh:
+		case <-testFailCh:
+			t.Fatal("failed: goroutine did not behave as expected")
+		}
+	})
+}
 
 // TestBasicJoinPipelines checks that joining two basic pipelines work.
 func TestBasicJoinPipelines(t *testing.T) {
