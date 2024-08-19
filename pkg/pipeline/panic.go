@@ -1,7 +1,9 @@
-//go:build debug
+//go:build panic
 
 package pipeline
 
+import "fmt"
+
 func debugPrintf(format string, args ...any) {
-	_debugPrintFunc(format, args...)
+	fmt.Printf(format, args...)
 }

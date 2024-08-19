@@ -49,7 +49,8 @@ func WithSourceChannel[OUT any](
 			outs := make([]OUT, 1)
 			outChs := make([]int, 1)
 			s.ProcessFunc = func(in None) ([]OUT, []int, error) {
-				debugPrintf("[%s] source channel is: %s\n", s.Name, chanPtr(s.sourceIncomingCh))
+				debugPrintf("[%s] source.ProcessFunc: channel is: %s\n",
+					s.Name, chanPtr(s.sourceIncomingCh))
 				for in := range s.sourceIncomingCh {
 					debugPrintf("[%s] source channel %s got value: %v\n",
 						s.Name, chanPtr(s.sourceIncomingCh), in)

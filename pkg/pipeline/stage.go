@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"runtime"
+	"strings"
 	"sync"
 
 	"github.com/netsec-ethz/fpki/pkg/util"
@@ -210,6 +211,7 @@ func (s *Stage[IN, OUT]) processThisStage() {
 
 readIncoming:
 	for {
+		debugPrintf("[%s] select-blocked on input: %s\n", s.Name, chanPtr(s.AggregatedIncomeCh))
 		select {
 		case <-s.StopCh:
 			// We have been instructed to stop, without reading any other channel.
@@ -249,6 +251,7 @@ readIncoming:
 			}
 
 			// We have multiple outputs to multiple channels.
+			debugPrintf("[%s] sending %d outputs to channels %v\n", s.Name, len(outs), outChIndxs)
 			failedIndices := s.sendOutputs(
 				outs,
 				outChIndxs,
@@ -256,6 +259,8 @@ readIncoming:
 				&sendingError,
 				&foundError,
 			)
+			debugPrintf("[%s] sendingError = %v, shouldReturn = %v, shouldBreak = %v\n",
+				s.Name, sendingError, shouldReturn, shouldBreakReadingIncoming)
 			if sendingError {
 				s.onErrorSending(foundError, failedIndices)
 			}
@@ -484,6 +489,12 @@ func (s *Stage[IN, OUT]) aggregateNextErrChannels() chan error {
 }
 
 func (s *Stage[IN, OUT]) aggregateIncomingChannels() chan IN {
+	if s.AggregatedIncomeCh != nil {
+		// We have already goroutines reading from the incoming channels.
+		debugPrintf("[%s] aggregated input channel existed %s. Reusing\n",
+			s.Name, chanPtr(s.AggregatedIncomeCh))
+		return s.AggregatedIncomeCh
+	}
 	if len(s.IncomingChs) == 1 {
 		// Optimized case for just one incoming channel.
 		debugPrintf("[%s] aggregated input is first channel: %s\n",
@@ -491,13 +502,14 @@ func (s *Stage[IN, OUT]) aggregateIncomingChannels() chan IN {
 		return s.IncomingChs[0]
 	}
 
-	if s.AggregatedIncomeCh != nil {
-		// We have already goroutines reading from the incoming channels.
-		debugPrintf("[%s] aggregated input channel existed %s. Reusing\n",
-			s.Name, chanPtr(s.AggregatedIncomeCh))
-		return s.AggregatedIncomeCh
+	aggregatedInput := s.buildAggregatedInput()
+	inputs := make([]string, len(s.IncomingChs))
+	for i, ch := range s.IncomingChs {
+		inputs[i] = chanPtr(ch)
 	}
-	return s.buildAggregatedInput()
+	debugPrintf("[%s] built aggregated input %s from (%s)\n",
+		s.Name, chanPtr(aggregatedInput), strings.Join(inputs, ", "))
+	return aggregatedInput
 }
 
 func (s *Stage[IN, OUT]) readIncomingConcurrently() chan IN {
@@ -514,8 +526,8 @@ func (s *Stage[IN, OUT]) readIncomingConcurrently() chan IN {
 		go func() {
 			defer wg.Done()
 			for in := range incomingCh {
-				debugPrintf("[%s] aggregated input %v at channel %d: %s\n",
-					s.Name, in, i, chanPtr(incomingCh))
+				// debugPrintf("[%s] aggregated input %v at channel %d: %s\n",
+				// 	s.Name, in, i, chanPtr(incomingCh))
 				aggregated <- in
 			}
 			// When the incomingCh number i is closed, signal the wait group.
@@ -551,7 +563,7 @@ func (s *Stage[IN, OUT]) readIncomingSequentially() chan IN {
 	go func() {
 		for i := 0; ; i = (i + 1) % len(inChannels) {
 			debugIndex := originalIndicesDebugging[inChannels[i]]
-			debugPrintf("[%s] aggregated input: blocked at reading input %d: %s\n",
+			debugPrintf("[%s] aggregated input: blocked at reading inCh[%d]: %s\n",
 				s.Name, debugIndex, chanPtr(inChannels[i]))
 			in, ok := <-inChannels[i]
 			if !ok {
@@ -565,8 +577,8 @@ func (s *Stage[IN, OUT]) readIncomingSequentially() chan IN {
 				i--
 			} else {
 				aggregated <- in
-				debugPrintf("[%s] aggregated input %v at channel %d: %s\n",
-					s.Name, in, debugIndex, chanPtr(inChannels[i]))
+				debugPrintf("[%s] aggregated msg '%v' at channel %d: %s, forwarded to %s\n",
+					s.Name, in, debugIndex, chanPtr(inChannels[i]), chanPtr(aggregated))
 			}
 		}
 		// All channels have closed.
