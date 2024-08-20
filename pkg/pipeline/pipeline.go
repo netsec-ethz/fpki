@@ -152,7 +152,8 @@ func WithAutoResumeAtStage(
 						return
 					}
 
-					debugPrintf("[autoresume] request to resume\n")
+					debugPrintf("[autoresume] request to resume: true. Affected stages: %v\n",
+						affectedStages)
 					// Auto resume was requested, prepare affected stages.
 					for i := len(affectedStages) - 1; i >= 0; i-- {
 						p.Stages[affectedStages[i]].Prepare()

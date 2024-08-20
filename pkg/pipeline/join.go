@@ -2,7 +2,6 @@ package pipeline
 
 import (
 	"fmt"
-	"sync"
 )
 
 func JoinPipelines(pipelines ...*Pipeline) *Pipeline {
@@ -11,8 +10,6 @@ func JoinPipelines(pipelines ...*Pipeline) *Pipeline {
 }
 
 func JoinTwoPipelines[T any](p1, p2 *Pipeline) (*Pipeline, error) {
-	// TODO: use pipeline.Source and .Sink to get the source and sink.
-
 	// Find sink of p1.
 	sink := p1.Sink.(*Sink[T])
 	source := p2.Source.(*Source[T])
@@ -21,10 +18,9 @@ func JoinTwoPipelines[T any](p1, p2 *Pipeline) (*Pipeline, error) {
 	}
 
 	// The joining stage, acting as the "glue" between p1.sink and p2.source.
-	joiningStage := newJointStage(sink, source)
+	joiningStage := newJointStage(sink, source, p2)
 
-	// The pipeline stages contains all the stages from p1 except the sink, a new joint stage, and
-	// all the stages from p2 except the source.
+	// The pipeline stages contains all the stages from p1 except the sink, and a new joint "stage".
 	stages := make([]StageLike, 0)
 	for _, s := range p1.Stages {
 		if _, ok := s.(SinkLike); !ok {
@@ -32,11 +28,6 @@ func JoinTwoPipelines[T any](p1, p2 *Pipeline) (*Pipeline, error) {
 		}
 	}
 	stages = append(stages, joiningStage)
-	for _, s := range p2.Stages {
-		if _, ok := s.(SourceLike); !ok {
-			stages = append(stages, s)
-		}
-	}
 
 	// We need a new pipeline that connects the two.
 	p, err := NewPipeline(
@@ -44,17 +35,14 @@ func JoinTwoPipelines[T any](p1, p2 *Pipeline) (*Pipeline, error) {
 			// Linking function.
 			debugPrintf("[joint pipeline] link function linking both pipelines\n")
 
-			// Get the two pipelines ready.
-			// Each pipeline's stages are contained inside the joint pipeline, with the exception
-			// of p1.sink and p2.source, which are stored inside the joiningStage.
-			// Those two stages need a call to Prepare as well.
-			joiningStage.sink.Prepare()
-			joiningStage.source.Prepare()
+			// The second pipeline, p2, is prepared and linked before each sink's onResume event.
+			// This allows for an autoresume call working even at the cross-pipeline boundaries,
+			// namely, having the p1.sink as its target.
 
-			// Call the original link functions.
+			// Call the original p1 link function.
 			p1.linkFunc(p1)
-			p2.linkFunc(p2)
 
+			joiningStage.p2 = p2
 			joiningStage.joinStages()
 		},
 		WithStages(stages...),
@@ -66,255 +54,110 @@ func JoinTwoPipelines[T any](p1, p2 *Pipeline) (*Pipeline, error) {
 	return p, nil
 }
 
+// jointStage joins the sink of the first pipeline with the whole second pipeline, using
+// the second pipeline as the joint point.
 type jointStage[T any] struct {
 	*StageBase
 	sink   *Sink[T]
 	source *Source[T]
-
-	aggregatedInputCh chan T
+	p2     *Pipeline
 }
 
 var _ StageLike = (*jointStage[int])(nil)
+var _ SinkLike = (*jointStage[int])(nil)
 
-func newJointStage[T any](sink *Sink[T], source *Source[T]) *jointStage[T] {
+func newJointStage[T any](
+	sink *Sink[T],
+	source *Source[T],
+	secondPipeline *Pipeline,
+) *jointStage[T] {
 	return &jointStage[T]{
 		StageBase: &StageBase{
 			Name: fmt.Sprintf("%s_join_%s", sink.Name, source.Name),
 		},
-		sink:              sink,
-		source:            source,
-		aggregatedInputCh: make(chan T),
+		sink:   sink,
+		source: source,
+		p2:     secondPipeline,
 	}
 }
 
-func (j *jointStage[T]) Prepare() {} // Noop. Sink and source are prepared in link function.
+func (j *jointStage[T]) Prepare() {
+	// The second pipeline is prepared every time before calling sink.Resume()
+	j.sink.Prepare()
+}
+
+func (j *jointStage[T]) PrepareSink() {
+	// PrepareSink should never be called on the jointStage, unless requesting autoresume
+	// on the jointStage itself, which is impossible.
+	// However, to allow users to pick up the stages from a joint pipeline and use them in a
+	// new, different pipeline, which configures autoresume on the sink of the joint pipeline,
+	// we allow the call and forward it to the previous sink.
+	j.sink.PrepareSink()
+}
 
 func (j *jointStage[T]) Resume() {
-	// This stage's channels are linked to the sink (previous stage) and source (next stage).
-	// The go routines reading messages and forwarding them are already running.
-	// Resume the sink and the source, in reverse order.
-	j.source.Resume()
+	// Calling the sink's Resume method will trigger the onResume event.
+	// The source is resumed right at the sink's onResume event, before executing the resuming
+	// of the sink.
 	j.sink.Resume()
 }
 
-// joinStages must be called once, after all stages have been prepared, but before resuming them.
-// A right place is the link function of the joint pipeline.
+// joinStages must be called once, after the new pipeline's stages have been prepared,
+// but before resuming them, usually at the new pipeline's link function.
 func (j *jointStage[T]) joinStages() {
-	j.joinDataChannels()
-	j.joinErrorChannels()
-}
-
-func (j *jointStage[T]) joinDataChannels() {
 	// Sketch of the original scenario:
 	// ----> B1 ----> sink ----> sink's_None_output
 	// ----> B2 ---/
 	//
 	// After modification with jointStage:
-	// ----> B1 ----> joint_stage ----> sink ----> sink's_None_output
-	// ----> B2 ---/      \------------------------------/
-	//                                    |
-	//                                     \------------------> p2.source
+	// ----> B1 ----> sink ----> p2.source
+	// ----> B2 ---/
 
 	// -- Do once, after prepare but before resume.
-	// Replace the sink's sorted aggregated incoming channel: we read the messages in the same
-	// order that the sink has specified.
-	origAggregatedInput := j.sink.aggregateIncomingChannels()
-	j.sink.AggregatedIncomeCh = make(chan T)
+	// (1) Remember the original sink's process function.
+	sinkOrigProcessFunc := j.sink.ProcessFunc
+
+	// (2) Remember the original sink's OnNoMoreData function
+	sinkOrigOnNoMoreData := j.sink.onNoMoreData
+
+	// (3) Close the original source incoming channel.
+	close(j.source.sourceIncomingCh)
 
 	// -- Do every time autoresume kicks in, until sink's ErrCh is closed.
 	j.sink.onResume = func() {
-		// Capture the sink's output None, as a ticker, to signal when to send to the source.
-		close(j.sink.OutgoingChs[0]) // Stop the sink's dummy outgoing reader; sink closes nextErr.
-		j.sink.OutgoingChs[0] = make(chan None)
-		j.sink.NextErrChs[0] = make(chan error)
+		debugPrintf("[%s] sink.onResume() called\n", j.Name)
+		// (1) New source incoming channel.
+		j.source.sourceIncomingCh = make(chan T)
 
-		// For every message received on the original sink input:
-		// - Send it to the sink
-		// - Block on the processDoneAtSink channel
-		// - Once unblocked, send the same message to the source
+		// (2) Resume (which also prepares) the whole p2 pipeline.
+		debugPrintf("[%s] resuming second pipeline\n", j.Name)
+		j.p2.Resume()
 
-		go func() {
-			for in := range origAggregatedInput {
-				j.sink.AggregatedIncomeCh <- in
-				_, ok := <-j.sink.OutgoingChs[0] // Wait until the sink processes the message.
-				if !ok {
-					// Sink stopping or autoresuming.
-					close(j.sink.NextErrChs[0])
-					close(j.source.sourceIncomingCh)
-					return
-				}
-				j.source.sourceIncomingCh <- in // Forward message to source.
-			}
-			// The original sink aggregated input is closed. Time to stop the sink.
-			close(j.sink.AggregatedIncomeCh)
-			close(j.source.sourceIncomingCh)
-			// Wait until the sink processes the message.
-			for range j.sink.OutgoingChs[0] {
-			} // The sink has closed its dummy output: close the dummy nextErr.
-			close(j.sink.NextErrChs[0])
-		}()
-	}
-}
+		// (3) Set the p2.source's TopErr channel as one of the p1.sink's next err channels.
+		j.sink.NextErrChs = append(j.sink.NextErrChs, j.source.TopErrCh)
+		debugPrintf("[%s] added source's TopErr to sink's next error channels\n", j.Name)
 
-// joinDataChannels reads all the sink's original incoming channels (that are linked to the
-// previous stages) and for each original channel, creates a new sink incoming channel in the
-// same position. Each message coming from the original channel is:
-//  1. Sent to the new sink incoming channel.
-//  2. After processed at the sink, and if the sink's output channel is not closed, forward
-//     this message to the joint channel. It will be picked up by p2.source.
-func (j *jointStage[T]) joinDataChannelsOLD() {
-	//
-	// deleteme note that we need to listen to the p1.sink.OutgoingChs[0] for every None sent there,
-	// signaling that the input was processed by the sink. When closing this outgoing channel,
-	// the joint channel has to close p2.source.sourceIncomingCh as well.
-
-	// For all incoming channels to the sink, read their messages and forward the messages to
-	// the joint stage's data channel.
-	wg := sync.WaitGroup{}
-	wg.Add(len(j.sink.IncomingChs))
-	for i, sinkInCh := range j.sink.IncomingChs {
-		i, sinkInCh := i, sinkInCh
-		// outCh is the original channel, linked with the previous stage.
-		newSinkInCh := make(chan T)
-		debugPrintf("[%s] sink's orig incoming %d: %s, new: %s\n",
-			j.Name, i, chanPtr(sinkInCh), chanPtr(newSinkInCh))
-
-		go func(sinkInCh chan T, newSinkInCh chan T) {
-			defer wg.Done() // Signal the joint channel to close when all are closed.
-			for out := range sinkInCh {
-				debugPrintf("[%s] got '%v' on sink's original %d: %s. Sending to sink's new %s\n",
-					j.Name, out, i, chanPtr(sinkInCh), chanPtr(newSinkInCh))
-				// First send to sink itself. If accepted, it means it will process it.
-				newSinkInCh <- out
-
-				// When the sink has unblocked that incoming channel, forward the same value
-				// (clone it) to the aggregated input channel. There is another goroutine that
-				// forwards those values to the source.
-				debugPrintf("[%s] value '%v' to aggregated joint input %s\n",
-					j.Name, out, chanPtr(newSinkInCh))
-				j.aggregatedInputCh <- out
-			}
-			// When the original channel is closed, close the new one as well.
-			debugPrintf("[%s] closing new incoming channel at %d: %s (old is %s)\n",
-				j.Name, i, chanPtr(newSinkInCh), chanPtr(sinkInCh))
-			close(newSinkInCh)
-		}(sinkInCh, newSinkInCh) // deleteme remove parameters (unnecessary)
-
-		// Replace the original channel with the new one.
-		j.sink.IncomingChs[i] = newSinkInCh
-		debugPrintf("[%s] sink's %d incoming channel is now: %s\n",
-			j.Name, i, chanPtr(j.sink.IncomingChs[i]))
-	}
-	// Aggregate the incoming channels again, after changing them.
-	debugPrintf("[%s] re-aggregating input for sink [%s]. Old was: %s\n",
-		j.Name, j.sink.Name, chanPtr(j.sink.AggregatedIncomeCh))
-	j.sink.AggregatedIncomeCh = j.sink.aggregateIncomingChannels()
-
-	// When all the original channels are closed, close our joint channel.
-	go func() {
-		wg.Wait()
-		debugPrintf("[%s] all original data channels closed, closing joint: %s\n",
-			j.Name, chanPtr(j.aggregatedInputCh))
-		close(j.aggregatedInputCh)
-		j.aggregatedInputCh = nil
-	}()
-
-	// Lastly, to support the sink stopping the pipeline at will (error or autoresume),
-	// we insert a new output channel that when closed, will trigger the closing the input of
-	// the source, hence stopping the pipeline from the sink forwards.
-	extraOutputCh := make(chan None)
-	// The sink creates a new OutgoingChs every time at PrepareSink, which is called from
-	// the autoresume code if the sink is to autoresume.
-	j.sink.OutgoingChs = append(j.sink.OutgoingChs, extraOutputCh)
-
-	// close(j.source.sourceIncomingCh) // deleteme
-	// Replace (or create) the source's incoming channel with a new one.
-	j.source.sourceIncomingCh = make(chan T)
-
-	// // Unlink the source's channel and use this joint stage's data channel as source.
-	// debugPrintf("[%s] p2.source orig channel: %s, new: %s\n",
-	// 	j.Name, chanPtr(j.source.sourceIncomingCh), chanPtr(j.aggregatedInputCh))
-	// j.source.sourceIncomingCh = j.aggregatedInputCh
-
-	go func() {
-		// Forever read messages intended for the source, until:
-		// - The sink requests to close: it will close its extra output channel.
-		// - There is no more data for the source: we close the extra output
-		// Do this forever, until the sink has no more data, i.e. j.dataCh is closed.
-
-		for {
-			// readIncomingOrClosingExtraOutput:
-			select {
-			// case in, ok := <-j.aggregatedInputCh:
-			// 	debugPrintf("[%s] value %v (ok? %v) forwarded to source %s\n",
-			// 		j.Name, in, ok, chanPtr(j.source.sourceIncomingCh))
-			// 	if !ok {
-			// 		// The sink doesn't have any more data, stop all.
-			// 		// The sink will close its out channel index 0, we need to close the extra
-			// 		// output channel.
-			// 		close(extraOutputCh)
-
-			// 		// We do not set extraOutputCh to nil to let this select pick the second
-			// 		// case, where it is closed. We set j.aggregatedInputCh to nil to avoid
-			// 		// this select case to be triggered again.
-			// 		j.aggregatedInputCh = nil
-			// 		break
-			// 		// return
-			// 		// break readIncomingOrClosingExtraOutput
-			// 	}
-			// 	j.source.sourceIncomingCh <- in
-			case in := <-j.aggregatedInputCh:
-				debugPrintf("[%s] value %v forwarded to source incoming channel %s\n",
-					j.Name, in, chanPtr(j.source.sourceIncomingCh))
-				j.source.sourceIncomingCh <- in
-			case _, ok := <-extraOutputCh:
-				if ok {
-					// This is anomalous. We should never receive any value in this
-					// output channel, as no processing function in the sink does even
-					// know that it exists.
-					// Report by crashing.
-					panic(fmt.Errorf("logic error: received 'None' at extra output channel"+
-						" in sink. Received at channel %s, by stage %s",
-						chanPtr(extraOutputCh), j.Name))
-				}
-				// This channel is closed only from breakPipelineAndWait when closing outputs,
-				// or the above select-case.
-				// Close the source channel. This triggers the joint source to stop and send
-				// the error back via its ErrCh.
-				debugPrintf("[%s] sink requested to stop, closing source %s\n",
-					j.Name, chanPtr(j.source.sourceIncomingCh))
+		// (4) Every time the sink finishes processing a message, forward it to p2.source, unless
+		// the sink specifies NoMoreData or error, where we close the p2.source incoming channel,
+		// while at the same time the sink will close it's dummy output and next error channels.
+		// Since the next error channel number 2 (sink.NextErrChs[1]) is the top level p2.source's
+		// error channel, the sink will also receive errors from the second pipeline.
+		j.sink.ProcessFunc = func(in T) ([]None, []int, error) {
+			j.source.sourceIncomingCh <- in
+			_, _, err := sinkOrigProcessFunc(in)
+			debugPrintf("[%s] msg: '%v' on original sink. Processing error: %v\n", j.Name, in, err)
+			if err == NoMoreData {
 				close(j.source.sourceIncomingCh)
-
-				// Here, the source, when returning its state via sink.NextErrChs[1], will trigger
-				// the sink to initiate one of:
-				// - a return to previous stages: nothing to do here.
-				// - autoresume: the onResume will trigger execution again. Nothing to do here.
-
-				// extraOutputCh = nil // Avoid selecting this case again.
-
-				// // // Before resuming the sink,
-				// // // Create the source input channel again, as it won't be prepared.
-				// // j.source.sourceIncomingCh = make(chan T)
-
-				// // deleteme:
-				// // if the sink is on autoresume, we need to know if it quits or autoresumes.
-				// // - The way to know that the sink has resumed again is by capturing the call to Resume.
-				// // - The way to know that the sink has quit is to capture its error channel:
-				// // 	when it quits the error channel will be closed.
-				// // If autoresuming, we have to wait until sink.Resume() is called, and after calling it,
-				// // 	go again and link j.aggregatedInputCh to the source input channel: i.e. iterate again.
-
-				// break readIncomingOrClosingExtraOutput
-				return
 			}
+			return nil, nil, err
 		}
-	}()
-}
 
-// joinErrorChannels prepares the error channels so that if the sink's process function OR
-// the source error channel return an error, everything is stopped and the error returned to
-// the previous stages.
-// deleteme check that it is enough to just append the source's error to the sink's next errs.
-func (j *jointStage[T]) joinErrorChannels() {
-	j.sink.NextErrChs = append(j.sink.NextErrChs, j.source.TopErrCh)
+		// (5) Capture the OnNoMoreData event, to also close the source's incoming channel.
+		j.sink.onNoMoreData = func() ([]None, []int, error) {
+			debugPrintf("[%s] OnNoMoreData() called on sink. Closing source's incoming channel\n",
+				j.Name)
+			close(j.source.sourceIncomingCh)
+			return sinkOrigOnNoMoreData()
+		}
+	}
 }

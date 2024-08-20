@@ -61,7 +61,8 @@ func WithSourceChannel[OUT any](
 					outChs[0] = outCh
 					return outs, outChs, err
 				}
-				debugPrintf("[%s] source channel is closed, no more data\n", s.Name)
+				debugPrintf("[%s] source channel %s is closed, no more data\n",
+					s.Name, chanPtr(s.sourceIncomingCh))
 				// When the incoming channel is closed, return no more data.
 				return nil, nil, NoMoreData
 			}
@@ -77,7 +78,9 @@ func (s *Source[OUT]) Prepare() {
 	SourceAsStage(s).Prepare()
 
 	s.TopErrCh = make(chan error)
-	debugPrintf("[%s] TopErr is %s\n", s.Name, chanPtr(s.TopErrCh))
+	debugPrintf("[%s] TopErr is %s, incoming[0] is %s\n",
+		s.Name, chanPtr(s.TopErrCh), chanPtr(s.IncomingChs[0]))
+
 	// As a source, we generate data by sending none to our incoming channel,
 	// until our errCh is closed.
 	// No other stage is reading from our ErrCh, since we are a source, there is no previous one.
@@ -89,12 +92,16 @@ func (s *Source[OUT]) Prepare() {
 			case s.IncomingChs[0] <- None{}:
 				debugPrintf("[%s] source to itself None\n", s.Name)
 			case err := <-errCh:
-				debugPrintf("[%s] source original error channel (%s): %v. Sending to TopChan %s\n",
+				debugPrintf("[%s] source's orig. errCh (%s): %v. Sending to TopChan %s\n",
 					s.Name, chanPtr(errCh), err, chanPtr(s.TopErrCh))
 				// Close incoming.
 				debugPrintf("[%s] source closing incoming %s\n", s.Name, chanPtr(s.IncomingChs[0]))
 				close(s.IncomingChs[0])
-				s.TopErrCh <- err // might block, but this goroutine is done anyways.
+				if err != nil {
+					s.TopErrCh <- err // might block, but this goroutine is done anyways.
+				}
+				debugPrintf("[%s] source closing TopErr %s\n", s.Name, chanPtr(s.TopErrCh))
+				close(s.TopErrCh)
 				return
 			}
 		}

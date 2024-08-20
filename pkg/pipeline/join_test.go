@@ -32,6 +32,7 @@ func TestBasicJoinPipelines(t *testing.T) {
 		WithStages(
 			NewSource[int](
 				"a",
+				WithSequentialOutputs[None, int](),
 				WithSourceFunction(func() ([]int, []int, error) {
 					defer func() { p1SourceIndex++ }()
 					inData := []int{1, 2, 3, 4, 5}
@@ -44,6 +45,7 @@ func TestBasicJoinPipelines(t *testing.T) {
 			),
 			NewStage[int, string](
 				"b",
+				WithSequentialOutputs[int, string](),
 				WithProcessFunction(func(in int) ([]string, []int, error) {
 					s := strconv.Itoa(in)
 					return []string{s}, []int{0}, nil
@@ -109,8 +111,6 @@ func TestBasicJoinPipelines(t *testing.T) {
 
 // TestBasicJoinPipelines checks that joining two basic pipelines work.
 func TestComplexJoinPipelines(t *testing.T) {
-	// return // deleteme
-
 	defer PrintAllDebugLines()
 
 	// The pipelines are:
@@ -149,7 +149,6 @@ func TestComplexJoinPipelines(t *testing.T) {
 				WithSourceFunction(func() ([]int, []int, error) {
 					defer func() { p1SourceIndex++ }()
 					inData := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-					// inData := []int{1, 2} // deleteme
 					if p1SourceIndex < len(inData) {
 						debugPrintf("[a1] [TEST] source function called with %v\n",
 							inData[p1SourceIndex])
@@ -166,7 +165,7 @@ func TestComplexJoinPipelines(t *testing.T) {
 				WithSequentialOutputs[int, string](),
 				WithProcessFunction(func(in int) ([]string, []int, error) {
 					s := strconv.Itoa(in)
-					// time.Sleep(10 * time.Millisecond) // deleteme
+					time.Sleep(10 * time.Millisecond) // be slower than the other branch.
 					return []string{s}, []int{0}, nil
 				}),
 			),
@@ -194,6 +193,7 @@ func TestComplexJoinPipelines(t *testing.T) {
 				}),
 				// TODO: desirable to automate not calling autoresume when no input.
 				WithOnNoMoreData[string, None](func() ([]None, []int, error) {
+					debugPrintf("[d1] [TEST] OnNoMoreData() called\n")
 					p1SinkOnNoMoreDataCalled = true
 					return nil, nil, nil
 				}),
@@ -202,6 +202,8 @@ func TestComplexJoinPipelines(t *testing.T) {
 		WithAutoResumeAtStage(
 			3, // sink
 			func() bool {
+				debugPrintf("[TEST] p1 shouldResumeNow() called, will return %v\n",
+					!p1SinkOnNoMoreDataCalled)
 				return !p1SinkOnNoMoreDataCalled
 			},
 			func(p *Pipeline) {
@@ -210,7 +212,6 @@ func TestComplexJoinPipelines(t *testing.T) {
 			// no stages affected.
 		),
 	)
-	_ = p1SinkOnNoMoreDataCalled // deleteme
 	require.NoError(t, err)
 
 	p2SourceCh := make(chan string)
@@ -280,41 +281,9 @@ func TestComplexJoinPipelines(t *testing.T) {
 		err := jointPipeline.Wait()
 		require.NoError(t, err)
 	})
-	require.Equal(t, []int{1, 2}, p2GotValues)
+	require.Equal(t, []int{1, 2, 3, 5, 4, 6, 7, 8, 9, 10}, p2GotValues)
 	require.Equal(t, len(p2GotValues), p1SinkCallCount)
 	require.Equal(t, len(p2GotValues), p2SourceCallCount)
-}
-
-func TestDeleteme(t *testing.T) {
-	ch1 := make(chan int)
-	ch2 := make(chan int)
-	ch3 := make(chan int)
-
-	go func() {
-		order := 0
-		for {
-			select {
-			case in, ok := <-ch1:
-				t.Logf("[%2d] ch1: ok? %v value: %v", order, ok, in)
-			case in, ok := <-ch2:
-				t.Logf("[%2d] ch2: ok? %v value: %v", order, ok, in)
-				if !ok {
-					ch2 = nil
-				}
-			case in, ok := <-ch3:
-				t.Logf("[%2d] ch3: ok? %v value: %v", order, ok, in)
-			}
-			order++
-		}
-	}()
-
-	ch1 <- 1
-	ch3 <- 3
-	// ch2 <- 2
-	close(ch2)
-	ch1 <- 11
-
-	time.Sleep(time.Millisecond)
 }
 
 func TestChannelReferenceCaptures(t *testing.T) {

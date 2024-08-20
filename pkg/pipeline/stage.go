@@ -471,7 +471,7 @@ func (s *Stage[IN, OUT]) aggregateNextErrChannels() chan error {
 				nextStagesAggregatedErrCh <- err
 			}
 			// When the nextErrCh of next stage i is closed, this goroutine signals the wg.
-			debugPrintf("[%s] aggregated next error channel %s sees channel %d: %s is closed\n",
+			debugPrintf("[%s] aggregated next error channel %s sees channel [%d]: %s is closed\n",
 				s.Name, chanPtr(nextStagesAggregatedErrCh), i, chanPtr(nextErrCh))
 		}()
 	}
@@ -592,6 +592,6 @@ type None struct{}
 
 type noError struct{}
 
-func (noError) Error() string { return "" }
+func (noError) Error() string { return "NoMoreData" }
 
 var NoMoreData = noError{}
