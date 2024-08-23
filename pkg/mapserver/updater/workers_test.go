@@ -8,15 +8,19 @@ import (
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
+	"github.com/netsec-ethz/fpki/pkg/pipeline"
 	"github.com/netsec-ethz/fpki/pkg/tests"
 	"github.com/netsec-ethz/fpki/pkg/tests/noopdb"
 	"github.com/netsec-ethz/fpki/pkg/tests/random"
+	"github.com/netsec-ethz/fpki/pkg/util/debug"
 	"github.com/stretchr/testify/require"
 )
 
 // TestAllocsCertWorkerProcessBundle checks that the calls to deduplicate elements in CertWorker
 // do not need special memory allocations, due to the static fields present in the struct.
 func TestAllocsCertWorkerProcessBundle(t *testing.T) {
+	defer pipeline.PrintAllDebugLines()
+
 	// Cert worker use of allocation calls.
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
 	defer cancelF()
@@ -29,7 +33,8 @@ func TestAllocsCertWorkerProcessBundle(t *testing.T) {
 	certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
 
 	// Prepare the manager and worker for the test.
-	manager := updater.NewManager(ctx, 1, conn, 1000, 1, nil)
+	manager, err := updater.NewManager(ctx, 1, conn, 1000, 1, nil)
+	require.NoError(t, err)
 
 	// The only interesting stage for this test is the one with the certificate worker.
 	// For that purpose, we mock the source and sink.
@@ -59,6 +64,8 @@ func TestAllocsCertWorkerProcessBundle(t *testing.T) {
 // TestCertWorkerOverhead checks the extra amount of memory that the certificate worker uses,
 // other than that used by the main processing function processBundle.
 func TestCertWorkerAllocationsOverhead(t *testing.T) {
+	defer pipeline.PrintAllDebugLines()
+
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
 	defer cancelF()
 
@@ -69,14 +76,17 @@ func TestCertWorkerAllocationsOverhead(t *testing.T) {
 	N := 100
 	certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
 
-	manager := updater.NewManager(ctx, 1, conn, 10, 1, nil)
+	manager, err := updater.NewManager(ctx, 1, conn, 10, 1, nil)
+	require.NoError(t, err)
 
 	// Create a cert worker stage. Input channel of Certificate, output of DirtyDomain.
 	worker := updater.NewCertWorker(ctx, 0, manager, conn, 1)
 
 	// Mock a sink.
 	sinkErrCh := make(chan error)
+	worker.OutgoingChs[0] = make(chan updater.DirtyDomain)
 	go func() {
+		t.Logf("reading all outputs from %s", debug.Chan2str(worker.OutgoingChs[0]))
 		for range worker.OutgoingChs[0] {
 		}
 		close(sinkErrCh)
@@ -101,22 +111,25 @@ func TestCertWorkerAllocationsOverhead(t *testing.T) {
 	runtime.GC()
 	time.Sleep(100 * time.Millisecond)
 
-	var err error
-	allocs := tests.AllocsPerRun(func() {
-		// All is set up. Start processing and measure allocations.
-		sendCertsCh <- struct{}{}
-		// Wait for completion.
-		err = <-worker.Stage.ErrCh
+	tests.TestOrTimeout(t, tests.WithContext(ctx), func(t tests.T) {
+		allocs := tests.AllocsPerRun(func() {
+			// All is set up. Start processing and measure allocations.
+			sendCertsCh <- struct{}{}
+			// Wait for completion.
+			err = <-worker.ErrCh
+		})
+		require.NoError(t, err)
+		t.Logf("allocs = %d", allocs)
+		// The test is flaky: sometimes we get 0 allocations, sometimes 1 or even more.
+		require.LessOrEqual(t, allocs, N/10)
 	})
-	require.NoError(t, err)
-	t.Logf("allocs = %d", allocs)
-	// The test is flaky: sometimes we get 0 allocations, sometimes 1 or even more.
-	require.LessOrEqual(t, allocs, N/10)
 }
 
 // TestAllocsDomainWorkerProcessBundle checks that the calls to deduplicate elements in DomainWorker
 // do not need special memory allocations, due to the static fields present in the struct.
 func TestAllocsDomainWorkerProcessBundle(t *testing.T) {
+	defer pipeline.PrintAllDebugLines()
+
 	// Domain worker use of allocation calls.
 
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
@@ -130,7 +143,8 @@ func TestAllocsDomainWorkerProcessBundle(t *testing.T) {
 	certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
 
 	// Prepare the manager and worker for the test.
-	manager := updater.NewManager(ctx, 1, conn, 1000, 1, nil)
+	manager, err := updater.NewManager(ctx, 1, conn, 1000, 1, nil)
+	require.NoError(t, err)
 	worker := updater.NewDomainWorker(ctx, 0, manager, conn, 1)
 
 	// Bundle the mock data.
@@ -151,6 +165,8 @@ func TestAllocsDomainWorkerProcessBundle(t *testing.T) {
 // TestDomainWorkerOverhead checks the extra amount of memory that the domain worker uses,
 // other than that used by the main processing function processBundle.
 func TestDomainWorkerAllocationsOverhead(t *testing.T) {
+	defer pipeline.PrintAllDebugLines()
+
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
 	defer cancelF()
 
@@ -162,7 +178,8 @@ func TestDomainWorkerAllocationsOverhead(t *testing.T) {
 	certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
 	domains := extractDomains(certs)
 
-	manager := updater.NewManager(ctx, 1, conn, 10, 1, nil)
+	manager, err := updater.NewManager(ctx, 1, conn, 10, 1, nil)
+	require.NoError(t, err)
 
 	// Create a cert worker stage. Input channel of Certificate, output of DirtyDomain.
 	worker := updater.NewDomainWorker(ctx, 0, manager, conn, 1)
@@ -185,12 +202,11 @@ func TestDomainWorkerAllocationsOverhead(t *testing.T) {
 	runtime.GC()
 	time.Sleep(100 * time.Millisecond)
 
-	var err error
 	allocs := tests.AllocsPerRun(func() {
 		// All is set up. Start processing and measure allocations.
 		sendDomainsCh <- struct{}{}
 		// Wait for completion.
-		err = <-worker.Stage.ErrCh
+		err = <-worker.ErrCh
 	})
 	require.NoError(t, err)
 	t.Logf("allocs = %d", allocs)

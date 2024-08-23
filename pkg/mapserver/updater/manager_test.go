@@ -119,7 +119,8 @@ func TestManagerStart(t *testing.T) {
 			conn := testdb.Connect(t, config)
 			defer conn.Close()
 
-			manager := updater.NewManager(ctx, tc.NWorkers, conn, tc.MultiInsertSize, time.Second, nil)
+			manager, err := updater.NewManager(ctx, tc.NWorkers, conn, tc.MultiInsertSize, time.Second, nil)
+			require.NoError(t, err)
 
 			certs := tc.certGenerator(t, mockLeaves(tc.NLeafDomains)...)
 			t.Logf("Manager: %p number of certs: %d", manager, len(certs))
@@ -190,7 +191,7 @@ func TestManagerResume(t *testing.T) {
 			conn := testdb.Connect(t, config)
 			defer conn.Close()
 
-			manager := updater.NewManager(
+			manager, err := updater.NewManager(
 				ctx,
 				tc.NWorkers,
 				conn,
@@ -198,6 +199,7 @@ func TestManagerResume(t *testing.T) {
 				time.Second,
 				nil,
 			)
+			require.NoError(t, err)
 
 			N := tc.NLeafDomains
 			certs := sameAncestryHierarchy(t, mockLeaves(N)...)
@@ -245,10 +247,10 @@ func TestMinimalAllocsManager(t *testing.T) {
 	N := 100
 	certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
 	// Prepare the manager and worker for the test.
-	manager := updater.NewManager(ctx, 1, conn, 10, 1, nil)
+	manager, err := updater.NewManager(ctx, 1, conn, 10, 1, nil)
+	require.NoError(t, err)
 
 	// Now check the number of allocations happening inside the manager, once it runs.
-	var err error
 	manager.Resume()
 	processCertificates(manager, certs)
 	time.Sleep(100 * time.Millisecond)
