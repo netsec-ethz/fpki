@@ -1,12 +1,12 @@
 package pipeline
 
 import (
-	"fmt"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/tests"
+	"github.com/netsec-ethz/fpki/pkg/util/debug"
 	"github.com/stretchr/testify/require"
 )
 
@@ -299,18 +299,18 @@ func TestChannelReferenceCaptures(t *testing.T) {
 		go func() {
 			<-goNowCh
 
-			t.Logf("[goroutine] original: %s", chan2str(inputCh))
+			t.Logf("[goroutine] original: %s", debug.Chan2str(inputCh))
 			select {
 			case in := <-inputCh:
-				t.Logf("[goroutine] read from inputCh(%s): %v", chan2str(inputCh), in)
+				t.Logf("[goroutine] read from inputCh(%s): %v", debug.Chan2str(inputCh), in)
 				testOkCh <- struct{}{}
 			case <-time.After(50 * time.Millisecond):
 				testFailCh <- struct{}{} // inputCh should point to the new channel.
 			}
 		}()
-		t.Logf("[TEST] original: %s", chan2str(inputCh))
+		t.Logf("[TEST] original: %s", debug.Chan2str(inputCh))
 		inputCh = make(chan int, 1)
-		t.Logf("[TEST] new: %s", chan2str(inputCh))
+		t.Logf("[TEST] new: %s", debug.Chan2str(inputCh))
 		goNowCh <- struct{}{}
 		inputCh <- 1
 		select {
@@ -331,16 +331,16 @@ func TestChannelReferenceCaptures(t *testing.T) {
 
 		go func() {
 			// If we copy the reference, the change outside is not visible here.
-			t.Logf("[goroutine] original: %s", chan2str(inputCh))
+			t.Logf("[goroutine] original: %s", debug.Chan2str(inputCh))
 			inputCh := inputCh
-			t.Logf("[goroutine] copy: %s", chan2str(inputCh))
+			t.Logf("[goroutine] copy: %s", debug.Chan2str(inputCh))
 			goNowCh <- 1 // goroutine ready
 			i := <-goNowCh
 			require.Equal(t, 2, i)
 
 			select {
 			case in := <-inputCh:
-				t.Logf("[goroutine] read from inputCh(%s): %v", chan2str(inputCh), in)
+				t.Logf("[goroutine] read from inputCh(%s): %v", debug.Chan2str(inputCh), in)
 				testFailCh <- struct{}{} // inputCh should point to the old channel.
 			case <-time.After(50 * time.Millisecond):
 				testOkCh <- struct{}{}
@@ -348,11 +348,11 @@ func TestChannelReferenceCaptures(t *testing.T) {
 		}()
 
 		// Replace channel in the reference "inputCh"
-		t.Logf("[TEST] original: %s", chan2str(inputCh))
+		t.Logf("[TEST] original: %s", debug.Chan2str(inputCh))
 		i := <-goNowCh // wait until the goroutine is running.
 		require.Equal(t, 1, i)
 		inputCh = make(chan int, 1)
-		t.Logf("[TEST] new: %s", chan2str(inputCh))
+		t.Logf("[TEST] new: %s", debug.Chan2str(inputCh))
 		goNowCh <- 2
 		inputCh <- 1
 		select {
@@ -376,10 +376,10 @@ func TestChannelReferenceCaptures(t *testing.T) {
 			i := <-goNowCh // wait for main to be ready
 			require.Equal(t, 2, i)
 
-			t.Logf("[goroutine] parameter: %s", chan2str(inputCh))
+			t.Logf("[goroutine] parameter: %s", debug.Chan2str(inputCh))
 			select {
 			case in := <-inputCh:
-				t.Logf("[goroutine] read from inputCh(%s): %v", chan2str(inputCh), in)
+				t.Logf("[goroutine] read from inputCh(%s): %v", debug.Chan2str(inputCh), in)
 				testFailCh <- struct{}{} // inputCh should point to the old channel.
 			case <-time.After(50 * time.Millisecond):
 				testOkCh <- struct{}{}
@@ -387,11 +387,11 @@ func TestChannelReferenceCaptures(t *testing.T) {
 		}(inputCh)
 
 		// Replace channel in the reference "inputCh"
-		t.Logf("[TEST] original: %s", chan2str(inputCh))
+		t.Logf("[TEST] original: %s", debug.Chan2str(inputCh))
 		i := <-goNowCh // wait until the goroutine is running.
 		require.Equal(t, 1, i)
 		inputCh = make(chan int, 1)
-		t.Logf("[TEST] new: %s", chan2str(inputCh))
+		t.Logf("[TEST] new: %s", debug.Chan2str(inputCh))
 		goNowCh <- 2 // signal ready
 		inputCh <- 1
 		select {
@@ -400,8 +400,4 @@ func TestChannelReferenceCaptures(t *testing.T) {
 			t.Fatal("failed: goroutine did not behave as expected")
 		}
 	})
-}
-
-func chan2str[T any](c chan T) string {
-	return fmt.Sprintf("0x%x", chanUintPtr(c))
 }
