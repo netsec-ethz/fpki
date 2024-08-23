@@ -6,6 +6,8 @@ import (
 	"unsafe"
 )
 
+const DebugEnabled string = "nodebug"
+
 func debugPrintf(format string, args ...any) {}
 
 func PrintAllDebugLines() {}

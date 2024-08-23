@@ -224,7 +224,11 @@ readIncoming:
 			break readIncoming
 
 		case in, ok := <-s.AggregatedIncomeCh:
-			debugPrintf("[%s] incoming? %v, value: %v\n", s.Name, ok, in)
+			if DebugEnabled != "nodebug" {
+				// Need this if-guard to prevent the arguments from being evaluated by the compiler,
+				// because if it does, it will allocate memory for "in" when e.g. IN = Certificate.
+				debugPrintf("[%s] incoming? %v, value: %v\n", s.Name, ok, in)
+			}
 
 			var outs []OUT
 			var outChIndxs []int
