@@ -51,15 +51,20 @@ func NewCertWorker(
 
 		dedupStorage: make(map[common.SHA256Output]struct{}, m.MultiInsertSize),
 	}
+	name := fmt.Sprintf("cert_worker_%02d", id)
 	w.Stage = pip.NewStage(
-		fmt.Sprintf("cert_worker_%2d", id),
+		name,
 		pip.WithMultiOutputChannels[Certificate, DirtyDomain](workerCount),
 		pip.WithProcessFunction(
 			func(cert Certificate) ([]DirtyDomain, []int, error) {
 				w.Certs = append(w.Certs, cert)
 				// Only if we have filled a complete bundle, process.
+				if pip.DebugEnabled {
+					pip.DebugPrintf("[%s] worker got cert %s, batch size: %d \n", name, cert, len(w.Certs))
+				}
 				if len(w.Certs) == m.MultiInsertSize {
 					err := w.processBundle()
+					pip.DebugPrintf("[%s] bundle processed, err: %v\n", name, err)
 					if err != nil {
 						return nil, nil, err
 					}
@@ -83,6 +88,7 @@ func NewCertWorker(
 // processBundle processes a bundle of certificates and extracts their associated domains.
 // The function resets the certificate bundle slice to zero size after it is done.
 func (w *CertWorker) processBundle() error {
+	pip.DebugPrintf("[%s] processing bundle\n", w.Stage.Name)
 	if len(w.Certs) == 0 {
 		return nil
 	}

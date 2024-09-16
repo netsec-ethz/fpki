@@ -6,9 +6,10 @@ import (
 	"unsafe"
 )
 
-const DebugEnabled string = "nodebug"
+const DebugEnabledType string = "nodebug"
+const DebugEnabled bool = false
 
-func debugPrintf(format string, args ...any) {}
+func DebugPrintf(format string, args ...any) {}
 
 func PrintAllDebugLines() {}
 

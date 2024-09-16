@@ -47,10 +47,11 @@ func NewManager(
 
 	// Create the Manager structure.
 	m := &Manager{
-		MultiInsertSize: multiInsertSize,
-		Stats:           NewStatistics(statsUpdateFreq, statsUpdateFunc),
-		ShardFuncCert:   selectPartition,
-		ShardFuncDomain: selectPartition,
+		MultiInsertSize:  multiInsertSize,
+		Stats:            NewStatistics(statsUpdateFreq, statsUpdateFunc),
+		ShardFuncCert:    selectPartition,
+		ShardFuncDomain:  selectPartition,
+		IncomingCertChan: make(chan Certificate),
 	}
 
 	// Prepare the domain processing stages. Sinks.
@@ -73,10 +74,10 @@ func NewManager(
 
 	// Get the Certificate from the channel and pass it along.
 	source := pip.NewSource(
-		"source",
+		"incoming_certs",
 		pip.WithMultiOutputChannels[pip.None, Certificate](workerCount),
 		pip.WithSequentialOutputs[pip.None, Certificate](),
-		pip.WithSourceChannel(m.IncomingCertChan, func(in Certificate) (int, error) {
+		pip.WithSourceChannel(&m.IncomingCertChan, func(in Certificate) (int, error) {
 			return int(m.ShardFuncCert(&in.CertID)), nil
 		}),
 	)
@@ -121,7 +122,10 @@ func NewManager(
 }
 
 func (m *Manager) Resume() {
+	// Create a new source incoming channel.
 	m.IncomingCertChan = make(chan Certificate)
+
+	// Resume pipeline.
 	m.Pipeline.Resume()
 }
 func (m *Manager) Stop() {

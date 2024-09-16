@@ -59,7 +59,7 @@ func NewDomainWorker(
 	// from that specific cert worker. When the cert worker is done, it will close only that
 	// specific channel.
 	w.Sink = pip.NewSink(
-		fmt.Sprintf("domain_worker_%2d", id),
+		fmt.Sprintf("domain_worker_%02d", id),
 		pip.WithSinkFunction(
 			func(domain DirtyDomain) error {
 				var err error

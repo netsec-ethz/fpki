@@ -4,8 +4,9 @@ package pipeline
 
 import "fmt"
 
-const DebugEnabled string = "panic"
+const DebugEnabledType string = "panic"
+const DebugEnabled bool = true
 
-func debugPrintf(format string, args ...any) {
+func DebugPrintf(format string, args ...any) {
 	fmt.Printf(format, args...)
 }

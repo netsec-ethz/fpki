@@ -1,6 +1,8 @@
 package updater
 
 import (
+	"encoding/hex"
+
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
@@ -26,10 +28,18 @@ type Certificate struct {
 	Names    []string
 }
 
+func (c Certificate) String() string {
+	return hex.EncodeToString(c.CertID[:])
+}
+
 type DirtyDomain struct {
 	DomainID common.SHA256Output
 	CertID   common.SHA256Output
 	Name     string
+}
+
+func (d DirtyDomain) String() string {
+	return hex.EncodeToString(d.DomainID[:])
 }
 
 func CertificatesFromChains(data *CertWithChainData) []Certificate {

@@ -37,7 +37,7 @@ func TestBasicJoinPipelines(t *testing.T) {
 					defer func() { p1SourceIndex++ }()
 					inData := []int{1, 2, 3, 4, 5}
 					if p1SourceIndex < len(inData) {
-						debugPrintf("[a] [TEST] source function called with %v\n", inData[p1SourceIndex])
+						DebugPrintf("[a] [TEST] source function called with %v\n", inData[p1SourceIndex])
 						return inData[p1SourceIndex : p1SourceIndex+1], []int{0}, nil
 					}
 					return nil, nil, NoMoreData
@@ -54,7 +54,7 @@ func TestBasicJoinPipelines(t *testing.T) {
 			NewSink[string](
 				"c",
 				WithSinkFunction(func(in string) error {
-					debugPrintf("[c] [TEST] sink function called with %v\n", in)
+					DebugPrintf("[c] [TEST] sink function called with %v\n", in)
 					p1SinkCallCount++
 					return nil
 				}),
@@ -76,8 +76,8 @@ func TestBasicJoinPipelines(t *testing.T) {
 		WithStages(
 			NewSource[string](
 				"d",
-				WithSourceChannel(p2SourceCh, func(in string) (int, error) {
-					debugPrintf("[d] [TEST] source channel processing called with %v\n", in)
+				WithSourceChannel(&p2SourceCh, func(in string) (int, error) {
+					DebugPrintf("[d] [TEST] source channel processing called with %v\n", in)
 					p2SourceCallCount++
 					return 0, nil
 				}),
@@ -86,7 +86,7 @@ func TestBasicJoinPipelines(t *testing.T) {
 			NewSink[string](
 				"e",
 				WithSinkFunction(func(in string) error {
-					debugPrintf("[e] [TEST] sink function called with %v\n", in)
+					DebugPrintf("[e] [TEST] sink function called with %v\n", in)
 					p2GotValues = append(p2GotValues, in)
 					t.Logf("[e] received %s", in)
 					return nil
@@ -150,7 +150,7 @@ func TestComplexJoinPipelines(t *testing.T) {
 					defer func() { p1SourceIndex++ }()
 					inData := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
 					if p1SourceIndex < len(inData) {
-						debugPrintf("[a1] [TEST] source function called with %v\n",
+						DebugPrintf("[a1] [TEST] source function called with %v\n",
 							inData[p1SourceIndex])
 						return inData[p1SourceIndex : p1SourceIndex+1],
 							[]int{p1SourceIndex % 2},
@@ -183,17 +183,17 @@ func TestComplexJoinPipelines(t *testing.T) {
 				WithMultiInputChannels[string, None](2),
 				WithSequentialInputs[string, None](),
 				WithSinkFunction(func(in string) error {
-					debugPrintf("[d1] [TEST] sink function called with %v\n", in)
+					DebugPrintf("[d1] [TEST] sink function called with %v\n", in)
 					p1SinkCallCount++
 					if p1SinkCallCount%3 == 0 { // Bundle size reached.
-						debugPrintf("[d1] [TEST] bundle completed\n")
+						DebugPrintf("[d1] [TEST] bundle completed\n")
 						return NoMoreData
 					}
 					return nil
 				}),
 				// TODO: desirable to automate not calling autoresume when no input.
 				WithOnNoMoreData[string, None](func() ([]None, []int, error) {
-					debugPrintf("[d1] [TEST] OnNoMoreData() called\n")
+					DebugPrintf("[d1] [TEST] OnNoMoreData() called\n")
 					p1SinkOnNoMoreDataCalled = true
 					return nil, nil, nil
 				}),
@@ -202,7 +202,7 @@ func TestComplexJoinPipelines(t *testing.T) {
 		WithAutoResumeAtStage(
 			3, // sink
 			func() bool {
-				debugPrintf("[TEST] p1 shouldResumeNow() called, will return %v\n",
+				DebugPrintf("[TEST] p1 shouldResumeNow() called, will return %v\n",
 					!p1SinkOnNoMoreDataCalled)
 				return !p1SinkOnNoMoreDataCalled
 			},
@@ -234,7 +234,7 @@ func TestComplexJoinPipelines(t *testing.T) {
 		WithStages(
 			NewSource[string](
 				"a2",
-				WithSourceChannel(p2SourceCh, func(in string) (int, error) {
+				WithSourceChannel(&p2SourceCh, func(in string) (int, error) {
 					defer func() { p2SourceCallCount++ }()
 					return p2SourceCallCount % 2, nil
 				}),
@@ -262,7 +262,7 @@ func TestComplexJoinPipelines(t *testing.T) {
 			NewSink[int](
 				"d2",
 				WithSinkFunction(func(in int) error {
-					debugPrintf("[d2] [TEST] sink function called with %v\n", in)
+					DebugPrintf("[d2] [TEST] sink function called with %v\n", in)
 					p2SinkCallCount++
 					p2GotValues = append(p2GotValues, in)
 					return nil

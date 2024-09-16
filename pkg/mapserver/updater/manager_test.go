@@ -19,9 +19,12 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/tests/noopdb"
 	"github.com/netsec-ethz/fpki/pkg/tests/random"
 	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
+	"github.com/netsec-ethz/fpki/pkg/util/debug"
 )
 
 func TestManagerStart(t *testing.T) {
+	defer pipeline.PrintAllDebugLines()
+
 	testCases := map[string]struct {
 		NLeafDomains     int
 		certGenerator    func(tests.T, ...string) []updater.Certificate
@@ -133,7 +136,7 @@ func TestManagerStart(t *testing.T) {
 
 			tests.TestOrTimeout(t, tests.WithContext(ctx), func(t tests.T) {
 				manager.Resume()
-				processCertificates(manager, certs)
+				processCertificates(t, manager, certs)
 				manager.Stop()
 				err := manager.Wait()
 				require.NoError(t, err)
@@ -144,6 +147,8 @@ func TestManagerStart(t *testing.T) {
 }
 
 func TestManagerResume(t *testing.T) {
+	defer pipeline.PrintAllDebugLines()
+
 	testCases := map[string]struct {
 		NLeafDomains    int
 		NWorkers        int
@@ -223,7 +228,7 @@ func TestManagerResume(t *testing.T) {
 					stagedCerts := certs[S:E]
 
 					manager.Resume()
-					processCertificates(manager, stagedCerts)
+					processCertificates(t, manager, stagedCerts)
 					manager.Stop()
 					err := manager.Wait()
 					require.NoError(t, err)
@@ -237,6 +242,8 @@ func TestManagerResume(t *testing.T) {
 }
 
 func TestMinimalAllocsManager(t *testing.T) {
+	defer pipeline.PrintAllDebugLines()
+
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
 	defer cancelF()
 
@@ -252,7 +259,7 @@ func TestMinimalAllocsManager(t *testing.T) {
 
 	// Now check the number of allocations happening inside the manager, once it runs.
 	manager.Resume()
-	processCertificates(manager, certs)
+	processCertificates(t, manager, certs)
 	time.Sleep(100 * time.Millisecond)
 	allocsPerRun := tests.AllocsPerRun(func() {
 		manager.Stop()
@@ -351,9 +358,11 @@ func mockLeaves(numberOfLeaves int) []string {
 	return leaves
 }
 
-func processCertificates(m *updater.Manager, certs []updater.Certificate) {
+func processCertificates(t tests.T, m *updater.Manager, certs []updater.Certificate) {
+	t.Logf("sending %d certs to incoming chan: %s", len(certs), debug.Chan2str(m.IncomingCertChan))
 	for _, c := range certs {
 		m.IncomingCertChan <- c
+		t.Logf("sent another certificate")
 	}
 }
 

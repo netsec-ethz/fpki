@@ -21,7 +21,7 @@ func TestOrTimeout(t *testing.T, option timeoutOption, fcn func(T)) {
 
 	select {
 	case <-time.After(timeout):
-		t.Fatalf("Timeout!!: %s", t.Name())
+		t.Fatalf("Timeout!! at %s: %s", time.Now().Format(time.StampNano), t.Name())
 	case <-finished:
 	}
 }

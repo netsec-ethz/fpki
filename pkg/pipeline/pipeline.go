@@ -114,7 +114,7 @@ func WithAutoResumeAtStage(
 		affectedStages := util.Qsort(affectedStages)
 
 		p.linkFunc = func(p *Pipeline) {
-			debugPrintf("[autoresume] calling original link function\n")
+			DebugPrintf("[autoresume] calling original link function\n")
 			origLinkFunc(p)
 
 			// Replace the target's error channel with a new one, but keep the original one open.
@@ -128,31 +128,31 @@ func WithAutoResumeAtStage(
 
 			// Replace the salient error channel of the target stage.
 			origErrCh := target.Base().ErrCh
-			debugPrintf("[autoresume] orig error channel: %s\n", chanPtr(origErrCh))
+			DebugPrintf("[autoresume] orig error channel: %s\n", chanPtr(origErrCh))
 			newErrCh := make(chan error)
 			target.Base().ErrCh = newErrCh
-			debugPrintf("[autoresume] new error channel: %s\n", chanPtr(newErrCh))
+			DebugPrintf("[autoresume] new error channel: %s\n", chanPtr(newErrCh))
 
 			go func() {
 				for {
 					for err := range newErrCh {
-						debugPrintf("[autoresume] err from target: %v\n", err)
+						DebugPrintf("[autoresume] err from target: %v\n", err)
 						// Pass it along.
 						origErrCh <- err
 					}
-					debugPrintf("[autoresume] target error channel %s is closed\n",
+					DebugPrintf("[autoresume] target error channel %s is closed\n",
 						chanPtr(newErrCh))
 
 					// The target closed the error channel, check whether to resume automatically.
 					if !shouldResumeNow() {
-						debugPrintf("[autoresume] *************** closing sniffer error channel\n")
+						DebugPrintf("[autoresume] *************** closing sniffer error channel\n")
 						// The function indicates not to resume, close the new error channel.
 						close(origErrCh)
 						// And exit, as once not resuming means stopping.
 						return
 					}
 
-					debugPrintf("[autoresume] request to resume: true. Affected stages: %v\n",
+					DebugPrintf("[autoresume] request to resume: true. Affected stages: %v\n",
 						affectedStages)
 					// Auto resume was requested, prepare affected stages.
 					for i := len(affectedStages) - 1; i >= 0; i-- {
@@ -167,10 +167,10 @@ func WithAutoResumeAtStage(
 					if sink, ok := target.(SinkLike); ok {
 						sink.PrepareSink()
 					}
-					debugPrintf("[autoresume] stages prepared\n")
+					DebugPrintf("[autoresume] stages prepared\n")
 
 					relink(p)
-					debugPrintf("[autoresume] relink called\n")
+					DebugPrintf("[autoresume] relink called\n")
 
 					// Resume all affected and target stages.
 					for i := len(affectedStages) - 1; i >= 0; i-- {
@@ -178,7 +178,7 @@ func WithAutoResumeAtStage(
 					}
 					// Also the target stage.
 					target.Resume()
-					debugPrintf("[autoresume] stages resumed\n")
+					DebugPrintf("[autoresume] stages resumed\n")
 				}
 			}()
 		}
@@ -209,13 +209,13 @@ func (p *Pipeline) Resume() {
 func (p *Pipeline) Wait() error {
 	// The first stage is a source?
 	if source, ok := p.Stages[0].(SourceLike); ok {
-		debugPrintf("[pipeline] Wait on a source, chan is: %s.\n",
+		DebugPrintf("[pipeline] Wait on a source, chan is: %s.\n",
 			chanPtr(source.GetSourceBase().TopErrCh))
 		return source.Wait()
 	}
 
 	// It is not a source, just treat it as a stage.
-	debugPrintf("[pipeline] Wait on NON source, chan is: %s.\n",
+	DebugPrintf("[pipeline] Wait on NON source, chan is: %s.\n",
 		chanPtr(p.Stages[0].Base().ErrCh))
 	return <-p.Stages[0].Base().ErrCh
 }

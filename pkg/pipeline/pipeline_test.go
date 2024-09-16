@@ -148,7 +148,7 @@ func TestPipeline(t *testing.T) {
 				WithSourceFunction(func() ([]int, []int, error) {
 					// As a source of data.
 					inData := []int{1, 2, 3}
-					debugPrintf("[TEST] source index %d\n", currentIndex)
+					DebugPrintf("[TEST] source index %d\n", currentIndex)
 					if currentIndex >= len(inData) {
 						return nil, nil, NoMoreData
 					}
@@ -162,7 +162,7 @@ func TestPipeline(t *testing.T) {
 					// This b stage fails when it receives a 4.
 					if in == 2 && firstTimeErrorAtB {
 						firstTimeErrorAtB = false
-						debugPrintf("[TEST] emitting ERROR ([b] stage)\n")
+						DebugPrintf("[TEST] emitting ERROR ([b] stage)\n")
 						return nil, nil, fmt.Errorf("error at stage b")
 					}
 					return []int{in + 1}, []int{0}, nil
@@ -172,7 +172,7 @@ func TestPipeline(t *testing.T) {
 				"c",
 				WithSinkFunction(func(in int) error {
 					gotValues = append(gotValues, in)
-					debugPrintf("[TEST] got %d\n", in)
+					DebugPrintf("[TEST] got %d\n", in)
 					return nil
 				}),
 			),
@@ -184,7 +184,7 @@ func TestPipeline(t *testing.T) {
 	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
 		p.Resume()
 		err := p.Wait()
-		debugPrintf("[TEST] error 1: %v\n", err)
+		DebugPrintf("[TEST] error 1: %v\n", err)
 		require.Error(t, err)
 	})
 
@@ -211,7 +211,7 @@ func TestPipeline(t *testing.T) {
 	currentIndex = len(gotValues) // Because of the errors, recover.
 
 	// We can now resume.
-	debugPrintf("------------------------ RESUMING ----------------------\n")
+	DebugPrintf("------------------------ RESUMING ----------------------\n")
 	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
 		p.Resume()
 		err := p.Wait()
@@ -277,7 +277,7 @@ func TestSourceWithChannel(t *testing.T) {
 				WithMultiOutputChannels[None, int](2),
 				WithSequentialOutputs[None, int](),
 				WithSourceChannel(
-					incomingCh,
+					&incomingCh,
 					func(in int) (int, error) {
 						defer func() { incomingIndex++ }()
 						return incomingIndex % 2, nil
@@ -357,7 +357,7 @@ func TestStop(t *testing.T) {
 			NewSink[int](
 				"c",
 				WithSinkFunction(func(in int) error {
-					debugPrintf("[TEST] got %d\n", in)
+					DebugPrintf("[TEST] got %d\n", in)
 					gotValues = append(gotValues, in)
 					return nil
 				}),
@@ -403,7 +403,7 @@ func TestBundleSize(t *testing.T) {
 					return []int{sourceValue}, []int{0}, nil
 				}),
 				WithOnErrorSending[None, int](func(err error, failedIndices []int) {
-					debugPrintf("[a] [TEST] error sending data, rewinding.\n")
+					DebugPrintf("[a] [TEST] error sending data, rewinding.\n")
 					sourceValue--
 				}),
 			),
@@ -421,7 +421,7 @@ func TestBundleSize(t *testing.T) {
 			NewSink[int](
 				"c",
 				WithSinkFunction(func(in int) error {
-					debugPrintf("[TEST] got %d\n", in)
+					DebugPrintf("[TEST] got %d\n", in)
 					gotValues = append(gotValues, in)
 					return nil
 				}),
@@ -443,7 +443,7 @@ func TestBundleSize(t *testing.T) {
 
 	// Continue processing one more bundle.
 	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
-		debugPrintf("---------------- RESUMING ----------------\n")
+		DebugPrintf("---------------- RESUMING ----------------\n")
 		p.Resume()
 		err := p.Wait()
 		require.NoError(t, err)
@@ -453,7 +453,7 @@ func TestBundleSize(t *testing.T) {
 		// We thus expect sequential values always.
 		require.Equal(t, []int{11, 12, 13, 14, 15, 16, 17, 18}, gotValues)
 	})
-	debugPrintf("---------------- FINISHED ----------------\n")
+	DebugPrintf("---------------- FINISHED ----------------\n")
 }
 
 func TestMultiChannel(t *testing.T) {
@@ -483,7 +483,7 @@ func TestMultiChannel(t *testing.T) {
 				WithSourceFunction(func() ([]int, []int, error) {
 					// As a source of data.
 					inData := []int{1, 2, 3}
-					debugPrintf("[TEST] source index %d\n", currentIndex)
+					DebugPrintf("[TEST] source index %d\n", currentIndex)
 					if currentIndex >= len(inData) {
 						return nil, nil, NoMoreData
 					}
@@ -509,7 +509,7 @@ func TestMultiChannel(t *testing.T) {
 				"4", // sink.
 				WithSinkFunction(func(in int) error {
 					gotValues = append(gotValues, in)
-					debugPrintf("[TEST] got %d\n", in)
+					DebugPrintf("[TEST] got %d\n", in)
 					return nil
 				}),
 				WithMultiInputChannels[int, None](2),
@@ -522,7 +522,7 @@ func TestMultiChannel(t *testing.T) {
 	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
 		p.Resume()
 		err := p.Wait()
-		debugPrintf("[TEST] error 1: %v\n", err)
+		DebugPrintf("[TEST] error 1: %v\n", err)
 		require.NoError(t, err)
 	})
 }
@@ -550,7 +550,7 @@ func TestMultipleOutputs(t *testing.T) {
 				WithSourceFunction(func() ([]int, []int, error) {
 					// As a source of data.
 					inData := []int{1, 2, 3}
-					debugPrintf("[TEST] source index %d\n", currentIndex)
+					DebugPrintf("[TEST] source index %d\n", currentIndex)
 					if currentIndex >= len(inData) {
 						return nil, nil, NoMoreData
 					}
@@ -567,7 +567,7 @@ func TestMultipleOutputs(t *testing.T) {
 			NewSink[int](
 				"c",
 				WithSinkFunction(func(in int) error {
-					debugPrintf("[TEST] got %d\n", in)
+					DebugPrintf("[TEST] got %d\n", in)
 					gotValues = append(gotValues, in)
 					return nil
 				}),
@@ -612,7 +612,7 @@ func TestOnNoMoreData(t *testing.T) {
 				WithSourceFunction(func() ([]int, []int, error) {
 					// As a source of data.
 					inData := []int{1, 2, 3}
-					debugPrintf("[TEST] source index %d\n", currentIndex)
+					DebugPrintf("[TEST] source index %d\n", currentIndex)
 					if currentIndex >= len(inData) {
 						return nil, nil, NoMoreData
 					}
@@ -625,12 +625,12 @@ func TestOnNoMoreData(t *testing.T) {
 				WithProcessFunction(func(in int) ([]int, []int, error) {
 					bufferForB = append(bufferForB, in)
 					outIndexesForB = append(outIndexesForB, 0) // Always same out channel
-					debugPrintf("[TEST in b] got %d\n", in)
-					debugPrintf("%v\n", bufferForB)
+					DebugPrintf("[TEST in b] got %d\n", in)
+					DebugPrintf("%v\n", bufferForB)
 					return nil, nil, nil
 				}),
 				WithOnNoMoreData[int, int](func() ([]int, []int, error) {
-					debugPrintf("B->OnNoMoreData called!\n")
+					DebugPrintf("B->OnNoMoreData called!\n")
 					return bufferForB, outIndexesForB, nil
 				}),
 			),
@@ -681,7 +681,7 @@ func TestWithSequentialOutputs(t *testing.T) {
 				WithSourceFunction(func() ([]int, []int, error) {
 					// As a source of data.
 					inData := []int{1, 2, 3}
-					debugPrintf("[TEST] source index %d\n", currentIndex)
+					DebugPrintf("[TEST] source index %d\n", currentIndex)
 					if currentIndex >= len(inData) {
 						return nil, nil, NoMoreData
 					}
@@ -710,7 +710,7 @@ func TestWithSequentialOutputs(t *testing.T) {
 				"4", // sink.
 				WithSinkFunction(func(in int) error {
 					gotValues = append(gotValues, in)
-					debugPrintf("[TEST] got %d\n", in)
+					DebugPrintf("[TEST] got %d\n", in)
 					return nil
 				}),
 				WithMultiInputChannels[int, None](2),
@@ -724,7 +724,7 @@ func TestWithSequentialOutputs(t *testing.T) {
 	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
 		p.Resume()
 		err := p.Wait()
-		debugPrintf("[TEST] error 1: %v\n", err)
+		DebugPrintf("[TEST] error 1: %v\n", err)
 		require.NoError(t, err)
 	})
 }
@@ -758,7 +758,7 @@ func TestWithSequentialIO(t *testing.T) {
 				WithSourceFunction(func() ([]int, []int, error) {
 					// As a source of data.
 					inData := []int{1, 2, 3, 4}
-					debugPrintf("[TEST] source index %d\n", currentIndex)
+					DebugPrintf("[TEST] source index %d\n", currentIndex)
 					if currentIndex >= len(inData) {
 						return nil, nil, NoMoreData
 					}
@@ -788,7 +788,7 @@ func TestWithSequentialIO(t *testing.T) {
 				"4", // sink.
 				WithSinkFunction(func(in int) error {
 					gotValues = append(gotValues, in)
-					debugPrintf("[TEST] got %d\n", in)
+					DebugPrintf("[TEST] got %d\n", in)
 					return nil
 				}),
 				WithMultiInputChannels[int, None](2),
@@ -802,7 +802,7 @@ func TestWithSequentialIO(t *testing.T) {
 	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
 		p.Resume()
 		err := p.Wait()
-		debugPrintf("[TEST] error 1: %v\n", err)
+		DebugPrintf("[TEST] error 1: %v\n", err)
 		require.NoError(t, err)
 	})
 	require.Equal(t, []int{2, 4, 4, 8}, gotValues)
@@ -868,11 +868,11 @@ func TestAutoResume(t *testing.T) {
 		WithAutoResumeAtStage(
 			1, // B
 			func() bool {
-				debugPrintf("[TEST] should auto resume? %v\n", !incomingAtBisClosed)
+				DebugPrintf("[TEST] should auto resume? %v\n", !incomingAtBisClosed)
 				return !incomingAtBisClosed
 			},
 			func(p *Pipeline) {
-				debugPrintf("[TEST] Relinking B->C\n")
+				DebugPrintf("[TEST] Relinking B->C\n")
 				// Relink B->C
 				b := StageAtIndex[int, int](p, 1)
 				c := SinkStage[int](p)
@@ -965,7 +965,7 @@ func TestAutoResumeAtSource(t *testing.T) {
 		WithAutoResumeAtStage(
 			0, // A
 			func() bool {
-				debugPrintf("[TEST] should auto resume? %v\n", !sourceIsFinished)
+				DebugPrintf("[TEST] should auto resume? %v\n", !sourceIsFinished)
 				return !sourceIsFinished
 			},
 			linkFunc,
@@ -1054,13 +1054,13 @@ func TestAutoResumeAtSink(t *testing.T) {
 					var err error
 					itemCountAtSink++
 					if itemCountAtSink%3 == 0 {
-						debugPrintf("[TEST] [d] bundle reached: %v\n", gotValues)
+						DebugPrintf("[TEST] [d] bundle reached: %v\n", gotValues)
 						err = NoMoreData
 					}
 					return err
 				}),
 				WithOnNoMoreData[int, None](func() ([]None, []int, error) {
-					debugPrintf("[TEST] [d] no more data called\n")
+					DebugPrintf("[TEST] [d] no more data called\n")
 					incomingAtSinkIsClosed = true
 					return nil, nil, nil
 				}),
@@ -1070,11 +1070,11 @@ func TestAutoResumeAtSink(t *testing.T) {
 		WithAutoResumeAtStage(
 			3, // D
 			func() bool {
-				debugPrintf("[TEST] should auto resume? %v\n", !incomingAtSinkIsClosed)
+				DebugPrintf("[TEST] should auto resume? %v\n", !incomingAtSinkIsClosed)
 				return !incomingAtSinkIsClosed
 			},
 			func(p *Pipeline) {
-				debugPrintf("[TEST] Relinking Sink\n")
+				DebugPrintf("[TEST] Relinking Sink\n")
 			},
 			// Affects no one.
 		),
