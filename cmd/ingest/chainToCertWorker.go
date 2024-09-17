@@ -27,6 +27,7 @@ func NewChainToCertsWorker() *chainToCertsWorker {
 
 			return certs, w.channelsCache, nil
 		}),
+		pip.WithSequentialOutputs[certChain, updater.Certificate](),
 	)
 	return w
 }

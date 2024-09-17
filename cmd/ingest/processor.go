@@ -62,6 +62,8 @@ func NewProcessor(
 	if err != nil {
 		return nil, err
 	}
+	// Link to the stats.
+	p.stats = manager.Stats
 
 	// Join the two pipelines.
 	pipeline, err := pip.JoinTwoPipelines[updater.Certificate](pipFiles, manager.Pipeline)
@@ -84,6 +86,9 @@ func WithNumWorkers(numWorkers int) processorOptions {
 
 func WithBundleSize(bundleSize uint64) processorOptions {
 	return func(p *Processor) {
+		if bundleSize == 0 {
+			bundleSize = math.MaxUint64
+		}
 		p.BundleSize = bundleSize
 	}
 }
@@ -157,12 +162,13 @@ func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 				return nil, nil, pip.NoMoreData
 			},
 		),
+		pip.WithSequentialOutputs[pip.None, util.CsvFile](),
 	)
 
 	// Create CSV split worker.
 	splitter := NewCsvSplitWorker(p)
 
-	// Create numParsers toChain workers.
+	// Create numParsers toChain workers. Parses lines into chains.
 	lineToChainWorkers := make([]*lineToChainWorker, p.NumWorkers)
 	for i := range lineToChainWorkers {
 		lineToChainWorkers[i] = NewLineToChainWorker(p)
@@ -190,6 +196,7 @@ func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 			certProcessedCount++
 			p.stats.WrittenCerts.Add(1)
 			p.stats.WrittenBytes.Add(int64(len(in.Cert.Raw)))
+			// fmt.Printf("\ndeleteme got cert\n")
 
 			if certProcessedCount >= p.BundleSize {
 				// Reset counters.
@@ -201,7 +208,7 @@ func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 		}),
 	)
 
-	stages := []pip.StageLike{source, splitter}
+	stages := []pip.StageLike{source, splitter.Stage}
 	for _, w := range lineToChainWorkers {
 		stages = append(stages, w.Stage)
 	}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/csv"
+	"fmt"
 
 	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
 	"github.com/netsec-ethz/fpki/pkg/util"
@@ -10,6 +11,10 @@ import (
 type line struct {
 	fields []string // records
 	number int      // line number
+}
+
+func (l line) String() string {
+	return fmt.Sprintf("line %06d", l.number)
 }
 
 // csvSplitWorker is a processing stage that takes a CsvFile and outputs all its lines.

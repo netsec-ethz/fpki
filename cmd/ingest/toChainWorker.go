@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"strconv"
 	"strings"
@@ -21,6 +22,10 @@ const (
 )
 
 type certChain updater.CertWithChainData
+
+func (cc certChain) String() string {
+	return hex.EncodeToString(cc.CertID[:])
+}
 
 type lineToChainWorker struct {
 	*pip.Stage[line, certChain]
@@ -43,6 +48,7 @@ func NewLineToChainWorker(p *Processor) *lineToChainWorker {
 				return []certChain{chain}, []int{0}, err
 			},
 		),
+		pip.WithSequentialOutputs[line, certChain](),
 	)
 	return w
 }

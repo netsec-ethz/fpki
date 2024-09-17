@@ -20,9 +20,14 @@ import (
 )
 
 const (
-	NumFileReaders = 8
-	NumParsers     = 32
-	NumDBWriters   = 32
+	// NumFileReaders = 8
+	// NumParsers     = 32
+	// NumDBWriters   = 32
+
+	// deleteme:
+	NumFileReaders = 1
+	NumParsers     = 1
+	NumDBWriters   = 1
 
 	MultiInsertSize = 10_000     // # of certificates, domains, etc inserted at once.
 	LruCacheSize    = 10_000_000 // Keep track of the 10 million most seen certificates.
@@ -241,16 +246,28 @@ func filenameToFirstSize(name string) uint64 {
 }
 
 func printStats(s *updater.Stats) {
-	writtenCerts := s.ReadCerts.Load()
-	writtenBytes := s.ReadBytes.Load()
+	readFiles := s.TotalFilesRead.Load()
+	totalFiles := s.TotalFiles.Load()
+
+	readCerts := s.ReadCerts.Load()
+	readBytes := s.ReadBytes.Load()
+	writtenCerts := s.WrittenCerts.Load()
+	writtenBytes := s.WrittenBytes.Load()
+
 	uncachedCerts := s.UncachedCerts.Load()
 	secondsSinceStart := float64(time.Since(s.CreateTime).Seconds())
-	fmt.Printf("%.1f%% files completed %.0f Certs/s (%.0f%% uncached), %.1f Mb/s\n",
-		float64(s.TotalFilesRead.Load())*100.0/float64(s.TotalFiles.Load()),
-		float64(writtenCerts)/secondsSinceStart,
-		float64(uncachedCerts)*100./float64(writtenCerts),
+
+	msg := fmt.Sprintf("%d/%d Files read. %d certs read, %d written. %.0f certs/s "+
+		"(%.0f%% uncached), %.1f/%.1f Mb/s r/w",
+		readFiles, totalFiles,
+		readCerts, writtenCerts,
+		float64(readCerts)/secondsSinceStart,
+		float64(uncachedCerts)*100./float64(readCerts),
+		float64(readBytes)/1024./1024./secondsSinceStart,
 		float64(writtenBytes)/1024./1024./secondsSinceStart,
 	)
+
+	fmt.Fprintf(os.Stderr, "%s\r", msg)
 }
 
 func exitIfError(err error) {

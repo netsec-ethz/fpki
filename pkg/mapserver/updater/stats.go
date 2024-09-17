@@ -7,13 +7,14 @@ import (
 
 // Stats keeps statistics for the update process.
 type Stats struct {
-	CreateTime     time.Time
-	LastStartTime  time.Time
-	ReadCerts      atomic.Int64
-	ReadBytes      atomic.Int64
-	UncachedCerts  atomic.Int64
-	WrittenCerts   atomic.Int64
-	WrittenBytes   atomic.Int64
+	CreateTime    time.Time
+	LastStartTime time.Time
+	ReadCerts     atomic.Int64
+	ReadBytes     atomic.Int64
+	UncachedCerts atomic.Int64
+	WrittenCerts  atomic.Int64
+	WrittenBytes  atomic.Int64
+
 	TotalFiles     atomic.Int64
 	TotalFilesRead atomic.Int64
 
