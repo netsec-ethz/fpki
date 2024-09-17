@@ -13,7 +13,6 @@ import (
 func TestSimple(t *testing.T) {
 	defer PrintAllDebugLines()
 	// Prepare test.
-	sourceIndex := 0
 	gotValues := []int{}
 
 	p, err := NewPipeline(
@@ -29,13 +28,8 @@ func TestSimple(t *testing.T) {
 		WithStages(
 			NewSource[int](
 				"a",
-				WithSourceFunction(func() ([]int, []int, error) {
-					defer func() { sourceIndex++ }()
-					inData := []int{1, 2, 3, 4}
-					if sourceIndex >= len(inData) {
-						return nil, nil, NoMoreData
-					}
-					return inData[sourceIndex : sourceIndex+1], []int{0}, nil
+				WithSourceSlice(&[]int{1, 2, 3, 4}, func(int) (int, error) {
+					return 0, nil
 				}),
 				WithSequentialOutputs[None, int](),
 			),
@@ -70,7 +64,6 @@ func TestSimple(t *testing.T) {
 func TestSimpleAllSequential(t *testing.T) {
 	defer PrintAllDebugLines()
 	// Prepare test.
-	sourceIndex := 0
 	gotValues := []int{}
 
 	p, err := NewPipeline(
@@ -86,13 +79,8 @@ func TestSimpleAllSequential(t *testing.T) {
 		WithStages(
 			NewSource[int](
 				"a",
-				WithSourceFunction(func() ([]int, []int, error) {
-					defer func() { sourceIndex++ }()
-					inData := []int{1, 2, 3, 4}
-					if sourceIndex >= len(inData) {
-						return nil, nil, NoMoreData
-					}
-					return inData[sourceIndex : sourceIndex+1], []int{0}, nil
+				WithSourceSlice(&[]int{1, 2, 3, 4}, func(int) (int, error) {
+					return 0, nil
 				}),
 				WithSequentialOutputs[None, int](),
 			),
@@ -128,7 +116,7 @@ func TestPipeline(t *testing.T) {
 	defer PrintAllDebugLines()
 	// Prepare test.
 	gotValues := make([]int, 0)
-	currentIndex := 0
+	incomingValues := []int{1, 2, 3}
 	firstTimeErrorAtB := true
 
 	// Create pipeline.
@@ -145,34 +133,32 @@ func TestPipeline(t *testing.T) {
 		WithStages(
 			NewSource[int](
 				"a",
-				WithSourceFunction(func() ([]int, []int, error) {
-					// As a source of data.
-					inData := []int{1, 2, 3}
-					DebugPrintf("[TEST] source index %d\n", currentIndex)
-					if currentIndex >= len(inData) {
-						return nil, nil, NoMoreData
-					}
-					defer func() { currentIndex++ }()
-					return inData[currentIndex : currentIndex+1], []int{0}, nil
+				WithSourceSlice(&incomingValues, func(in int) (int, error) {
+					DebugPrintf("[a] [TEST] source sends %v\n", in)
+					return 0, nil
 				}),
+				WithSequentialOutputs[None, int](),
 			),
 			NewStage[int, int](
 				"b",
 				WithProcessFunction(func(in int) ([]int, []int, error) {
 					// This b stage fails when it receives a 4.
+					var err error
 					if in == 2 && firstTimeErrorAtB {
 						firstTimeErrorAtB = false
-						DebugPrintf("[TEST] emitting ERROR ([b] stage)\n")
-						return nil, nil, fmt.Errorf("error at stage b")
+						DebugPrintf("[b] [TEST] emitting ERROR\n")
+						// return nil, nil, fmt.Errorf("error at stage b")
+						err = fmt.Errorf("error at stage b")
 					}
-					return []int{in + 1}, []int{0}, nil
+					return []int{in + 1}, []int{0}, err
 				}),
+				WithSequentialOutputs[int, int](),
 			),
 			NewSink[int](
 				"c",
 				WithSinkFunction(func(in int) error {
 					gotValues = append(gotValues, in)
-					DebugPrintf("[TEST] got %d\n", in)
+					DebugPrintf("[c] [TEST] got %d\n", in)
 					return nil
 				}),
 			),
@@ -187,6 +173,7 @@ func TestPipeline(t *testing.T) {
 		DebugPrintf("[TEST] error 1: %v\n", err)
 		require.Error(t, err)
 	})
+	require.Equal(t, []int{2}, gotValues)
 
 	// Check pipelines have been closed.
 	a := p.Stages[0].(*Source[int])
@@ -208,7 +195,7 @@ func TestPipeline(t *testing.T) {
 	checkAllClosed(t, b.NextErrChs)
 	checkAllClosed(t, c.NextErrChs)
 
-	currentIndex = len(gotValues) // Because of the errors, recover.
+	incomingValues = incomingValues[len(gotValues):]
 
 	// We can now resume.
 	DebugPrintf("------------------------ RESUMING ----------------------\n")
@@ -319,7 +306,15 @@ func TestSourceWithChannel(t *testing.T) {
 
 func TestStop(t *testing.T) {
 	defer PrintAllDebugLines()
+
 	// Prepare test.
+	incomingCh := make(chan int)
+	go func() { // infinite loop sending 1 to source.
+		for {
+			incomingCh <- 1
+		}
+	}()
+
 	gotValues := make([]int, 0)
 	processedAtBcount := 0
 	stopB := sync.WaitGroup{}
@@ -339,9 +334,8 @@ func TestStop(t *testing.T) {
 		WithStages(
 			NewSource[int](
 				"a",
-				WithSourceFunction(func() ([]int, []int, error) {
-					// As a source of data.
-					return []int{1}, []int{0}, nil
+				WithSourceChannel(&incomingCh, func(in int) (int, error) {
+					return 0, nil
 				}),
 			),
 			NewStage[int, int](
@@ -378,7 +372,8 @@ func TestStop(t *testing.T) {
 func TestBundleSize(t *testing.T) {
 	defer PrintAllDebugLines()
 	// Prepare test.
-	sourceValue := 0
+	inValues := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+	// sourceValue := 0
 	bundleSize := 4
 	processedAtBcount := 0
 	gotValues := make([]int, 0)
@@ -397,14 +392,8 @@ func TestBundleSize(t *testing.T) {
 		WithStages(
 			NewSource[int](
 				"a",
-				WithSourceFunction(func() ([]int, []int, error) {
-					// As a source of data.
-					sourceValue++
-					return []int{sourceValue}, []int{0}, nil
-				}),
-				WithOnErrorSending[None, int](func(err error, failedIndices []int) {
-					DebugPrintf("[a] [TEST] error sending data, rewinding.\n")
-					sourceValue--
+				WithSourceSlice(&inValues, func(int) (int, error) {
+					return 0, nil
 				}),
 			),
 			NewStage[int, int](
@@ -437,9 +426,11 @@ func TestBundleSize(t *testing.T) {
 		err := p.Wait()
 		require.NoError(t, err)
 		require.Equal(t, bundleSize, len(gotValues))
-		// Check that the values were inserted in the correct order.
-		require.Equal(t, []int{11, 12, 13, 14}, gotValues)
 	})
+	// Check that the values were inserted in the correct order.
+	require.Equal(t, []int{11, 12, 13, 14}, gotValues)
+
+	inValues = inValues[len(gotValues):]
 
 	// Continue processing one more bundle.
 	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {

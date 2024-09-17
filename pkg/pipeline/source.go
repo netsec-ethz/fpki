@@ -24,7 +24,7 @@ func NewSource[OUT any](
 	return s
 }
 
-func WithSourceFunction[OUT any](
+func WithSourceFunction[OUT any]( // deleteme
 	generator func() ([]OUT, []int, error),
 ) option[None, OUT] {
 	return newSourceOption(func(s *Source[OUT]) {
@@ -76,7 +76,52 @@ func WithSourceChannel[OUT any]( // deleteme?
 				// When the incoming channel is closed, return no more data.
 				return nil, nil, NoMoreData
 			}
-		})
+		},
+	)
+}
+
+// WithSourceSlice uses the slice as the input sequence for the source.
+func WithSourceSlice[OUT any](
+	incomingValues *[]OUT,
+	processFunction func(in OUT) (int, error),
+) option[None, OUT] {
+	return newSourceOption(
+		func(s *Source[OUT]) {
+			s.onResume = func() {
+				s.sourceIncomingCh = make(chan OUT)
+				DebugPrintf("[%s] WithSourceSlice restoring source channel to %s\n",
+					s.Name, chanPtr(s.sourceIncomingCh))
+				go func() {
+					for _, in := range *incomingValues {
+						s.sourceIncomingCh <- in
+					}
+					close(s.sourceIncomingCh)
+				}()
+			}
+
+			processFunction := processFunction // Local copy of the processing function.
+			outs := make([]OUT, 1)
+			outChs := make([]int, 1)
+			s.ProcessFunc = func(in None) ([]OUT, []int, error) {
+				DebugPrintf("[%s] source.ProcessFunc: channel is: %s\n",
+					s.Name, chanPtr(s.sourceIncomingCh))
+				for in := range s.sourceIncomingCh {
+					DebugPrintf("[%s] source channel %s got value: %v\n",
+						s.Name, chanPtr(s.sourceIncomingCh), in)
+					outCh, err := processFunction(in)
+					DebugPrintf("[%s] source channel processed value: %v, out ch: %d, err: %v\n",
+						s.Name, in, outCh, err)
+					outs[0] = in
+					outChs[0] = outCh
+					return outs, outChs, err
+				}
+				DebugPrintf("[%s] source channel %s is closed, no more data\n",
+					s.Name, chanPtr(s.sourceIncomingCh))
+				// When the incoming channel is closed, return no more data.
+				return nil, nil, NoMoreData
+			}
+		},
+	)
 }
 
 func (s *Source[OUT]) Wait() error {
