@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
 	"math"
+	"time"
 
+	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
 	"github.com/netsec-ethz/fpki/pkg/util"
@@ -29,7 +32,14 @@ type Processor struct {
 	Pipeline *pip.Pipeline
 }
 
-func NewProcessor(options ...processorOptions) *Processor {
+func NewProcessor(
+	ctx context.Context,
+	conn db.Conn,
+	multiInsertSize int,
+	statsUpdatePeriod time.Duration,
+	statsUpdateFun func(*updater.Stats),
+	options ...processorOptions,
+) (*Processor, error) {
 	// Create the processor that will hold all the information and the pipeline.
 	p := &Processor{
 		NumWorkers:       1,              // Default to just 1 worker.
@@ -40,7 +50,28 @@ func NewProcessor(options ...processorOptions) *Processor {
 		opt(p)
 	}
 
-	return p
+	// Create the pipFiles from files to Certificates.
+	pipFiles, err := p.createFilesToCertsPipeline()
+	if err != nil {
+		return nil, err
+	}
+
+	// Create the DB manager.
+	manager, err :=
+		updater.NewManager(ctx, p.NumWorkers, conn, multiInsertSize, statsUpdatePeriod, statsUpdateFun)
+	if err != nil {
+		return nil, err
+	}
+
+	// Join the two pipelines.
+	pipeline, err := pip.JoinTwoPipelines[updater.Certificate](pipFiles, manager.Pipeline)
+	if err != nil {
+		return nil, err
+	}
+
+	// Set the joint pipeline as the pipeline and return.
+	p.Pipeline = pipeline
+	return p, nil
 }
 
 type processorOptions func(*Processor)
@@ -63,7 +94,56 @@ func WithOnBundleFinished(fcn func()) processorOptions {
 	}
 }
 
-func (p *Processor) createPipeline() {
+func (p *Processor) Resume() {
+	p.Pipeline.Resume()
+}
+
+func (p *Processor) Wait() error {
+	return p.Pipeline.Wait()
+}
+
+// AddGzFiles adds a CSV .gz file to the initial stage.
+// It blocks until it is accepted.
+func (p *Processor) AddGzFiles(fileNames []string) {
+	p.stats.TotalFiles.Add(int64(len(fileNames)))
+
+	for _, filename := range fileNames {
+		p.CsvFiles = append(p.CsvFiles, (&util.GzFile{}).WithFile(filename))
+	}
+}
+
+// AddCsvFiles adds a .csv file to the initial stage.
+// It blocks until it is accepted.
+func (p *Processor) AddCsvFiles(fileNames []string) {
+	p.stats.TotalFiles.Add(int64(len(fileNames)))
+
+	for _, filename := range fileNames {
+		p.CsvFiles = append(p.CsvFiles, (&util.UncompressedFile{}).WithFile(filename))
+	}
+}
+
+// createFilesToCertsPipeline creates a pipeline that processes CSV and GZ files into Certificates.
+// It can be joined together with a Manager to push the Certificates into the DB.
+// The created pipeline looks like this:
+//
+//	A: source, generates CsvFile
+//	B: transforms into []line, multiple outputs.
+//	C1..W: transforms into Chain.
+//	D1..W: transforms into []Certificate.
+//	E: sink, multiple inputs, []Certificate.
+//
+// The indices are below:
+// A: 0
+// B: 1
+// C: 2..2+W
+// D: 2+W..2+2W
+// E: 3+2W
+//
+//	A -> B -┌-> C1 ---> D1 -┬-> E
+//	        |-> C2 ---> D2 -|
+//		   ...             ...
+//		    └-> Cw ---> Dw -┘
+func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 	// Prepare source. It opens CSV files based on the filenames stored in the processor.
 	csvFileIndex := 0
 	source := pip.NewSource[util.CsvFile](
@@ -130,7 +210,7 @@ func (p *Processor) createPipeline() {
 	}
 	stages = append(stages, sink)
 
-	p.Pipeline = pip.NewPipeline(
+	pipeline, err := pip.NewPipeline(
 		func(pipeline *pip.Pipeline) {
 			/* Link function.
 				A: source, generates CsvFile
@@ -186,35 +266,6 @@ func (p *Processor) createPipeline() {
 			},
 		),
 	)
-}
 
-func (p *Processor) Resume() {
-	if p.Pipeline == nil {
-		p.createPipeline()
-	}
-	p.Pipeline.Resume()
-}
-
-func (p *Processor) Wait() error {
-	return p.Pipeline.Wait()
-}
-
-// AddGzFiles adds a CSV .gz file to the initial stage.
-// It blocks until it is accepted.
-func (p *Processor) AddGzFiles(fileNames []string) {
-	p.stats.TotalFiles.Add(int64(len(fileNames)))
-
-	for _, filename := range fileNames {
-		p.CsvFiles = append(p.CsvFiles, (&util.GzFile{}).WithFile(filename))
-	}
-}
-
-// AddCsvFiles adds a .csv file to the initial stage.
-// It blocks until it is accepted.
-func (p *Processor) AddCsvFiles(fileNames []string) {
-	p.stats.TotalFiles.Add(int64(len(fileNames)))
-
-	for _, filename := range fileNames {
-		p.CsvFiles = append(p.CsvFiles, (&util.UncompressedFile{}).WithFile(filename))
-	}
+	return pipeline, err
 }

@@ -140,8 +140,13 @@ func mainFunction() int {
 		fmt.Printf("# gzFiles: %d, # csvFiles: %d\n", len(gzFiles), len(csvFiles))
 
 		// dbManager := updater.NewManager(ctx, NumDBWriters, conn, MultiInsertSize,
-		// 	2*time.Second, printStats)
-		proc := NewProcessor(
+		// 	2*time.Second, printStats) // deleteme
+		proc, err := NewProcessor(
+			ctx,
+			conn,
+			MultiInsertSize,
+			2*time.Second,
+			printStats,
 			WithNumWorkers(NumParsers),
 			WithBundleSize(*bundleSize),
 			WithOnBundleFinished(func() {
@@ -152,16 +157,19 @@ func mainFunction() int {
 				cleanupDirty(ctx, conn)
 			}),
 		)
+		exitIfError(err)
 
 		// Add the files to the processor.
 		proc.AddGzFiles(gzFiles)
 		proc.AddCsvFiles(csvFiles)
 
-		// // Update certificates and chains, and wait until finished.
-		// // Resume in reverse order.
+		// Update certificates and chains, and wait until finished.
+		proc.Resume()
+		// // Resume in reverse order. // deleteme
 		// dbManager.Resume()
 		// proc.Resume()
-		// exitIfError(proc.Wait())
+		exitIfError(proc.Wait())
+		return 0
 	}
 
 	// The certificates had been ingested. If we had set a bundle size, we still need to process
