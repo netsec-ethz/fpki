@@ -72,7 +72,7 @@ func NewProcessor(
 	p.stats = manager.Stats
 
 	// Join the two pipelines.
-	pipeline, err := pip.JoinTwoPipelines[*updater.Certificate](pipFiles, manager.Pipeline)
+	pipeline, err := pip.JoinTwoPipelines[updater.Certificate](pipFiles, manager.Pipeline)
 	if err != nil {
 		return nil, err
 	}
@@ -181,19 +181,19 @@ func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 	splitter := NewCsvSplitWorker(p)
 
 	// Create numParsers toChain workers. Parses lines into chains.
-	lineToChainWorkers := make([]*lineToChainPtrWorker, p.NumWorkers)
+	lineToChainWorkers := make([]*lineToChainWorker, p.NumWorkers)
 	for i := range lineToChainWorkers {
-		lineToChainWorkers[i] = NewLineToChainPtrWorker(p, i)
+		lineToChainWorkers[i] = NewLineToChainWorker(p, i)
 	}
 
 	// Create chain to certificates worker.
-	chainToCertWorkers := make([]*chainPtrToCertPtrsWorker, p.NumWorkers)
+	chainToCertWorkers := make([]*chainToCertWorker, p.NumWorkers)
 	for i := range chainToCertWorkers {
-		chainToCertWorkers[i] = NewChainPtrToCertPtrWorker(i)
+		chainToCertWorkers[i] = NewChainToCertWorker(i)
 	}
 
 	// Create sink for certificate pointers.
-	sink := p.createCertificatePtrSink()
+	sink := p.createCertificateSink()
 
 	stages := []pip.StageLike{source, splitter.Stage}
 	for _, w := range lineToChainWorkers {
@@ -226,15 +226,15 @@ func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 			*/
 			a := pip.SourceStage[util.CsvFile](pipeline)
 			b := pip.StageAtIndex[util.CsvFile, line](pipeline, 1)
-			c := make([]*pip.Stage[line, *certChain], p.NumWorkers)
+			c := make([]*pip.Stage[line, certChain], p.NumWorkers)
 			for i := range c {
-				c[i] = pip.StageAtIndex[line, *certChain](pipeline, i+2)
+				c[i] = pip.StageAtIndex[line, certChain](pipeline, i+2)
 			}
-			d := make([]*pip.Stage[*certChain, *updater.Certificate], p.NumWorkers)
+			d := make([]*pip.Stage[certChain, updater.Certificate], p.NumWorkers)
 			for i := range c {
-				d[i] = pip.StageAtIndex[*certChain, *updater.Certificate](pipeline, i+2+p.NumWorkers)
+				d[i] = pip.StageAtIndex[certChain, updater.Certificate](pipeline, i+2+p.NumWorkers)
 			}
-			e := pip.SinkStage[*updater.Certificate](pipeline)
+			e := pip.SinkStage[updater.Certificate](pipeline)
 
 			pip.LinkStagesFanOut(a, b) //           A->B
 			for i := range c {
@@ -270,7 +270,6 @@ func (p *Processor) createCertificateSink() *pip.Sink[updater.Certificate] {
 	return pip.NewSink[updater.Certificate](
 		"certSink",
 		pip.WithMultiInputChannels[updater.Certificate, pip.None](p.NumWorkers),
-		// pip.WithSequentialInputs[*updater.Certificate, pip.None](),
 		pip.WithOnNoMoreData[updater.Certificate, pip.None](func() ([]pip.None, []int, error) {
 			p.certSinkHasNoMoreData = true // Flag that the pipeline has no more data to process.
 			return nil, nil, nil

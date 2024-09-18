@@ -23,12 +23,16 @@ type Manager struct {
 	ShardFuncCert   func(*common.SHA256Output) uint // select cert worker index from ID
 	ShardFuncDomain func(*common.SHA256Output) uint // select the domain worker from domain ID
 
-	IncomingCertChan chan *Certificate // Certificates arrive from this channel.
-	Pipeline         *pip.Pipeline
+	IncomingCertChan    chan Certificate  // Certificates arrive from this channel.
+	IncomingCertPtrChan chan *Certificate // Only one of the incoming channels is enabled.
+	Pipeline            *pip.Pipeline
 }
 
 // NewManager creates a new manager and its workers.
 // The context ctx is used thru the lifetime of the workers, to perform DB operations, etc.
+// Currently to use pointers to certificates instead of certificates, a code change is needed.
+// It requires using the IncomingCertPtrChan instead of the other one, and calls to the
+// *Ptr* functions instead of the current ones, e.g. NewCertPtrWorker, createCertificateSource,...
 func NewManager(
 	ctx context.Context,
 	workerCount int,
@@ -51,34 +55,28 @@ func NewManager(
 		Stats:            NewStatistics(statsUpdateFreq, statsUpdateFunc),
 		ShardFuncCert:    selectPartition,
 		ShardFuncDomain:  selectPartition,
-		IncomingCertChan: make(chan *Certificate),
+		IncomingCertChan: make(chan Certificate),
+		// IncomingCertPtrChan: make(chan *Certificate),
 	}
 
 	// Get the Certificate from the channel and pass it along.
-	source := pip.NewSource[*Certificate](
-		"incoming_certs",
-		pip.WithMultiOutputChannels[pip.None, *Certificate](workerCount),
-		// pip.WithSequentialOutputs[pip.None, *Certificate](),
-		pip.WithSourceChannel(&m.IncomingCertChan, func(in *Certificate) (int, error) {
-			return int(m.ShardFuncCert(&in.CertID)), nil
-		}),
-	)
+	source := m.createCertificateSource(workerCount)
 
 	// Prepare the certificate processing stages.
-	certWorkers := make([]*CertPtrWorker, workerCount)
+	certWorkers := make([]*CertWorker, workerCount)
 	// Stage 1-to-1: cert to DB and output domains.
 	certStages := make([]pip.StageLike, workerCount)
 	for i := range certWorkers {
-		certWorkers[i] = NewCertPtrWorker(ctx, i, m, conn, workerCount)
+		certWorkers[i] = NewCertWorker(ctx, i, m, conn, workerCount)
 		certStages[i] = certWorkers[i].Stage
 	}
 
 	// Prepare the domain processing stages. Sinks.
-	domainWorkers := make([]*DomainPtrWorker, workerCount)
+	domainWorkers := make([]*DomainWorker, workerCount)
 	// Pure sink objects:
 	domainStages := make([]pip.StageLike, workerCount)
 	for i := range domainWorkers {
-		domainWorkers[i] = NewDomainPtrWorker(ctx, i, m, conn, workerCount)
+		domainWorkers[i] = NewDomainWorker(ctx, i, m, conn, workerCount)
 		domainStages[i] = domainWorkers[i].Sink
 	}
 
@@ -94,7 +92,9 @@ func NewManager(
 		func(p *pip.Pipeline) {
 			// Link source with cert workers.
 			for i := 0; i < workerCount; i++ {
-				certWorker := p.Stages[i+1].(*pip.Stage[*Certificate, *DirtyDomain])
+				certWorker := p.Stages[i+1].(*pip.Stage[Certificate, DirtyDomain])
+				// Replace above line with next one if using pointers:
+				// certWorker := p.Stages[i+1].(*pip.Stage[*Certificate, *DirtyDomain])
 
 				pip.LinkStagesAt(
 					pip.SourceAsStage(source), i,
@@ -123,7 +123,7 @@ func NewManager(
 
 func (m *Manager) Resume() {
 	// Create a new source incoming channel.
-	m.IncomingCertChan = make(chan *Certificate)
+	m.IncomingCertChan = make(chan Certificate)
 
 	// Resume pipeline.
 	m.Pipeline.Resume()
@@ -135,4 +135,25 @@ func (m *Manager) Stop() {
 
 func (m *Manager) Wait() error {
 	return m.Pipeline.Wait()
+}
+
+func (m *Manager) createCertificateSource(workerCount int) *pip.Source[Certificate] {
+	return pip.NewSource[Certificate](
+		"incoming_certs",
+		pip.WithMultiOutputChannels[pip.None, Certificate](workerCount),
+		pip.WithSourceChannel(&m.IncomingCertChan, func(in Certificate) (int, error) {
+			return int(m.ShardFuncCert(&in.CertID)), nil
+		}),
+	)
+}
+
+func (m *Manager) createCertificatePtrSource(workerCount int) *pip.Source[*Certificate] {
+	return pip.NewSource[*Certificate](
+		"incoming_certs",
+		pip.WithMultiOutputChannels[pip.None, *Certificate](workerCount),
+		// pip.WithSequentialOutputs[pip.None, *Certificate](),
+		pip.WithSourceChannel(&m.IncomingCertPtrChan, func(in *Certificate) (int, error) {
+			return int(m.ShardFuncCert(&in.CertID)), nil
+		}),
+	)
 }
