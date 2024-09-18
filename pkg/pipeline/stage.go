@@ -72,7 +72,7 @@ func NewStage[IN, OUT any](
 		onErrorSending: func(error, []int) {}, // Noop.
 	}
 	s.buildAggregatedInput = s.readIncomingConcurrently
-	s.sendOutputs = s.sendOutputsCyclesAllowed
+	s.sendOutputs = s.sendOutputConcurrent
 
 	for _, opt := range options {
 		opt.stage(s)
