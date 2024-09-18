@@ -65,20 +65,20 @@ func NewManager(
 	)
 
 	// Prepare the certificate processing stages.
-	certWorkers := make([]*CertWorker, workerCount)
+	certWorkers := make([]*CertPtrWorker, workerCount)
 	// Stage 1-to-1: cert to DB and output domains.
 	certStages := make([]pip.StageLike, workerCount)
 	for i := range certWorkers {
-		certWorkers[i] = NewCertWorker(ctx, i, m, conn, workerCount)
+		certWorkers[i] = NewCertPtrWorker(ctx, i, m, conn, workerCount)
 		certStages[i] = certWorkers[i].Stage
 	}
 
 	// Prepare the domain processing stages. Sinks.
-	domainWorkers := make([]*DomainWorker, workerCount)
+	domainWorkers := make([]*DomainPtrWorker, workerCount)
 	// Pure sink objects:
 	domainStages := make([]pip.StageLike, workerCount)
 	for i := range domainWorkers {
-		domainWorkers[i] = NewDomainWorker(ctx, i, m, conn, workerCount)
+		domainWorkers[i] = NewDomainPtrWorker(ctx, i, m, conn, workerCount)
 		domainStages[i] = domainWorkers[i].Sink
 	}
 

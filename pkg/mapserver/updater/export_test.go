@@ -6,35 +6,35 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/common"
 )
 
-func (w *CertWorker) ProcessBundle() error {
+func (w *CertPtrWorker) ProcessBundle() error {
 	return w.processBundle()
 }
 
-func (w *CertWorker) CacheIds() []common.SHA256Output {
+func (w *CertPtrWorker) CacheIds() []common.SHA256Output {
 	return w.cacheIds
 }
-func (w *CertWorker) CacheParents() []*common.SHA256Output {
+func (w *CertPtrWorker) CacheParents() []*common.SHA256Output {
 	return w.cacheParents
 }
-func (w *CertWorker) CacheExpirations() []time.Time {
+func (w *CertPtrWorker) CacheExpirations() []time.Time {
 	return w.cacheExpirations
 }
-func (w *CertWorker) CachePayloads() [][]byte {
+func (w *CertPtrWorker) CachePayloads() [][]byte {
 	return w.cachePayloads
 }
 
-func (w *DomainWorker) ProcessBundle() error {
+func (w *DomainPtrWorker) ProcessBundle() error {
 	return w.processBundle()
 }
 
-func (w *DomainWorker) CloneDomainIDs() []common.SHA256Output {
+func (w *DomainPtrWorker) CloneDomainIDs() []common.SHA256Output {
 	return w.cloneDomainIDs
 }
 
-func (w *DomainWorker) CloneNames() []string {
+func (w *DomainPtrWorker) CloneNames() []string {
 	return w.cloneNames
 }
 
-func (w *DomainWorker) CloneCertIDs() []common.SHA256Output {
+func (w *DomainPtrWorker) CloneCertIDs() []common.SHA256Output {
 	return w.cloneCertIDs
 }

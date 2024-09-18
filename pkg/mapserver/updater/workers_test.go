@@ -39,7 +39,7 @@ func TestAllocsCertWorkerProcessBundle(t *testing.T) {
 
 	// The only interesting stage for this test is the one with the certificate worker.
 	// For that purpose, we mock the source and sink.
-	worker := updater.NewCertWorker(ctx, 0, manager, conn, 1)
+	worker := updater.NewCertPtrWorker(ctx, 0, manager, conn, 1)
 
 	// Bundle the mock data.
 	worker.Certs = certs
@@ -82,7 +82,7 @@ func TestCertWorkerAllocationsOverhead(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a cert worker stage. Input channel of Certificate, output of DirtyDomain.
-	worker := updater.NewCertWorker(ctx, 0, manager, conn, 1)
+	worker := updater.NewCertPtrWorker(ctx, 0, manager, conn, 1)
 
 	// Mock a sink.
 	sinkErrCh := make(chan error)
@@ -148,7 +148,7 @@ func TestAllocsDomainWorkerProcessBundle(t *testing.T) {
 	// Prepare the manager and worker for the test.
 	manager, err := updater.NewManager(ctx, 1, conn, 1000, 1, nil)
 	require.NoError(t, err)
-	worker := updater.NewDomainWorker(ctx, 0, manager, conn, 1)
+	worker := updater.NewDomainPtrWorker(ctx, 0, manager, conn, 1)
 
 	// Bundle the mock data.
 	bundle := extractDomains(certs)
@@ -186,7 +186,7 @@ func TestDomainWorkerAllocationsOverhead(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a cert worker stage. Input channel of Certificate, output of DirtyDomain.
-	worker := updater.NewDomainWorker(ctx, 0, manager, conn, 1)
+	worker := updater.NewDomainPtrWorker(ctx, 0, manager, conn, 1)
 
 	// Mock a source. Don't run it yet.
 	sendDomainsCh := make(chan struct{})

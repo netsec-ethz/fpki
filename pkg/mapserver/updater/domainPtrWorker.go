@@ -10,7 +10,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
-type DomainWorker struct {
+type DomainPtrWorker struct {
 	baseWorker
 	*pip.Sink[*DirtyDomain]
 
@@ -29,14 +29,14 @@ type DomainWorker struct {
 	dedupTwoIdsStorage map[[2]common.SHA256Output]struct{} // For dedup to not allocate.
 }
 
-func NewDomainWorker(
+func NewDomainPtrWorker(
 	ctx context.Context,
 	id int,
 	m *Manager,
 	conn db.Conn,
 	workerCount int,
-) *DomainWorker {
-	w := &DomainWorker{
+) *DomainPtrWorker {
+	w := &DomainPtrWorker{
 		baseWorker: *newBaseWorker(ctx, id, m, conn),
 
 		// Create a certificate slice where all the received certificates will end up.
@@ -88,7 +88,7 @@ func NewDomainWorker(
 	return w
 }
 
-func (w *DomainWorker) processBundle() error {
+func (w *DomainPtrWorker) processBundle() error {
 	if len(w.Domains) == 0 {
 		return nil
 	}
