@@ -72,6 +72,7 @@ func NewStage[IN, OUT any](
 		onErrorSending: func(error, []int) {}, // Noop.
 	}
 	s.buildAggregatedInput = s.readIncomingConcurrently
+
 	s.sendOutputs = s.sendOutputConcurrent
 
 	for _, opt := range options {
@@ -332,6 +333,9 @@ func (s *Stage[IN, OUT]) sendOutputsSequential(
 }
 
 // sendOutputConcurrent sends the possibly multiple outputs to each out channel concurrently.
+// This function will allocate memory, since it spawns a goroutine per output channel, and
+// synchronizes with all of them.
+// TODO: create the goroutines at NewStage time, and unblock them with e.g. a sync.Cond.
 func (s *Stage[IN, OUT]) sendOutputConcurrent(
 	outs []OUT,
 	outChIndxs []int,
@@ -411,17 +415,23 @@ func (s *Stage[IN, OUT]) sendOutputsCyclesAllowed(
 			// We attempt to write the out data to the outgoing channel.
 			// Because this can block, we must also listen to any error coming from the
 			// next stage, plus our own stop signal.
-			DebugPrintf("[%s] attempting to send %v to channel %d: %s\n",
-				s.Name, out, outChIndex, chanPtr(s.OutgoingChs[outChIndex]))
+			if DebugEnabled {
+				DebugPrintf("[%s] attempting to send %v to channel %d: %s\n",
+					s.Name, out, outChIndex, chanPtr(s.OutgoingChs[outChIndex]))
+			}
 			select {
 			case s.OutgoingChs[outChIndex] <- out:
 				// Success writing to the outgoing channel, nothing else to do.
 				s.cacheCompletedOutgoingIndices = append(s.cacheCompletedOutgoingIndices, i)
-				DebugPrintf("[%s] value %v sent to channel %d: %s\n",
-					s.Name, out, outChIndex, chanPtr(s.OutgoingChs[outChIndex]))
+				if DebugEnabled {
+					DebugPrintf("[%s] value %v sent to channel %d: %s\n",
+						s.Name, out, outChIndex, chanPtr(s.OutgoingChs[outChIndex]))
+				}
 			case err := <-s.NextStagesAggregatedErrCh:
-				DebugPrintf("[%s] ERROR while sending at channel %d the value %v: %v\n",
-					s.Name, outChIndex, out, err)
+				if DebugEnabled {
+					DebugPrintf("[%s] ERROR while sending at channel %d the value %v: %v\n",
+						s.Name, outChIndex, out, err)
+				}
 				// We received an error from next stage while trying to write to it.
 				*foundError = err
 				shouldStopSending = true
@@ -432,7 +442,9 @@ func (s *Stage[IN, OUT]) sendOutputsCyclesAllowed(
 				DebugPrintf("[%s] instructed to stop\n", s.Name)
 				*shouldReturn = true
 			default: // the outCh is not ready, try with next value/channel
-				DebugPrintf("[%s] out channel %d not ready\n", s.Name, outChIndex)
+				if DebugEnabled {
+					DebugPrintf("[%s] out channel %d not ready\n", s.Name, outChIndex)
+				}
 			}
 		}
 		util.RemoveElementsFromSlice(&outs, s.cacheCompletedOutgoingIndices)

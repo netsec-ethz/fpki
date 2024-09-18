@@ -105,9 +105,11 @@ func NewManager(
 			// Each cert worker has N out channels. Link each one to one domain worker,
 			// using the domain worker's ith input channel.
 			for i := 0; i < workerCount; i++ {
-				certWorker := p.Stages[i+1].(*pip.Stage[*Certificate, *DirtyDomain])
+
+				// Replace with a type assertion to *Certificate,*DirtyDomain if using pointers.
+				certWorker := p.Stages[i+1].(*pip.Stage[Certificate, DirtyDomain])
 				for j := 0; j < workerCount; j++ {
-					domainWorker := p.Stages[1+workerCount+j].(*pip.Sink[*DirtyDomain])
+					domainWorker := p.Stages[1+workerCount+j].(*pip.Sink[DirtyDomain])
 					pip.LinkStagesAt(
 						certWorker, j,
 						pip.SinkAsStage(domainWorker), i,

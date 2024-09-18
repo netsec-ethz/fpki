@@ -57,11 +57,12 @@ func NewCertWorker(
 		pip.WithMultiOutputChannels[Certificate, DirtyDomain](workerCount),
 		pip.WithProcessFunction(
 			func(cert Certificate) ([]DirtyDomain, []int, error) {
+				// Add the cert to the bundle, no allocations expected.
 				w.Certs = append(w.Certs, cert)
-				// Only if we have filled a complete bundle, process.
 				if pip.DebugEnabled {
 					pip.DebugPrintf("[%s] worker got cert %s, batch size: %d \n", name, cert, len(w.Certs))
 				}
+				// Only if we have filled a complete bundle, process.
 				if len(w.Certs) == m.MultiInsertSize {
 					err := w.processBundle()
 					pip.DebugPrintf("[%s] bundle processed, err: %v\n", name, err)
