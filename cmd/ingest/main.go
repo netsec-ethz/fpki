@@ -20,14 +20,8 @@ import (
 )
 
 const (
-	// NumFileReaders = 8
-	// NumParsers     = 32
-	// NumDBWriters   = 32
-
-	// deleteme:
-	NumFileReaders = 1
-	NumParsers     = 4
-	NumDBWriters   = 2
+	NumParsers   = 32
+	NumDBWriters = 32
 
 	MultiInsertSize = 10_000     // # of certificates, domains, etc inserted at once.
 	LruCacheSize    = 10_000_000 // Keep track of the 10 million most seen certificates.
@@ -54,22 +48,16 @@ func mainFunction() int {
 	memProfile := flag.String("memprofile", "", "write a memory profile to file")
 	bundleSize := flag.Uint64("bundlesize", 0, "number of certificates after which a coalesce and "+
 		"SMT update must occur. If 0, no limit, meaning coalescing and SMT updating is done once")
+	numParsers := flag.Int("numparsers", NumParsers, "Number of line parsers concurrently running")
+	numDBWriters := flag.Int("numdbworkers", NumDBWriters, "Number of concurrent DB writers")
 	certUpdateStrategy := flag.String("strategy", "", "strategy to update certificates\n"+
-		// "\"overwrite\": always send certificates to DB, even if they exist already.\n"+
-		// "\"keep\": first check if each certificate exists already in DB before sending it.\n"+
 		"\"skipingest\": only coalesce payloads of domains in the dirty table and update SMT.\n"+
 		"\"smtupdate\": only update the SMT.\n")
 	flag.Parse()
 
-	// // Update strategy.
-	// var strategy CertificateUpdateStrategy
 	var skipIngest bool
 	var smtUpdateOnly bool
 	switch *certUpdateStrategy {
-	// case "overwrite":
-	// 	strategy = CertificateUpdateOverwrite
-	// case "keep":
-	// 	strategy = CertificateUpdateKeepExisting
 	case "skipingest":
 		skipIngest = true
 	case "smtupdate":
@@ -152,12 +140,12 @@ func mainFunction() int {
 			MultiInsertSize,
 			2*time.Second,
 			printStats,
-			WithNumWorkers(NumParsers),
-			WithNumDBWriters(NumDBWriters),
+			WithNumWorkers(*numParsers),
+			WithNumDBWriters(*numDBWriters),
 			WithBundleSize(*bundleSize),
 			WithOnBundleFinished(func() {
 				// Called for intermediate bundles. Need to coalesce, update SMT and clean dirty.
-				fmt.Println("Another bundle ingestion finished.")
+				fmt.Println("\nAnother bundle ingestion finished.")
 				coalescePayloadsForDirtyDomains(ctx, conn)
 				updateSMT(ctx, conn)
 				cleanupDirty(ctx, conn)
@@ -169,6 +157,8 @@ func mainFunction() int {
 		proc.AddGzFiles(gzFiles)
 		proc.AddCsvFiles(csvFiles)
 
+		fmt.Printf("[%s] Starting ingesting files ...\n",
+			time.Now().Format(time.StampMilli))
 		// Update certificates and chains, and wait until finished.
 		proc.Resume()
 		// // Resume in reverse order. // deleteme
@@ -259,7 +249,7 @@ func printStats(s *updater.Stats) {
 	secondsSinceStart := float64(time.Since(s.CreateTime).Seconds())
 
 	msg := fmt.Sprintf("%d/%d Files read. %d certs read, %d written. %.0f certs/s "+
-		"(%.0f%% uncached), %.1f/%.1f Mb/s r/w",
+		"(%.0f%% uncached), %.1f | %.1f Mb/s r|w                    ",
 		readFiles, totalFiles,
 		readCerts, writtenCerts,
 		float64(readCerts)/secondsSinceStart,

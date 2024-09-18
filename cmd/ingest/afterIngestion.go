@@ -10,21 +10,21 @@ import (
 )
 
 func coalescePayloadsForDirtyDomains(ctx context.Context, conn db.Conn) {
-	fmt.Printf("[%s] Starting coalescing payloads for modified domains ...\n",
+	fmt.Printf("\n[%s] Starting coalescing payloads for modified domains ...\n",
 		time.Now().Format(time.StampMilli))
 	// Use NumDBWriters.
 	err := updater.CoalescePayloadsForDirtyDomains(ctx, conn)
 	exitIfError(err)
 
-	fmt.Printf("[%s] Done coalescing.\n", time.Now().Format(time.StampMilli))
+	fmt.Printf("\n[%s] Done coalescing.\n", time.Now().Format(time.StampMilli))
 }
 
 func updateSMT(ctx context.Context, conn db.Conn) {
-	fmt.Println("Starting SMT update ...")
+	fmt.Println("\nStarting SMT update ...")
 	err := updater.UpdateSMT(ctx, conn)
 	exitIfError(err)
 
-	fmt.Println("Done SMT update.")
+	fmt.Println("\nDone SMT update.")
 }
 
 func cleanupDirty(ctx context.Context, conn db.Conn) {

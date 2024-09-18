@@ -514,14 +514,14 @@ func updateSMTfromKeyValues(
 	if err != nil {
 		return err
 	}
-	fmt.Printf("smt.updateSMTfromKeyValues [%s]: keys and values obtained\n", time.Now().Format(time.Stamp))
+	fmt.Printf("\nsmt.updateSMTfromKeyValues [%s]: keys and values obtained\n", time.Now().Format(time.Stamp))
 
 	// Update the tree.
 	_, err = smtTrie.Update(ctx, keys, values)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("smt.updateSMTfromKeyValues [%s]: in-memory tree updated\n", time.Now().Format(time.Stamp))
+	fmt.Printf("\nsmt.updateSMTfromKeyValues [%s]: in-memory tree updated\n", time.Now().Format(time.Stamp))
 
 	// And update the tree in the DB.
 	err = smtTrie.Commit(ctx)
@@ -529,7 +529,7 @@ func updateSMTfromKeyValues(
 	if err != nil {
 		return err
 	}
-	fmt.Printf("smt.updateSMTfromKeyValues [%s]: tree committed to DB\n", time.Now().Format(time.Stamp))
+	fmt.Printf("\nsmt.updateSMTfromKeyValues [%s]: tree committed to DB\n", time.Now().Format(time.Stamp))
 	return nil
 }
 
@@ -572,7 +572,7 @@ func UpdateSMT(ctx context.Context, conn db.Conn) error {
 		return err
 	}
 
-	fmt.Printf("smt [%s]: SMT updated\n", time.Now().Format(time.Stamp))
+	fmt.Printf("\nsmt [%s]: SMT updated\n", time.Now().Format(time.Stamp))
 
 	// Save root value:
 	err = conn.SaveRoot(ctx, (*common.SHA256Output)(smtTrie.Root))
