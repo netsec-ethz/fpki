@@ -192,35 +192,7 @@ func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 		chainToCertWorkers[i] = NewChainPtrToCertPtrWorker(i)
 	}
 
-	// Create sink for certificates.
-	// noMoreData := false // It will be true when the last stage gets a no more data signal.
-	// var certProcessedCount uint64 = 0 // For the sink to call on bundle.
-	// sink := pip.NewSink[*updater.Certificate](
-	// 	"certSink",
-	// 	pip.WithMultiInputChannels[*updater.Certificate, pip.None](p.NumWorkers),
-	// 	// pip.WithSequentialInputs[*updater.Certificate, pip.None](),
-	// 	pip.WithOnNoMoreData[*updater.Certificate, pip.None](func() ([]pip.None, []int, error) {
-	// 		p.certSinkHasNoMoreData = true // Flag that the pipeline has no more data to process.
-	// 		return nil, nil, nil
-	// 	}),
-	// 	pip.WithSinkFunction(func(in *updater.Certificate) error {
-	// 		if in == nil {
-	// 			return nil
-	// 		}
-	// 		var err error
-	// 		certProcessedCount++
-	// 		p.stats.WrittenCerts.Add(1)
-	// 		p.stats.WrittenBytes.Add(int64(len(in.Cert.Raw)))
-
-	// 		if certProcessedCount >= p.BundleSize {
-	// 			// Reset counters.
-	// 			certProcessedCount = 0
-	// 			// Request the next stages to stop.
-	// 			err = pip.NoMoreData
-	// 		}
-	// 		return err
-	// 	}),
-	// )
+	// Create sink for certificate pointers.
 	sink := p.createCertificatePtrSink()
 
 	stages := []pip.StageLike{source, splitter.Stage}
@@ -291,6 +263,33 @@ func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 	)
 
 	return pipeline, err
+}
+
+func (p *Processor) createCertificateSink() *pip.Sink[updater.Certificate] {
+	var certProcessedCount uint64 = 0 // For the sink to call on bundle.
+	return pip.NewSink[updater.Certificate](
+		"certSink",
+		pip.WithMultiInputChannels[updater.Certificate, pip.None](p.NumWorkers),
+		// pip.WithSequentialInputs[*updater.Certificate, pip.None](),
+		pip.WithOnNoMoreData[updater.Certificate, pip.None](func() ([]pip.None, []int, error) {
+			p.certSinkHasNoMoreData = true // Flag that the pipeline has no more data to process.
+			return nil, nil, nil
+		}),
+		pip.WithSinkFunction(func(in updater.Certificate) error {
+			var err error
+			certProcessedCount++
+			p.stats.WrittenCerts.Add(1)
+			p.stats.WrittenBytes.Add(int64(len(in.Cert.Raw)))
+
+			if certProcessedCount >= p.BundleSize {
+				// Reset counters.
+				certProcessedCount = 0
+				// Request the next stages to stop.
+				err = pip.NoMoreData
+			}
+			return err
+		}),
+	)
 }
 
 func (p *Processor) createCertificatePtrSink() *pip.Sink[*updater.Certificate] {

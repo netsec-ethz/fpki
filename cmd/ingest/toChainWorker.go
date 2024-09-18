@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -10,18 +12,33 @@ import (
 
 	"github.com/netsec-ethz/fpki/cmd/ingest/cache"
 	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
 )
 
-type lineToChainPtrWorker struct {
+const (
+	CertificateColumn = 3
+	CertChainColumn   = 4
+)
+
+type certChain updater.CertWithChainData
+
+func (cc *certChain) String() string {
+	if cc == nil {
+		return "nil"
+	}
+	return hex.EncodeToString(cc.CertID[:])
+}
+
+type lineToChainWorker struct {
 	*pip.Stage[line, *certChain]
 
 	now      time.Time
 	presence cache.Cache // IDs of certificates already seen
 }
 
-func NewLineToChainPtrWorker(p *Processor, numWorker int) *lineToChainPtrWorker {
-	w := &lineToChainPtrWorker{
+func NewLineToChainWorker(p *Processor, numWorker int) *lineToChainWorker {
+	w := &lineToChainWorker{
 		now:      time.Now(),
 		presence: cache.NewPresenceCache(LruCacheSize),
 	}
@@ -45,7 +62,7 @@ func NewLineToChainPtrWorker(p *Processor, numWorker int) *lineToChainPtrWorker 
 	return w
 }
 
-func (w *lineToChainPtrWorker) parseLine(p *Processor, line *line) (*certChain, error) {
+func (w *lineToChainWorker) parseLine(p *Processor, line *line) (*certChain, error) {
 	// First avoid even parsing already expired certs.
 	n, err := getExpiration(line.fields)
 	if err != nil {
@@ -118,4 +135,23 @@ func (w *lineToChainPtrWorker) parseLine(p *Processor, line *line) (*certChain, 
 		ChainPayloads: chain,
 		ChainIDs:      chainIDs,
 	}, nil
+}
+
+// getExpiration returns the expiration time in seconds. It is stored already in seconds on the
+// last column of the CSV entry, usually index 7.
+func getExpiration(fields []string) (int64, error) {
+	// Because some entries in the CSVs are malformed by not escaping their SAN field, we cannot
+	// reliably use a column index, but the last column of the entry.
+	expirationColumn := len(fields) - 1
+
+	s := strings.Split(fields[expirationColumn], ".")
+	if len(s) != 2 {
+		return 0, fmt.Errorf("unrecognized timestamp in the last column: %s", fields[expirationColumn])
+	}
+	exp, err := strconv.ParseInt(s[0], 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parsing the expiration time \"%s\" got: %w",
+			fields[expirationColumn], err)
+	}
+	return exp, nil
 }
