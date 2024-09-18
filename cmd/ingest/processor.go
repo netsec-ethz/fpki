@@ -26,6 +26,7 @@ type Processor struct {
 	stats            *updater.Stats
 	CsvFiles         []util.CsvFile
 	NumWorkers       int
+	NumDBWriters     int
 	BundleSize       uint64
 	OnBundleFinished func()
 
@@ -43,6 +44,7 @@ func NewProcessor(
 	// Create the processor that will hold all the information and the pipeline.
 	p := &Processor{
 		NumWorkers:       1,              // Default to just 1 worker.
+		NumDBWriters:     1,              // Default to 1 db writer.
 		BundleSize:       math.MaxUint64, // Default to "no limit",
 		OnBundleFinished: func() {},      // Default to noop.
 	}
@@ -58,7 +60,7 @@ func NewProcessor(
 
 	// Create the DB manager.
 	manager, err :=
-		updater.NewManager(ctx, p.NumWorkers, conn, multiInsertSize, statsUpdatePeriod, statsUpdateFun)
+		updater.NewManager(ctx, p.NumDBWriters, conn, multiInsertSize, statsUpdatePeriod, statsUpdateFun)
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +68,7 @@ func NewProcessor(
 	p.stats = manager.Stats
 
 	// Join the two pipelines.
-	pipeline, err := pip.JoinTwoPipelines[updater.Certificate](pipFiles, manager.Pipeline)
+	pipeline, err := pip.JoinTwoPipelines[*updater.Certificate](pipFiles, manager.Pipeline)
 	if err != nil {
 		return nil, err
 	}
@@ -81,6 +83,12 @@ type processorOptions func(*Processor)
 func WithNumWorkers(numWorkers int) processorOptions {
 	return func(p *Processor) {
 		p.NumWorkers = numWorkers
+	}
+}
+
+func WithNumDBWriters(numDBWriters int) processorOptions {
+	return func(p *Processor) {
+		p.NumDBWriters = numDBWriters
 	}
 }
 
@@ -171,32 +179,34 @@ func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 	// Create numParsers toChain workers. Parses lines into chains.
 	lineToChainWorkers := make([]*lineToChainWorker, p.NumWorkers)
 	for i := range lineToChainWorkers {
-		lineToChainWorkers[i] = NewLineToChainWorker(p)
+		lineToChainWorkers[i] = NewLineToChainWorker(p, i)
 	}
 
 	// Create chain to certificates worker.
 	chainToCertWorkers := make([]*chainToCertsWorker, p.NumWorkers)
 	for i := range chainToCertWorkers {
-		chainToCertWorkers[i] = NewChainToCertsWorker()
+		chainToCertWorkers[i] = NewChainToCertsWorker(i)
 	}
 
 	// Create sink for certificates.
 	noMoreData := false               // It will be true when the last stage gets a no more data signal.
 	var certProcessedCount uint64 = 0 // For the sink to call on bundle.
-	sink := pip.NewSink[updater.Certificate](
-		"sink",
-		pip.WithMultiInputChannels[updater.Certificate, pip.None](p.NumWorkers),
-		pip.WithSequentialInputs[updater.Certificate, pip.None](),
-		pip.WithOnNoMoreData[updater.Certificate, pip.None](func() ([]pip.None, []int, error) {
+	sink := pip.NewSink[*updater.Certificate](
+		"certSink",
+		pip.WithMultiInputChannels[*updater.Certificate, pip.None](p.NumWorkers),
+		// pip.WithSequentialInputs[*updater.Certificate, pip.None](),
+		pip.WithOnNoMoreData[*updater.Certificate, pip.None](func() ([]pip.None, []int, error) {
 			noMoreData = true // Flag that the pipeline has no more data to process.
 			return nil, nil, nil
 		}),
-		pip.WithSinkFunction(func(in updater.Certificate) error {
+		pip.WithSinkFunction(func(in *updater.Certificate) error {
+			if in == nil {
+				return nil
+			}
 			var err error
 			certProcessedCount++
 			p.stats.WrittenCerts.Add(1)
 			p.stats.WrittenBytes.Add(int64(len(in.Cert.Raw)))
-			// fmt.Printf("\ndeleteme got cert\n")
 
 			if certProcessedCount >= p.BundleSize {
 				// Reset counters.
@@ -239,15 +249,15 @@ func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 			*/
 			a := pip.SourceStage[util.CsvFile](pipeline)
 			b := pip.StageAtIndex[util.CsvFile, line](pipeline, 1)
-			c := make([]*pip.Stage[line, certChain], p.NumWorkers)
+			c := make([]*pip.Stage[line, *certChain], p.NumWorkers)
 			for i := range c {
-				c[i] = pip.StageAtIndex[line, certChain](pipeline, i+2)
+				c[i] = pip.StageAtIndex[line, *certChain](pipeline, i+2)
 			}
-			d := make([]*pip.Stage[certChain, updater.Certificate], p.NumWorkers)
+			d := make([]*pip.Stage[*certChain, *updater.Certificate], p.NumWorkers)
 			for i := range c {
-				d[i] = pip.StageAtIndex[certChain, updater.Certificate](pipeline, i+2+p.NumWorkers)
+				d[i] = pip.StageAtIndex[*certChain, *updater.Certificate](pipeline, i+2+p.NumWorkers)
 			}
-			e := pip.SinkStage[updater.Certificate](pipeline)
+			e := pip.SinkStage[*updater.Certificate](pipeline)
 
 			pip.LinkStagesFanOut(a, b) //           A->B
 			for i := range c {

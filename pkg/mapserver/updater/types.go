@@ -28,7 +28,10 @@ type Certificate struct {
 	Names    []string
 }
 
-func (c Certificate) String() string {
+func (c *Certificate) String() string {
+	if c == nil {
+		return "nil"
+	}
 	return hex.EncodeToString(c.CertID[:])
 }
 
@@ -38,18 +41,21 @@ type DirtyDomain struct {
 	Name     string
 }
 
-func (d DirtyDomain) String() string {
+func (d *DirtyDomain) String() string {
+	if d == nil {
+		return "nil"
+	}
 	return hex.EncodeToString(d.DomainID[:])
 }
 
-func CertificatesFromChains(data *CertWithChainData) []Certificate {
+func CertificatesFromChains(data *CertWithChainData) []*Certificate {
 	payloads, certIDs, parentIDs, names := util.UnfoldCert(data.Cert, data.CertID,
 		data.ChainPayloads, data.ChainIDs)
 
-	certs := make([]Certificate, len(payloads))
+	certs := make([]*Certificate, len(payloads))
 	for i := range payloads {
 		// Add the certificate.
-		certs[i] = Certificate{
+		certs[i] = &Certificate{
 			CertID:   certIDs[i],
 			Cert:     payloads[i],
 			ParentID: parentIDs[i],

@@ -26,8 +26,8 @@ const (
 
 	// deleteme:
 	NumFileReaders = 1
-	NumParsers     = 1
-	NumDBWriters   = 1
+	NumParsers     = 4
+	NumDBWriters   = 2
 
 	MultiInsertSize = 10_000     // # of certificates, domains, etc inserted at once.
 	LruCacheSize    = 10_000_000 // Keep track of the 10 million most seen certificates.
@@ -153,6 +153,7 @@ func mainFunction() int {
 			2*time.Second,
 			printStats,
 			WithNumWorkers(NumParsers),
+			WithNumDBWriters(NumDBWriters),
 			WithBundleSize(*bundleSize),
 			WithOnBundleFinished(func() {
 				// Called for intermediate bundles. Need to coalesce, update SMT and clean dirty.

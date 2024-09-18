@@ -12,9 +12,9 @@ import (
 
 type DomainWorker struct {
 	baseWorker
-	*pip.Sink[DirtyDomain]
+	*pip.Sink[*DirtyDomain]
 
-	Domains []DirtyDomain // Created once, reused.
+	Domains []*DirtyDomain // Created once, reused.
 
 	domainIDs []common.SHA256Output // do not call make more than once.
 	certIDs   []common.SHA256Output // do not call make more than once.
@@ -40,7 +40,7 @@ func NewDomainWorker(
 		baseWorker: *newBaseWorker(ctx, id, m, conn),
 
 		// Create a certificate slice where all the received certificates will end up.
-		Domains: make([]DirtyDomain, 0, m.MultiInsertSize),
+		Domains: make([]*DirtyDomain, 0, m.MultiInsertSize),
 
 		domainIDs: make([]common.SHA256Output, 0, m.MultiInsertSize),
 		certIDs:   make([]common.SHA256Output, 0, m.MultiInsertSize),
@@ -60,9 +60,9 @@ func NewDomainWorker(
 	// specific channel.
 	w.Sink = pip.NewSink(
 		fmt.Sprintf("domain_worker_%02d", id),
-		pip.WithSequentialInputs[DirtyDomain, pip.None](),
+		// pip.WithSequentialInputs[*DirtyDomain, pip.None](),
 		pip.WithSinkFunction(
-			func(domain DirtyDomain) error {
+			func(domain *DirtyDomain) error {
 				var err error
 				w.Domains = append(w.Domains, domain)
 				// Only if we have filled a complete bundle, process.
@@ -74,8 +74,8 @@ func NewDomainWorker(
 				return err
 			},
 		),
-		pip.WithMultiInputChannels[DirtyDomain, pip.None](workerCount),
-		pip.WithOnNoMoreData[DirtyDomain, pip.None](
+		pip.WithMultiInputChannels[*DirtyDomain, pip.None](workerCount),
+		pip.WithOnNoMoreData[*DirtyDomain, pip.None](
 			func() ([]pip.None, []int, error) {
 				// Process the last (possibly empty) batch.
 				err := w.processBundle()

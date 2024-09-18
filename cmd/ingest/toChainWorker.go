@@ -23,51 +23,60 @@ const (
 
 type certChain updater.CertWithChainData
 
-func (cc certChain) String() string {
+func (cc *certChain) String() string {
+	if cc == nil {
+		return "nil"
+	}
 	return hex.EncodeToString(cc.CertID[:])
 }
 
 type lineToChainWorker struct {
-	*pip.Stage[line, certChain]
+	*pip.Stage[line, *certChain]
 
 	now      time.Time
 	presence cache.Cache // IDs of certificates already seen
 }
 
-func NewLineToChainWorker(p *Processor) *lineToChainWorker {
+func NewLineToChainWorker(p *Processor, numWorker int) *lineToChainWorker {
 	w := &lineToChainWorker{
-
 		now:      time.Now(),
 		presence: cache.NewPresenceCache(LruCacheSize),
 	}
-	w.Stage = pip.NewStage[line, certChain](
-		"toChains",
+
+	// Prepare stage.
+	name := fmt.Sprintf("toChains_%02d", numWorker)
+	// Create cached slices.
+	chainCache := make([]*certChain, 1)
+	channelCache := []int{0}
+	w.Stage = pip.NewStage[line, *certChain](
+		name,
 		pip.WithProcessFunction(
-			func(in line) ([]certChain, []int, error) {
-				chain, err := w.parseLine(p, &in)
-				return []certChain{chain}, []int{0}, err
+			func(in line) ([]*certChain, []int, error) {
+				var err error
+				chainCache[0], err = w.parseLine(p, &in)
+				return chainCache, channelCache, err
 			},
 		),
-		pip.WithSequentialOutputs[line, certChain](),
+		pip.WithSequentialOutputs[line, *certChain](),
 	)
 	return w
 }
 
-func (w *lineToChainWorker) parseLine(p *Processor, line *line) (certChain, error) {
+func (w *lineToChainWorker) parseLine(p *Processor, line *line) (*certChain, error) {
 	// First avoid even parsing already expired certs.
 	n, err := getExpiration(line.fields)
 	if err != nil {
-		return certChain{}, err
+		return nil, err
 	}
 	if w.now.After(time.Unix(n, 0)) {
 		// Skip this certificate.
-		return certChain{}, nil
+		return nil, nil
 	}
 
 	// From this point on, we need to parse the certificate.
 	rawBytes, err := base64.StdEncoding.DecodeString(line.fields[CertificateColumn])
 	if err != nil {
-		return certChain{}, err
+		return nil, err
 	}
 
 	// Update statistics.
@@ -79,17 +88,17 @@ func (w *lineToChainWorker) parseLine(p *Processor, line *line) (certChain, erro
 	certID := common.SHA256Hash32Bytes(rawBytes)
 	if w.presence.Contains(&certID) {
 		// For some reason this leaf certificate has been ingested already. Skip.
-		return certChain{}, nil
+		return nil, nil
 	}
 	cert, err := ctx509.ParseCertificate(rawBytes)
 	if err != nil {
-		return certChain{}, err
+		return nil, err
 	}
 
 	// Although we checked right at the beginning with getExpiration, now use the payload.
 	if w.now.After(cert.NotAfter) {
 		// Don't ingest already expired certificates.
-		return certChain{}, nil
+		return nil, nil
 	}
 
 	// The certificate chain is a list of base64 strings separated by semicolon (;).
@@ -99,7 +108,7 @@ func (w *lineToChainWorker) parseLine(p *Processor, line *line) (certChain, erro
 	for i, s := range strs {
 		rawBytes, err = base64.StdEncoding.DecodeString(s)
 		if err != nil {
-			return certChain{}, fmt.Errorf("at line %d: %s\n%s",
+			return nil, fmt.Errorf("at line %d: %s\n%s",
 				line.number, err, line.fields[CertChainColumn])
 		}
 		// Update statistics.
@@ -111,7 +120,7 @@ func (w *lineToChainWorker) parseLine(p *Processor, line *line) (certChain, erro
 			// Not seen before, push it to the DB.
 			chain[i], err = ctx509.ParseCertificate(rawBytes)
 			if err != nil {
-				return certChain{}, fmt.Errorf("at line %d: %s\n%s",
+				return nil, fmt.Errorf("at line %d: %s\n%s",
 					line.number, err, line.fields[CertChainColumn])
 			}
 			w.presence.AddIDs([]*common.SHA256Output{&id})
@@ -120,7 +129,7 @@ func (w *lineToChainWorker) parseLine(p *Processor, line *line) (certChain, erro
 		chainIDs[i] = &id
 	}
 
-	return certChain{
+	return &certChain{
 		Cert:          cert,
 		CertID:        certID,
 		ChainPayloads: chain,

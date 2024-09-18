@@ -13,12 +13,19 @@ import (
 
 type CertWorker struct {
 	baseWorker
-	*pip.Stage[Certificate, DirtyDomain]
+	*pip.Stage[*Certificate, *DirtyDomain]
 	hasher common.Hasher
 
-	Certs   []Certificate // Created once, reused.
-	Domains []DirtyDomain // Created once, reused. Output.
-	outChs  []int         // Reuse the out channel indices slice.
+	// deleteme
+	// deleteme there is a bug there:
+	// by reusing the storage, on each processing stage we overwrite the contents of the previous domains
+	// which means that while the next stage is processing, we are writing into the memory that the
+	// next stage is reading.
+
+	Certs      []*Certificate // Created once, reused.
+	Domains    []DirtyDomain  // Created once, reused.
+	DomainPtrs []*DirtyDomain // Created once, reused. Output.
+	outChs     []int          // Reuse the out channel indices slice.
 
 	// Cache storage arrays used to unfold Certificate objects into the DB fields.
 	cacheIds         []common.SHA256Output
@@ -40,9 +47,10 @@ func NewCertWorker(
 		baseWorker: *newBaseWorker(ctx, id, m, conn),
 		hasher:     *common.NewHasher(),
 
-		Certs:   make([]Certificate, 0, m.MultiInsertSize),
-		Domains: make([]DirtyDomain, 0, m.MultiInsertSize*3), // Estimated no more than 3 per cert.
-		outChs:  make([]int, 0, m.MultiInsertSize*3),         // Same size as the output domains
+		Certs:      make([]*Certificate, 0, m.MultiInsertSize),
+		Domains:    make([]DirtyDomain, 0, m.MultiInsertSize*3), // Estimated to 3 per cert.
+		DomainPtrs: make([]*DirtyDomain, 0, m.MultiInsertSize*3),
+		outChs:     make([]int, 0, m.MultiInsertSize*3), // Same size as the output domains
 
 		cacheIds:         make([]common.SHA256Output, 0, m.MultiInsertSize),
 		cacheParents:     make([]*common.SHA256Output, 0, m.MultiInsertSize),
@@ -52,13 +60,13 @@ func NewCertWorker(
 		dedupStorage: make(map[common.SHA256Output]struct{}, m.MultiInsertSize),
 	}
 	name := fmt.Sprintf("cert_worker_%02d", id)
-	w.Stage = pip.NewStage(
+	w.Stage = pip.NewStage[*Certificate, *DirtyDomain](
 		name,
-		pip.WithMultiOutputChannels[Certificate, DirtyDomain](workerCount),
-		pip.WithSequentialOutputs[Certificate, DirtyDomain](),
-		pip.WithSequentialInputs[Certificate, DirtyDomain](),
+		pip.WithMultiOutputChannels[*Certificate, *DirtyDomain](workerCount),
+		// pip.WithSequentialOutputs[*Certificate, *DirtyDomain](),
+		// pip.WithSequentialInputs[*Certificate, *DirtyDomain](),
 		pip.WithProcessFunction(
-			func(cert Certificate) ([]DirtyDomain, []int, error) {
+			func(cert *Certificate) ([]*DirtyDomain, []int, error) {
 				w.Certs = append(w.Certs, cert)
 				// Only if we have filled a complete bundle, process.
 				if pip.DebugEnabled {
@@ -71,15 +79,15 @@ func NewCertWorker(
 						return nil, nil, err
 					}
 					// Return the extracted domains.
-					return w.Domains, w.outChs, nil
+					return w.DomainPtrs, w.outChs, nil
 				}
 				return nil, nil, nil
 			},
 		),
-		pip.WithOnNoMoreData[Certificate, DirtyDomain](
-			func() ([]DirtyDomain, []int, error) {
+		pip.WithOnNoMoreData[*Certificate, *DirtyDomain](
+			func() ([]*DirtyDomain, []int, error) {
 				err := w.processBundle()
-				return w.Domains, w.outChs, err
+				return w.DomainPtrs, w.outChs, err
 			},
 		),
 	)
@@ -148,6 +156,7 @@ func (w *CertWorker) insertCertificates() error {
 func (w *CertWorker) extractDomains() {
 	// Reuse the storage.
 	w.Domains = w.Domains[:0]
+	w.DomainPtrs = w.DomainPtrs[:0]
 	w.outChs = w.outChs[:0]
 
 	// For each name in each cert, generate a DirtyDomain object and send it to the manager.
@@ -158,6 +167,7 @@ func (w *CertWorker) extractDomains() {
 				CertID:   c.CertID,
 				Name:     name,
 			})
+			w.DomainPtrs = append(w.DomainPtrs, &w.Domains[len(w.Domains)-1])
 			w.outChs = append(w.outChs,
 				int(w.Manager.ShardFuncDomain(&w.Domains[len(w.Domains)-1].DomainID)),
 			)

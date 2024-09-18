@@ -23,7 +23,7 @@ type Manager struct {
 	ShardFuncCert   func(*common.SHA256Output) uint // select cert worker index from ID
 	ShardFuncDomain func(*common.SHA256Output) uint // select the domain worker from domain ID
 
-	IncomingCertChan chan Certificate // Certificates arrive from this channel.
+	IncomingCertChan chan *Certificate // Certificates arrive from this channel.
 	Pipeline         *pip.Pipeline
 }
 
@@ -51,17 +51,18 @@ func NewManager(
 		Stats:            NewStatistics(statsUpdateFreq, statsUpdateFunc),
 		ShardFuncCert:    selectPartition,
 		ShardFuncDomain:  selectPartition,
-		IncomingCertChan: make(chan Certificate),
+		IncomingCertChan: make(chan *Certificate),
 	}
 
-	// Prepare the domain processing stages. Sinks.
-	domainWorkers := make([]*DomainWorker, workerCount)
-	// Pure sink objects:
-	domainStages := make([]pip.StageLike, workerCount)
-	for i := range domainWorkers {
-		domainWorkers[i] = NewDomainWorker(ctx, i, m, conn, workerCount)
-		domainStages[i] = domainWorkers[i].Sink
-	}
+	// Get the Certificate from the channel and pass it along.
+	source := pip.NewSource[*Certificate](
+		"incoming_certs",
+		pip.WithMultiOutputChannels[pip.None, *Certificate](workerCount),
+		// pip.WithSequentialOutputs[pip.None, *Certificate](),
+		pip.WithSourceChannel(&m.IncomingCertChan, func(in *Certificate) (int, error) {
+			return int(m.ShardFuncCert(&in.CertID)), nil
+		}),
+	)
 
 	// Prepare the certificate processing stages.
 	certWorkers := make([]*CertWorker, workerCount)
@@ -72,15 +73,14 @@ func NewManager(
 		certStages[i] = certWorkers[i].Stage
 	}
 
-	// Get the Certificate from the channel and pass it along.
-	source := pip.NewSource(
-		"incoming_certs",
-		pip.WithMultiOutputChannels[pip.None, Certificate](workerCount),
-		pip.WithSequentialOutputs[pip.None, Certificate](),
-		pip.WithSourceChannel(&m.IncomingCertChan, func(in Certificate) (int, error) {
-			return int(m.ShardFuncCert(&in.CertID)), nil
-		}),
-	)
+	// Prepare the domain processing stages. Sinks.
+	domainWorkers := make([]*DomainWorker, workerCount)
+	// Pure sink objects:
+	domainStages := make([]pip.StageLike, workerCount)
+	for i := range domainWorkers {
+		domainWorkers[i] = NewDomainWorker(ctx, i, m, conn, workerCount)
+		domainStages[i] = domainWorkers[i].Sink
+	}
 
 	// Collect all stages.
 	stages := make([]pip.StageLike, 1, 1+2*workerCount)
@@ -94,7 +94,7 @@ func NewManager(
 		func(p *pip.Pipeline) {
 			// Link source with cert workers.
 			for i := 0; i < workerCount; i++ {
-				certWorker := p.Stages[i+1].(*pip.Stage[Certificate, DirtyDomain])
+				certWorker := p.Stages[i+1].(*pip.Stage[*Certificate, *DirtyDomain])
 
 				pip.LinkStagesAt(
 					pip.SourceAsStage(source), i,
@@ -105,9 +105,9 @@ func NewManager(
 			// Each cert worker has N out channels. Link each one to one domain worker,
 			// using the domain worker's ith input channel.
 			for i := 0; i < workerCount; i++ {
-				certWorker := p.Stages[i+1].(*pip.Stage[Certificate, DirtyDomain])
+				certWorker := p.Stages[i+1].(*pip.Stage[*Certificate, *DirtyDomain])
 				for j := 0; j < workerCount; j++ {
-					domainWorker := p.Stages[1+workerCount+j].(*pip.Sink[DirtyDomain])
+					domainWorker := p.Stages[1+workerCount+j].(*pip.Sink[*DirtyDomain])
 					pip.LinkStagesAt(
 						certWorker, j,
 						pip.SinkAsStage(domainWorker), i,
@@ -123,7 +123,7 @@ func NewManager(
 
 func (m *Manager) Resume() {
 	// Create a new source incoming channel.
-	m.IncomingCertChan = make(chan Certificate)
+	m.IncomingCertChan = make(chan *Certificate)
 
 	// Resume pipeline.
 	m.Pipeline.Resume()
