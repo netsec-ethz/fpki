@@ -16,16 +16,8 @@ type CertPtrWorker struct {
 	*pip.Stage[*Certificate, *DirtyDomain]
 	hasher common.Hasher
 
-	// deleteme
-	// deleteme there is a bug there:
-	// by reusing the storage, on each processing stage we overwrite the contents of the previous domains
-	// which means that while the next stage is processing, we are writing into the memory that the
-	// next stage is reading.
-
-	Certs      []*Certificate // Created once, reused.
-	Domains    []DirtyDomain  // Created once, reused.
-	DomainPtrs []*DirtyDomain // Created once, reused. Output.
-	outChs     []int          // Reuse the out channel indices slice.
+	Certs  []*Certificate // Created once, reused.
+	outChs []int          // Reuse the out channel indices slice.
 
 	// Cache storage arrays used to unfold Certificate objects into the DB fields.
 	cacheIds         []common.SHA256Output
@@ -47,10 +39,8 @@ func NewCertPtrWorker(
 		baseWorker: *newBaseWorker(ctx, id, m, conn),
 		hasher:     *common.NewHasher(),
 
-		Certs:      make([]*Certificate, 0, m.MultiInsertSize),
-		Domains:    make([]DirtyDomain, 0, m.MultiInsertSize*3), // Estimated to 3 per cert.
-		DomainPtrs: make([]*DirtyDomain, 0, m.MultiInsertSize*3),
-		outChs:     make([]int, 0, m.MultiInsertSize*3), // Same size as the output domains
+		Certs:  make([]*Certificate, 0, m.MultiInsertSize),
+		outChs: make([]int, 0, m.MultiInsertSize*3), // Initial storage is 3 domains per cert.
 
 		cacheIds:         make([]common.SHA256Output, 0, m.MultiInsertSize),
 		cacheParents:     make([]*common.SHA256Output, 0, m.MultiInsertSize),
@@ -73,21 +63,21 @@ func NewCertPtrWorker(
 					pip.DebugPrintf("[%s] worker got cert %s, batch size: %d \n", name, cert, len(w.Certs))
 				}
 				if len(w.Certs) == m.MultiInsertSize {
-					err := w.processBundle()
+					domains, err := w.processBundle()
 					pip.DebugPrintf("[%s] bundle processed, err: %v\n", name, err)
 					if err != nil {
 						return nil, nil, err
 					}
 					// Return the extracted domains.
-					return w.DomainPtrs, w.outChs, nil
+					return domains, w.outChs, nil
 				}
 				return nil, nil, nil
 			},
 		),
 		pip.WithOnNoMoreData[*Certificate, *DirtyDomain](
 			func() ([]*DirtyDomain, []int, error) {
-				err := w.processBundle()
-				return w.DomainPtrs, w.outChs, err
+				domains, err := w.processBundle()
+				return domains, w.outChs, err
 			},
 		),
 	)
@@ -97,23 +87,23 @@ func NewCertPtrWorker(
 
 // processBundle processes a bundle of certificates and extracts their associated domains.
 // The function resets the certificate bundle slice to zero size after it is done.
-func (w *CertPtrWorker) processBundle() error {
+func (w *CertPtrWorker) processBundle() ([]*DirtyDomain, error) {
 	pip.DebugPrintf("[%s] processing bundle\n", w.Stage.Name)
 	if len(w.Certs) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	// Insert the certificates into the DB.
 	if err := w.insertCertificates(); err != nil {
-		return fmt.Errorf("inserting certificates at worker %d: %w", w.Id, err)
+		return nil, fmt.Errorf("inserting certificates at worker %d: %w", w.Id, err)
 	}
 
 	// Extract the associated domain objects. The domains stay in w.Domains.
-	w.extractDomains()
+	domains := w.extractDomains()
 
 	w.Certs = w.Certs[:0] // Reuse storage, but reset slice.
 
-	return nil
+	return domains, nil
 }
 
 func (w *CertPtrWorker) insertCertificates() error {
@@ -153,24 +143,23 @@ func (w *CertPtrWorker) insertCertificates() error {
 
 // extractDomains extract the associated domains stored in the Certs field and places them in the
 // Domains and outChs fields.
-func (w *CertPtrWorker) extractDomains() {
+func (w *CertPtrWorker) extractDomains() []*DirtyDomain {
 	// Reuse the storage.
-	w.Domains = w.Domains[:0]
-	w.DomainPtrs = w.DomainPtrs[:0]
 	w.outChs = w.outChs[:0]
 
 	// For each name in each cert, generate a DirtyDomain object and send it to the manager.
+	domains := make([]*DirtyDomain, 0, len(w.Certs))
 	for _, c := range w.Certs {
 		for _, name := range c.Names {
-			w.Domains = append(w.Domains, DirtyDomain{
+			domains = append(domains, &DirtyDomain{
 				DomainID: w.hasher.HashStringCopy(name),
 				CertID:   c.CertID,
 				Name:     name,
 			})
-			w.DomainPtrs = append(w.DomainPtrs, &w.Domains[len(w.Domains)-1])
 			w.outChs = append(w.outChs,
-				int(w.Manager.ShardFuncDomain(&w.Domains[len(w.Domains)-1].DomainID)),
+				int(w.Manager.ShardFuncDomain(&domains[len(domains)-1].DomainID)),
 			)
 		}
 	}
+	return domains
 }

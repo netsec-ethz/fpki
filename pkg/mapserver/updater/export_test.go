@@ -6,7 +6,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/common"
 )
 
-func (w *CertPtrWorker) ProcessBundle() error {
+func (w *CertPtrWorker) ProcessBundle() ([]*DirtyDomain, error) {
 	return w.processBundle()
 }
 

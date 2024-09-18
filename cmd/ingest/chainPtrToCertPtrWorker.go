@@ -22,7 +22,7 @@ func NewChainPtrToCertPtrWorker(numWorker int) *chainPtrToCertPtrsWorker {
 		name,
 		pip.WithProcessFunction(func(in *certChain) ([]*updater.Certificate, []int, error) {
 			// Obtain the certificates from the chain.
-			certs := updater.CertificatesFromChains((*updater.CertWithChainData)(in))
+			certs := updater.CertificatePtrsFromChains((*updater.CertWithChainData)(in))
 			// TODO: use a []Certificate storage cache here to avoid allocating.
 
 			// Create channel indices, all to zero.

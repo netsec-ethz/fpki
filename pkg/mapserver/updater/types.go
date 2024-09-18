@@ -48,14 +48,14 @@ func (d *DirtyDomain) String() string {
 	return hex.EncodeToString(d.DomainID[:])
 }
 
-func CertificatesFromChains(data *CertWithChainData) []*Certificate {
+func CertificatesFromChains(data *CertWithChainData) []Certificate {
 	payloads, certIDs, parentIDs, names := util.UnfoldCert(data.Cert, data.CertID,
 		data.ChainPayloads, data.ChainIDs)
 
-	certs := make([]*Certificate, len(payloads))
+	certs := make([]Certificate, len(payloads))
 	for i := range payloads {
 		// Add the certificate.
-		certs[i] = &Certificate{
+		certs[i] = Certificate{
 			CertID:   certIDs[i],
 			Cert:     payloads[i],
 			ParentID: parentIDs[i],
@@ -64,4 +64,15 @@ func CertificatesFromChains(data *CertWithChainData) []*Certificate {
 	}
 
 	return certs
+}
+
+func CertificatePtrsFromChains(data *CertWithChainData) []*Certificate {
+	certs := CertificatesFromChains(data)
+	certPtrs := make([]*Certificate, len(certs))
+	for i, c := range certs {
+		c := c
+		certPtrs[i] = &c
+	}
+
+	return certPtrs
 }

@@ -31,7 +31,7 @@ func (cc *certChain) String() string {
 }
 
 type lineToChainWorker struct {
-	*pip.Stage[line, *certChain]
+	*pip.Stage[line, certChain]
 
 	now      time.Time
 	presence cache.Cache // IDs of certificates already seen
@@ -46,18 +46,22 @@ func NewLineToChainWorker(p *Processor, numWorker int) *lineToChainWorker {
 	// Prepare stage.
 	name := fmt.Sprintf("toChains_%02d", numWorker)
 	// Create cached slices.
-	chainCache := make([]*certChain, 1)
+	chainCache := make([]certChain, 1)
 	channelCache := []int{0}
-	w.Stage = pip.NewStage[line, *certChain](
+	w.Stage = pip.NewStage[line, certChain](
 		name,
 		pip.WithProcessFunction(
-			func(in line) ([]*certChain, []int, error) {
-				var err error
-				chainCache[0], err = w.parseLine(p, &in)
+			func(in line) ([]certChain, []int, error) {
+				chain, err := w.parseLine(p, &in)
+				if chain == nil {
+					// Skipped line, return nothing.
+					return nil, nil, err
+				}
+				chainCache[0] = *chain
 				return chainCache, channelCache, err
 			},
 		),
-		pip.WithSequentialOutputs[line, *certChain](),
+		pip.WithSequentialOutputs[line, certChain](),
 	)
 	return w
 }
