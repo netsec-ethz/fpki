@@ -32,7 +32,13 @@ const (
 // MyISAM overwrite, no pk (invalid DB):	1m 33s 	374 Mb/s
 // MyISAM overwrite, afterwards pk: 		3m 22s	175.9 Mb/s
 // MyISAM keep, already with pk:			2m 26s	241.0 Mb/s
-
+//
+//	articuno, /mnt/data/certificatestore/test/
+//	----------------------------------------
+//	#Parsers  |  #DB Writers  |    Time    |
+//	----------------------------------------
+//		32    |     128       | 0m49.365s  |
+//	----------------------------------------
 func main() {
 	os.Exit(mainFunction())
 }
