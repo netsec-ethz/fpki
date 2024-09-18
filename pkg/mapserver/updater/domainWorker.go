@@ -10,7 +10,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
-type DomainPtrWorker struct {
+type DomainWorker struct {
 	baseWorker
 	*pip.Sink[*DirtyDomain]
 
@@ -29,14 +29,14 @@ type DomainPtrWorker struct {
 	dedupTwoIdsStorage map[[2]common.SHA256Output]struct{} // For dedup to not allocate.
 }
 
-func NewDomainPtrWorker(
+func NewDomainWorker(
 	ctx context.Context,
 	id int,
 	m *Manager,
 	conn db.Conn,
 	workerCount int,
-) *DomainPtrWorker {
-	w := &DomainPtrWorker{
+) *DomainWorker {
+	w := &DomainWorker{
 		baseWorker: *newBaseWorker(ctx, id, m, conn),
 
 		// Create a certificate slice where all the received certificates will end up.
@@ -88,7 +88,7 @@ func NewDomainPtrWorker(
 	return w
 }
 
-func (w *DomainPtrWorker) processBundle() error {
+func (w *DomainWorker) processBundle() error {
 	if len(w.Domains) == 0 {
 		return nil
 	}
@@ -156,4 +156,10 @@ func (w *DomainPtrWorker) processBundle() error {
 	}
 
 	return nil
+}
+
+// idName is the bundle of the ID and name, to deduplicate domainID,name insertion.
+type idName struct {
+	id   common.SHA256Output
+	name string
 }
