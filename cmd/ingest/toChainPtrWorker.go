@@ -30,15 +30,15 @@ func (cc *certChain) String() string {
 	return hex.EncodeToString(cc.CertID[:])
 }
 
-type lineToChainWorker struct {
+type lineToChainPtrWorker struct {
 	*pip.Stage[line, *certChain]
 
 	now      time.Time
 	presence cache.Cache // IDs of certificates already seen
 }
 
-func NewLineToChainWorker(p *Processor, numWorker int) *lineToChainWorker {
-	w := &lineToChainWorker{
+func NewLineToChainPtrWorker(p *Processor, numWorker int) *lineToChainPtrWorker {
+	w := &lineToChainPtrWorker{
 		now:      time.Now(),
 		presence: cache.NewPresenceCache(LruCacheSize),
 	}
@@ -62,7 +62,7 @@ func NewLineToChainWorker(p *Processor, numWorker int) *lineToChainWorker {
 	return w
 }
 
-func (w *lineToChainWorker) parseLine(p *Processor, line *line) (*certChain, error) {
+func (w *lineToChainPtrWorker) parseLine(p *Processor, line *line) (*certChain, error) {
 	// First avoid even parsing already expired certs.
 	n, err := getExpiration(line.fields)
 	if err != nil {

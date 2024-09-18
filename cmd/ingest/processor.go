@@ -23,12 +23,14 @@ import (
 		   ...
 */
 type Processor struct {
-	stats            *updater.Stats
 	CsvFiles         []util.CsvFile
 	NumWorkers       int
 	NumDBWriters     int
 	BundleSize       uint64
 	OnBundleFinished func()
+
+	stats                 *updater.Stats //pointer to the actual stats living in Manager
+	certSinkHasNoMoreData bool           // True when the cert sink receives onNoMoreData
 
 	Pipeline *pip.Pipeline
 }
@@ -47,6 +49,8 @@ func NewProcessor(
 		NumDBWriters:     1,              // Default to 1 db writer.
 		BundleSize:       math.MaxUint64, // Default to "no limit",
 		OnBundleFinished: func() {},      // Default to noop.
+
+		certSinkHasNoMoreData: false,
 	}
 	for _, opt := range options {
 		opt(p)
@@ -177,46 +181,47 @@ func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 	splitter := NewCsvSplitWorker(p)
 
 	// Create numParsers toChain workers. Parses lines into chains.
-	lineToChainWorkers := make([]*lineToChainWorker, p.NumWorkers)
+	lineToChainWorkers := make([]*lineToChainPtrWorker, p.NumWorkers)
 	for i := range lineToChainWorkers {
-		lineToChainWorkers[i] = NewLineToChainWorker(p, i)
+		lineToChainWorkers[i] = NewLineToChainPtrWorker(p, i)
 	}
 
 	// Create chain to certificates worker.
-	chainToCertWorkers := make([]*chainToCertsWorker, p.NumWorkers)
+	chainToCertWorkers := make([]*chainPtrToCertPtrsWorker, p.NumWorkers)
 	for i := range chainToCertWorkers {
-		chainToCertWorkers[i] = NewChainToCertsWorker(i)
+		chainToCertWorkers[i] = NewChainPtrToCertPtrWorker(i)
 	}
 
 	// Create sink for certificates.
-	noMoreData := false               // It will be true when the last stage gets a no more data signal.
-	var certProcessedCount uint64 = 0 // For the sink to call on bundle.
-	sink := pip.NewSink[*updater.Certificate](
-		"certSink",
-		pip.WithMultiInputChannels[*updater.Certificate, pip.None](p.NumWorkers),
-		// pip.WithSequentialInputs[*updater.Certificate, pip.None](),
-		pip.WithOnNoMoreData[*updater.Certificate, pip.None](func() ([]pip.None, []int, error) {
-			noMoreData = true // Flag that the pipeline has no more data to process.
-			return nil, nil, nil
-		}),
-		pip.WithSinkFunction(func(in *updater.Certificate) error {
-			if in == nil {
-				return nil
-			}
-			var err error
-			certProcessedCount++
-			p.stats.WrittenCerts.Add(1)
-			p.stats.WrittenBytes.Add(int64(len(in.Cert.Raw)))
+	// noMoreData := false // It will be true when the last stage gets a no more data signal.
+	// var certProcessedCount uint64 = 0 // For the sink to call on bundle.
+	// sink := pip.NewSink[*updater.Certificate](
+	// 	"certSink",
+	// 	pip.WithMultiInputChannels[*updater.Certificate, pip.None](p.NumWorkers),
+	// 	// pip.WithSequentialInputs[*updater.Certificate, pip.None](),
+	// 	pip.WithOnNoMoreData[*updater.Certificate, pip.None](func() ([]pip.None, []int, error) {
+	// 		p.certSinkHasNoMoreData = true // Flag that the pipeline has no more data to process.
+	// 		return nil, nil, nil
+	// 	}),
+	// 	pip.WithSinkFunction(func(in *updater.Certificate) error {
+	// 		if in == nil {
+	// 			return nil
+	// 		}
+	// 		var err error
+	// 		certProcessedCount++
+	// 		p.stats.WrittenCerts.Add(1)
+	// 		p.stats.WrittenBytes.Add(int64(len(in.Cert.Raw)))
 
-			if certProcessedCount >= p.BundleSize {
-				// Reset counters.
-				certProcessedCount = 0
-				// Request the next stages to stop.
-				err = pip.NoMoreData
-			}
-			return err
-		}),
-	)
+	// 		if certProcessedCount >= p.BundleSize {
+	// 			// Reset counters.
+	// 			certProcessedCount = 0
+	// 			// Request the next stages to stop.
+	// 			err = pip.NoMoreData
+	// 		}
+	// 		return err
+	// 	}),
+	// )
+	sink := p.createCertificatePtrSink()
 
 	stages := []pip.StageLike{source, splitter.Stage}
 	for _, w := range lineToChainWorkers {
@@ -276,7 +281,8 @@ func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 				p.OnBundleFinished()
 
 				// resume if not finished.
-				return !noMoreData
+				return !p.certSinkHasNoMoreData
+				// return !noMoreData
 			},
 			func(p *pip.Pipeline) {
 				// Relink function, no affected stages.
@@ -285,4 +291,34 @@ func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 	)
 
 	return pipeline, err
+}
+
+func (p *Processor) createCertificatePtrSink() *pip.Sink[*updater.Certificate] {
+	var certProcessedCount uint64 = 0 // For the sink to call on bundle.
+	return pip.NewSink[*updater.Certificate](
+		"certSink",
+		pip.WithMultiInputChannels[*updater.Certificate, pip.None](p.NumWorkers),
+		// pip.WithSequentialInputs[*updater.Certificate, pip.None](),
+		pip.WithOnNoMoreData[*updater.Certificate, pip.None](func() ([]pip.None, []int, error) {
+			p.certSinkHasNoMoreData = true // Flag that the pipeline has no more data to process.
+			return nil, nil, nil
+		}),
+		pip.WithSinkFunction(func(in *updater.Certificate) error {
+			if in == nil {
+				return nil
+			}
+			var err error
+			certProcessedCount++
+			p.stats.WrittenCerts.Add(1)
+			p.stats.WrittenBytes.Add(int64(len(in.Cert.Raw)))
+
+			if certProcessedCount >= p.BundleSize {
+				// Reset counters.
+				certProcessedCount = 0
+				// Request the next stages to stop.
+				err = pip.NoMoreData
+			}
+			return err
+		}),
+	)
 }

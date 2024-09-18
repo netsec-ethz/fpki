@@ -8,15 +8,15 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
-// chainToCertsWorker processes a chain into a slice of certificates.
-type chainToCertsWorker struct {
+// chainPtrToCertPtrsWorker processes a chain into a slice of certificates.
+type chainPtrToCertPtrsWorker struct {
 	*pip.Stage[*certChain, *updater.Certificate]
 
 	channelsCache []int // reuse storage
 }
 
-func NewChainToCertsWorker(numWorker int) *chainToCertsWorker {
-	w := &chainToCertsWorker{}
+func NewChainPtrToCertPtrWorker(numWorker int) *chainPtrToCertPtrsWorker {
+	w := &chainPtrToCertPtrsWorker{}
 	name := fmt.Sprintf("toCerts_%02d", numWorker)
 	w.Stage = pip.NewStage[*certChain, *updater.Certificate](
 		name,
