@@ -55,7 +55,7 @@ func mainFunction() int {
 		fmt.Fprintf(os.Stderr, "Usage:\n%s directory\n", os.Args[0])
 		flag.PrintDefaults()
 	}
-	traceFile := flag.String("trace", "", "write a trace file")
+	traceProfile := flag.String("trace", "", "write a trace file")
 	cpuProfile := flag.String("cpuprofile", "", "write a CPU profile to file")
 	memProfile := flag.String("memprofile", "", "write a memory profile to file")
 	bundleSize := flag.Uint64("bundlesize", 0, "number of certificates after which a coalesce and "+
@@ -95,9 +95,9 @@ func mainFunction() int {
 
 	// Profiling:
 	stopProfiles := func() {
-		if *traceFile != "" {
+		fmt.Fprintln(os.Stderr, "\nStopping profiling")
+		if *traceProfile != "" {
 			trace.Stop()
-
 		}
 		if *cpuProfile != "" {
 			pprof.StopCPUProfile()
@@ -109,8 +109,8 @@ func mainFunction() int {
 			exitIfError(err)
 		}
 	}
-	if *traceFile != "" {
-		f, err := os.Create(*traceFile)
+	if *traceProfile != "" {
+		f, err := os.Create(*traceProfile)
 		exitIfError(err)
 		err = trace.Start(f)
 		exitIfError(err)

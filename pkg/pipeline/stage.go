@@ -220,6 +220,7 @@ func (s *Stage[IN, OUT]) processThisStage() {
 
 readIncoming:
 	for {
+		_, task := trace.NewTask(s.Ctx, s.Name)
 		DebugPrintf("[%s] select-blocked on input: %s\n", s.Name, chanPtr(s.AggregatedIncomeCh))
 		select {
 		case <-s.StopCh:
@@ -290,6 +291,7 @@ readIncoming:
 				break readIncoming
 			}
 		} // end of select
+		task.End()
 	} // end of for-loop readIncoming
 
 	// Stop pipeline.
