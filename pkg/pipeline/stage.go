@@ -1,8 +1,10 @@
 package pipeline
 
 import (
+	"context"
 	"fmt"
 	"runtime"
+	"runtime/trace"
 	"strings"
 	"sync"
 
@@ -10,13 +12,15 @@ import (
 )
 
 type StageLike interface {
-	Prepare()
-	Resume()
+	Prepare(context.Context)
+	Resume(context.Context)
 	Base() *StageBase
 }
 
 type StageBase struct {
-	Name                      string       // Name of the stage.
+	Name                      string // Name of the stage.
+	Ctx                       context.Context
+	Task                      *trace.Task
 	ErrCh                     chan error   // To be read by the previous stage (or trigger, if this is Source).
 	StopCh                    chan None    // Indicates to this stage to stop.
 	NextErrChs                []chan error // Next stage's error channel.
@@ -116,7 +120,7 @@ func LinkStagesFanOut[IN, OUT, LAST any](
 
 // Prepare creates the necessary fields of the stage to be linked with others.
 // It MUST NOT spawn any goroutines at this point.
-func (s *Stage[IN, OUT]) Prepare() {
+func (s *Stage[IN, OUT]) Prepare(ctx context.Context) {
 	s.ErrCh = make(chan error)
 	s.StopCh = make(chan None)
 
@@ -138,7 +142,9 @@ func (s *Stage[IN, OUT]) Prepare() {
 
 // Resume resumes processing from this stage.
 // This function creates new channels for the incoming data, error and stop channels.
-func (s *Stage[IN, OUT]) Resume() {
+func (s *Stage[IN, OUT]) Resume(ctx context.Context) {
+	s.Ctx, s.Task = trace.NewTask(ctx, s.Name)
+
 	// Just before resuming, call the internal event function.
 	s.onResume()
 
@@ -202,6 +208,7 @@ func (s *Stage[IN, OUT]) breakPipelineAndWait(initialErr error) error {
 	close(s.StopCh)
 
 	DebugPrintf("[%s] all done, stage is stopped\n", s.Name)
+	s.Task.End()
 	return initialErr
 }
 

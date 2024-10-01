@@ -135,10 +135,10 @@ func TestManagerStart(t *testing.T) {
 			t.Logf("IDs:\n%s", strings.Join(IDs, "\n"))
 
 			tests.TestOrTimeout(t, tests.WithContext(ctx), func(t tests.T) {
-				manager.Resume()
+				manager.Resume(ctx)
 				processCertificates(t, manager, certs)
 				manager.Stop()
-				err := manager.Wait()
+				err := manager.Wait(ctx)
 				require.NoError(t, err)
 			})
 			verifyDB(ctx, t, conn, tc.expectedNCerts, tc.expectedNDomains)
@@ -227,10 +227,10 @@ func TestManagerResume(t *testing.T) {
 					}
 					stagedCerts := certs[S:E]
 
-					manager.Resume()
+					manager.Resume(ctx)
 					processCertificates(t, manager, stagedCerts)
 					manager.Stop()
-					err := manager.Wait()
+					err := manager.Wait(ctx)
 					require.NoError(t, err)
 				})
 			}
@@ -257,13 +257,13 @@ func TestMinimalAllocsManager(t *testing.T) {
 	manager := createManagerWithOutputFunction(t, ctx, conn, 2, pip.OutputSequentialCyclesAllowed)
 
 	// Now check the number of allocations happening inside the manager, once it runs.
-	manager.Resume()
+	manager.Resume(ctx)
 	processCertificates(t, manager, certs)
 	time.Sleep(100 * time.Millisecond)
 	var err error
 	allocsPerRun := tests.AllocsPerRun(func() {
 		manager.Stop()
-		err = manager.Wait()
+		err = manager.Wait(ctx)
 	})
 	require.NoError(t, err)
 	t.Logf("allocations = %d", allocsPerRun)

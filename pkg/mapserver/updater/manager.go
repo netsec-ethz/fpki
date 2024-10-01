@@ -123,20 +123,20 @@ func NewManager(
 	return m, err
 }
 
-func (m *Manager) Resume() {
+func (m *Manager) Resume(ctx context.Context) {
 	// Create a new source incoming channel.
 	m.IncomingCertChan = make(chan Certificate)
 
 	// Resume pipeline.
-	m.Pipeline.Resume()
+	m.Pipeline.Resume(ctx)
 }
 func (m *Manager) Stop() {
 	// Stop the source.
 	close(m.IncomingCertChan)
 }
 
-func (m *Manager) Wait() error {
-	return m.Pipeline.Wait()
+func (m *Manager) Wait(ctx context.Context) error {
+	return m.Pipeline.Wait(ctx)
 }
 
 func (m *Manager) createCertificateSource(workerCount int) *pip.Source[Certificate] {

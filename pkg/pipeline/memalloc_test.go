@@ -1,6 +1,7 @@
 package pipeline_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -11,6 +12,8 @@ import (
 
 func TestMemAllocationOverhead(t *testing.T) {
 	defer pipeline.PrintAllDebugLines()
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	defer cancelF()
 
 	outs := []int{1}
 	outChs := []int{0}
@@ -24,7 +27,7 @@ func TestMemAllocationOverhead(t *testing.T) {
 		pipeline.WithSequentialInputs[int, int](),
 		pipeline.WithSequentialOutputs[int, int](),
 	)
-	stage.Prepare()
+	stage.Prepare(ctx)
 
 	// Mock a sink.
 	sinkErrCh := make(chan error)
@@ -37,7 +40,7 @@ func TestMemAllocationOverhead(t *testing.T) {
 	}()
 
 	// Resume stage. It will stall until input from the source is given.
-	stage.Resume()
+	stage.Resume(ctx)
 
 	// Mock a source.
 	N := 1000

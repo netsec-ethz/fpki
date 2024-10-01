@@ -1,7 +1,9 @@
 package pipeline
 
 import (
+	"context"
 	"fmt"
+	"runtime/trace"
 
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
@@ -70,6 +72,7 @@ import (
 // 3.1. Go to 2.2.1.
 type Pipeline struct {
 	linkFunc func(p *Pipeline)
+	Ctx      context.Context // Running context.
 	Stages   []StageLike
 	Source   SourceLike
 	Sink     SinkLike
@@ -136,6 +139,7 @@ func WithAutoResumeAtStage(
 			go func() {
 				for {
 					for err := range newErrCh {
+						trace.Logf(p.Ctx, "autoresume", "err from target: %v", err)
 						DebugPrintf("[autoresume] err from target: %v\n", err)
 						// Pass it along.
 						origErrCh <- err
@@ -145,18 +149,20 @@ func WithAutoResumeAtStage(
 
 					// The target closed the error channel, check whether to resume automatically.
 					if !shouldResumeNow() {
+						trace.Log(p.Ctx, "autoresume", "stopping autoresume")
 						DebugPrintf("[autoresume] *************** closing sniffer error channel\n")
 						// The function indicates not to resume, close the new error channel.
 						close(origErrCh)
 						// And exit, as once not resuming means stopping.
 						return
 					}
+					trace.Log(p.Ctx, "autoresume", "autoresume confirmed")
 
 					DebugPrintf("[autoresume] request to resume: true. Affected stages: %v\n",
 						affectedStages)
 					// Auto resume was requested, prepare affected stages.
 					for i := len(affectedStages) - 1; i >= 0; i-- {
-						p.Stages[affectedStages[i]].Prepare()
+						p.Stages[affectedStages[i]].Prepare(p.Ctx)
 					}
 
 					// The target stage needs a new error and stop channels.
@@ -165,7 +171,8 @@ func WithAutoResumeAtStage(
 					target.Base().StopCh = make(chan None)
 
 					if sink, ok := target.(SinkLike); ok {
-						sink.PrepareSink()
+						trace.Log(p.Ctx, "autoresume", "target stage is a sink")
+						sink.PrepareSink(p.Ctx)
 					}
 					DebugPrintf("[autoresume] stages prepared\n")
 
@@ -174,10 +181,11 @@ func WithAutoResumeAtStage(
 
 					// Resume all affected and target stages.
 					for i := len(affectedStages) - 1; i >= 0; i-- {
-						p.Stages[affectedStages[i]].Resume()
+						p.Stages[affectedStages[i]].Resume(p.Ctx)
 					}
 					// Also the target stage.
-					target.Resume()
+					target.Resume(p.Ctx)
+					trace.Log(p.Ctx, "autoresume", "stages resumed")
 					DebugPrintf("[autoresume] stages resumed\n")
 				}
 			}()
@@ -197,21 +205,22 @@ func SinkStage[IN any](p *Pipeline) *Stage[IN, None] {
 	return SinkAsStage(p.Stages[len(p.Stages)-1].(*Sink[IN]))
 }
 
-func (p *Pipeline) Resume() {
+func (p *Pipeline) Resume(ctx context.Context) {
+	p.Ctx = ctx
 	p.prepare()
 	p.linkFunc(p)
 	// Now resume in reverse order
 	for i := len(p.Stages) - 1; i >= 0; i-- {
-		p.Stages[i].Resume()
+		p.Stages[i].Resume(ctx)
 	}
 }
 
-func (p *Pipeline) Wait() error {
+func (p *Pipeline) Wait(ctx context.Context) error {
 	// The first stage is a source?
 	if source, ok := p.Stages[0].(SourceLike); ok {
 		DebugPrintf("[pipeline] Wait on a source, chan is: %s.\n",
 			chanPtr(source.GetSourceBase().TopErrCh))
-		return source.Wait()
+		return source.Wait(ctx)
 	}
 
 	// It is not a source, just treat it as a stage.
@@ -222,7 +231,7 @@ func (p *Pipeline) Wait() error {
 
 func (p *Pipeline) prepare() {
 	for _, s := range p.Stages {
-		s.Prepare()
+		s.Prepare(p.Ctx)
 	}
 }
 

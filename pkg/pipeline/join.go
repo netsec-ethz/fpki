@@ -1,13 +1,10 @@
 package pipeline
 
 import (
+	"context"
 	"fmt"
+	"runtime/trace"
 )
-
-func JoinPipelines(pipelines ...*Pipeline) *Pipeline {
-	// deleteme
-	return nil
-}
 
 func JoinTwoPipelines[T any](p1, p2 *Pipeline) (*Pipeline, error) {
 	// Find sink of p1.
@@ -18,7 +15,7 @@ func JoinTwoPipelines[T any](p1, p2 *Pipeline) (*Pipeline, error) {
 	}
 
 	// The joining stage, acting as the "glue" between p1.sink and p2.source.
-	joiningStage := newJointStage(sink, source, p2)
+	joiningStage := newJointStage(sink, source, p1, p2)
 
 	// The pipeline stages contains all the stages from p1 except the sink, and a new joiningStage.
 	stages := make([]StageLike, 0)
@@ -60,6 +57,7 @@ type jointStage[T any] struct {
 	*StageBase
 	sink   *Sink[T]
 	source *Source[T]
+	p1     *Pipeline
 	p2     *Pipeline
 }
 
@@ -69,6 +67,7 @@ var _ SinkLike = (*jointStage[int])(nil)
 func newJointStage[T any](
 	sink *Sink[T],
 	source *Source[T],
+	firstPipeline *Pipeline,
 	secondPipeline *Pipeline,
 ) *jointStage[T] {
 	return &jointStage[T]{
@@ -77,29 +76,35 @@ func newJointStage[T any](
 		},
 		sink:   sink,
 		source: source,
+		p1:     firstPipeline,
 		p2:     secondPipeline,
 	}
 }
 
-func (j *jointStage[T]) Prepare() {
+func (j *jointStage[T]) Prepare(ctx context.Context) {
+	// Copy the context to the first and second pipelines.
+	j.p1.Ctx = ctx
+	j.p2.Ctx = ctx
+
 	// The second pipeline is prepared every time before calling sink.Resume()
-	j.sink.Prepare()
+	j.sink.Prepare(ctx)
 }
 
-func (j *jointStage[T]) PrepareSink() {
+func (j *jointStage[T]) PrepareSink(ctx context.Context) {
 	// PrepareSink should never be called on the jointStage, unless requesting autoresume
 	// on the jointStage itself, which is impossible.
 	// However, to allow users to pick up the stages from a joint pipeline and use them in a
 	// new, different pipeline, which configures autoresume on the sink of the joint pipeline,
 	// we allow the call and forward it to the previous sink.
-	j.sink.PrepareSink()
+	j.sink.PrepareSink(ctx)
 }
 
-func (j *jointStage[T]) Resume() {
+func (j *jointStage[T]) Resume(ctx context.Context) {
+	trace.Log(j.p1.Ctx, "join", "resuming joint stage")
 	// Calling the sink's Resume method will trigger the onResume event.
 	// The source is resumed right at the sink's onResume event, before executing the resuming
 	// of the sink.
-	j.sink.Resume()
+	j.sink.Resume(ctx)
 }
 
 // joinStages must be called once, after the new pipeline's stages have been prepared,
@@ -142,7 +147,8 @@ func (j *jointStage[T]) joinStages() {
 
 		// (2) Resume (which also prepares) the whole p2 pipeline.
 		DebugPrintf("[%s] resuming second pipeline\n", j.Name)
-		j.p2.Resume()
+		trace.Log(j.p1.Ctx, "join", "resuming second pipeline")
+		j.p2.Resume(j.p1.Ctx)
 
 		// (3) Set the p2.source's TopErr channel as one of the p1.sink's next err channels.
 		j.sink.NextErrChs = append(j.sink.NextErrChs, j.source.TopErrCh)

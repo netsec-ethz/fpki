@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime/pprof"
+	"runtime/trace"
 	"sort"
 	"strconv"
 	"strings"
@@ -54,6 +55,7 @@ func mainFunction() int {
 		fmt.Fprintf(os.Stderr, "Usage:\n%s directory\n", os.Args[0])
 		flag.PrintDefaults()
 	}
+	traceFile := flag.String("trace", "", "write a trace file")
 	cpuProfile := flag.String("cpuprofile", "", "write a CPU profile to file")
 	memProfile := flag.String("memprofile", "", "write a memory profile to file")
 	bundleSize := flag.Uint64("bundlesize", 0, "number of certificates after which a coalesce and "+
@@ -93,6 +95,10 @@ func mainFunction() int {
 
 	// Profiling:
 	stopProfiles := func() {
+		if *traceFile != "" {
+			trace.Stop()
+
+		}
 		if *cpuProfile != "" {
 			pprof.StopCPUProfile()
 		}
@@ -103,13 +109,24 @@ func mainFunction() int {
 			exitIfError(err)
 		}
 	}
+	if *traceFile != "" {
+		f, err := os.Create(*traceFile)
+		exitIfError(err)
+		err = trace.Start(f)
+		exitIfError(err)
+		defer func() {
+			exitIfError(f.Close())
+		}()
+	}
 	if *cpuProfile != "" {
 		f, err := os.Create(*cpuProfile)
 		exitIfError(err)
 		err = pprof.StartCPUProfile(f)
 		exitIfError(err)
+		defer func() {
+			exitIfError(f.Close())
+		}()
 	}
-	defer stopProfiles()
 
 	// Signals catching:
 	signals := make(chan os.Signal, 1)
@@ -138,12 +155,12 @@ func mainFunction() int {
 	}
 
 	if ingestCerts {
+		ctx, task := trace.NewTask(ctx, "ingest_files")
+		defer task.End()
 		// All GZ and CSV files found under the directory of the argument.
 		gzFiles, csvFiles := listOurFiles(flag.Arg(0))
 		fmt.Printf("# gzFiles: %d, # csvFiles: %d\n", len(gzFiles), len(csvFiles))
 
-		// dbManager := updater.NewManager(ctx, NumDBWriters, conn, MultiInsertSize,
-		// 	2*time.Second, printStats) // deleteme
 		proc, err := NewProcessor(
 			ctx,
 			conn,
@@ -170,11 +187,12 @@ func mainFunction() int {
 		fmt.Printf("[%s] Starting ingesting files ...\n",
 			time.Now().Format(time.StampMilli))
 		// Update certificates and chains, and wait until finished.
-		proc.Resume()
-		// // Resume in reverse order. // deleteme
-		// dbManager.Resume()
-		// proc.Resume()
-		exitIfError(proc.Wait())
+		proc.Resume(ctx)
+
+		exitIfError(proc.Wait(ctx))
+
+		stopProfiles()
+
 		return 0
 	}
 
@@ -194,6 +212,9 @@ func mainFunction() int {
 	// Close DB.
 	err = conn.Close()
 	exitIfError(err)
+
+	stopProfiles()
+
 	return 0
 }
 

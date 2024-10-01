@@ -111,12 +111,12 @@ func WithOnBundleFinished(fcn func()) processorOptions {
 	}
 }
 
-func (p *Processor) Resume() {
-	p.Pipeline.Resume()
+func (p *Processor) Resume(ctx context.Context) {
+	p.Pipeline.Resume(ctx)
 }
 
-func (p *Processor) Wait() error {
-	return p.Pipeline.Wait()
+func (p *Processor) Wait(ctx context.Context) error {
+	return p.Pipeline.Wait(ctx)
 }
 
 // AddGzFiles adds a CSV .gz file to the initial stage.

@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"context"
 	"strconv"
 	"testing"
 	"time"
@@ -13,6 +14,8 @@ import (
 // TestBasicJoinPipelines checks that joining two basic pipelines work.
 func TestBasicJoinPipelines(t *testing.T) {
 	defer PrintAllDebugLines()
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	defer cancelF()
 
 	// The pipelines are:
 	// p1: A[int]->B->C[string]
@@ -100,8 +103,8 @@ func TestBasicJoinPipelines(t *testing.T) {
 	jointPipeline, err := JoinTwoPipelines[string](p1, p2)
 	require.NoError(t, err)
 	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
-		jointPipeline.Resume()
-		err := jointPipeline.Wait()
+		jointPipeline.Resume(ctx)
+		err := jointPipeline.Wait(ctx)
 		require.NoError(t, err)
 	})
 	require.Equal(t, []string{"1", "2", "3", "4", "5"}, p2GotValues)
@@ -112,6 +115,8 @@ func TestBasicJoinPipelines(t *testing.T) {
 // TestBasicJoinPipelines checks that joining two basic pipelines work.
 func TestComplexJoinPipelines(t *testing.T) {
 	defer PrintAllDebugLines()
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	defer cancelF()
 
 	// The pipelines are:
 	// p1: A1[int] --> B1 --> D1[string]
@@ -277,8 +282,8 @@ func TestComplexJoinPipelines(t *testing.T) {
 	jointPipeline, err := JoinTwoPipelines[string](p1, p2)
 	require.NoError(t, err)
 	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
-		jointPipeline.Resume()
-		err := jointPipeline.Wait()
+		jointPipeline.Resume(ctx)
+		err := jointPipeline.Wait(ctx)
 		require.NoError(t, err)
 	})
 	require.Equal(t, []int{1, 2, 3, 5, 4, 6, 7, 8, 9, 10}, p2GotValues)

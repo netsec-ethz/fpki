@@ -1,5 +1,13 @@
 package pipeline
 
+import "context"
+
+type SourceLike interface {
+	StageLike
+	Wait(context.Context) error
+	GetSourceBase() *SourceBase
+}
+
 type Source[OUT any] struct {
 	*Stage[None, OUT]
 	SourceBase
@@ -124,13 +132,13 @@ func WithSourceSlice[OUT any](
 	)
 }
 
-func (s *Source[OUT]) Wait() error {
+func (s *Source[OUT]) Wait(ctx context.Context) error {
 	return <-s.TopErrCh
 }
 
-func (s *Source[OUT]) Prepare() {
+func (s *Source[OUT]) Prepare(ctx context.Context) {
 	// Regular stage preparation:
-	SourceAsStage(s).Prepare()
+	SourceAsStage(s).Prepare(ctx)
 
 	s.TopErrCh = make(chan error)
 	DebugPrintf("[%s] TopErr is %s, incoming[0] is %s\n",
@@ -161,12 +169,6 @@ func (s *Source[OUT]) Prepare() {
 			}
 		}
 	}(s.ErrCh)
-}
-
-type SourceLike interface {
-	StageLike
-	Wait() error
-	GetSourceBase() *SourceBase
 }
 
 type SourceBase struct {

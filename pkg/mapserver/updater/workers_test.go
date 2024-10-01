@@ -110,9 +110,9 @@ func TestCertWorkerAllocationsOverhead(t *testing.T) {
 	}()
 
 	// Resume stage but not yet source.
-	worker.Prepare()
+	worker.Prepare(ctx)
 	worker.NextErrChs[0] = sinkErrCh
-	worker.Resume()
+	worker.Resume(ctx)
 
 	time.Sleep(100 * time.Millisecond)
 	runtime.GC()
@@ -209,8 +209,8 @@ func TestDomainWorkerAllocationsOverhead(t *testing.T) {
 	}()
 
 	// Resume stage but not yet source.
-	worker.Prepare()
-	worker.Resume()
+	worker.Prepare(ctx)
+	worker.Resume(ctx)
 
 	time.Sleep(100 * time.Millisecond)
 	runtime.GC()

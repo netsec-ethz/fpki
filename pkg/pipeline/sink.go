@@ -1,8 +1,10 @@
 package pipeline
 
+import "context"
+
 type SinkLike interface {
 	StageLike
-	PrepareSink()
+	PrepareSink(context.Context)
 }
 type Sink[IN any] struct {
 	*Stage[IN, None]
@@ -37,7 +39,7 @@ func WithSinkFunction[IN any](
 	})
 }
 
-func (s *Sink[IN]) PrepareSink() {
+func (s *Sink[IN]) PrepareSink(ctx context.Context) {
 	// As a sink, our process function is already called every time there is new data.
 	// But we need to keep the stage going allowing to send none{} to the outgoing channel.
 	// We create a dummy channel for that.
@@ -56,12 +58,12 @@ func (s *Sink[IN]) PrepareSink() {
 	}(s.OutgoingChs[0], s.NextErrChs[0])
 }
 
-func (s *Sink[IN]) Prepare() {
+func (s *Sink[IN]) Prepare(ctx context.Context) {
 	// Regular stage preparation:
-	SinkAsStage(s).Prepare()
+	SinkAsStage(s).Prepare(ctx)
 
 	// Prepare the sink part.
-	s.PrepareSink()
+	s.PrepareSink(ctx)
 }
 
 func SinkAsStage[IN any](s *Sink[IN]) *Stage[IN, None] {
