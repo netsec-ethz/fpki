@@ -35,9 +35,6 @@ type MapUpdater struct {
 
 // NewMapUpdater: return a new map updater.
 func NewMapUpdater(config *db.Configuration, urls []string) (*MapUpdater, error) {
-	if len(urls) == 0 {
-		return nil, fmt.Errorf("No URLs")
-	}
 	// db conn for map updater
 	dbConn, err := mysql.Connect(config)
 	if err != nil {
