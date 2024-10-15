@@ -344,11 +344,14 @@ EOF
 
 } # end of `create_new_db` function
 
-
+if [ $# -ne 1 ]; then
+    echo "Must provide the DB name as the first argument to this script"
+    exit 1
+fi
 
 if [ "${BASH_SOURCE[0]}" -ef "$0" ]
 then
-  echo "This will destroy everything in the fpki database"
+  echo "This will destroy everything in the $1 database"
   read -p "Are you sure? (y/n) default=n " answer
   case ${answer:0:1} in
       y|Y )
@@ -357,6 +360,6 @@ then
           exit 1
       ;;
   esac
-  create_new_db fpki
+  create_new_db "$1"
 fi
 

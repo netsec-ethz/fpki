@@ -65,6 +65,29 @@ func ReadAllGzippedFile(filename string) ([]byte, error) {
 	return buff, r.Close()
 }
 
+// CertificatesFromFile uses a CertReader to read certificates from a file.
+// The file must encode the certificates in PEM format.
+func CertificatesFromPEMFile(filename string) ([]*ctx509.Certificate, error) {
+	f, err := os.Open(filename)
+	if err != nil {
+		return nil, err
+	}
+	r := NewCertReader(f)
+	certs := []*ctx509.Certificate{}
+	for {
+		newCerts := make([]*ctx509.Certificate, 5)
+		n, err := r.Read(newCerts)
+		if err != nil {
+			return nil, err
+		}
+		if n == 0 {
+			break
+		}
+		certs = append(certs, newCerts[:n]...)
+	}
+	return certs, nil
+}
+
 // CertificateFromFile uses a CertReader to read just one certificate. It returns nil if no
 // certificate was found. The file must encode the certificate in PEM format.
 func CertificateFromPEMFile(filename string) (*ctx509.Certificate, error) {

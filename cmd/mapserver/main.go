@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
@@ -22,6 +23,19 @@ import (
 const VERSION = "0.1.0"
 
 const waitForExitBeforePanicTime = 10 * time.Second
+
+type arrayFlags []string
+
+// String is an implementation of the flag.Value interface
+func (i *arrayFlags) String() string {
+	return fmt.Sprintf("%v", *i)
+}
+
+// Set is an implementation of the flag.Value interface
+func (i *arrayFlags) Set(value string) error {
+	*i = append(*i, value)
+	return nil
+}
 
 func main() {
 	os.Exit(mainFunc())
@@ -46,6 +60,8 @@ func mainFunc() int {
 	createSampleConfig := flag.Bool("createSampleConfig", false,
 		"Create configuration file specified by positional argument")
 	insertPolicyVar := flag.String("policyFile", "", "policy certificate file to be ingested into the mapserver")
+	var certChainFiles arrayFlags
+	flag.Var(&certChainFiles, "certChainFile", "a certificate chain file (including the chain) in PEM format to ingest into the mapserver.")
 	flag.Parse()
 
 	if showVersion {
@@ -65,6 +81,8 @@ func mainFunc() int {
 		err = writeSampleConfig()
 	case *insertPolicyVar != "":
 		err = insertPolicyFromFile(*insertPolicyVar)
+	case len(certChainFiles) != 0:
+		err = insertCertificatesFromFile(certChainFiles)
 	default:
 		err = run(*updateVar)
 	}
@@ -72,6 +90,78 @@ func mainFunc() int {
 	// We have finished. Probably the context created in run was been cancelled (exit request).
 	// Print message in case of error.
 	return manageError(err)
+}
+
+func insertCertificatesFromFile(certificatesFiles []string) error {
+	ctx := context.Background()
+	// Load configuration and insert certificates with it.
+	conf, err := config.ReadConfigFromFile(flag.Arg(0))
+	if err != nil {
+		return err
+	}
+	server, err := mapserver.NewMapServer(ctx, conf)
+	if err != nil {
+		return err
+	}
+	root, err := server.Conn.LoadRoot(ctx)
+	if err != nil {
+		return err
+	}
+
+	// read certificates from PEM files
+	leafs := []*ctx509.Certificate{}
+	chains := [][]*ctx509.Certificate{}
+	for _, certificatesFile := range certificatesFiles {
+		fmt.Printf("inserting certificate with chain from %s\n", certificatesFile)
+		newCerts, err := util.CertificatesFromPEMFile(certificatesFile)
+		if err != nil {
+			return err
+		}
+		leafs = append(leafs, newCerts[0])
+		chains = append(chains, newCerts[1:])
+	}
+
+	// extract necessary fields for ingesting certificates
+	certs, certIDs, parentCertIDs, domainNames := util.UnfoldCerts(leafs, chains)
+	certExpirations := make([]*time.Time, len(certs))
+	for i, cert := range certs {
+		expiration := cert.NotAfter
+		certExpirations[i] = &expiration
+	}
+
+	// ingest certificates
+	err = updater.UpdateWithKeepExisting(ctx, server.Conn, domainNames, certIDs, parentCertIDs, certs, certExpirations, nil)
+	if err != nil {
+		return err
+	}
+
+	if err := server.Updater.CoalescePayloadsForDirtyDomains(ctx); err != nil {
+		return fmt.Errorf("coalescing payloads: %w", err)
+	}
+
+	// Update SMT.
+	if err := server.Updater.UpdateSMT(ctx); err != nil {
+		return fmt.Errorf("updating SMT: %w", err)
+	}
+
+	// Cleanup.
+	if err := server.Updater.Conn.CleanupDirty(ctx); err != nil {
+		return fmt.Errorf("cleaning up DB: %w", err)
+	}
+
+	newRoot, err := server.Conn.LoadRoot(ctx)
+	if err != nil {
+		return err
+	}
+	if root == nil {
+		fmt.Printf("MHT root value initially set to %v\n", newRoot)
+	} else if bytes.Equal(root[:], newRoot[:]) {
+		fmt.Printf("MHT root value was not updated (%v)\n", newRoot)
+	} else {
+		fmt.Printf("MHT root value updated from %v to %v\n", root, newRoot)
+	}
+
+	return nil
 }
 
 func insertPolicyFromFile(policyFile string) error {
