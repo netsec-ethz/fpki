@@ -3,7 +3,6 @@ package pipeline
 import (
 	"context"
 	"fmt"
-	"runtime/trace"
 
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
@@ -139,7 +138,6 @@ func WithAutoResumeAtStage(
 			go func() {
 				for {
 					for err := range newErrCh {
-						trace.Logf(p.Ctx, "autoresume", "err from target: %v", err)
 						DebugPrintf("[autoresume] err from target: %v\n", err)
 						// Pass it along.
 						origErrCh <- err
@@ -149,14 +147,12 @@ func WithAutoResumeAtStage(
 
 					// The target closed the error channel, check whether to resume automatically.
 					if !shouldResumeNow() {
-						trace.Log(p.Ctx, "autoresume", "stopping autoresume")
 						DebugPrintf("[autoresume] *************** closing sniffer error channel\n")
 						// The function indicates not to resume, close the new error channel.
 						close(origErrCh)
 						// And exit, as once not resuming means stopping.
 						return
 					}
-					trace.Log(p.Ctx, "autoresume", "autoresume confirmed")
 
 					DebugPrintf("[autoresume] request to resume: true. Affected stages: %v\n",
 						affectedStages)
@@ -171,7 +167,6 @@ func WithAutoResumeAtStage(
 					target.Base().StopCh = make(chan None)
 
 					if sink, ok := target.(SinkLike); ok {
-						trace.Log(p.Ctx, "autoresume", "target stage is a sink")
 						sink.PrepareSink(p.Ctx)
 					}
 					DebugPrintf("[autoresume] stages prepared\n")
@@ -185,7 +180,6 @@ func WithAutoResumeAtStage(
 					}
 					// Also the target stage.
 					target.Resume(p.Ctx)
-					trace.Log(p.Ctx, "autoresume", "stages resumed")
 					DebugPrintf("[autoresume] stages resumed\n")
 				}
 			}()

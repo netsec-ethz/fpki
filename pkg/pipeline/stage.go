@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"runtime"
-	"runtime/trace"
 	"strings"
 	"sync"
 
@@ -18,9 +17,7 @@ type StageLike interface {
 }
 
 type StageBase struct {
-	Name                      string // Name of the stage.
-	Ctx                       context.Context
-	Task                      *trace.Task
+	Name                      string       // Name of the stage.
 	ErrCh                     chan error   // To be read by the previous stage (or trigger, if this is Source).
 	StopCh                    chan None    // Indicates to this stage to stop.
 	NextErrChs                []chan error // Next stage's error channel.
@@ -143,8 +140,6 @@ func (s *Stage[IN, OUT]) Prepare(ctx context.Context) {
 // Resume resumes processing from this stage.
 // This function creates new channels for the incoming data, error and stop channels.
 func (s *Stage[IN, OUT]) Resume(ctx context.Context) {
-	s.Ctx, s.Task = trace.NewTask(ctx, s.Name)
-
 	// Just before resuming, call the internal event function.
 	s.onResume()
 
@@ -208,7 +203,6 @@ func (s *Stage[IN, OUT]) breakPipelineAndWait(initialErr error) error {
 	close(s.StopCh)
 
 	DebugPrintf("[%s] all done, stage is stopped\n", s.Name)
-	s.Task.End()
 	return initialErr
 }
 
@@ -220,7 +214,6 @@ func (s *Stage[IN, OUT]) processThisStage() {
 
 readIncoming:
 	for {
-		_, task := trace.NewTask(s.Ctx, s.Name)
 		DebugPrintf("[%s] select-blocked on input: %s\n", s.Name, chanPtr(s.AggregatedIncomeCh))
 		select {
 		case <-s.StopCh:
@@ -291,7 +284,6 @@ readIncoming:
 				break readIncoming
 			}
 		} // end of select
-		task.End()
 	} // end of for-loop readIncoming
 
 	// Stop pipeline.

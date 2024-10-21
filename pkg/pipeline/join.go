@@ -3,7 +3,6 @@ package pipeline
 import (
 	"context"
 	"fmt"
-	"runtime/trace"
 )
 
 func JoinTwoPipelines[T any](p1, p2 *Pipeline) (*Pipeline, error) {
@@ -100,7 +99,6 @@ func (j *jointStage[T]) PrepareSink(ctx context.Context) {
 }
 
 func (j *jointStage[T]) Resume(ctx context.Context) {
-	trace.Log(j.p1.Ctx, "join", "resuming joint stage")
 	// Calling the sink's Resume method will trigger the onResume event.
 	// The source is resumed right at the sink's onResume event, before executing the resuming
 	// of the sink.
@@ -147,7 +145,6 @@ func (j *jointStage[T]) joinStages() {
 
 		// (2) Resume (which also prepares) the whole p2 pipeline.
 		DebugPrintf("[%s] resuming second pipeline\n", j.Name)
-		trace.Log(j.p1.Ctx, "join", "resuming second pipeline")
 		j.p2.Resume(j.p1.Ctx)
 
 		// (3) Set the p2.source's TopErr channel as one of the p1.sink's next err channels.

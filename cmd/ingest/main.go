@@ -8,7 +8,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime/pprof"
-	"runtime/trace"
 	"sort"
 	"strconv"
 	"strings"
@@ -55,7 +54,6 @@ func mainFunction() int {
 		fmt.Fprintf(os.Stderr, "Usage:\n%s directory\n", os.Args[0])
 		flag.PrintDefaults()
 	}
-	traceProfile := flag.String("trace", "", "write a trace file")
 	cpuProfile := flag.String("cpuprofile", "", "write a CPU profile to file")
 	memProfile := flag.String("memprofile", "", "write a memory profile to file")
 	bundleSize := flag.Uint64("bundlesize", 0, "number of certificates after which a coalesce and "+
@@ -96,9 +94,7 @@ func mainFunction() int {
 	// Profiling:
 	stopProfiles := func() {
 		fmt.Fprintln(os.Stderr, "\nStopping profiling")
-		if *traceProfile != "" {
-			trace.Stop()
-		}
+
 		if *cpuProfile != "" {
 			pprof.StopCPUProfile()
 		}
@@ -109,15 +105,7 @@ func mainFunction() int {
 			exitIfError(err)
 		}
 	}
-	if *traceProfile != "" {
-		f, err := os.Create(*traceProfile)
-		exitIfError(err)
-		err = trace.Start(f)
-		exitIfError(err)
-		defer func() {
-			exitIfError(f.Close())
-		}()
-	}
+
 	if *cpuProfile != "" {
 		f, err := os.Create(*cpuProfile)
 		exitIfError(err)
@@ -155,8 +143,6 @@ func mainFunction() int {
 	}
 
 	if ingestCerts {
-		ctx, task := trace.NewTask(ctx, "ingest_files")
-		defer task.End()
 		// All GZ and CSV files found under the directory of the argument.
 		gzFiles, csvFiles := listOurFiles(flag.Arg(0))
 		fmt.Printf("# gzFiles: %d, # csvFiles: %d\n", len(gzFiles), len(csvFiles))
