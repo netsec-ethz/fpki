@@ -1,30 +1,86 @@
+//go:build trace
+
 package tracing
 
 import (
 	"context"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 	"go.opentelemetry.io/otel/trace"
 )
 
-// -------------------------------------------------------------------------------------------
-
 var tracer trace.Tracer
 
-func newExporter(ctx context.Context) /* (someExporter.Exporter, error) */ {
-	// Your preferred exporter: console, jaeger, zipkin, OTLP, etc.
+// Initialize enables tracing by using the OTLP exporter (e.g. Jaeger).
+func Initialize(ctx context.Context, serviceName string) (func() error, error) {
+	exporter, err := newExporterGrpc(ctx)
+	if err != nil {
+		return nil, err
+	}
 
+	tp := newTraceProvider(exporter, serviceName)
+	otel.SetTracerProvider(tp)
+
+	tracer = tp.Tracer("fpki")
+
+	atExit := func() error {
+		return tp.Shutdown(ctx)
+	}
+
+	return atExit, nil
 }
 
-func newTraceProvider(exp sdktrace.SpanExporter) *sdktrace.TracerProvider {
-	// Ensure default SDK resources and the required service name are set.
+// Tracer returns the current tracer. If not initialized, it will be nil.
+func Tracer() trace.Tracer {
+	return tracer
+}
+
+// T is an alias for Tracer()
+func T() trace.Tracer {
+	return Tracer()
+}
+
+type Traced[T any] struct {
+	Traces traceDetails
+	Data   T
+}
+
+func WrapTrace[T any](ctx context.Context, value T) Traced[T] {
+	return Traced[T]{
+		Data:   value,
+		Traces: extractTraceDetails(ctx),
+	}
+}
+
+func UnwrapTrace[T any](traced Traced[T]) (context.Context, T) {
+	return newTracingContext(traced.Traces), traced.Data
+}
+
+func newExporterHttp(ctx context.Context) (sdktrace.SpanExporter, error) {
+	return otlptracehttp.New(
+		ctx,
+		otlptracehttp.WithInsecure(),
+	)
+}
+
+func newExporterGrpc(ctx context.Context) (sdktrace.SpanExporter, error) {
+	return otlptracegrpc.New(
+		ctx,
+		otlptracegrpc.WithInsecure(),
+	)
+}
+
+func newTraceProvider(exp sdktrace.SpanExporter, serviceName string) *sdktrace.TracerProvider {
 	r, err := resource.Merge(
 		resource.Default(),
 		resource.NewWithAttributes(
 			semconv.SchemaURL,
-			semconv.ServiceName("ExampleService"),
+			semconv.ServiceName(serviceName),
 		),
 	)
 
@@ -38,63 +94,42 @@ func newTraceProvider(exp sdktrace.SpanExporter) *sdktrace.TracerProvider {
 	)
 }
 
-// -------------------------------------------------------------------------------------------
+// Code based on comments from:
+// https://www.reddit.com/r/golang/comments/1d1srg3/tracing_async_jobs_across_multiple_go_components
 
-// From https://www.reddit.com/r/golang/comments/1d1srg3/tracing_async_jobs_across_multiple_go_components/
+type ctxKey struct{}
 
-type ctxKey string
-
-const traceDetailsKey = ctxKey("traceDetails")
-
-type TraceDetails struct {
+type traceDetails struct {
 	TraceID trace.TraceID
 	SpanID  trace.SpanID
-	User    string // deleteme
 }
 
-type Traced[T any] struct {
-	Traces TraceDetails
-	Data   T
+// injectTraceDetails adds TraceDetails to the context.
+func injectTraceDetails(ctx context.Context, details traceDetails) context.Context {
+	return context.WithValue(ctx, ctxKey{}, details)
 }
 
-func EnrichWithTraceDetails[T any](data T, traceDetails TraceDetails) Traced[T] {
-	return Traced[T]{
-		Traces: traceDetails,
-		Data:   data,
-	}
-}
-
-// InjectTraceDetails adds TraceDetails to the context.
-func InjectTraceDetails(ctx context.Context, details TraceDetails) context.Context {
-	return context.WithValue(ctx, traceDetailsKey, details)
-}
-
-// ExtractTraceDetails retrieves TraceDetails from the context.
+// extractTraceDetails retrieves TraceDetails from the context.
 // If not found, it falls back to extracting a SpanContext and converting it.
-func ExtractTraceDetails(ctx context.Context) TraceDetails {
-	if traceDetails, ok := ctx.Value(traceDetailsKey).(TraceDetails); ok {
+func extractTraceDetails(ctx context.Context) traceDetails {
+	if traceDetails, ok := ctx.Value(ctxKey{}).(traceDetails); ok {
 		return traceDetails
 	}
-	return traceDetailsFromSpanContext(trace.SpanContextFromContext(ctx))
+	spanCtx := trace.SpanContextFromContext(ctx)
+	return traceDetails{
+		TraceID: spanCtx.TraceID(),
+		SpanID:  spanCtx.SpanID(),
+	}
 }
 
-// NewTracingContext creates a new context with a SpanContext derived from TraceDetails.
-func NewTracingContext(details TraceDetails) context.Context {
+// newTracingContext creates a new context with a SpanContext derived from TraceDetails.
+func newTracingContext(details traceDetails) context.Context {
 	spanCtx := createSpanContextFromTraceDetails(details)
 	return trace.ContextWithSpanContext(context.Background(), spanCtx)
 }
 
-// traceDetailsFromSpanContext creates TraceDetails from a SpanContext.
-func traceDetailsFromSpanContext(ctx trace.SpanContext) TraceDetails {
-	return TraceDetails{
-		TraceID: ctx.TraceID(),
-		SpanID:  ctx.SpanID(),
-		User:    "", // User is empty as there's no user data in SpanContext
-	}
-}
-
 // createSpanContextFromTraceDetails creates a SpanContext from TraceDetails.
-func createSpanContextFromTraceDetails(details TraceDetails) trace.SpanContext {
+func createSpanContextFromTraceDetails(details traceDetails) trace.SpanContext {
 	return trace.NewSpanContext(trace.SpanContextConfig{
 		TraceID:    details.TraceID,
 		SpanID:     details.SpanID,
