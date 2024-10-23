@@ -5,6 +5,7 @@ package tracing
 import (
 	"context"
 
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 )
@@ -22,6 +23,20 @@ func Tracer() trace.Tracer {
 
 func T() trace.Tracer {
 	return Tracer()
+}
+
+type timing struct{}
+
+func Now() timing {
+	return timing{}
+}
+
+func Duration(description string, since timing) attribute.KeyValue {
+	return attribute.String(description, "")
+}
+
+func Since(last *timing) attribute.KeyValue {
+	return Duration("duration", *last)
 }
 
 type Traced[T any] struct {

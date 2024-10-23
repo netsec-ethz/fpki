@@ -4,8 +4,10 @@ package tracing
 
 import (
 	"context"
+	"time"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -43,6 +45,24 @@ func Tracer() trace.Tracer {
 // T is an alias for Tracer()
 func T() trace.Tracer {
 	return Tracer()
+}
+
+type timing struct {
+	now time.Time
+}
+
+func Now() timing {
+	return timing{time.Now()}
+}
+
+func Duration(description string, since timing) attribute.KeyValue {
+	return attribute.String(description, time.Since(since.now).String())
+}
+
+func Since(last *timing) attribute.KeyValue {
+	kv := Duration("duration", *last)
+	last.now = time.Now()
+	return kv
 }
 
 type Traced[T any] struct {

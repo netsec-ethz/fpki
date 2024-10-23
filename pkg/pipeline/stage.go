@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/netsec-ethz/fpki/pkg/tracing"
 	tr "github.com/netsec-ethz/fpki/pkg/tracing"
 	"github.com/netsec-ethz/fpki/pkg/util"
 	"go.opentelemetry.io/otel/attribute"
@@ -225,11 +226,15 @@ func (s *Stage[IN, OUT]) processThisStage() {
 	s.Ctx = ctx
 	s.Span = span
 
+	lastEvent := tracing.Now()
+
 readIncoming:
 	for {
 
 		DebugPrintf("[%s] select-blocked on input: %s\n", s.Name, chanPtr(s.AggregatedIncomeCh))
-		s.Span.AddEvent("waiting")
+		s.Span.AddEvent("waiting-starts", trace.WithAttributes(
+			tracing.Since(&lastEvent),
+		))
 
 		select {
 		case <-s.StopCh:
@@ -243,7 +248,9 @@ readIncoming:
 			break readIncoming
 
 		case in, ok := <-s.AggregatedIncomeCh:
-			s.Span.AddEvent("incoming")
+			s.Span.AddEvent("waited-for-incoming", trace.WithAttributes(
+				tracing.Since(&lastEvent),
+			))
 			if DebugEnabled {
 				// Need this if-guard to prevent the arguments from being evaluated by the compiler,
 				// because if it does, it will allocate memory for "in" when e.g. IN = Certificate.
@@ -279,7 +286,9 @@ readIncoming:
 			}
 
 			// We have multiple outputs to multiple channels.
-			s.Span.AddEvent("blocked-sending")
+			s.Span.AddEvent("processed", trace.WithAttributes(
+				tracing.Since(&lastEvent),
+			))
 			DebugPrintf("[%s] sending %d outputs to channels %v\n", s.Name, len(outs), outChIndxs)
 			failedIndices := s.sendOutputs(
 				outs,
@@ -289,6 +298,7 @@ readIncoming:
 				&foundError,
 			)
 			s.Span.AddEvent("sent", trace.WithAttributes(
+				tracing.Since(&lastEvent),
 				attribute.Int("num-failed-indices", len(failedIndices)),
 			))
 			DebugPrintf("[%s] sendingError = %v, shouldReturn = %v, shouldBreak = %v\n",
