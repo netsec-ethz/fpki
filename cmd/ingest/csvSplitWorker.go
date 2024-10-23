@@ -37,7 +37,6 @@ func NewCsvSplitWorker(p *Processor) *csvSplitWorker {
 	w.Stage = pip.NewStage[util.CsvFile, line](
 		"csv_split",
 		pip.WithMultiOutputChannels[util.CsvFile, line](p.NumWorkers),
-		pip.WithSequentialOutputs[util.CsvFile, line](),
 		pip.WithProcessFunction(
 			func(in util.CsvFile) ([]line, []int, error) {
 				ctx, span := tr.T().Start(w.Stage.Ctx, "csv_split-new-file")

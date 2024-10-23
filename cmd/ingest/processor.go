@@ -182,7 +182,6 @@ func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 				return nil, nil, pip.NoMoreData
 			},
 		),
-		pip.WithSequentialOutputs[pip.None, util.CsvFile](),
 	)
 
 	// Create CSV split worker.
@@ -307,7 +306,6 @@ func (p *Processor) createCertificatePtrSink() *pip.Sink[*updater.Certificate] {
 	return pip.NewSink[*updater.Certificate](
 		"certSink",
 		pip.WithMultiInputChannels[*updater.Certificate, pip.None](p.NumWorkers),
-		// pip.WithSequentialInputs[*updater.Certificate, pip.None](),
 		pip.WithOnNoMoreData[*updater.Certificate, pip.None](func() ([]pip.None, []int, error) {
 			p.certSinkHasNoMoreData = true // Flag that the pipeline has no more data to process.
 			return nil, nil, nil

@@ -53,8 +53,6 @@ func NewCertPtrWorker(
 	w.Stage = pip.NewStage[*Certificate, *DirtyDomain](
 		name,
 		pip.WithMultiOutputChannels[*Certificate, *DirtyDomain](workerCount),
-		// pip.WithSequentialOutputs[*Certificate, *DirtyDomain](),
-		// pip.WithSequentialInputs[*Certificate, *DirtyDomain](),
 		pip.WithProcessFunction(
 			func(cert *Certificate) ([]*DirtyDomain, []int, error) {
 				w.Certs = append(w.Certs, cert)

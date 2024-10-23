@@ -60,7 +60,6 @@ func NewDomainPtrWorker(
 	// specific channel.
 	w.Sink = pip.NewSink(
 		fmt.Sprintf("domain_worker_%02d", id),
-		// pip.WithSequentialInputs[*DirtyDomain, pip.None](),
 		pip.WithSinkFunction(
 			func(domain *DirtyDomain) error {
 				var err error

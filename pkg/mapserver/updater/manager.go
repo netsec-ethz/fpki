@@ -153,7 +153,6 @@ func (m *Manager) createCertificatePtrSource(workerCount int) *pip.Source[*Certi
 	return pip.NewSource[*Certificate](
 		"incoming_certs",
 		pip.WithMultiOutputChannels[pip.None, *Certificate](workerCount),
-		// pip.WithSequentialOutputs[pip.None, *Certificate](),
 		pip.WithSourceChannel(&m.IncomingCertPtrChan, func(in *Certificate) (int, error) {
 			return int(m.ShardFuncCert(&in.CertID)), nil
 		}),
