@@ -1,7 +1,6 @@
 package updater
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
@@ -30,14 +29,13 @@ type DomainPtrWorker struct {
 }
 
 func NewDomainPtrWorker(
-	ctx context.Context,
 	id int,
 	m *Manager,
 	conn db.Conn,
 	workerCount int,
 ) *DomainPtrWorker {
 	w := &DomainPtrWorker{
-		baseWorker: *newBaseWorker(ctx, id, m, conn),
+		baseWorker: *newBaseWorker(id, m, conn),
 
 		// Create a certificate slice where all the received certificates will end up.
 		Domains: make([]*DirtyDomain, 0, m.MultiInsertSize),

@@ -34,7 +34,6 @@ type Manager struct {
 // It requires using the IncomingCertPtrChan instead of the other one, and calls to the
 // *Ptr* functions instead of the current ones, e.g. NewCertPtrWorker, createCertificateSource,...
 func NewManager(
-	ctx context.Context,
 	workerCount int,
 	conn db.Conn,
 	multiInsertSize int,
@@ -67,7 +66,7 @@ func NewManager(
 	// Stage 1-to-1: cert to DB and output domains.
 	certStages := make([]pip.StageLike, workerCount)
 	for i := range certWorkers {
-		certWorkers[i] = NewCertWorker(ctx, i, m, conn, workerCount)
+		certWorkers[i] = NewCertWorker(i, m, conn, workerCount)
 		certStages[i] = certWorkers[i].Stage
 	}
 
@@ -76,7 +75,7 @@ func NewManager(
 	// Pure sink objects:
 	domainStages := make([]pip.StageLike, workerCount)
 	for i := range domainWorkers {
-		domainWorkers[i] = NewDomainWorker(ctx, i, m, conn, workerCount)
+		domainWorkers[i] = NewDomainWorker(i, m, conn, workerCount)
 		domainStages[i] = domainWorkers[i].Sink
 	}
 

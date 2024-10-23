@@ -1,7 +1,6 @@
 package updater
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -32,14 +31,13 @@ type CertWorker struct {
 }
 
 func NewCertWorker(
-	ctx context.Context,
 	id int,
 	m *Manager,
 	conn db.Conn,
 	workerCount int,
 ) *CertWorker {
 	w := &CertWorker{
-		baseWorker: *newBaseWorker(ctx, id, m, conn),
+		baseWorker: *newBaseWorker(id, m, conn),
 		hasher:     *common.NewHasher(),
 
 		Certs:   make([]Certificate, 0, m.MultiInsertSize),

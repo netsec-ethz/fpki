@@ -66,7 +66,6 @@ func NewProcessor(
 
 	// Create the DB manager.
 	manager, err := updater.NewManager(
-		p.Ctx,
 		p.NumDBWriters,
 		conn,
 		multiInsertSize,
