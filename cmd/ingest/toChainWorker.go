@@ -9,6 +9,8 @@ import (
 	"time"
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/netsec-ethz/fpki/cmd/ingest/cache"
 	"github.com/netsec-ethz/fpki/pkg/common"
@@ -52,7 +54,11 @@ func NewLineToChainWorker(p *Processor, numWorker int) *lineToChainWorker {
 		name,
 		pip.WithProcessFunction(
 			func(in line) ([]certChain, []int, error) {
+				t0 := time.Now()
 				chain, err := w.parseLine(p, &in)
+				w.Stage.Span.AddEvent("parsed", trace.WithAttributes(
+					attribute.String("duration", time.Since(t0).String()),
+				))
 				if chain == nil {
 					// Skipped line, return nothing.
 					return nil, nil, err

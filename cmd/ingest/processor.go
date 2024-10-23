@@ -23,6 +23,7 @@ import (
 		   ...
 */
 type Processor struct {
+	Ctx              context.Context
 	CsvFiles         []util.CsvFile
 	NumWorkers       int
 	NumDBWriters     int
@@ -45,6 +46,7 @@ func NewProcessor(
 ) (*Processor, error) {
 	// Create the processor that will hold all the information and the pipeline.
 	p := &Processor{
+		Ctx:              ctx,
 		NumWorkers:       1,              // Default to just 1 worker.
 		NumDBWriters:     1,              // Default to 1 db writer.
 		BundleSize:       math.MaxUint64, // Default to "no limit",
@@ -63,8 +65,14 @@ func NewProcessor(
 	}
 
 	// Create the DB manager.
-	manager, err :=
-		updater.NewManager(ctx, p.NumDBWriters, conn, multiInsertSize, statsUpdatePeriod, statsUpdateFun)
+	manager, err := updater.NewManager(
+		p.Ctx,
+		p.NumDBWriters,
+		conn,
+		multiInsertSize,
+		statsUpdatePeriod,
+		statsUpdateFun,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -111,12 +119,12 @@ func WithOnBundleFinished(fcn func()) processorOptions {
 	}
 }
 
-func (p *Processor) Resume(ctx context.Context) {
-	p.Pipeline.Resume(ctx)
+func (p *Processor) Resume() {
+	p.Pipeline.Resume(p.Ctx)
 }
 
-func (p *Processor) Wait(ctx context.Context) error {
-	return p.Pipeline.Wait(ctx)
+func (p *Processor) Wait() error {
+	return p.Pipeline.Wait(p.Ctx)
 }
 
 // AddGzFiles adds a CSV .gz file to the initial stage.
@@ -195,7 +203,10 @@ func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 	// Create sink for certificate pointers.
 	sink := p.createCertificateSink()
 
-	stages := []pip.StageLike{source, splitter.Stage}
+	stages := []pip.StageLike{
+		source,
+		splitter.Stage,
+	}
 	for _, w := range lineToChainWorkers {
 		stages = append(stages, w.Stage)
 	}

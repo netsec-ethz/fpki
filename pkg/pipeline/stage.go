@@ -7,7 +7,10 @@ import (
 	"strings"
 	"sync"
 
+	tr "github.com/netsec-ethz/fpki/pkg/tracing"
 	"github.com/netsec-ethz/fpki/pkg/util"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type StageLike interface {
@@ -17,6 +20,8 @@ type StageLike interface {
 }
 
 type StageBase struct {
+	Ctx                       context.Context // Running context of this stage.
+	Span                      trace.Span
 	Name                      string       // Name of the stage.
 	ErrCh                     chan error   // To be read by the previous stage (or trigger, if this is Source).
 	StopCh                    chan None    // Indicates to this stage to stop.
@@ -118,6 +123,7 @@ func LinkStagesFanOut[IN, OUT, LAST any](
 // Prepare creates the necessary fields of the stage to be linked with others.
 // It MUST NOT spawn any goroutines at this point.
 func (s *Stage[IN, OUT]) Prepare(ctx context.Context) {
+	s.Ctx = ctx
 	s.ErrCh = make(chan error)
 	s.StopCh = make(chan None)
 
@@ -140,6 +146,8 @@ func (s *Stage[IN, OUT]) Prepare(ctx context.Context) {
 // Resume resumes processing from this stage.
 // This function creates new channels for the incoming data, error and stop channels.
 func (s *Stage[IN, OUT]) Resume(ctx context.Context) {
+	s.Ctx = ctx
+
 	// Just before resuming, call the internal event function.
 	s.onResume()
 
@@ -212,9 +220,17 @@ func (s *Stage[IN, OUT]) processThisStage() {
 	var shouldBreakReadingIncoming bool
 	var sendingError bool
 
+	ctx, span := tr.T().Start(s.Ctx, s.Name)
+	defer span.End()
+	s.Ctx = ctx
+	s.Span = span
+
 readIncoming:
 	for {
+
 		DebugPrintf("[%s] select-blocked on input: %s\n", s.Name, chanPtr(s.AggregatedIncomeCh))
+		s.Span.AddEvent("waiting")
+
 		select {
 		case <-s.StopCh:
 			// We have been instructed to stop, without reading any other channel.
@@ -227,6 +243,7 @@ readIncoming:
 			break readIncoming
 
 		case in, ok := <-s.AggregatedIncomeCh:
+			s.Span.AddEvent("incoming")
 			if DebugEnabled {
 				// Need this if-guard to prevent the arguments from being evaluated by the compiler,
 				// because if it does, it will allocate memory for "in" when e.g. IN = Certificate.
@@ -262,6 +279,7 @@ readIncoming:
 			}
 
 			// We have multiple outputs to multiple channels.
+			s.Span.AddEvent("blocked-sending")
 			DebugPrintf("[%s] sending %d outputs to channels %v\n", s.Name, len(outs), outChIndxs)
 			failedIndices := s.sendOutputs(
 				outs,
@@ -270,6 +288,9 @@ readIncoming:
 				&sendingError,
 				&foundError,
 			)
+			s.Span.AddEvent("sent", trace.WithAttributes(
+				attribute.Int("num-failed-indices", len(failedIndices)),
+			))
 			DebugPrintf("[%s] sendingError = %v, shouldReturn = %v, shouldBreak = %v\n",
 				s.Name, sendingError, shouldReturn, shouldBreakReadingIncoming)
 			if sendingError {
