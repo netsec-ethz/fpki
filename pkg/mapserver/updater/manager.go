@@ -40,9 +40,8 @@ func NewManager(
 	statsUpdateFreq time.Duration,
 	statsUpdateFunc func(*Stats),
 ) (*Manager, error) {
-	// Compute how many bits we need to cover N partitions (i.e. ceil(log2(N-1)),
-	// doable by computing the bit length of N-1 even if not a power of 2.
-	nBits := int(util.Log2(uint(workerCount - 1)))
+	// Compute how many bits we need to cover N partitions (i.e. log2(N).
+	nBits := int(util.Log2(uint(workerCount)))
 
 	selectPartition := func(id *common.SHA256Output) uint {
 		return mysql.PartitionByIdMSB(id, nBits)
