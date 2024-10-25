@@ -171,7 +171,7 @@ func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 	// Prepare source. It opens CSV files based on the filenames stored in the processor.
 	csvFileIndex := 0
 	source := pip.NewSource[util.CsvFile](
-		"files",
+		"open-csv-files",
 		pip.WithSourceFunction(
 			func() ([]util.CsvFile, []int, error) {
 				defer func() { csvFileIndex++ }()

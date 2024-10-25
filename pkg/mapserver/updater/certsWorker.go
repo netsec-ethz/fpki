@@ -7,7 +7,6 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
-	tr "github.com/netsec-ethz/fpki/pkg/tracing"
 	"github.com/netsec-ethz/fpki/pkg/util"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -89,7 +88,7 @@ func NewCertWorker(
 // processBundle processes a bundle of certificates and extracts their associated domains.
 // The function resets the certificate bundle slice to zero size after it is done.
 func (w *CertWorker) processBundle() error {
-	ctx, span := tr.T().Start(w.Ctx, "process-cert-bundle")
+	ctx, span := w.Stage.Tracer.Start(w.Ctx, "process-cert-bundle")
 	defer span.End()
 	pip.DebugPrintf("[%s] processing bundle\n", w.Stage.Name)
 	if len(w.Certs) == 0 {
@@ -98,7 +97,7 @@ func (w *CertWorker) processBundle() error {
 
 	// Insert the certificates into the DB.
 	{
-		_, span := tr.T().Start(ctx, "insert-in-db")
+		_, span := w.Stage.Tracer.Start(ctx, "insert-in-db")
 		defer span.End()
 		span.SetAttributes(
 			attribute.Int("num", len(w.Certs)),
@@ -111,7 +110,7 @@ func (w *CertWorker) processBundle() error {
 
 	// Extract the associated domain objects. The domains stay in w.Domains.
 	{
-		_, span := tr.T().Start(ctx, "extract-domains")
+		_, span := w.Stage.Tracer.Start(ctx, "extract-domains")
 		defer span.End()
 		w.extractDomains()
 		span.SetAttributes(
@@ -121,7 +120,7 @@ func (w *CertWorker) processBundle() error {
 
 	{
 		// Reuse storage.
-		_, span := tr.T().Start(ctx, "reset-certs-slice")
+		_, span := w.Stage.Tracer.Start(ctx, "reset-certs-slice")
 		defer span.End()
 
 		w.Certs = w.Certs[:0] // Reuse storage, but reset slice.

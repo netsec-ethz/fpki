@@ -21,6 +21,7 @@ type StageLike interface {
 }
 
 type StageBase struct {
+	Tracer                    trace.Tracer    // The tracer for this service.
 	Ctx                       context.Context // Running context of this stage.
 	Span                      trace.Span
 	Name                      string       // Name of the stage.
@@ -67,6 +68,7 @@ func NewStage[IN, OUT any](
 
 	s := &Stage[IN, OUT]{
 		StageBase: StageBase{
+			Tracer:   tr.Tracer(name),
 			Name:     name,
 			onResume: func() {}, // Noop.
 		},
@@ -221,7 +223,7 @@ func (s *Stage[IN, OUT]) processThisStage() {
 	var shouldBreakReadingIncoming bool
 	var sendingError bool
 
-	ctx, span := tr.T().Start(s.Ctx, s.Name)
+	ctx, span := s.Tracer.Start(s.Ctx, s.Name)
 	defer span.End()
 	s.Ctx = ctx
 	s.Span = span

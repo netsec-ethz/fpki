@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
-	tr "github.com/netsec-ethz/fpki/pkg/tracing"
 	"github.com/netsec-ethz/fpki/pkg/util"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -39,7 +38,7 @@ func NewCsvSplitWorker(p *Processor) *csvSplitWorker {
 		pip.WithMultiOutputChannels[util.CsvFile, line](p.NumWorkers),
 		pip.WithProcessFunction(
 			func(in util.CsvFile) ([]line, []int, error) {
-				ctx, span := tr.T().Start(w.Stage.Ctx, "csv_split-new-file")
+				ctx, span := w.Tracer.Start(w.Stage.Ctx, "csv_split-new-file")
 				w.Stage.Ctx = ctx
 				defer span.End()
 				span.SetAttributes(

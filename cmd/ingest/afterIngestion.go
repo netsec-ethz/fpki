@@ -11,7 +11,7 @@ import (
 )
 
 func coalescePayloadsForDirtyDomains(ctx context.Context, conn db.Conn) {
-	ctx, span := tr.T().Start(ctx, "coalescing")
+	ctx, span := tr.T("db").Start(ctx, "coalescing")
 	defer span.End()
 
 	fmt.Printf("\n[%s] Starting coalescing payloads for modified domains ...\n",
@@ -24,7 +24,7 @@ func coalescePayloadsForDirtyDomains(ctx context.Context, conn db.Conn) {
 }
 
 func updateSMT(ctx context.Context, conn db.Conn) {
-	ctx, span := tr.T().Start(ctx, "updating-smt")
+	ctx, span := tr.T("db").Start(ctx, "updating-smt")
 	defer span.End()
 
 	fmt.Println("\nStarting SMT update ...")
@@ -35,7 +35,7 @@ func updateSMT(ctx context.Context, conn db.Conn) {
 }
 
 func cleanupDirty(ctx context.Context, conn db.Conn) {
-	ctx, span := tr.T().Start(ctx, "cleaning-dirty")
+	ctx, span := tr.T("db").Start(ctx, "cleaning-dirty")
 	defer span.End()
 
 	err := conn.CleanupDirty(ctx)

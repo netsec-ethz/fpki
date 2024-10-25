@@ -6,7 +6,6 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
-	tr "github.com/netsec-ethz/fpki/pkg/tracing"
 	"github.com/netsec-ethz/fpki/pkg/util"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -88,7 +87,7 @@ func NewDomainWorker(
 }
 
 func (w *DomainWorker) processBundle() error {
-	ctx, span := tr.T().Start(w.Ctx, "process-domain-bundle")
+	ctx, span := w.Tracer.Start(w.Ctx, "process-domain-bundle")
 	defer span.End()
 	span.SetAttributes(
 		attribute.Int("num", len(w.Domains)),
@@ -116,7 +115,7 @@ func (w *DomainWorker) processBundle() error {
 
 	{
 		// Update dirty table.
-		_, span := tr.T().Start(ctx, "insert-dirty")
+		_, span := w.Tracer.Start(ctx, "insert-dirty")
 		defer span.End()
 
 		if err := w.Conn.InsertDomainsIntoDirty(w.Ctx, w.cloneDomainIDs); err != nil {
@@ -125,7 +124,7 @@ func (w *DomainWorker) processBundle() error {
 	}
 	{
 		// Remove duplicates (domainID,name)
-		_, span := tr.T().Start(ctx, "dedup-domains")
+		_, span := w.Tracer.Start(ctx, "dedup-domains")
 		defer span.End()
 		span.SetAttributes(
 			attribute.Int("num-original", len(w.cloneDomainIDs)),
@@ -151,7 +150,7 @@ func (w *DomainWorker) processBundle() error {
 	}
 	{
 		// Update domains table.
-		_, span := tr.T().Start(ctx, "insert-domains")
+		_, span := w.Tracer.Start(ctx, "insert-domains")
 		defer span.End()
 		span.SetAttributes(
 			attribute.Int("num", len(w.cloneDomainIDs)),
@@ -180,7 +179,7 @@ func (w *DomainWorker) processBundle() error {
 	}
 	{
 		// Update domain_certs table.
-		_, span := tr.T().Start(ctx, "insert-domain-certs")
+		_, span := w.Tracer.Start(ctx, "insert-domain-certs")
 		defer span.End()
 		span.SetAttributes(
 			attribute.Int("num", len(w.cloneCertIDs)),

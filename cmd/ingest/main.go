@@ -18,6 +18,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 	tr "github.com/netsec-ethz/fpki/pkg/tracing"
+	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
 const (
@@ -50,12 +51,10 @@ func main() {
 
 func mainFunction() int {
 	ctx := context.Background()
+	defer util.ShutdownFunction()
 
-	shutdownFcn, err := tr.Initialize(ctx, "fpki-ingest-cli")
-	exitIfError(err)
-	defer shutdownFcn()
-
-	ctx, span := tr.T().Start(ctx, "main")
+	tr.SetGlobalTracerName("ingest-cli")
+	ctx, span := tr.MT().Start(ctx, "main")
 	defer span.End()
 
 	flag.Usage = func() {
@@ -160,7 +159,7 @@ func mainFunction() int {
 	}
 
 	if ingestCerts {
-		ctx, span := tr.T().Start(ctx, "file-ingestion")
+		ctx, span := tr.MT().Start(ctx, "file-ingestion")
 		defer span.End()
 
 		// All GZ and CSV files found under the directory of the argument.
@@ -176,7 +175,7 @@ func mainFunction() int {
 				// Regular operation: coalesce and update SMT.
 				// Called for intermediate bundles. Need to coalesce, update SMT and clean dirty.
 
-				ctx, span := tr.T().Start(ctx, "bundle-ingested")
+				ctx, span := tr.MT().Start(ctx, "bundle-ingested")
 				defer span.End()
 
 				fmt.Println("\nAnother bundle ingestion finished.")
