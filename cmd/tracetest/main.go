@@ -5,30 +5,33 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/netsec-ethz/fpki/pkg/tracing"
+	tr "github.com/netsec-ethz/fpki/pkg/tracing"
+	"github.com/netsec-ethz/fpki/pkg/util"
 	"go.opentelemetry.io/otel/attribute"
 )
 
 var (
-	in  chan tracing.Traced[string]
-	out chan tracing.Traced[int]
+	in  chan tr.Traced[string]
+	out chan tr.Traced[int]
 )
 
 func main() {
 	ctx := context.Background()
+	defer func() {
+		err := util.ShutdownFunction()
+		checkErr(err)
+	}()
 
-	fcn, err := tracing.Initialize(ctx, "hello-world-test")
-	checkErr(err)
-	defer fcn()
-
-	ctx, span := tracing.Tracer().Start(ctx, "hello-world-opentelemetry")
+	tr.SetGlobalTracerName("tracetest")
+	tracer := tr.MainTracer()
+	ctx, span := tracer.Start(ctx, "main")
 	defer span.End()
 
 	// Making channels.
 	{
-		ctx, span := tracing.Tracer().Start(ctx, "making-channels")
-		in = make(chan tracing.Traced[string])
-		out = make(chan tracing.Traced[int])
+		ctx, span := tracer.Start(ctx, "making-channels")
+		in = make(chan tr.Traced[string])
+		out = make(chan tr.Traced[int])
 		startProcessLengths(ctx)
 		span.End()
 	}
@@ -42,22 +45,22 @@ func main() {
 	helloStr := formatString(ctx, helloTo)
 	printHello(ctx, helloStr)
 
-	l := computeLength(tracing.WrapTrace(ctx, helloStr))
+	l := computeLength(tr.WrapTrace(ctx, helloStr))
 	str := fmt.Sprintf("length is %d", l)
 	printHello(ctx, str)
 
 	// Now use the channels:
-	in <- tracing.WrapTrace(ctx, "hello world")
+	in <- tr.WrapTrace(ctx, "hello world")
 	res := <-out
 	fmt.Printf("channel call to length: %d\n", res.Data)
 
-	in <- tracing.WrapTrace(ctx, helloStr)
+	in <- tr.WrapTrace(ctx, helloStr)
 	res = <-out
 	fmt.Printf("channel call to length: %d\n", res.Data)
 }
 
 func formatString(ctx context.Context, helloTo string) string {
-	_, span := tracing.Tracer().Start(ctx, "formatString")
+	_, span := tr.MainTracer().Start(ctx, "formatString")
 	defer span.End()
 	span.SetAttributes(
 		attribute.String("event", "format-string"),
@@ -68,7 +71,7 @@ func formatString(ctx context.Context, helloTo string) string {
 }
 
 func printHello(ctx context.Context, helloStr string) {
-	_, span := tracing.Tracer().Start(ctx, "printString")
+	_, span := tr.MT().Start(ctx, "printString")
 	defer span.End()
 	span.SetAttributes(
 		attribute.String("event", "print-string"),
@@ -77,27 +80,28 @@ func printHello(ctx context.Context, helloStr string) {
 	fmt.Println(helloStr)
 }
 
-func computeLength(tracedStr tracing.Traced[string]) int {
-	ctx, str := tracing.UnwrapTrace(tracedStr)
-	_, span := tracing.Tracer().Start(ctx, "computeLengthFunc")
+func computeLength(tracedStr tr.Traced[string]) int {
+	ctx, str := tr.UnwrapTrace(tracedStr)
+	_, span := tr.MainTracer().Start(ctx, "computeLengthFunc")
 	defer span.End()
 	return len(str)
 }
 
 func startProcessLengths(ctx context.Context) {
-	_, span := tracing.Tracer().Start(ctx, "start-process-lengths")
+	tracer := tr.T("length-processor")
+	_, span := tracer.Start(ctx, "start-process-lengths")
 	defer span.End()
 
 	go func() {
 		for in := range in {
-			ctx, in := tracing.UnwrapTrace(in)
-			ctx, span := tracing.Tracer().Start(ctx, "computeLengthAtChannel")
+			ctx, in := tr.UnwrapTrace(in)
+			ctx, span := tracer.Start(ctx, "computeLengthAtChannel")
 			span.SetAttributes(
 				attribute.String("value", in),
 			)
 
 			l := len(in)
-			out <- tracing.WrapTrace(ctx, l)
+			out <- tr.WrapTrace(ctx, l)
 			span.End()
 		}
 	}()

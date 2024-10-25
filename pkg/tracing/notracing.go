@@ -10,22 +10,23 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 )
 
-var tracer trace.Tracer
-
-func Initialize(ctx context.Context, serviceName string) (func() error, error) {
-	tracer = noop.Tracer{}
-	return func() error { return nil }, nil
+func Tracer(string) trace.Tracer {
+	return noop.Tracer{}
 }
 
-func Tracer() trace.Tracer {
-	return tracer
+func T(string) trace.Tracer {
+	return Tracer("")
 }
 
-func T() trace.Tracer {
-	return Tracer()
+func SetGlobalTracerName(string) {}
+
+func MainTracer() trace.Tracer {
+	return Tracer("")
 }
 
-type timing struct{}
+func MT() trace.Tracer {
+	return MainTracer()
+}
 
 func Now() timing {
 	return timing{}
@@ -52,3 +53,5 @@ func WrapTrace[T any](ctx context.Context, value T) Traced[T] {
 func UnwrapTrace[T any](traced Traced[T]) (context.Context, T) {
 	return context.Background(), traced.Data
 }
+
+type timing struct{}

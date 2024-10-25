@@ -4,9 +4,12 @@ package tracing
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"sync"
 	"time"
 
-	"go.opentelemetry.io/otel"
+	"github.com/netsec-ethz/fpki/pkg/util"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
@@ -16,39 +19,52 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-var tracer trace.Tracer
-
-// Initialize enables tracing by using the OTLP exporter (e.g. Jaeger).
-func Initialize(ctx context.Context, serviceName string) (func() error, error) {
-	exporter, err := newExporterGrpc(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	tp := newTraceProvider(exporter, serviceName)
-	otel.SetTracerProvider(tp)
-
-	tracer = tp.Tracer("fpki")
-
-	atExit := func() error {
-		return tp.Shutdown(ctx)
-	}
-
-	return atExit, nil
+func init() {
+	globalTracerName = os.Args[0]
+	tracers = make(map[string]trace.Tracer, 1)
 }
 
-// Tracer returns the current tracer. If not initialized, it will be nil.
-func Tracer() trace.Tracer {
+func Tracer(name string) trace.Tracer {
+	tracersMu.RLock()
+	tracer, ok := tracers[name]
+	tracersMu.RUnlock()
+	if !ok {
+		tracersMu.Lock()
+		defer tracersMu.Unlock()
+		tracer, ok = tracers[name]
+		if !ok {
+			exporter, err := newExporterGrpc(context.Background())
+			if err != nil {
+				panic(fmt.Sprintf("could not get a tracing exporter: %s", err))
+			}
+			tp := newTraceProvider(exporter, name)
+			util.RegisterShutdownFunc(func() error {
+				return tp.Shutdown(context.Background())
+			})
+			tracer = tp.Tracer(name)
+			tracers[name] = tracer
+		}
+	}
 	return tracer
 }
 
-// T is an alias for Tracer()
-func T() trace.Tracer {
-	return Tracer()
+// T is an alias for Tracer.
+func T(name string) trace.Tracer {
+	return Tracer(name)
 }
 
-type timing struct {
-	now time.Time
+func SetGlobalTracerName(name string) {
+	globalTracerName = name
+}
+
+// MainTracer returns the unique tracer associated with the process' entry point.
+func MainTracer() trace.Tracer {
+	return Tracer(globalTracerName)
+}
+
+// TM is an alias for MainTracer.
+func MT() trace.Tracer {
+	return MainTracer()
 }
 
 func Now() timing {
@@ -81,6 +97,16 @@ func UnwrapTrace[T any](traced Traced[T]) (context.Context, T) {
 	return newTracingContext(traced.Traces), traced.Data
 }
 
+var (
+	tracers          map[string]trace.Tracer
+	tracersMu        sync.RWMutex
+	globalTracerName string // defaults to os.Args[0]
+)
+
+type timing struct {
+	now time.Time
+}
+
 func newExporterHttp(ctx context.Context) (sdktrace.SpanExporter, error) {
 	return otlptracehttp.New(
 		ctx,
@@ -103,9 +129,8 @@ func newTraceProvider(exp sdktrace.SpanExporter, serviceName string) *sdktrace.T
 			semconv.ServiceName(serviceName),
 		),
 	)
-
 	if err != nil {
-		panic(err)
+		panic(fmt.Sprintf("could not get a tracing provider: %s", err))
 	}
 
 	return sdktrace.NewTracerProvider(
