@@ -23,6 +23,7 @@ import (
 		   ...
 */
 type Processor struct {
+	Ctx              context.Context
 	CsvFiles         []util.CsvFile
 	NumWorkers       int
 	NumDBWriters     int
@@ -45,6 +46,7 @@ func NewProcessor(
 ) (*Processor, error) {
 	// Create the processor that will hold all the information and the pipeline.
 	p := &Processor{
+		Ctx:              ctx,
 		NumWorkers:       1,              // Default to just 1 worker.
 		NumDBWriters:     1,              // Default to 1 db writer.
 		BundleSize:       math.MaxUint64, // Default to "no limit",
@@ -63,8 +65,13 @@ func NewProcessor(
 	}
 
 	// Create the DB manager.
-	manager, err :=
-		updater.NewManager(ctx, p.NumDBWriters, conn, multiInsertSize, statsUpdatePeriod, statsUpdateFun)
+	manager, err := updater.NewManager(
+		p.NumDBWriters,
+		conn,
+		multiInsertSize,
+		statsUpdatePeriod,
+		statsUpdateFun,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -111,12 +118,12 @@ func WithOnBundleFinished(fcn func()) processorOptions {
 	}
 }
 
-func (p *Processor) Resume(ctx context.Context) {
-	p.Pipeline.Resume(ctx)
+func (p *Processor) Resume() {
+	p.Pipeline.Resume(p.Ctx)
 }
 
-func (p *Processor) Wait(ctx context.Context) error {
-	return p.Pipeline.Wait(ctx)
+func (p *Processor) Wait() error {
+	return p.Pipeline.Wait(p.Ctx)
 }
 
 // AddGzFiles adds a CSV .gz file to the initial stage.
@@ -164,7 +171,7 @@ func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 	// Prepare source. It opens CSV files based on the filenames stored in the processor.
 	csvFileIndex := 0
 	source := pip.NewSource[util.CsvFile](
-		"files",
+		"open-csv-files",
 		pip.WithSourceFunction(
 			func() ([]util.CsvFile, []int, error) {
 				defer func() { csvFileIndex++ }()
@@ -174,7 +181,6 @@ func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 				return nil, nil, pip.NoMoreData
 			},
 		),
-		pip.WithSequentialOutputs[pip.None, util.CsvFile](),
 	)
 
 	// Create CSV split worker.
@@ -195,7 +201,10 @@ func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 	// Create sink for certificate pointers.
 	sink := p.createCertificateSink()
 
-	stages := []pip.StageLike{source, splitter.Stage}
+	stages := []pip.StageLike{
+		source,
+		splitter.Stage,
+	}
 	for _, w := range lineToChainWorkers {
 		stages = append(stages, w.Stage)
 	}
@@ -296,7 +305,6 @@ func (p *Processor) createCertificatePtrSink() *pip.Sink[*updater.Certificate] {
 	return pip.NewSink[*updater.Certificate](
 		"certSink",
 		pip.WithMultiInputChannels[*updater.Certificate, pip.None](p.NumWorkers),
-		// pip.WithSequentialInputs[*updater.Certificate, pip.None](),
 		pip.WithOnNoMoreData[*updater.Certificate, pip.None](func() ([]pip.None, []int, error) {
 			p.certSinkHasNoMoreData = true // Flag that the pipeline has no more data to process.
 			return nil, nil, nil

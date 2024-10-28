@@ -34,16 +34,14 @@ type Manager struct {
 // It requires using the IncomingCertPtrChan instead of the other one, and calls to the
 // *Ptr* functions instead of the current ones, e.g. NewCertPtrWorker, createCertificateSource,...
 func NewManager(
-	ctx context.Context,
 	workerCount int,
 	conn db.Conn,
 	multiInsertSize int,
 	statsUpdateFreq time.Duration,
 	statsUpdateFunc func(*Stats),
 ) (*Manager, error) {
-	// Compute how many bits we need to cover N partitions (i.e. ceil(log2(N-1)),
-	// doable by computing the bit length of N-1 even if not a power of 2.
-	nBits := int(util.Log2(uint(workerCount - 1)))
+	// Compute how many bits we need to cover N partitions (i.e. log2(N).
+	nBits := int(util.Log2(uint(workerCount)))
 
 	selectPartition := func(id *common.SHA256Output) uint {
 		return mysql.PartitionByIdMSB(id, nBits)
@@ -67,7 +65,7 @@ func NewManager(
 	// Stage 1-to-1: cert to DB and output domains.
 	certStages := make([]pip.StageLike, workerCount)
 	for i := range certWorkers {
-		certWorkers[i] = NewCertWorker(ctx, i, m, conn, workerCount)
+		certWorkers[i] = NewCertWorker(i, m, conn, workerCount)
 		certStages[i] = certWorkers[i].Stage
 	}
 
@@ -76,7 +74,7 @@ func NewManager(
 	// Pure sink objects:
 	domainStages := make([]pip.StageLike, workerCount)
 	for i := range domainWorkers {
-		domainWorkers[i] = NewDomainWorker(ctx, i, m, conn, workerCount)
+		domainWorkers[i] = NewDomainWorker(i, m, conn, workerCount)
 		domainStages[i] = domainWorkers[i].Sink
 	}
 
@@ -153,7 +151,6 @@ func (m *Manager) createCertificatePtrSource(workerCount int) *pip.Source[*Certi
 	return pip.NewSource[*Certificate](
 		"incoming_certs",
 		pip.WithMultiOutputChannels[pip.None, *Certificate](workerCount),
-		// pip.WithSequentialOutputs[pip.None, *Certificate](),
 		pip.WithSourceChannel(&m.IncomingCertPtrChan, func(in *Certificate) (int, error) {
 			return int(m.ShardFuncCert(&in.CertID)), nil
 		}),

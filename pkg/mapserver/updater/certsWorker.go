@@ -1,7 +1,6 @@
 package updater
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -9,6 +8,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/db"
 	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
 	"github.com/netsec-ethz/fpki/pkg/util"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type CertWorker struct {
@@ -30,14 +30,13 @@ type CertWorker struct {
 }
 
 func NewCertWorker(
-	ctx context.Context,
 	id int,
 	m *Manager,
 	conn db.Conn,
 	workerCount int,
 ) *CertWorker {
 	w := &CertWorker{
-		baseWorker: *newBaseWorker(ctx, id, m, conn),
+		baseWorker: *newBaseWorker(id, m, conn),
 		hasher:     *common.NewHasher(),
 
 		Certs:   make([]Certificate, 0, m.MultiInsertSize),
@@ -55,7 +54,7 @@ func NewCertWorker(
 	w.Stage = pip.NewStage[Certificate, DirtyDomain](
 		name,
 		pip.WithMultiOutputChannels[Certificate, DirtyDomain](workerCount),
-		pip.WithProcessFunction(
+		pip.WithProcessFunction[Certificate, DirtyDomain](
 			func(cert Certificate) ([]DirtyDomain, []int, error) {
 				// Add the cert to the bundle, no allocations expected.
 				w.Certs = append(w.Certs, cert)
@@ -89,20 +88,43 @@ func NewCertWorker(
 // processBundle processes a bundle of certificates and extracts their associated domains.
 // The function resets the certificate bundle slice to zero size after it is done.
 func (w *CertWorker) processBundle() error {
+	ctx, span := w.Stage.Tracer.Start(w.Ctx, "process-cert-bundle")
+	defer span.End()
 	pip.DebugPrintf("[%s] processing bundle\n", w.Stage.Name)
 	if len(w.Certs) == 0 {
 		return nil
 	}
 
 	// Insert the certificates into the DB.
-	if err := w.insertCertificates(); err != nil {
-		return fmt.Errorf("inserting certificates at worker %d: %w", w.Id, err)
+	{
+		_, span := w.Stage.Tracer.Start(ctx, "insert-in-db")
+		defer span.End()
+		span.SetAttributes(
+			attribute.Int("num", len(w.Certs)),
+		)
+
+		if err := w.insertCertificates(); err != nil {
+			return fmt.Errorf("inserting certificates at worker %d: %w", w.Id, err)
+		}
 	}
 
 	// Extract the associated domain objects. The domains stay in w.Domains.
-	w.extractDomains()
+	{
+		_, span := w.Stage.Tracer.Start(ctx, "extract-domains")
+		defer span.End()
+		w.extractDomains()
+		span.SetAttributes(
+			attribute.Int("num", len(w.Domains)),
+		)
+	}
 
-	w.Certs = w.Certs[:0] // Reuse storage, but reset slice.
+	{
+		// Reuse storage.
+		_, span := w.Stage.Tracer.Start(ctx, "reset-certs-slice")
+		defer span.End()
+
+		w.Certs = w.Certs[:0] // Reuse storage, but reset slice.
+	}
 
 	return nil
 }

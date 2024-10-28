@@ -8,7 +8,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime/pprof"
-	"runtime/trace"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,6 +17,8 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
+	tr "github.com/netsec-ethz/fpki/pkg/tracing"
+	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
 const (
@@ -50,12 +51,16 @@ func main() {
 
 func mainFunction() int {
 	ctx := context.Background()
+	defer util.ShutdownFunction()
+
+	tr.SetGlobalTracerName("ingest-cli")
+	ctx, span := tr.MT().Start(ctx, "main")
+	defer span.End()
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage:\n%s directory\n", os.Args[0])
 		flag.PrintDefaults()
 	}
-	traceFile := flag.String("trace", "", "write a trace file")
 	cpuProfile := flag.String("cpuprofile", "", "write a CPU profile to file")
 	memProfile := flag.String("memprofile", "", "write a memory profile to file")
 	bundleSize := flag.Uint64("bundlesize", 0, "number of certificates after which a coalesce and "+
@@ -63,24 +68,30 @@ func mainFunction() int {
 	numParsers := flag.Int("numparsers", NumParsers, "Number of line parsers concurrently running")
 	numDBWriters := flag.Int("numdbworkers", NumDBWriters, "Number of concurrent DB writers")
 	certUpdateStrategy := flag.String("strategy", "", "strategy to update certificates\n"+
+		"\"\": full work. I.e. ingest files, coalesce, and update SMT.\n"+
+		"\"onlyingest\": do not coalesce or update SMT after ingesting files.\n"+
 		"\"skipingest\": only coalesce payloads of domains in the dirty table and update SMT.\n"+
-		"\"smtupdate\": only update the SMT.\n")
+		"\"onlysmtupdate\": only update the SMT.\n")
 	flag.Parse()
 
-	var skipIngest bool
-	var smtUpdateOnly bool
+	var (
+		ingestCerts   bool
+		onlyIngest    bool
+		onlySmtUpdate bool
+	)
 	switch *certUpdateStrategy {
-	case "skipingest":
-		skipIngest = true
-	case "smtupdate":
-		smtUpdateOnly = true
+	case "onlyingest":
+		onlyIngest = true
+		fallthrough // also ingest certs
 	case "":
+		ingestCerts = true
+	case "skipingest":
+		// ingestCerts is already false
+	case "onlysmtupdate":
+		onlySmtUpdate = true
 	default:
 		panic(fmt.Errorf("bad update strategy: %v", *certUpdateStrategy))
 	}
-
-	// Do we have to ingest certificates?
-	ingestCerts := !skipIngest && !smtUpdateOnly
 
 	// If we will ingest certificates, we need a path.
 	if ingestCerts && flag.NArg() != 1 {
@@ -95,10 +106,10 @@ func mainFunction() int {
 
 	// Profiling:
 	stopProfiles := func() {
-		if *traceFile != "" {
-			trace.Stop()
-
+		if *cpuProfile != "" || *memProfile != "" {
+			fmt.Fprintln(os.Stderr, "\nStopping profiling")
 		}
+
 		if *cpuProfile != "" {
 			pprof.StopCPUProfile()
 		}
@@ -109,15 +120,7 @@ func mainFunction() int {
 			exitIfError(err)
 		}
 	}
-	if *traceFile != "" {
-		f, err := os.Create(*traceFile)
-		exitIfError(err)
-		err = trace.Start(f)
-		exitIfError(err)
-		defer func() {
-			exitIfError(f.Close())
-		}()
-	}
+
 	if *cpuProfile != "" {
 		f, err := os.Create(*cpuProfile)
 		exitIfError(err)
@@ -132,7 +135,8 @@ func mainFunction() int {
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
-		<-signals
+		sg := <-signals
+		fmt.Fprintf(os.Stderr, "signal caught %s\n", sg.String())
 		stopProfiles()
 		os.Exit(1)
 	}()
@@ -155,11 +159,31 @@ func mainFunction() int {
 	}
 
 	if ingestCerts {
-		ctx, task := trace.NewTask(ctx, "ingest_files")
-		defer task.End()
+		ctx, span := tr.MT().Start(ctx, "file-ingestion")
+		defer span.End()
+
 		// All GZ and CSV files found under the directory of the argument.
 		gzFiles, csvFiles := listOurFiles(flag.Arg(0))
 		fmt.Printf("# gzFiles: %d, # csvFiles: %d\n", len(gzFiles), len(csvFiles))
+
+		bundleProcessing := func() {
+			// do not coalesce, or update smt.
+			fmt.Println("\nAnother bundle ingestion finished.")
+		}
+		if !onlyIngest {
+			bundleProcessing = func() {
+				// Regular operation: coalesce and update SMT.
+				// Called for intermediate bundles. Need to coalesce, update SMT and clean dirty.
+
+				ctx, span := tr.MT().Start(ctx, "bundle-ingested")
+				defer span.End()
+
+				fmt.Println("\nAnother bundle ingestion finished.")
+				coalescePayloadsForDirtyDomains(ctx, conn)
+				updateSMT(ctx, conn)
+				cleanupDirty(ctx, conn)
+			}
+		}
 
 		proc, err := NewProcessor(
 			ctx,
@@ -170,13 +194,7 @@ func mainFunction() int {
 			WithNumWorkers(*numParsers),
 			WithNumDBWriters(*numDBWriters),
 			WithBundleSize(*bundleSize),
-			WithOnBundleFinished(func() {
-				// Called for intermediate bundles. Need to coalesce, update SMT and clean dirty.
-				fmt.Println("\nAnother bundle ingestion finished.")
-				coalescePayloadsForDirtyDomains(ctx, conn)
-				updateSMT(ctx, conn)
-				cleanupDirty(ctx, conn)
-			}),
+			WithOnBundleFinished(bundleProcessing),
 		)
 		exitIfError(err)
 
@@ -187,9 +205,9 @@ func mainFunction() int {
 		fmt.Printf("[%s] Starting ingesting files ...\n",
 			time.Now().Format(time.StampMilli))
 		// Update certificates and chains, and wait until finished.
-		proc.Resume(ctx)
+		proc.Resume()
 
-		exitIfError(proc.Wait(ctx))
+		exitIfError(proc.Wait())
 
 		stopProfiles()
 
@@ -198,7 +216,7 @@ func mainFunction() int {
 
 	// The certificates had been ingested. If we had set a bundle size, we still need to process
 	// the last bundle. If we hadn't, we will process it all.
-	if !smtUpdateOnly {
+	if !onlySmtUpdate {
 		// Coalesce the payloads of all modified domains.
 		coalescePayloadsForDirtyDomains(ctx, conn)
 	}

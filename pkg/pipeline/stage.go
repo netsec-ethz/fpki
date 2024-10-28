@@ -4,11 +4,19 @@ import (
 	"context"
 	"fmt"
 	"runtime"
-	"runtime/trace"
 	"strings"
 	"sync"
+	"time"
 
+	tr "github.com/netsec-ethz/fpki/pkg/tracing"
 	"github.com/netsec-ethz/fpki/pkg/util"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+)
+
+const (
+	WaitIsTooLong    = time.Millisecond       // If receiving/sending takes longer -> emit trace.
+	ProcessIsTooLong = 100 * time.Millisecond // If processing function takes longer -> emit trace.
 )
 
 type StageLike interface {
@@ -18,14 +26,30 @@ type StageLike interface {
 }
 
 type StageBase struct {
-	Name                      string // Name of the stage.
-	Ctx                       context.Context
-	Task                      *trace.Task
-	ErrCh                     chan error   // To be read by the previous stage (or trigger, if this is Source).
-	StopCh                    chan None    // Indicates to this stage to stop.
-	NextErrChs                []chan error // Next stage's error channel.
-	NextStagesAggregatedErrCh chan error   // Aggregated nexErrChs
-	onResume                  func()       // Called before Resume() starts.
+	Tracer                    trace.Tracer    // The tracer for this service.
+	Ctx                       context.Context // Running context of this stage.
+	Name                      string          // Name of the stage.
+	ErrCh                     chan error      // To be read by the previous stage (or trigger, if this is Source).
+	StopCh                    chan None       // Indicates to this stage to stop.
+	NextErrChs                []chan error    // Next stage's error channel.
+	NextStagesAggregatedErrCh chan error      // Aggregated nexErrChs
+	onReceivedData            func()          // Callback after getting data from incoming.
+	onResume                  func()          // Callback before Resume() starts.
+	onProcessed               func()          // Callback after process.
+	onSent                    func()          // Callback after sent to outgoing.
+	onErrorSending            func(error, []int)
+}
+
+func newStageBase(name string) StageBase {
+	return StageBase{
+		Tracer:         tr.Tracer(name),
+		Name:           name,
+		onReceivedData: func() {},             // Noop.
+		onResume:       func() {},             // Noop.
+		onProcessed:    func() {},             // Noop.
+		onSent:         func() {},             // Noop.
+		onErrorSending: func(error, []int) {}, // Noop.
+	}
 }
 
 func (s *StageBase) Base() *StageBase {
@@ -42,8 +66,7 @@ type Stage[IN, OUT any] struct {
 
 	ProcessFunc func(in IN) ([]OUT, []int, error) // From 1 IN to n OUT, using n channels.
 	// Before stopping the pipeline. This function allows processing before stopping the pipeline.
-	onNoMoreData   func() ([]OUT, []int, error)
-	onErrorSending func(error, []int)
+	onNoMoreData func() ([]OUT, []int, error)
 
 	buildAggregatedInput func() chan IN // Alter by With* modifier.
 	sendOutputs          func(          // Selectable by With* modifier.
@@ -63,17 +86,13 @@ func NewStage[IN, OUT any](
 ) *Stage[IN, OUT] {
 
 	s := &Stage[IN, OUT]{
-		StageBase: StageBase{
-			Name:     name,
-			onResume: func() {}, // Noop.
-		},
+		StageBase:                     newStageBase(name),
 		IncomingChs:                   make([]chan IN, 1),  // Per default, just one channel.
 		OutgoingChs:                   make([]chan OUT, 1), // Per default, just one channel.
 		cacheCompletedOutgoingIndices: make([]int, 0, 16),  // Init to 16 outputs per process call.
 		onNoMoreData: func() ([]OUT, []int, error) { // Noop.
 			return nil, nil, nil
 		},
-		onErrorSending: func(error, []int) {}, // Noop.
 	}
 	s.buildAggregatedInput = s.readIncomingConcurrently
 
@@ -121,6 +140,7 @@ func LinkStagesFanOut[IN, OUT, LAST any](
 // Prepare creates the necessary fields of the stage to be linked with others.
 // It MUST NOT spawn any goroutines at this point.
 func (s *Stage[IN, OUT]) Prepare(ctx context.Context) {
+	s.Ctx = ctx
 	s.ErrCh = make(chan error)
 	s.StopCh = make(chan None)
 
@@ -143,7 +163,7 @@ func (s *Stage[IN, OUT]) Prepare(ctx context.Context) {
 // Resume resumes processing from this stage.
 // This function creates new channels for the incoming data, error and stop channels.
 func (s *Stage[IN, OUT]) Resume(ctx context.Context) {
-	s.Ctx, s.Task = trace.NewTask(ctx, s.Name)
+	s.Ctx = ctx
 
 	// Just before resuming, call the internal event function.
 	s.onResume()
@@ -208,7 +228,6 @@ func (s *Stage[IN, OUT]) breakPipelineAndWait(initialErr error) error {
 	close(s.StopCh)
 
 	DebugPrintf("[%s] all done, stage is stopped\n", s.Name)
-	s.Task.End()
 	return initialErr
 }
 
@@ -218,9 +237,16 @@ func (s *Stage[IN, OUT]) processThisStage() {
 	var shouldBreakReadingIncoming bool
 	var sendingError bool
 
+	lastTiming := tr.Now()
+
 readIncoming:
 	for {
 		DebugPrintf("[%s] select-blocked on input: %s\n", s.Name, chanPtr(s.AggregatedIncomeCh))
+		_, spanIncoming := tr.T("incoming").Start(context.TODO(), "incoming")
+		spanIncoming.SetAttributes(
+			attribute.String("name", s.Name),
+		)
+
 		select {
 		case <-s.StopCh:
 			// We have been instructed to stop, without reading any other channel.
@@ -242,6 +268,13 @@ readIncoming:
 				}
 				DebugPrintf("[%s] incoming? %v, value: %v\n", s.Name, ok, v)
 			}
+			s.onReceivedData()
+
+			tr.SpanIfLongTime(WaitIsTooLong, &lastTiming, spanIncoming)
+			_, spanProcessing := tr.T("processing").Start(s.Ctx, "processing")
+			spanProcessing.SetAttributes(
+				attribute.String("name", s.Name),
+			)
 
 			var outs []OUT
 			var outChIndxs []int
@@ -254,6 +287,12 @@ readIncoming:
 			} else {
 				outs, outChIndxs, err = s.ProcessFunc(in)
 			}
+			s.onProcessed()
+			tr.SpanIfLongTime(ProcessIsTooLong, &lastTiming, spanProcessing)
+			_, spanSending := tr.T("sending").Start(s.Ctx, "sending ")
+			spanSending.SetAttributes(
+				attribute.String("name", s.Name),
+			)
 
 			switch err {
 			case nil: // do nothing
@@ -276,6 +315,9 @@ readIncoming:
 				&sendingError,
 				&foundError,
 			)
+			s.onSent()
+			tr.SpanIfLongTime(WaitIsTooLong, &lastTiming, spanSending)
+
 			DebugPrintf("[%s] sendingError = %v, shouldReturn = %v, shouldBreak = %v\n",
 				s.Name, sendingError, shouldReturn, shouldBreakReadingIncoming)
 			if sendingError {

@@ -6,6 +6,7 @@ import (
 
 	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
 	"github.com/netsec-ethz/fpki/pkg/util"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type line struct {
@@ -35,15 +36,24 @@ func NewCsvSplitWorker(p *Processor) *csvSplitWorker {
 	w.Stage = pip.NewStage[util.CsvFile, line](
 		"csv_split",
 		pip.WithMultiOutputChannels[util.CsvFile, line](p.NumWorkers),
-		pip.WithSequentialOutputs[util.CsvFile, line](),
 		pip.WithProcessFunction(
 			func(in util.CsvFile) ([]line, []int, error) {
+				ctx, span := w.Tracer.Start(w.Stage.Ctx, "csv_split-new-file")
+				w.Stage.Ctx = ctx
+				defer span.End()
+				span.SetAttributes(
+					attribute.String("file-name", in.Filename()),
+				)
+
 				p.stats.TotalFilesRead.Add(1)
 				// Split the file into multiple lines.
 				lines, err := w.splitFile(in)
 				if err != nil {
 					return nil, nil, err
 				}
+				span.SetAttributes(
+					attribute.Int("lines", len(lines)),
+				)
 
 				// Prepare the staggered fan-out list of output channels.
 				w.channelsCache = w.channelsCache[:0]

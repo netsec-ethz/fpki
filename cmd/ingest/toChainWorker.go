@@ -61,7 +61,6 @@ func NewLineToChainWorker(p *Processor, numWorker int) *lineToChainWorker {
 				return chainCache, channelCache, err
 			},
 		),
-		pip.WithSequentialOutputs[line, certChain](),
 	)
 	return w
 }

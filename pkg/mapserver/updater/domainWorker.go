@@ -1,13 +1,13 @@
 package updater
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
 	"github.com/netsec-ethz/fpki/pkg/util"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 type DomainWorker struct {
@@ -30,14 +30,13 @@ type DomainWorker struct {
 }
 
 func NewDomainWorker(
-	ctx context.Context,
 	id int,
 	m *Manager,
 	conn db.Conn,
 	workerCount int,
 ) *DomainWorker {
 	w := &DomainWorker{
-		baseWorker: *newBaseWorker(ctx, id, m, conn),
+		baseWorker: *newBaseWorker(id, m, conn),
 
 		// Create a certificate slice where all the received certificates will end up.
 		Domains: make([]DirtyDomain, 0, m.MultiInsertSize),
@@ -60,7 +59,6 @@ func NewDomainWorker(
 	// specific channel.
 	w.Sink = pip.NewSink[DirtyDomain](
 		fmt.Sprintf("domain_worker_%02d", id),
-		// pip.WithSequentialInputs[*DirtyDomain, pip.None](),
 		pip.WithSinkFunction(
 			func(domain DirtyDomain) error {
 				var err error
@@ -89,6 +87,11 @@ func NewDomainWorker(
 }
 
 func (w *DomainWorker) processBundle() error {
+	ctx, span := w.Tracer.Start(w.Ctx, "process-domain-bundle")
+	defer span.End()
+	span.SetAttributes(
+		attribute.Int("num", len(w.Domains)),
+	)
 	if len(w.Domains) == 0 {
 		return nil
 	}
@@ -110,49 +113,81 @@ func (w *DomainWorker) processBundle() error {
 		util.Wrap(&w.cloneDomainIDs),
 	)
 
-	// Update dirty table.
-	if err := w.Conn.InsertDomainsIntoDirty(w.Ctx, w.cloneDomainIDs); err != nil {
-		return fmt.Errorf("inserting domains at worker %d: %w", w.Id, err)
+	{
+		// Update dirty table.
+		_, span := w.Tracer.Start(ctx, "insert-dirty")
+		defer span.End()
+
+		if err := w.Conn.InsertDomainsIntoDirty(w.Ctx, w.cloneDomainIDs); err != nil {
+			return fmt.Errorf("inserting domains at worker %d: %w", w.Id, err)
+		}
 	}
+	{
+		// Remove duplicates (domainID,name)
+		_, span := w.Tracer.Start(ctx, "dedup-domains")
+		defer span.End()
+		span.SetAttributes(
+			attribute.Int("num-original", len(w.cloneDomainIDs)),
+		)
+		w.cloneDomainIDs = append(w.cloneDomainIDs[:0], w.domainIDs...) // clone again (was modified).
+		w.cloneNames = append(w.cloneNames[:0], w.names...)
 
-	// Remove duplicates (domainID,name)
-	w.cloneDomainIDs = append(w.cloneDomainIDs[:0], w.domainIDs...) // clone again (was modified).
-	w.cloneNames = append(w.cloneNames[:0], w.names...)
-
-	util.DeduplicateSliceWithStorage(
-		w.dedupIdNameStorage,
-		func(i int) idName {
-			return idName{
-				id:   w.cloneDomainIDs[i],
-				name: w.cloneNames[i],
-			}
-		},
-		util.Wrap(&w.cloneDomainIDs),
-		util.Wrap(&w.cloneNames),
-	)
-
-	// Update domains table.
-	if err := w.Conn.UpdateDomains(w.Ctx, w.cloneDomainIDs, w.cloneNames); err != nil {
-		return fmt.Errorf("inserting domains at worker %d: %w", w.Id, err)
+		util.DeduplicateSliceWithStorage(
+			w.dedupIdNameStorage,
+			func(i int) idName {
+				return idName{
+					id:   w.cloneDomainIDs[i],
+					name: w.cloneNames[i],
+				}
+			},
+			util.Wrap(&w.cloneDomainIDs),
+			util.Wrap(&w.cloneNames),
+		)
+		span.SetAttributes(
+			// After deduplication.
+			attribute.Int("num-deduplicated", len(w.cloneDomainIDs)),
+		)
 	}
+	{
+		// Update domains table.
+		_, span := w.Tracer.Start(ctx, "insert-domains")
+		defer span.End()
+		span.SetAttributes(
+			attribute.Int("num", len(w.cloneDomainIDs)),
+		)
 
+		if err := w.Conn.UpdateDomains(w.Ctx, w.cloneDomainIDs, w.cloneNames); err != nil {
+			return fmt.Errorf("inserting domains at worker %d: %w", w.Id, err)
+		}
+	}
 	// Update domain_certs.
-	// Remove duplicates (domainID, certID)
-	w.cloneDomainIDs = append(w.cloneDomainIDs[:0], w.domainIDs...) // again
-	w.cloneCertIDs = append(w.certIDs[:0], w.certIDs...)
-	util.DeduplicateSliceWithStorage(
-		w.dedupTwoIdsStorage,
-		func(i int) [2]common.SHA256Output {
-			return [2]common.SHA256Output{
-				w.cloneDomainIDs[i],
-				w.cloneCertIDs[i],
-			}
-		},
-		util.Wrap(&w.cloneDomainIDs),
-		util.Wrap(&w.cloneCertIDs),
-	)
-	if err := w.Conn.UpdateDomainCerts(w.Ctx, w.cloneDomainIDs, w.cloneCertIDs); err != nil {
-		return fmt.Errorf("inserting domains at worker %d: %w", w.Id, err)
+	{
+		// Remove duplicates (domainID, certID)
+		w.cloneDomainIDs = append(w.cloneDomainIDs[:0], w.domainIDs...) // again
+		w.cloneCertIDs = append(w.certIDs[:0], w.certIDs...)
+		util.DeduplicateSliceWithStorage(
+			w.dedupTwoIdsStorage,
+			func(i int) [2]common.SHA256Output {
+				return [2]common.SHA256Output{
+					w.cloneDomainIDs[i],
+					w.cloneCertIDs[i],
+				}
+			},
+			util.Wrap(&w.cloneDomainIDs),
+			util.Wrap(&w.cloneCertIDs),
+		)
+	}
+	{
+		// Update domain_certs table.
+		_, span := w.Tracer.Start(ctx, "insert-domain-certs")
+		defer span.End()
+		span.SetAttributes(
+			attribute.Int("num", len(w.cloneCertIDs)),
+		)
+
+		if err := w.Conn.UpdateDomainCerts(w.Ctx, w.cloneDomainIDs, w.cloneCertIDs); err != nil {
+			return fmt.Errorf("inserting domains at worker %d: %w", w.Id, err)
+		}
 	}
 
 	return nil

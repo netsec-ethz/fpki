@@ -1,7 +1,6 @@
 package updater
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -29,14 +28,13 @@ type CertPtrWorker struct {
 }
 
 func NewCertPtrWorker(
-	ctx context.Context,
 	id int,
 	m *Manager,
 	conn db.Conn,
 	workerCount int,
 ) *CertPtrWorker {
 	w := &CertPtrWorker{
-		baseWorker: *newBaseWorker(ctx, id, m, conn),
+		baseWorker: *newBaseWorker(id, m, conn),
 		hasher:     *common.NewHasher(),
 
 		Certs:  make([]*Certificate, 0, m.MultiInsertSize),
@@ -53,8 +51,6 @@ func NewCertPtrWorker(
 	w.Stage = pip.NewStage[*Certificate, *DirtyDomain](
 		name,
 		pip.WithMultiOutputChannels[*Certificate, *DirtyDomain](workerCount),
-		// pip.WithSequentialOutputs[*Certificate, *DirtyDomain](),
-		// pip.WithSequentialInputs[*Certificate, *DirtyDomain](),
 		pip.WithProcessFunction(
 			func(cert *Certificate) ([]*DirtyDomain, []int, error) {
 				w.Certs = append(w.Certs, cert)
