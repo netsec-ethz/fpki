@@ -18,6 +18,7 @@ import (
 
 	mysqllib "github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
@@ -25,6 +26,8 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/tests"
 	"github.com/netsec-ethz/fpki/pkg/tests/random"
 	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
+	tr "github.com/netsec-ethz/fpki/pkg/tracing"
+	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
 // TestInsertDeadlock checks that InnoDB gets a deadlock if inserting two records with the
@@ -424,8 +427,14 @@ func BenchmarkInsertPerformance(b *testing.B) {
 // many partitions, while straight sorted data means each thread uses just one.
 // We could use KEY for partitions, but the data is sorted anyway.
 func BenchmarkPartitionInsert(b *testing.B) {
+	defer util.ShutdownFunction()
 	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancelF()
+
+	// Tracing.
+	tr.SetGlobalTracerName("partition-insert-benchmark")
+	ctx, span := tr.MT().Start(ctx, "benchmark")
+	defer span.End()
 
 	// Configure a test DB.
 	config, removeF := testdb.ConfigureTestDB(b)
@@ -451,12 +460,20 @@ func BenchmarkPartitionInsert(b *testing.B) {
 	require.Equal(b, 0, NCerts%BatchSize, "there is an error in the test setup. NCerts must be a "+
 		"multiple of BatchSize, modify either of them")
 
-	allCertIDs := mockTestData(b, NCerts)
-	mockExp := time.Unix(42, 0)
-	mockPayload := make([]byte, 1_100) // From xenon2025h1 we have an average of 1100b/cert
-	records := recordsFromCertIDs(allCertIDs, mockExp, mockPayload)
-	require.Equal(b, NCerts, len(records))
-	b.Logf("Mock data ready in memory, %d certs", NCerts)
+	// Create benchmark's mock data.
+	var records [][]string
+	{
+		_, span := tr.T("create-data").Start(ctx, "create-data")
+
+		allCertIDs := mockTestData(b, NCerts)
+		mockExp := time.Unix(42, 0)
+		mockPayload := make([]byte, 1_100) // From xenon2025h1 we have an average of 1100b/cert
+		records = recordsFromCertIDs(allCertIDs, mockExp, mockPayload)
+		require.Equal(b, NCerts, len(records))
+		b.Logf("Mock data ready in memory, %d certs", NCerts)
+
+		span.End()
+	}
 
 	CSVFilePath := "/mnt/data/tmp/insert_test_data.csv"
 
@@ -464,7 +481,9 @@ func BenchmarkPartitionInsert(b *testing.B) {
 		exec(t, "DROP TABLE IF EXISTS `insert_test`")
 	}
 	createCsv := func(t tests.T) {
+		_, span := tr.T("file").Start(ctx, "create-csv-file")
 		writeCSV(t, CSVFilePath, records)
+		span.End()
 	}
 	b.Run("myisam", func(b *testing.B) {
 		createCsv(b)
@@ -509,13 +528,17 @@ func BenchmarkPartitionInsert(b *testing.B) {
 
 			// Function to split all the data in N CSV files.
 			splitFile := func(t tests.T, numParts int) {
+				_, span := tr.T("file").Start(ctx, "csv-file-split")
 				writeChunkedCsv(t, chunkFilePath, numParts, records)
+				span.End()
 			}
 
 			// Function to split all the data in N CSV files, where each file contains
 			// records sorted by the result of the hasher function applied to cert_id.
 			splitFileSorted := func(t tests.T, N int, hasher func(*common.SHA256Output, int) uint) {
-				writeSortedChunkedCsv(t, records, N, hasher, chunkFilePathSorted)
+				_, span := tr.T("file").Start(ctx, "split-sorted")
+				writeSortedChunkedCsv(ctx, t, records, N, hasher, chunkFilePathSorted)
+				span.End()
 			}
 
 			runPartitionTest := func(b *testing.B, N int, createF func(tests.T, int)) {
@@ -1158,6 +1181,9 @@ func insertIntoDirty(
 }
 
 func loadDataWithCSV(ctx context.Context, t tests.T, conn db.Conn, filepath string) {
+	ctx, span := tr.T("db").Start(ctx, "from-csv")
+
+	defer span.End()
 	str := `LOAD DATA CONCURRENT INFILE ? IGNORE INTO TABLE insert_test ` +
 		`FIELDS TERMINATED BY ',' ENCLOSED BY '"' LINES TERMINATED BY '\n' ` +
 		`(@cert_id,expiration,@payload) SET ` +
@@ -1209,17 +1235,24 @@ func writeChunkedCsv(
 // Function to split all the data in N CSV files, where each file contains
 // records sorted by the result of the hasher function applied to cert_id.
 func writeSortedChunkedCsv(
+	ctx context.Context,
 	t tests.T,
 	records [][]string,
 	N int,
 	hasher func(*common.SHA256Output, int) uint, //  hash function that determines the partition
 	fName func(int) string, //         filename function
 ) {
+	ctx, span := tr.T("file").Start(ctx, "write-sorted-chunked-csv")
+	defer span.End()
+
 	// Require N to be positive.
 	require.Greater(t, N, 0)
 
+	_, spanSort := tr.T("file").Start(ctx, "sort-records")
+
 	// Compute how many bits we need to cover N partitions (i.e. ceil(log2(N-1)),
 	// doable by computing the bit length of N-1 even if not a power of 2.
+	// deleteme use db function
 	nBits := 0
 	for n := N - 1; n > 0; n >>= 1 {
 		nBits++
@@ -1244,6 +1277,7 @@ func writeSortedChunkedCsv(
 	sort.Slice(parsed, func(i, j int) bool {
 		return parsed[i].part < parsed[j].part
 	})
+	spanSort.End()
 
 	// Split in N chunks. Each chunk takes all records from last index
 	// until 256*w/N , 1<=w<=N .
@@ -1253,6 +1287,7 @@ func writeSortedChunkedCsv(
 		chunk := make([][]string, 0, len(parsed)) // allocate here, reuse in the loop
 
 		// This worker takes all values corresponding to partition number `w`.
+		_, spanFind := tr.T("file").Start(ctx, "find-elems-to-partition")
 		for i := 0; i < len(parsed); i++ {
 			r := parsed[i]
 
@@ -1265,9 +1300,17 @@ func writeSortedChunkedCsv(
 				break
 			}
 		}
+		spanFind.End()
+
 		w := w
 		go func() {
 			defer wg.Done()
+			_, span := tr.T("file").Start(ctx, "write-partition")
+			span.SetAttributes(
+				attribute.Int("worker-number", w),
+			)
+			defer span.End()
+
 			// We are done with this worker.
 			writeCSV(t, fName(w), chunk)
 			t.Logf("[%2d] wrote %d records\n", w, len(chunk))
@@ -1366,6 +1409,9 @@ func runWithCsvFile(
 	createTableFunc func(tests.T, int), // function to create the table
 	fName func(int) string, // function returning chunked csv filename
 ) {
+	ctx, span := tr.T("run-csv-file").Start(ctx, "run")
+	defer span.End()
+
 	// Create table, but with partitions.
 	if createTableFunc != nil {
 		createTableFunc(t, N)
