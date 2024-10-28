@@ -122,7 +122,7 @@ func TestManagerStart(t *testing.T) {
 			conn := testdb.Connect(t, config)
 			defer conn.Close()
 
-			manager, err := updater.NewManager(ctx, tc.NWorkers, conn, tc.MultiInsertSize, time.Second, nil)
+			manager, err := updater.NewManager(tc.NWorkers, conn, tc.MultiInsertSize, time.Second, nil)
 			require.NoError(t, err)
 
 			certs := tc.certGenerator(t, mockLeaves(tc.NLeafDomains)...)
@@ -197,7 +197,6 @@ func TestManagerResume(t *testing.T) {
 			defer conn.Close()
 
 			manager, err := updater.NewManager(
-				ctx,
 				tc.NWorkers,
 				conn,
 				tc.MultiInsertSize,
@@ -415,7 +414,7 @@ func createManagerWithOutputFunction(
 	outType pip.DebugPurposesOnlyOutputType,
 ) *updater.Manager {
 
-	manager, err := updater.NewManager(ctx, workerCount, conn, 10, 1, nil)
+	manager, err := updater.NewManager(workerCount, conn, 10, 1, nil)
 	require.NoError(t, err)
 
 	stages := manager.Pipeline.Stages

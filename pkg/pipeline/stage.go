@@ -10,8 +10,6 @@ import (
 
 	tr "github.com/netsec-ethz/fpki/pkg/tracing"
 	"github.com/netsec-ethz/fpki/pkg/util"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -26,7 +24,7 @@ type StageLike interface {
 }
 
 type StageBase struct {
-	Tracer                    trace.Tracer    // The tracer for this service.
+	Tracer                    tr.Tracer       // The tracer for this service.
 	Ctx                       context.Context // Running context of this stage.
 	Name                      string          // Name of the stage.
 	ErrCh                     chan error      // To be read by the previous stage (or trigger, if this is Source).
@@ -42,7 +40,7 @@ type StageBase struct {
 
 func newStageBase(name string) StageBase {
 	return StageBase{
-		Tracer:         tr.Tracer(name),
+		Tracer:         tr.GetTracer(name),
 		Name:           name,
 		onReceivedData: func() {},             // Noop.
 		onResume:       func() {},             // Noop.
@@ -237,15 +235,16 @@ func (s *Stage[IN, OUT]) processThisStage() {
 	var shouldBreakReadingIncoming bool
 	var sendingError bool
 
+	traIncoming := tr.T("incoming")
+	traProcessing := tr.T("processing")
+	traSending := tr.T("sending")
 	lastTiming := tr.Now()
 
 readIncoming:
 	for {
 		DebugPrintf("[%s] select-blocked on input: %s\n", s.Name, chanPtr(s.AggregatedIncomeCh))
-		_, spanIncoming := tr.T("incoming").Start(context.TODO(), "incoming")
-		spanIncoming.SetAttributes(
-			attribute.String("name", s.Name),
-		)
+		_, spanIncoming := traIncoming.Start(s.Ctx, "incoming")
+		tr.SetAttrString(spanIncoming, "name", s.Name)
 
 		select {
 		case <-s.StopCh:
@@ -271,10 +270,8 @@ readIncoming:
 			s.onReceivedData()
 
 			tr.SpanIfLongTime(WaitIsTooLong, &lastTiming, spanIncoming)
-			_, spanProcessing := tr.T("processing").Start(s.Ctx, "processing")
-			spanProcessing.SetAttributes(
-				attribute.String("name", s.Name),
-			)
+			_, spanProcessing := traProcessing.Start(s.Ctx, "processing")
+			tr.SetAttrString(spanProcessing, "name", s.Name)
 
 			var outs []OUT
 			var outChIndxs []int
@@ -289,10 +286,8 @@ readIncoming:
 			}
 			s.onProcessed()
 			tr.SpanIfLongTime(ProcessIsTooLong, &lastTiming, spanProcessing)
-			_, spanSending := tr.T("sending").Start(s.Ctx, "sending ")
-			spanSending.SetAttributes(
-				attribute.String("name", s.Name),
-			)
+			_, spanSending := traSending.Start(s.Ctx, "sending ")
+			tr.SetAttrString(spanSending, "name", s.Name)
 
 			switch err {
 			case nil: // do nothing
@@ -316,7 +311,7 @@ readIncoming:
 				&foundError,
 			)
 			s.onSent()
-			tr.SpanIfLongTime(WaitIsTooLong, &lastTiming, spanSending)
+			// tr.SpanIfLongTime(WaitIsTooLong, &lastTiming, spanSending)
 
 			DebugPrintf("[%s] sendingError = %v, shouldReturn = %v, shouldBreak = %v\n",
 				s.Name, sendingError, shouldReturn, shouldBreakReadingIncoming)

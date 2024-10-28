@@ -21,12 +21,14 @@ import (
 
 const Enabled = true
 
+type Tracer trace.Tracer
+
 func init() {
 	globalTracerName = os.Args[0]
 	tracers = make(map[string]trace.Tracer, 1)
 }
 
-func Tracer(name string) trace.Tracer {
+func GetTracer(name string) trace.Tracer {
 	tracersMu.RLock()
 	tracer, ok := tracers[name]
 	tracersMu.RUnlock()
@@ -52,7 +54,7 @@ func Tracer(name string) trace.Tracer {
 
 // T is an alias for Tracer.
 func T(name string) trace.Tracer {
-	return Tracer(name)
+	return GetTracer(name)
 }
 
 func SetGlobalTracerName(name string) {
@@ -61,12 +63,20 @@ func SetGlobalTracerName(name string) {
 
 // MainTracer returns the unique tracer associated with the process' entry point.
 func MainTracer() trace.Tracer {
-	return Tracer(globalTracerName)
+	return GetTracer(globalTracerName)
 }
 
 // TM is an alias for MainTracer.
 func MT() trace.Tracer {
 	return MainTracer()
+}
+
+func SetAttrInt(span trace.Span, key string, value int) {
+	span.SetAttributes(attribute.Int(key, value))
+}
+
+func SetAttrString(span trace.Span, key string, value string) {
+	span.SetAttributes(attribute.String(key, value))
 }
 
 func Now() timing {

@@ -19,6 +19,7 @@ import (
 // TestAllocsCertWorkerProcessBundle checks that the calls to deduplicate elements in CertWorker
 // do not need special memory allocations, due to the static fields present in the struct.
 func TestAllocsCertWorkerProcessBundle(t *testing.T) {
+	tests.StopMemoryProfile()
 	defer pip.PrintAllDebugLines()
 
 	// Cert worker use of allocation calls.
@@ -33,37 +34,41 @@ func TestAllocsCertWorkerProcessBundle(t *testing.T) {
 	certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
 
 	// Prepare the manager and worker for the test.
-	manager, err := updater.NewManager(ctx, 1, conn, 1000, 1, nil)
+	manager, err := updater.NewManager(1, conn, 1000, 1, nil)
 	require.NoError(t, err)
 
 	// The only interesting stage for this test is the one with the certificate worker.
 	// For that purpose, we mock the source and sink.
-	worker := updater.NewCertWorker(ctx, 0, manager, conn, 1)
+	worker := updater.NewCertWorker(0, manager, conn, 1)
+	worker.Ctx = ctx
 
 	// Bundle the mock data.
 	worker.Certs = certs
 
 	// Measure the test function.
 	worker.Certs = certs
-	allocsPerRun := tests.AllocsPerRun(func() {
-		worker.ProcessBundle()
-		conn.UpdateCerts(
-			ctx,
-			worker.CacheIds(),
-			worker.CacheParents(),
-			worker.CacheExpirations(),
-			worker.CachePayloads(),
-		)
-	})
-
-	// We should have 0 new allocations.
-	t.Logf("%d allocations", allocsPerRun)
-	require.Equal(t, 0, allocsPerRun)
+	tests.AllocsPerRunPreciseWithProfile(
+		t,
+		func() {
+			worker.ProcessBundle()
+			conn.UpdateCerts(
+				ctx,
+				worker.CacheIds(),
+				worker.CacheParents(),
+				worker.CacheExpirations(),
+				worker.CachePayloads(),
+			)
+		},
+		0,                // We should have 0 new allocations.
+		"/tmp/mem.pprof", // dump a memory profile here if failure.
+	)
 }
 
 // TestCertWorkerOverhead checks the extra amount of memory that the certificate worker uses,
 // other than that used by the main processing function processBundle.
 func TestCertWorkerAllocationsOverhead(t *testing.T) {
+	tests.StopMemoryProfile()
+
 	defer pip.PrintAllDebugLines()
 
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
@@ -76,11 +81,12 @@ func TestCertWorkerAllocationsOverhead(t *testing.T) {
 	N := 100
 	certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
 
-	manager, err := updater.NewManager(ctx, 1, conn, 10, 1, nil)
+	manager, err := updater.NewManager(1, conn, 10, 1, nil)
 	require.NoError(t, err)
 
 	// Create a cert worker stage. Input channel of Certificate, output of DirtyDomain.
-	worker := updater.NewCertWorker(ctx, 0, manager, conn, 1)
+	worker := updater.NewCertWorker(0, manager, conn, 1)
+	worker.Ctx = ctx
 
 	// Modify output function for the purposes of not using the allocating concurrent one:
 	pip.TestOnlyPurposeSetOutputFunction(
@@ -119,16 +125,18 @@ func TestCertWorkerAllocationsOverhead(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	tests.TestOrTimeout(t, tests.WithContext(ctx), func(t tests.T) {
-		allocs := tests.AllocsPerRun(func() {
-			// All is set up. Start processing and measure allocations.
-			sendCertsCh <- struct{}{}
-			// Wait for completion.
-			err = <-worker.ErrCh
-		})
-		require.NoError(t, err)
-		t.Logf("allocs = %d", allocs)
-		// The test is flaky: sometimes we get 0 allocations, sometimes 1 or even more.
-		require.LessOrEqual(t, allocs, N/10)
+
+		tests.AllocsPerRunPreciseWithProfile(
+			t,
+			func() {
+				// All is set up. Start processing and measure allocations.
+				sendCertsCh <- struct{}{}
+				// Wait for completion.
+				err = <-worker.ErrCh
+			},
+			10,
+			"/tmp/mem.pprof",
+		)
 	})
 }
 
@@ -138,7 +146,6 @@ func TestAllocsDomainWorkerProcessBundle(t *testing.T) {
 	defer pip.PrintAllDebugLines()
 
 	// Domain worker use of allocation calls.
-
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
 	defer cancelF()
 
@@ -150,9 +157,10 @@ func TestAllocsDomainWorkerProcessBundle(t *testing.T) {
 	certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
 
 	// Prepare the manager and worker for the test.
-	manager, err := updater.NewManager(ctx, 1, conn, 1000, 1, nil)
+	manager, err := updater.NewManager(1, conn, 1000, 1, nil)
 	require.NoError(t, err)
-	worker := updater.NewDomainWorker(ctx, 0, manager, conn, 1)
+	worker := updater.NewDomainWorker(0, manager, conn, 1)
+	worker.Ctx = ctx
 
 	// Bundle the mock data.
 	bundle := extractDomains(certs)
@@ -185,11 +193,12 @@ func TestDomainWorkerAllocationsOverhead(t *testing.T) {
 	certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
 	domains := extractDomains(certs)
 
-	manager, err := updater.NewManager(ctx, 1, conn, 10, 1, nil)
+	manager, err := updater.NewManager(1, conn, 10, 1, nil)
 	require.NoError(t, err)
 
 	// Create a cert worker stage. Input channel of Certificate, output of DirtyDomain.
-	worker := updater.NewDomainWorker(ctx, 0, manager, conn, 1)
+	worker := updater.NewDomainWorker(0, manager, conn, 1)
+	worker.Ctx = ctx
 
 	// Modify output function for the purposes of not using the allocating concurrent one:
 	pip.TestOnlyPurposeSetOutputFunction(

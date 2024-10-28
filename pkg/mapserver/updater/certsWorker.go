@@ -7,8 +7,8 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
+	tr "github.com/netsec-ethz/fpki/pkg/tracing"
 	"github.com/netsec-ethz/fpki/pkg/util"
-	"go.opentelemetry.io/otel/attribute"
 )
 
 type CertWorker struct {
@@ -59,7 +59,7 @@ func NewCertWorker(
 				// Add the cert to the bundle, no allocations expected.
 				w.Certs = append(w.Certs, cert)
 				if pip.DebugEnabled {
-					pip.DebugPrintf("[%s] worker got cert %s, batch size: %d \n", name, cert, len(w.Certs))
+					pip.DebugPrintf("[%s] worker got cert %s, batch size: %d \n", name, cert.String(), len(w.Certs))
 				}
 				// Only if we have filled a complete bundle, process.
 				if len(w.Certs) == m.MultiInsertSize {
@@ -99,9 +99,7 @@ func (w *CertWorker) processBundle() error {
 	{
 		_, span := w.Stage.Tracer.Start(ctx, "insert-in-db")
 		defer span.End()
-		span.SetAttributes(
-			attribute.Int("num", len(w.Certs)),
-		)
+		tr.SetAttrInt(span, "num", len(w.Certs))
 
 		if err := w.insertCertificates(); err != nil {
 			return fmt.Errorf("inserting certificates at worker %d: %w", w.Id, err)
@@ -113,9 +111,7 @@ func (w *CertWorker) processBundle() error {
 		_, span := w.Stage.Tracer.Start(ctx, "extract-domains")
 		defer span.End()
 		w.extractDomains()
-		span.SetAttributes(
-			attribute.Int("num", len(w.Domains)),
-		)
+		tr.SetAttrInt(span, "num", len(w.Domains))
 	}
 
 	{

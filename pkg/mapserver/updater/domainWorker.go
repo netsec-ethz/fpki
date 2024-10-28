@@ -6,8 +6,8 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
+	tr "github.com/netsec-ethz/fpki/pkg/tracing"
 	"github.com/netsec-ethz/fpki/pkg/util"
-	"go.opentelemetry.io/otel/attribute"
 )
 
 type DomainWorker struct {
@@ -89,9 +89,8 @@ func NewDomainWorker(
 func (w *DomainWorker) processBundle() error {
 	ctx, span := w.Tracer.Start(w.Ctx, "process-domain-bundle")
 	defer span.End()
-	span.SetAttributes(
-		attribute.Int("num", len(w.Domains)),
-	)
+	tr.SetAttrInt(span, "num", len(w.Domains))
+
 	if len(w.Domains) == 0 {
 		return nil
 	}
@@ -126,9 +125,8 @@ func (w *DomainWorker) processBundle() error {
 		// Remove duplicates (domainID,name)
 		_, span := w.Tracer.Start(ctx, "dedup-domains")
 		defer span.End()
-		span.SetAttributes(
-			attribute.Int("num-original", len(w.cloneDomainIDs)),
-		)
+		tr.SetAttrInt(span, "num-original", len(w.cloneDomainIDs))
+
 		w.cloneDomainIDs = append(w.cloneDomainIDs[:0], w.domainIDs...) // clone again (was modified).
 		w.cloneNames = append(w.cloneNames[:0], w.names...)
 
@@ -143,18 +141,14 @@ func (w *DomainWorker) processBundle() error {
 			util.Wrap(&w.cloneDomainIDs),
 			util.Wrap(&w.cloneNames),
 		)
-		span.SetAttributes(
-			// After deduplication.
-			attribute.Int("num-deduplicated", len(w.cloneDomainIDs)),
-		)
+		// After deduplication.
+		tr.SetAttrInt(span, "num-deduplicated", len(w.cloneDomainIDs))
 	}
 	{
 		// Update domains table.
 		_, span := w.Tracer.Start(ctx, "insert-domains")
 		defer span.End()
-		span.SetAttributes(
-			attribute.Int("num", len(w.cloneDomainIDs)),
-		)
+		tr.SetAttrInt(span, "num", len(w.cloneDomainIDs))
 
 		if err := w.Conn.UpdateDomains(w.Ctx, w.cloneDomainIDs, w.cloneNames); err != nil {
 			return fmt.Errorf("inserting domains at worker %d: %w", w.Id, err)
@@ -181,9 +175,7 @@ func (w *DomainWorker) processBundle() error {
 		// Update domain_certs table.
 		_, span := w.Tracer.Start(ctx, "insert-domain-certs")
 		defer span.End()
-		span.SetAttributes(
-			attribute.Int("num", len(w.cloneCertIDs)),
-		)
+		tr.SetAttrInt(span, "num", len(w.cloneCertIDs))
 
 		if err := w.Conn.UpdateDomainCerts(w.Ctx, w.cloneDomainIDs, w.cloneCertIDs); err != nil {
 			return fmt.Errorf("inserting domains at worker %d: %w", w.Id, err)
