@@ -6,10 +6,17 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	tr "github.com/netsec-ethz/fpki/pkg/tracing"
 	"github.com/netsec-ethz/fpki/pkg/util"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+)
+
+const (
+	WaitIsTooLong    = time.Millisecond       // If receiving/sending takes longer -> emit trace.
+	ProcessIsTooLong = 100 * time.Millisecond // If processing function takes longer -> emit trace.
 )
 
 type StageLike interface {
@@ -230,9 +237,15 @@ func (s *Stage[IN, OUT]) processThisStage() {
 	var shouldBreakReadingIncoming bool
 	var sendingError bool
 
+	lastTiming := tr.Now()
+
 readIncoming:
 	for {
 		DebugPrintf("[%s] select-blocked on input: %s\n", s.Name, chanPtr(s.AggregatedIncomeCh))
+		_, spanIncoming := tr.T("incoming").Start(context.TODO(), "incoming")
+		spanIncoming.SetAttributes(
+			attribute.String("name", s.Name),
+		)
 
 		select {
 		case <-s.StopCh:
@@ -255,6 +268,13 @@ readIncoming:
 				}
 				DebugPrintf("[%s] incoming? %v, value: %v\n", s.Name, ok, v)
 			}
+			s.onReceivedData()
+
+			tr.SpanIfLongTime(WaitIsTooLong, &lastTiming, spanIncoming)
+			_, spanProcessing := tr.T("processing").Start(s.Ctx, "processing")
+			spanProcessing.SetAttributes(
+				attribute.String("name", s.Name),
+			)
 
 			var outs []OUT
 			var outChIndxs []int
@@ -267,6 +287,12 @@ readIncoming:
 			} else {
 				outs, outChIndxs, err = s.ProcessFunc(in)
 			}
+			s.onProcessed()
+			tr.SpanIfLongTime(ProcessIsTooLong, &lastTiming, spanProcessing)
+			_, spanSending := tr.T("sending").Start(s.Ctx, "sending ")
+			spanSending.SetAttributes(
+				attribute.String("name", s.Name),
+			)
 
 			switch err {
 			case nil: // do nothing
@@ -289,6 +315,9 @@ readIncoming:
 				&sendingError,
 				&foundError,
 			)
+			s.onSent()
+			tr.SpanIfLongTime(WaitIsTooLong, &lastTiming, spanSending)
+
 			DebugPrintf("[%s] sendingError = %v, shouldReturn = %v, shouldBreak = %v\n",
 				s.Name, sendingError, shouldReturn, shouldBreakReadingIncoming)
 			if sendingError {

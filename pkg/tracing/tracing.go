@@ -19,6 +19,8 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+const Enabled = true
+
 func init() {
 	globalTracerName = os.Args[0]
 	tracers = make(map[string]trace.Tracer, 1)
@@ -79,6 +81,20 @@ func Since(last *timing) attribute.KeyValue {
 	kv := Duration("duration", *last)
 	last.now = time.Now()
 	return kv
+}
+
+// SpanIfLongTime closes, and thus brings it into existence, a given span, iff the elapsed time
+// is at least the specified amount.
+// This is useful to debug e.g. pipeline stages waiting for too long.
+func SpanIfLongTime(
+	minDuration time.Duration,
+	last *timing,
+	span trace.Span,
+) {
+	if time.Since(last.now) >= minDuration {
+		span.End()
+	}
+	last.now = time.Now()
 }
 
 type Traced[T any] struct {

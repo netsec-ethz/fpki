@@ -72,3 +72,7 @@ jaeger-start-shorter:
 
 jaeger-stop:
 	@docker stop jaeger
+
+jaeger-restart:
+	@$(MAKE) jaeger-stop
+	@$(MAKE) jaeger-start

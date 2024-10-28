@@ -4,11 +4,14 @@ package tracing
 
 import (
 	"context"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 )
+
+const Enabled = false
 
 func Tracer(string) trace.Tracer {
 	return noop.Tracer{}
@@ -39,6 +42,8 @@ func Duration(description string, since timing) attribute.KeyValue {
 func Since(last *timing) attribute.KeyValue {
 	return Duration("duration", *last)
 }
+
+func SpanIfLongTime(time.Duration, *timing, trace.Span) {}
 
 type Traced[T any] struct {
 	Data T
