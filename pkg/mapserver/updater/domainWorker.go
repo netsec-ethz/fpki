@@ -125,7 +125,7 @@ func (w *DomainWorker) processBundle() error {
 		// Remove duplicates (domainID,name)
 		_, span := w.Tracer.Start(ctx, "dedup-domains")
 		defer span.End()
-		tr.SetAttrInt(span, "num-original", len(w.cloneDomainIDs))
+		tr.SetAttrInt(span, "num-original", len(w.domainIDs))
 
 		w.cloneDomainIDs = append(w.cloneDomainIDs[:0], w.domainIDs...) // clone again (was modified).
 		w.cloneNames = append(w.cloneNames[:0], w.names...)
@@ -157,6 +157,10 @@ func (w *DomainWorker) processBundle() error {
 	// Update domain_certs.
 	{
 		// Remove duplicates (domainID, certID)
+		_, span := w.Tracer.Start(ctx, "dedup-domain-certs")
+		defer span.End()
+		tr.SetAttrInt(span, "num-original", len(w.domainIDs))
+
 		w.cloneDomainIDs = append(w.cloneDomainIDs[:0], w.domainIDs...) // again
 		w.cloneCertIDs = append(w.certIDs[:0], w.certIDs...)
 		util.DeduplicateSliceWithStorage(
@@ -170,6 +174,8 @@ func (w *DomainWorker) processBundle() error {
 			util.Wrap(&w.cloneDomainIDs),
 			util.Wrap(&w.cloneCertIDs),
 		)
+		// After deduplication.
+		tr.SetAttrInt(span, "num-deduplicated", len(w.cloneDomainIDs))
 	}
 	{
 		// Update domain_certs table.
