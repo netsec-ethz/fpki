@@ -10,75 +10,110 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
-type DomainWorker struct {
-	baseWorker
-	*pip.Sink[DirtyDomain]
+// The domain workers comprise two types of Stages:
+// 1. Cache domains into a bundle.
+// 2. Process and store the bundle.
+//
+// The two stages are necessary to not block the whole pipeline while the stage number 2 is running,
+// as it requires some milliseconds to finish. While stage 2 is running, stage 1 will still accept
+// incoming domains.
 
-	Domains []DirtyDomain // Created once, reused.
+type domainBatch []DirtyDomain
+
+type DomainBatcher struct {
+	*pip.Stage[DirtyDomain, domainBatch]
+	domains        ringCache[DirtyDomain] // Created once, reused.
+	outputChannels []int                  // Created once, reused.
+}
+
+func NewDomainBatcher(
+	id int,
+	m *Manager,
+	workerCount int,
+) *DomainBatcher {
+	// First create the domain batcher with its caches.
+	w := &DomainBatcher{
+		domains:        newRingCache[DirtyDomain](m.MultiInsertSize),
+		outputChannels: make([]int, m.MultiInsertSize),
+	}
+	// Allocate a slice of domainBatch and reuse it to send the output.
+	domainBatchWrap := make([]domainBatch, 1)
+
+	// Prepare the pipeline stage.
+	w.Stage = pip.NewStage[DirtyDomain, domainBatch](
+		fmt.Sprintf("domain_batcher_%02d", id),
+		// Each domain worker needs N channels, one per cert worker, where they receive the domain
+		// from that specific cert worker. When the cert worker is done, it will close only that
+		// specific channel.
+		pip.WithMultiInputChannels[DirtyDomain, domainBatch](workerCount),
+		pip.WithProcessFunction(func(in DirtyDomain) ([]domainBatch, []int, error) {
+			w.domains.addElem(in)
+			if w.domains.currLength() == m.MultiInsertSize {
+				_, span := w.Tracer.Start(w.Ctx, "batch-created")
+				defer span.End()
+
+				domainBatchWrap[0] = w.domains.current()
+				w.domains.rotate()
+				return domainBatchWrap, w.outputChannels, nil
+			}
+			return nil, nil, nil
+		}),
+		pip.WithOnNoMoreData[DirtyDomain, domainBatch](func() ([]domainBatch, []int, error) {
+			// Send the last (possibly empty) batch.
+			if l := w.domains.currLength(); l > 0 {
+				domainBatchWrap[0] = w.domains.current()
+				w.domains.rotate()
+				return domainBatchWrap, w.outputChannels[:l], nil
+			}
+			return nil, nil, nil
+		}),
+	)
+
+	return w
+}
+
+type DomainBatchWorker struct {
+	baseWorker
+	*pip.Sink[domainBatch]
 
 	domainIDs []common.SHA256Output // do not call make more than once.
 	certIDs   []common.SHA256Output // do not call make more than once.
 	names     []string              // do not call make more than once.
 
 	cloneDomainIDs []common.SHA256Output // to avoid calling malloc when we run dedup.
-	cloneCertIDs   []common.SHA256Output // to avoid calling malloc when we run dedup.
 	cloneNames     []string              // to avoid calling malloc when we run dedup.
+	cloneCertIDs   []common.SHA256Output // to avoid calling malloc when we run dedup.
 
 	dedupIDStorage     map[common.SHA256Output]struct{}    // For dedup to not allocate.
 	dedupIdNameStorage map[idName]struct{}                 // For dedup to not allocate.
 	dedupTwoIdsStorage map[[2]common.SHA256Output]struct{} // For dedup to not allocate.
 }
 
-func NewDomainWorker(
+func NewDomainBatchWorker(
 	id int,
 	m *Manager,
-	conn db.Conn,
-	workerCount int,
-) *DomainWorker {
-	w := &DomainWorker{
-		baseWorker: *newBaseWorker(m, conn),
-
-		// Create a certificate slice where all the received certificates will end up.
-		Domains: make([]DirtyDomain, 0, m.MultiInsertSize),
+) *DomainBatchWorker {
+	w := &DomainBatchWorker{
+		baseWorker: *newBaseWorker(m),
 
 		domainIDs: make([]common.SHA256Output, 0, m.MultiInsertSize),
 		certIDs:   make([]common.SHA256Output, 0, m.MultiInsertSize),
 		names:     make([]string, 0, m.MultiInsertSize),
 
 		cloneDomainIDs: make([]common.SHA256Output, 0, m.MultiInsertSize),
-		cloneCertIDs:   make([]common.SHA256Output, 0, m.MultiInsertSize),
 		cloneNames:     make([]string, 0, m.MultiInsertSize),
+		cloneCertIDs:   make([]common.SHA256Output, 0, m.MultiInsertSize),
 
 		dedupIDStorage:     make(map[common.SHA256Output]struct{}, 2*m.MultiInsertSize),
 		dedupIdNameStorage: make(map[idName]struct{}, m.MultiInsertSize),
 		dedupTwoIdsStorage: make(map[[2]common.SHA256Output]struct{}, m.MultiInsertSize),
 	}
 
-	// Each domain worker needs N channels, one per cert worker, where they receive the domain
-	// from that specific cert worker. When the cert worker is done, it will close only that
-	// specific channel.
-	w.Sink = pip.NewSink[DirtyDomain](
-		fmt.Sprintf("domain_worker_%02d", id),
+	w.Sink = pip.NewSink[domainBatch](
+		fmt.Sprintf("domain_batch_worker_%02d", id),
 		pip.WithSinkFunction(
-			func(domain DirtyDomain) error {
-				var err error
-				w.Domains = append(w.Domains, domain)
-				// Only if we have filled a complete bundle, process.
-				if len(w.Domains) == m.MultiInsertSize {
-					err = w.processBundle()
-					// Continue reading certificates until incomingChan is closed.
-					w.Domains = w.Domains[:0] // Reuse storage, but reset elements
-				}
-				return err
-			},
-		),
-		pip.WithMultiInputChannels[DirtyDomain, pip.None](workerCount),
-		pip.WithOnNoMoreData[DirtyDomain, pip.None](
-			func() ([]pip.None, []int, error) {
-				// Process the last (possibly empty) batch.
-				err := w.processBundle()
-				w.Domains = w.Domains[:0]
-				return nil, nil, err
+			func(batch domainBatch) error {
+				return w.processBatch(batch)
 			},
 		),
 	)
@@ -86,44 +121,58 @@ func NewDomainWorker(
 	return w
 }
 
-func (w *DomainWorker) processBundle() error {
-	ctx, span := w.Tracer.Start(w.Ctx, "process-domain-bundle")
-	defer span.End()
-	tr.SetAttrInt(span, "num", len(w.Domains))
+func (w DomainBatchWorker) conn() db.Conn {
+	return w.Manager.Conn
+}
 
-	if len(w.Domains) == 0 {
+func (w *DomainBatchWorker) processBatch(batch []DirtyDomain) error {
+	ctx, span := w.Tracer.Start(w.Ctx, "process-batch")
+	defer span.End()
+	tr.SetAttrInt(span, "num-domains", len(batch))
+
+	if len(batch) == 0 {
 		return nil
 	}
 
-	w.domainIDs = w.domainIDs[:len(w.Domains)] // keep storage
-	w.certIDs = w.certIDs[:len(w.Domains)]
-	w.names = w.names[:len(w.Domains)]
-	for i, d := range w.Domains {
-		w.domainIDs[i] = d.DomainID
-		w.names[i] = d.Name
-		w.certIDs[i] = d.CertID
+	{
+		// Flatten data structure.
+		_, span := w.Tracer.Start(w.Ctx, "flatten")
+		defer span.End()
+
+		// keep storage
+		w.domainIDs = w.domainIDs[:len(batch)]
+		w.certIDs = w.certIDs[:len(batch)]
+		w.names = w.names[:len(batch)]
+		for i, d := range batch {
+			w.domainIDs[i] = d.DomainID
+			w.names[i] = d.Name
+			w.certIDs[i] = d.CertID
+		}
 	}
+	{
+		// Remove duplicates for the dirty table insertion.
+		_, span := w.Tracer.Start(w.Ctx, "dedup-dirty")
+		defer span.End()
 
-	// Remove duplicates for the dirty table insertion.
-	w.cloneDomainIDs = append(w.cloneDomainIDs[:0], w.domainIDs...)
-	util.DeduplicateSliceWithStorage(
-		w.dedupIDStorage,
-		util.WithSlice(w.cloneDomainIDs),
-		util.Wrap(&w.cloneDomainIDs),
-	)
-
+		w.cloneDomainIDs = append(w.cloneDomainIDs[:0], w.domainIDs...)
+		util.DeduplicateSliceWithStorage(
+			w.dedupIDStorage,
+			util.WithSlice(w.cloneDomainIDs),
+			util.Wrap(&w.cloneDomainIDs),
+		)
+	}
 	{
 		// Update dirty table.
 		_, span := w.Tracer.Start(ctx, "insert-dirty")
 		defer span.End()
 
-		if err := w.Conn.InsertDomainsIntoDirty(w.Ctx, w.cloneDomainIDs); err != nil {
+		if err := w.conn().InsertDomainsIntoDirty(w.Ctx, w.cloneDomainIDs); err != nil {
 			return fmt.Errorf("inserting domains at worker %s: %w", w.Name, err)
 		}
 	}
 	{
 		// Remove duplicates (domainID,name)
-		_, span := w.Tracer.Start(ctx, "dedup-domains")
+		_, span := w.Tracer.Start(ctx, "dedup-domain-names")
 		defer span.End()
 		tr.SetAttrInt(span, "num-original", len(w.domainIDs))
 
@@ -150,7 +199,7 @@ func (w *DomainWorker) processBundle() error {
 		defer span.End()
 		tr.SetAttrInt(span, "num", len(w.cloneDomainIDs))
 
-		if err := w.Conn.UpdateDomains(w.Ctx, w.cloneDomainIDs, w.cloneNames); err != nil {
+		if err := w.conn().UpdateDomains(w.Ctx, w.cloneDomainIDs, w.cloneNames); err != nil {
 			return fmt.Errorf("inserting domains at worker %s: %w", w.Name, err)
 		}
 	}
@@ -183,7 +232,7 @@ func (w *DomainWorker) processBundle() error {
 		defer span.End()
 		tr.SetAttrInt(span, "num", len(w.cloneCertIDs))
 
-		if err := w.Conn.UpdateDomainCerts(w.Ctx, w.cloneDomainIDs, w.cloneCertIDs); err != nil {
+		if err := w.conn().UpdateDomainCerts(w.Ctx, w.cloneDomainIDs, w.cloneCertIDs); err != nil {
 			return fmt.Errorf("inserting domains at worker %s: %w", w.Name, err)
 		}
 	}

@@ -49,6 +49,7 @@ func NewManager(
 
 	// Create the Manager structure.
 	m := &Manager{
+		Conn:             conn,
 		MultiInsertSize:  multiInsertSize,
 		Stats:            NewStatistics(statsUpdateFreq, statsUpdateFunc),
 		ShardFuncCert:    selectPartition,
@@ -65,24 +66,33 @@ func NewManager(
 	// Stage 1-to-1: cert to DB and output domains.
 	certStages := make([]pip.StageLike, workerCount)
 	for i := range certWorkers {
-		certWorkers[i] = NewCertWorker(i, m, conn, workerCount)
+		certWorkers[i] = NewCertWorker(i, m, workerCount)
 		certStages[i] = certWorkers[i].Stage
 	}
 
+	// Prepare the domain batcher stages.
+	domainBatchers := make([]*DomainBatcher, workerCount)
+	domainBatcherStages := make([]pip.StageLike, workerCount)
+	for i := range domainBatchers {
+		domainBatchers[i] = NewDomainBatcher(i, m, workerCount)
+		domainBatcherStages[i] = domainBatchers[i].Stage
+	}
+
 	// Prepare the domain processing stages. Sinks.
-	domainWorkers := make([]*DomainWorker, workerCount)
+	domainBatchWorkers := make([]*DomainBatchWorker, workerCount)
 	// Pure sink objects:
-	domainStages := make([]pip.StageLike, workerCount)
-	for i := range domainWorkers {
-		domainWorkers[i] = NewDomainWorker(i, m, conn, workerCount)
-		domainStages[i] = domainWorkers[i].Sink
+	domainBatchWorkerStages := make([]pip.StageLike, workerCount)
+	for i := range domainBatchWorkers {
+		domainBatchWorkers[i] = NewDomainBatchWorker(i, m)
+		domainBatchWorkerStages[i] = domainBatchWorkers[i].Sink
 	}
 
 	// Collect all stages.
 	stages := make([]pip.StageLike, 1, 1+2*workerCount)
 	stages[0] = source
 	stages = append(stages, certStages...)
-	stages = append(stages, domainStages...)
+	stages = append(stages, domainBatcherStages...)
+	stages = append(stages, domainBatchWorkerStages...)
 
 	// Create pipeline.
 	var err error
@@ -99,22 +109,28 @@ func NewManager(
 					certWorker, 0,
 				)
 			}
-			// Link cert workers with domain workers.
-			// Each cert worker has N out channels. Link each one to one domain worker,
+			// Link cert workers with domain batchers.
+			// Each cert worker has N out channels. Link each one to one domain batcher,
 			// using the domain worker's ith input channel.
 			for i := 0; i < workerCount; i++ {
-
 				// Replace with a type assertion to *Certificate,*DirtyDomain if using pointers.
 				certWorker := p.Stages[i+1].(*pip.Stage[Certificate, DirtyDomain])
 				for j := 0; j < workerCount; j++ {
-					domainWorker := p.Stages[1+workerCount+j].(*pip.Sink[DirtyDomain])
+					domainBatcher := p.Stages[1+workerCount+j].(*pip.Stage[DirtyDomain, domainBatch])
 					pip.LinkStagesAt(
 						certWorker, j,
-						pip.SinkAsStage(domainWorker), i,
+						domainBatcher, i,
 					)
 				}
 			}
-
+			// Link each domain batcher with one domain worker.
+			for i := 0; i < workerCount; i++ {
+				offsetBatchers := 1 + workerCount
+				offsetWorkers := offsetBatchers + workerCount
+				domainBatcher := p.Stages[offsetBatchers+i].(*pip.Stage[DirtyDomain, domainBatch])
+				domainWorker := p.Stages[offsetWorkers+i].(*pip.Sink[domainBatch])
+				pip.LinkStagesFanOut(domainBatcher, pip.SinkAsStage(domainWorker))
+			}
 		},
 		pip.WithStages(stages...))
 

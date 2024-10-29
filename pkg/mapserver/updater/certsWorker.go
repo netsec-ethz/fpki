@@ -32,11 +32,10 @@ type CertWorker struct {
 func NewCertWorker(
 	id int,
 	m *Manager,
-	conn db.Conn,
 	workerCount int,
 ) *CertWorker {
 	w := &CertWorker{
-		baseWorker: *newBaseWorker(m, conn),
+		baseWorker: *newBaseWorker(m),
 		hasher:     *common.NewHasher(),
 
 		Certs:   make([]Certificate, 0, m.MultiInsertSize),
@@ -83,6 +82,10 @@ func NewCertWorker(
 	)
 
 	return w
+}
+
+func (w CertWorker) conn() db.Conn {
+	return w.Manager.Conn
 }
 
 // processBundle processes a bundle of certificates and extracts their associated domains.
@@ -151,7 +154,7 @@ func (w *CertWorker) insertCertificates() error {
 		util.Wrap(&w.cachePayloads),
 	)
 
-	return w.Conn.UpdateCerts(
+	return w.conn().UpdateCerts(
 		w.Ctx,
 		w.cacheIds,
 		w.cacheParents,

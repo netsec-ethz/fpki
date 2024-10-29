@@ -235,9 +235,14 @@ func (s *Stage[IN, OUT]) processThisStage() {
 	var shouldBreakReadingIncoming bool
 	var sendingError bool
 
-	traIncoming := tr.T("incoming")
-	traProcessing := tr.T("processing")
-	traSending := tr.T("sending")
+	// deleteme decide if we want a service per "operation" (processing, sending, etc), or per
+	// stage instance (domain_batcher_01, etc), or a mix.
+	// traIncoming := tr.T("incoming")
+	// traProcessing := tr.T("processing")
+	// traSending := tr.T("sending")
+	traIncoming := s.Tracer
+	traProcessing := s.Tracer
+	traSending := s.Tracer
 	lastTiming := tr.Now()
 
 readIncoming:

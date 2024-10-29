@@ -40,19 +40,19 @@ func (w *CertPtrWorker) CachePayloads() [][]byte {
 	return w.cachePayloads
 }
 
-func (w *DomainWorker) ProcessBundle() error {
-	return w.processBundle()
+func (w *DomainBatchWorker) ProcessBatch(batch domainBatch) error {
+	return w.processBatch(batch)
 }
 
-func (w *DomainWorker) CloneDomainIDs() []common.SHA256Output {
+func (w *DomainBatchWorker) CloneDomainIDs() []common.SHA256Output {
 	return w.cloneDomainIDs
 }
 
-func (w *DomainWorker) CloneNames() []string {
+func (w *DomainBatchWorker) CloneNames() []string {
 	return w.cloneNames
 }
 
-func (w *DomainWorker) CloneCertIDs() []common.SHA256Output {
+func (w *DomainBatchWorker) CloneCertIDs() []common.SHA256Output {
 	return w.cloneCertIDs
 }
 
@@ -70,4 +70,8 @@ func (w *DomainPtrWorker) CloneNames() []string {
 
 func (w *DomainPtrWorker) CloneCertIDs() []common.SHA256Output {
 	return w.cloneCertIDs
+}
+
+func MakeChanDomainBatch() chan domainBatch {
+	return make(chan domainBatch)
 }
