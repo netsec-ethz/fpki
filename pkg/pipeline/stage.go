@@ -94,7 +94,7 @@ func NewStage[IN, OUT any](
 	}
 	s.buildAggregatedInput = s.readIncomingConcurrently
 
-	s.sendOutputs = s.sendOutputConcurrent
+	s.sendOutputs = s.sendOutputsConcurrent
 
 	for _, opt := range options {
 		opt.stage(s)
@@ -376,11 +376,11 @@ func (s *Stage[IN, OUT]) sendOutputsSequential(
 	return failedIndices
 }
 
-// sendOutputConcurrent sends the possibly multiple outputs to each out channel concurrently.
+// sendOutputsConcurrent sends the possibly multiple outputs to each out channel concurrently.
 // This function will allocate memory, since it spawns a goroutine per output channel, and
 // synchronizes with all of them.
 // TODO: create the goroutines at NewStage time, and unblock them with e.g. a sync.Cond.
-func (s *Stage[IN, OUT]) sendOutputConcurrent(
+func (s *Stage[IN, OUT]) sendOutputsConcurrent(
 	outs []OUT,
 	outChIndxs []int,
 	shouldReturn *bool,

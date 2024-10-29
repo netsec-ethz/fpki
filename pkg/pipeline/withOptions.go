@@ -80,7 +80,7 @@ func WithCyclesAllowedSequentialOutputs[IN, OUT any]() option[IN, OUT] {
 // at the expense of some allocations being made.
 func WithConcurrentOutputs[IN, OUT any]() option[IN, OUT] {
 	return newStageOption(func(s *Stage[IN, OUT]) {
-		s.sendOutputs = s.sendOutputConcurrent
+		s.sendOutputs = s.sendOutputsConcurrent
 	})
 }
 
