@@ -36,7 +36,7 @@ func NewCertWorker(
 	workerCount int,
 ) *CertWorker {
 	w := &CertWorker{
-		baseWorker: *newBaseWorker(id, m, conn),
+		baseWorker: *newBaseWorker(m, conn),
 		hasher:     *common.NewHasher(),
 
 		Certs:   make([]Certificate, 0, m.MultiInsertSize),
@@ -102,7 +102,7 @@ func (w *CertWorker) processBundle() error {
 		tr.SetAttrInt(span, "num", len(w.Certs))
 
 		if err := w.insertCertificates(); err != nil {
-			return fmt.Errorf("inserting certificates at worker %d: %w", w.Id, err)
+			return fmt.Errorf("inserting certificates at worker %s: %w", w.Name, err)
 		}
 	}
 

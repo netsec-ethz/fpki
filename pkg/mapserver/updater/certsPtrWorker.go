@@ -34,7 +34,7 @@ func NewCertPtrWorker(
 	workerCount int,
 ) *CertPtrWorker {
 	w := &CertPtrWorker{
-		baseWorker: *newBaseWorker(id, m, conn),
+		baseWorker: *newBaseWorker(m, conn),
 		hasher:     *common.NewHasher(),
 
 		Certs:  make([]*Certificate, 0, m.MultiInsertSize),
@@ -91,7 +91,7 @@ func (w *CertPtrWorker) processBundle() ([]*DirtyDomain, error) {
 
 	// Insert the certificates into the DB.
 	if err := w.insertCertificates(); err != nil {
-		return nil, fmt.Errorf("inserting certificates at worker %d: %w", w.Id, err)
+		return nil, fmt.Errorf("inserting certificates at worker %s: %w", w.Name, err)
 	}
 
 	// Extract the associated domain objects. The domains stay in w.Domains.

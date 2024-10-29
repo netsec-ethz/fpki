@@ -36,7 +36,7 @@ func NewDomainWorker(
 	workerCount int,
 ) *DomainWorker {
 	w := &DomainWorker{
-		baseWorker: *newBaseWorker(id, m, conn),
+		baseWorker: *newBaseWorker(m, conn),
 
 		// Create a certificate slice where all the received certificates will end up.
 		Domains: make([]DirtyDomain, 0, m.MultiInsertSize),
@@ -118,7 +118,7 @@ func (w *DomainWorker) processBundle() error {
 		defer span.End()
 
 		if err := w.Conn.InsertDomainsIntoDirty(w.Ctx, w.cloneDomainIDs); err != nil {
-			return fmt.Errorf("inserting domains at worker %d: %w", w.Id, err)
+			return fmt.Errorf("inserting domains at worker %s: %w", w.Name, err)
 		}
 	}
 	{
@@ -151,7 +151,7 @@ func (w *DomainWorker) processBundle() error {
 		tr.SetAttrInt(span, "num", len(w.cloneDomainIDs))
 
 		if err := w.Conn.UpdateDomains(w.Ctx, w.cloneDomainIDs, w.cloneNames); err != nil {
-			return fmt.Errorf("inserting domains at worker %d: %w", w.Id, err)
+			return fmt.Errorf("inserting domains at worker %s: %w", w.Name, err)
 		}
 	}
 	// Update domain_certs.
@@ -178,7 +178,7 @@ func (w *DomainWorker) processBundle() error {
 		tr.SetAttrInt(span, "num", len(w.cloneCertIDs))
 
 		if err := w.Conn.UpdateDomainCerts(w.Ctx, w.cloneDomainIDs, w.cloneCertIDs); err != nil {
-			return fmt.Errorf("inserting domains at worker %d: %w", w.Id, err)
+			return fmt.Errorf("inserting domains at worker %s: %w", w.Name, err)
 		}
 	}
 

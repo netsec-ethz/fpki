@@ -5,14 +5,12 @@ import (
 )
 
 type baseWorker struct {
-	Id      int
 	Manager *Manager
 	Conn    db.Conn
 }
 
-func newBaseWorker(id int, m *Manager, conn db.Conn) *baseWorker {
+func newBaseWorker(m *Manager, conn db.Conn) *baseWorker {
 	return &baseWorker{
-		Id:      id,
 		Manager: m,
 		Conn:    conn,
 	}
