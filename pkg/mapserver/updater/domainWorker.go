@@ -20,19 +20,19 @@ import (
 
 type domainBatch []DirtyDomain
 
-type DomainBatcher struct {
+type domainBatcher struct {
 	*pip.Stage[DirtyDomain, domainBatch]
 	domains        ringCache[DirtyDomain] // Created once, reused.
 	outputChannels []int                  // Created once, reused.
 }
 
-func NewDomainBatcher(
+func newDomainBatcher(
 	id int,
 	m *Manager,
 	workerCount int,
-) *DomainBatcher {
+) *domainBatcher {
 	// First create the domain batcher with its caches.
-	w := &DomainBatcher{
+	w := &domainBatcher{
 		domains:        newRingCache[DirtyDomain](m.MultiInsertSize),
 		outputChannels: make([]int, m.MultiInsertSize),
 	}
@@ -72,7 +72,7 @@ func NewDomainBatcher(
 	return w
 }
 
-type DomainWorker struct {
+type domainWorker struct {
 	baseWorker
 	*pip.Sink[domainBatch]
 
@@ -89,11 +89,11 @@ type DomainWorker struct {
 	dedupTwoIdsStorage map[[2]common.SHA256Output]struct{} // For dedup to not allocate.
 }
 
-func NewDomainWorker(
+func newDomainWorker(
 	id int,
 	m *Manager,
-) *DomainWorker {
-	w := &DomainWorker{
+) *domainWorker {
+	w := &domainWorker{
 		baseWorker: *newBaseWorker(m),
 
 		domainIDs: make([]common.SHA256Output, 0, m.MultiInsertSize),
@@ -121,11 +121,11 @@ func NewDomainWorker(
 	return w
 }
 
-func (w DomainWorker) conn() db.Conn {
+func (w domainWorker) conn() db.Conn {
 	return w.Manager.Conn
 }
 
-func (w *DomainWorker) processBatch(batch []DirtyDomain) error {
+func (w *domainWorker) processBatch(batch []DirtyDomain) error {
 	ctx, span := w.Tracer.Start(w.Ctx, "process-batch")
 	defer span.End()
 	tr.SetAttrInt(span, "num-domains", len(batch))

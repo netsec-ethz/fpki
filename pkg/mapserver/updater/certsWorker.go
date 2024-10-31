@@ -11,7 +11,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
-type CertWorker struct {
+type certWorker struct {
 	baseWorker
 	*pip.Stage[Certificate, DirtyDomain]
 	hasher common.Hasher
@@ -29,12 +29,12 @@ type CertWorker struct {
 	dedupStorage map[common.SHA256Output]struct{} // For dedup to not allocate.
 }
 
-func NewCertWorker(
+func newCertWorker(
 	id int,
 	m *Manager,
 	workerCount int,
-) *CertWorker {
-	w := &CertWorker{
+) *certWorker {
+	w := &certWorker{
 		baseWorker: *newBaseWorker(m),
 		hasher:     *common.NewHasher(),
 
@@ -84,13 +84,13 @@ func NewCertWorker(
 	return w
 }
 
-func (w CertWorker) conn() db.Conn {
+func (w certWorker) conn() db.Conn {
 	return w.Manager.Conn
 }
 
 // processBundle processes a bundle of certificates and extracts their associated domains.
 // The function resets the certificate bundle slice to zero size after it is done.
-func (w *CertWorker) processBundle() error {
+func (w *certWorker) processBundle() error {
 	ctx, span := w.Stage.Tracer.Start(w.Ctx, "process-cert-bundle")
 	defer span.End()
 	pip.DebugPrintf("[%s] processing bundle\n", w.Stage.Name)
@@ -128,7 +128,7 @@ func (w *CertWorker) processBundle() error {
 	return nil
 }
 
-func (w *CertWorker) insertCertificates() error {
+func (w *certWorker) insertCertificates() error {
 	// Reuse storage for the data translation.
 	w.cacheIds = w.cacheIds[:len(w.Certs)]
 	w.cacheParents = w.cacheParents[:len(w.Certs)]
@@ -165,7 +165,7 @@ func (w *CertWorker) insertCertificates() error {
 
 // extractDomains extract the associated domains stored in the Certs field and places them in the
 // Domains and outChs fields.
-func (w *CertWorker) extractDomains() {
+func (w *certWorker) extractDomains() {
 	// Reuse the storage.
 	w.Domains = w.Domains[:0]
 	w.outChs = w.outChs[:0]

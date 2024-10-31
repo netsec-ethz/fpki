@@ -40,7 +40,7 @@ func TestAllocsCertWorkerProcessBundle(t *testing.T) {
 
 	// The only interesting stage for this test is the one with the certificate worker.
 	// For that purpose, we mock the source and sink.
-	worker := NewCertWorker(0, manager, 1)
+	worker := newCertWorker(0, manager, 1)
 	worker.Ctx = ctx
 
 	// Bundle the mock data.
@@ -86,7 +86,7 @@ func TestCertWorkerAllocationsOverhead(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a cert worker stage. Input channel of Certificate, output of DirtyDomain.
-	worker := NewCertWorker(0, manager, 1)
+	worker := newCertWorker(0, manager, 1)
 	worker.Ctx = ctx
 
 	// Modify output function for the purposes of not using the allocating concurrent one:
@@ -162,7 +162,7 @@ func TestDomainBatcherNotBlocking(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a domain batcher stage.
-	worker := NewDomainBatcher(0, manager, 1)
+	worker := newDomainBatcher(0, manager, 1)
 	worker.Ctx = ctx
 
 	// Mock a source. Don't run it yet.
@@ -275,7 +275,7 @@ func TestDomainBatcherAllocationOverhead(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a domain batcher stage.
-	worker := NewDomainBatcher(0, manager, 1)
+	worker := newDomainBatcher(0, manager, 1)
 	worker.Ctx = ctx
 
 	// Modify output function for the purposes of not using the allocating concurrent one:
@@ -349,7 +349,7 @@ func TestAllocsDomainBatchWorkerProcessBundle(t *testing.T) {
 	// Prepare the manager and worker for the test.
 	manager, err := NewManager(1, conn, 1000, 1, nil)
 	require.NoError(t, err)
-	worker := NewDomainWorker(0, manager)
+	worker := newDomainWorker(0, manager)
 	worker.Ctx = ctx
 
 	// Bundle the mock data.
@@ -386,7 +386,7 @@ func TestDomainBatchWorkerAllocationsOverhead(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a cert worker stage. Input channel of Certificate, output of DirtyDomain.
-	worker := NewDomainWorker(0, manager)
+	worker := newDomainWorker(0, manager)
 	worker.Ctx = ctx
 
 	// Modify output function for the purposes of not using the allocating concurrent one:
