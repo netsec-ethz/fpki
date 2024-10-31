@@ -1,4 +1,4 @@
-package updater_test
+package updater
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
 	"github.com/netsec-ethz/fpki/pkg/tests"
 	"github.com/netsec-ethz/fpki/pkg/tests/noopdb"
@@ -36,12 +35,12 @@ func TestAllocsCertWorkerProcessBundle(t *testing.T) {
 	certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
 
 	// Prepare the manager and worker for the test.
-	manager, err := updater.NewManager(1, conn, 1000, 1, nil)
+	manager, err := NewManager(1, conn, 1000, 1, nil)
 	require.NoError(t, err)
 
 	// The only interesting stage for this test is the one with the certificate worker.
 	// For that purpose, we mock the source and sink.
-	worker := updater.NewCertWorker(0, manager, 1)
+	worker := NewCertWorker(0, manager, 1)
 	worker.Ctx = ctx
 
 	// Bundle the mock data.
@@ -52,13 +51,13 @@ func TestAllocsCertWorkerProcessBundle(t *testing.T) {
 	tests.AllocsPerRunPreciseWithProfile(
 		t,
 		func() {
-			worker.ProcessBundle()
+			worker.processBundle()
 			conn.UpdateCerts(
 				ctx,
-				worker.CacheIds(),
-				worker.CacheParents(),
-				worker.CacheExpirations(),
-				worker.CachePayloads(),
+				worker.cacheIds,
+				worker.cacheParents,
+				worker.cacheExpirations,
+				worker.cachePayloads,
 			)
 		},
 		0,                // We should have 0 new allocations.
@@ -83,11 +82,11 @@ func TestCertWorkerAllocationsOverhead(t *testing.T) {
 	N := 100
 	certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
 
-	manager, err := updater.NewManager(1, conn, 10, 1, nil)
+	manager, err := NewManager(1, conn, 10, 1, nil)
 	require.NoError(t, err)
 
 	// Create a cert worker stage. Input channel of Certificate, output of DirtyDomain.
-	worker := updater.NewCertWorker(0, manager, 1)
+	worker := NewCertWorker(0, manager, 1)
 	worker.Ctx = ctx
 
 	// Modify output function for the purposes of not using the allocating concurrent one:
@@ -99,7 +98,7 @@ func TestCertWorkerAllocationsOverhead(t *testing.T) {
 
 	// Mock a sink.
 	sinkErrCh := make(chan error)
-	worker.OutgoingChs[0] = make(chan updater.DirtyDomain)
+	worker.OutgoingChs[0] = make(chan DirtyDomain)
 	go func() {
 		t.Logf("reading all outputs from %s", debug.Chan2str(worker.OutgoingChs[0]))
 		for range worker.OutgoingChs[0] {
@@ -159,11 +158,11 @@ func TestDomainBatcherNotBlocking(t *testing.T) {
 	t.Logf("# domains: %d", len(domains))
 
 	const batchSize = 2
-	manager, err := updater.NewManager(1, conn, batchSize, 1, nil)
+	manager, err := NewManager(1, conn, batchSize, 1, nil)
 	require.NoError(t, err)
 
 	// Create a domain batcher stage.
-	worker := updater.NewDomainBatcher(0, manager, 1)
+	worker := NewDomainBatcher(0, manager, 1)
 	worker.Ctx = ctx
 
 	// Mock a source. Don't run it yet.
@@ -189,7 +188,7 @@ func TestDomainBatcherNotBlocking(t *testing.T) {
 	sinkErrCh := make(chan error)
 	sinkIsProcessing := make(chan struct{})
 	blockSinkProcessing := make(chan struct{})
-	worker.OutgoingChs[0] = updater.MakeChanDomainBatch()
+	worker.OutgoingChs[0] = make(chan domainBatch)
 	go func() {
 		t.Logf("mock sink: reading all outputs from %s", debug.Chan2str(worker.OutgoingChs[0]))
 		for range worker.OutgoingChs[0] {
@@ -272,11 +271,11 @@ func TestDomainBatcherAllocationOverhead(t *testing.T) {
 	certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
 	domains := extractDomains(certs)
 
-	manager, err := updater.NewManager(1, conn, 10, 1, nil)
+	manager, err := NewManager(1, conn, 10, 1, nil)
 	require.NoError(t, err)
 
 	// Create a domain batcher stage.
-	worker := updater.NewDomainBatcher(0, manager, 1)
+	worker := NewDomainBatcher(0, manager, 1)
 	worker.Ctx = ctx
 
 	// Modify output function for the purposes of not using the allocating concurrent one:
@@ -301,7 +300,7 @@ func TestDomainBatcherAllocationOverhead(t *testing.T) {
 
 	// Mock a sink.
 	sinkErrCh := make(chan error)
-	worker.OutgoingChs[0] = updater.MakeChanDomainBatch()
+	worker.OutgoingChs[0] = make(chan domainBatch)
 	go func() {
 		t.Logf("reading all outputs from %s", debug.Chan2str(worker.OutgoingChs[0]))
 		for range worker.OutgoingChs[0] {
@@ -348,9 +347,9 @@ func TestAllocsDomainBatchWorkerProcessBundle(t *testing.T) {
 	certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
 
 	// Prepare the manager and worker for the test.
-	manager, err := updater.NewManager(1, conn, 1000, 1, nil)
+	manager, err := NewManager(1, conn, 1000, 1, nil)
 	require.NoError(t, err)
-	worker := updater.NewDomainBatchWorker(0, manager)
+	worker := NewDomainWorker(0, manager)
 	worker.Ctx = ctx
 
 	// Bundle the mock data.
@@ -359,7 +358,7 @@ func TestAllocsDomainBatchWorkerProcessBundle(t *testing.T) {
 
 	// Measure the test function.
 	allocsPerRun := tests.AllocsPerRun(func() {
-		worker.ProcessBatch(batch)
+		worker.processBatch(batch)
 	})
 
 	// We should have 0 new allocations.
@@ -383,11 +382,11 @@ func TestDomainBatchWorkerAllocationsOverhead(t *testing.T) {
 	certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
 	domains := extractDomains(certs)
 
-	manager, err := updater.NewManager(1, conn, 10, 1, nil)
+	manager, err := NewManager(1, conn, 10, 1, nil)
 	require.NoError(t, err)
 
 	// Create a cert worker stage. Input channel of Certificate, output of DirtyDomain.
-	worker := updater.NewDomainBatchWorker(0, manager)
+	worker := NewDomainWorker(0, manager)
 	worker.Ctx = ctx
 
 	// Modify output function for the purposes of not using the allocating concurrent one:
@@ -432,13 +431,13 @@ func TestDomainBatchWorkerAllocationsOverhead(t *testing.T) {
 	require.LessOrEqual(t, allocs, N/10)
 }
 
-func extractDomains(certs []updater.Certificate) []updater.DirtyDomain {
-	domains := make([]updater.DirtyDomain, 0, len(certs))
+func extractDomains(certs []Certificate) []DirtyDomain {
+	domains := make([]DirtyDomain, 0, len(certs))
 	for _, c := range certs {
 		// Iff the certificate is a leaf certificate it will have a non-nil names slice: insert
 		// one entry per name.
 		for _, name := range c.Names {
-			domain := updater.DirtyDomain{
+			domain := DirtyDomain{
 				DomainID: common.SHA256Hash32Bytes([]byte(name)),
 				CertID:   c.CertID,
 				Name:     name,

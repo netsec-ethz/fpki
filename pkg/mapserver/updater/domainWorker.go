@@ -72,7 +72,7 @@ func NewDomainBatcher(
 	return w
 }
 
-type DomainBatchWorker struct {
+type DomainWorker struct {
 	baseWorker
 	*pip.Sink[domainBatch]
 
@@ -89,11 +89,11 @@ type DomainBatchWorker struct {
 	dedupTwoIdsStorage map[[2]common.SHA256Output]struct{} // For dedup to not allocate.
 }
 
-func NewDomainBatchWorker(
+func NewDomainWorker(
 	id int,
 	m *Manager,
-) *DomainBatchWorker {
-	w := &DomainBatchWorker{
+) *DomainWorker {
+	w := &DomainWorker{
 		baseWorker: *newBaseWorker(m),
 
 		domainIDs: make([]common.SHA256Output, 0, m.MultiInsertSize),
@@ -121,11 +121,11 @@ func NewDomainBatchWorker(
 	return w
 }
 
-func (w DomainBatchWorker) conn() db.Conn {
+func (w DomainWorker) conn() db.Conn {
 	return w.Manager.Conn
 }
 
-func (w *DomainBatchWorker) processBatch(batch []DirtyDomain) error {
+func (w *DomainWorker) processBatch(batch []DirtyDomain) error {
 	ctx, span := w.Tracer.Start(w.Ctx, "process-batch")
 	defer span.End()
 	tr.SetAttrInt(span, "num-domains", len(batch))

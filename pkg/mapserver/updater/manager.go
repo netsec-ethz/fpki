@@ -79,11 +79,11 @@ func NewManager(
 	}
 
 	// Prepare the domain processing stages. Sinks.
-	domainBatchWorkers := make([]*DomainBatchWorker, workerCount)
+	domainBatchWorkers := make([]*DomainWorker, workerCount)
 	// Pure sink objects:
 	domainBatchWorkerStages := make([]pip.StageLike, workerCount)
 	for i := range domainBatchWorkers {
-		domainBatchWorkers[i] = NewDomainBatchWorker(i, m)
+		domainBatchWorkers[i] = NewDomainWorker(i, m)
 		domainBatchWorkerStages[i] = domainBatchWorkers[i].Sink
 	}
 

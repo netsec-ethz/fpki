@@ -1,4 +1,4 @@
-package updater_test
+package updater
 
 import (
 	"context"
@@ -13,7 +13,6 @@ import (
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
 	"github.com/netsec-ethz/fpki/pkg/tests"
 	"github.com/netsec-ethz/fpki/pkg/tests/noopdb"
@@ -27,7 +26,7 @@ func TestManagerStart(t *testing.T) {
 
 	testCases := map[string]struct {
 		NLeafDomains     int
-		certGenerator    func(tests.T, ...string) []updater.Certificate
+		certGenerator    func(tests.T, ...string) []Certificate
 		expectedNCerts   int
 		expectedNDomains int
 		NWorkers         int
@@ -122,7 +121,7 @@ func TestManagerStart(t *testing.T) {
 			conn := testdb.Connect(t, config)
 			defer conn.Close()
 
-			manager, err := updater.NewManager(tc.NWorkers, conn, tc.MultiInsertSize, time.Second, nil)
+			manager, err := NewManager(tc.NWorkers, conn, tc.MultiInsertSize, time.Second, nil)
 			require.NoError(t, err)
 
 			certs := tc.certGenerator(t, mockLeaves(tc.NLeafDomains)...)
@@ -196,7 +195,7 @@ func TestManagerResume(t *testing.T) {
 			conn := testdb.Connect(t, config)
 			defer conn.Close()
 
-			manager, err := updater.NewManager(
+			manager, err := NewManager(
 				tc.NWorkers,
 				conn,
 				tc.MultiInsertSize,
@@ -270,7 +269,7 @@ func TestMinimalAllocsManager(t *testing.T) {
 	require.LessOrEqual(t, allocsPerRun, N/10)
 }
 
-func diffAncestryHierarchy(t tests.T, leaves ...string) []updater.Certificate {
+func diffAncestryHierarchy(t tests.T, leaves ...string) []Certificate {
 	var payloads []ctx509.Certificate
 	var IDs []common.SHA256Output
 	var parentIDs []*common.SHA256Output
@@ -287,22 +286,22 @@ func diffAncestryHierarchy(t tests.T, leaves ...string) []updater.Certificate {
 	return toCertificates(payloads, IDs, parentIDs, names)
 }
 
-func sameAncestryHierarchy(t tests.T, leaves ...string) []updater.Certificate {
+func sameAncestryHierarchy(t tests.T, leaves ...string) []Certificate {
 	return toCertificates(random.BuildTestRandomCertTree(t, leaves...))
 }
 
 func generatorCertCloner(
-	generator func(tests.T, ...string) []updater.Certificate,
+	generator func(tests.T, ...string) []Certificate,
 	multiplier int,
-) func(tests.T, ...string) []updater.Certificate {
+) func(tests.T, ...string) []Certificate {
 
-	return func(t tests.T, leaves ...string) []updater.Certificate {
+	return func(t tests.T, leaves ...string) []Certificate {
 		return cloneCertSlice(generator(t, leaves...), multiplier)
 	}
 }
 
 // cloneCertSlice clones certs `multiplier` times. If multiplier is 1, no cloning is done.
-func cloneCertSlice(certs []updater.Certificate, multiplier int) []updater.Certificate {
+func cloneCertSlice(certs []Certificate, multiplier int) []Certificate {
 	// Duplicate all entries.
 	duplicated := certs
 	for i := 1; i < multiplier; i++ {
@@ -316,7 +315,7 @@ func cloneCertSlice(certs []updater.Certificate, multiplier int) []updater.Certi
 			}
 			names := append(pC.Names[:0:0], pC.Names...)
 
-			c := updater.Certificate{
+			c := Certificate{
 				Cert:     payload,
 				CertID:   id,
 				ParentID: pParentID,
@@ -333,11 +332,11 @@ func toCertificates(
 	ids []common.SHA256Output,
 	parentIDs []*common.SHA256Output,
 	names [][]string,
-) []updater.Certificate {
+) []Certificate {
 
-	certs := make([]updater.Certificate, 0)
+	certs := make([]Certificate, 0)
 	for i := 0; i < len(payloads); i++ {
-		c := updater.Certificate{
+		c := Certificate{
 			CertID:   ids[i],
 			Cert:     payloads[i],
 			ParentID: parentIDs[i],
@@ -357,7 +356,7 @@ func mockLeaves(numberOfLeaves int) []string {
 	return leaves
 }
 
-func processCertificates(t tests.T, m *updater.Manager, certs []updater.Certificate) {
+func processCertificates(t tests.T, m *Manager, certs []Certificate) {
 	t.Logf("sending %d certs to incoming chan: %s", len(certs), debug.Chan2str(m.IncomingCertChan))
 	for _, c := range certs {
 		m.IncomingCertChan <- c
@@ -412,31 +411,47 @@ func createManagerWithOutputFunction(
 	conn db.Conn,
 	workerCount int,
 	outType pip.DebugPurposesOnlyOutputType,
-) *updater.Manager {
+) *Manager {
 
-	manager, err := updater.NewManager(workerCount, conn, 10, 1, nil)
+	manager, err := NewManager(workerCount, conn, 10, 1, nil)
 	require.NoError(t, err)
 
 	stages := manager.Pipeline.Stages
 	// Source:
 	pip.TestOnlyPurposeSetOutputFunction(
 		t,
-		pip.SourceAsStage(stages[0].(*pip.Source[updater.Certificate])),
+		pip.SourceAsStage(stages[0].(*pip.Source[Certificate])),
 		outType,
 	)
 	// Cert workers:
-	for i := 1; i < 1+workerCount; i++ {
+	begin := 1
+	end := 1 + workerCount
+	for i := begin; i < end; i++ {
 		pip.TestOnlyPurposeSetOutputFunction(
 			t,
-			stages[i].(*pip.Stage[updater.Certificate, updater.DirtyDomain]),
+			stages[i].(*pip.Stage[Certificate, DirtyDomain]),
 			outType,
 		)
 	}
-	// Domain workers, sinks:
-	for i := 1 + workerCount; i < 1+2*workerCount; i++ {
+
+	// Domain batchers:
+	begin = end
+	end = end + workerCount
+	for i := begin; i < end; i++ {
 		pip.TestOnlyPurposeSetOutputFunction(
 			t,
-			pip.SinkAsStage(stages[i].(*pip.Sink[updater.DirtyDomain])),
+			stages[i].(*pip.Stage[DirtyDomain, domainBatch]),
+			outType,
+		)
+	}
+
+	// Domain workers, sinks:
+	begin = end
+	end = end + workerCount
+	for i := begin; i < end; i++ {
+		pip.TestOnlyPurposeSetOutputFunction(
+			t,
+			pip.SinkAsStage(stages[i].(*pip.Sink[domainBatch])),
 			outType,
 		)
 	}
