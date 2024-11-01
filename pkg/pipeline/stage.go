@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	WaitIsTooLong    = time.Millisecond       // If receiving/sending takes longer -> emit trace.
-	ProcessIsTooLong = 100 * time.Millisecond // If processing function takes longer -> emit trace.
+	WaitIsTooLong    = 1000 * time.Millisecond // If receiving/sending takes longer -> emit trace.
+	ProcessIsTooLong = 1000 * time.Millisecond // If processing function takes longer -> emit trace.
 )
 
 type StageLike interface {
