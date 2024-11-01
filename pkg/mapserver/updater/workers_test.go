@@ -17,9 +17,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestAllocsCertWorkerProcessBundle checks that the calls to deduplicate elements in CertWorker
+// TestAllocsCertInserterProcessBundle checks that the calls to deduplicate elements in certInserter
 // do not need special memory allocations, due to the static fields present in the struct.
-func TestAllocsCertWorkerProcessBundle(t *testing.T) {
+func TestAllocsCertInserterProcessBundle(t *testing.T) {
 	tests.StopMemoryProfile()
 	defer pip.PrintAllDebugLines()
 
@@ -30,28 +30,25 @@ func TestAllocsCertWorkerProcessBundle(t *testing.T) {
 	// DB with no operation.
 	conn := &noopdb.Conn{}
 
-	// Create mock certificates.
-	N := 10
-	certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
-
 	// Prepare the manager and worker for the test.
 	manager, err := NewManager(1, conn, 1000, 1, nil)
 	require.NoError(t, err)
 
+	// Create mock certificates.
+	N := 10
+	certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
+	certs = certs[:min(len(certs), manager.MultiInsertSize)]
+
 	// The only interesting stage for this test is the one with the certificate worker.
 	// For that purpose, we mock the source and sink.
-	worker := newCertWorker(0, manager, 1)
+	worker := newCertInserter(0, manager)
 	worker.Ctx = ctx
 
-	// Bundle the mock data.
-	worker.Certs = certs
-
 	// Measure the test function.
-	worker.Certs = certs
 	tests.AllocsPerRunPreciseWithProfile(
 		t,
 		func() {
-			worker.processBundle()
+			worker.insertCertificates(conn, certs)
 			conn.UpdateCerts(
 				ctx,
 				worker.cacheIds,
@@ -65,9 +62,9 @@ func TestAllocsCertWorkerProcessBundle(t *testing.T) {
 	)
 }
 
-// TestCertWorkerOverhead checks the extra amount of memory that the certificate worker uses,
+// TestCertInserterAllocationsOverhead checks the extra amount of memory that the certificate worker uses,
 // other than that used by the main processing function processBundle.
-func TestCertWorkerAllocationsOverhead(t *testing.T) {
+func TestCertInserterAllocationsOverhead(t *testing.T) {
 	tests.StopMemoryProfile()
 
 	defer pip.PrintAllDebugLines()
@@ -78,15 +75,15 @@ func TestCertWorkerAllocationsOverhead(t *testing.T) {
 	// DB with no operations.
 	conn := &noopdb.Conn{}
 
+	manager, err := NewManager(1, conn, 10, 1, nil)
+	require.NoError(t, err)
+
 	// Create mock certificates.
 	N := 100
 	certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
 
-	manager, err := NewManager(1, conn, 10, 1, nil)
-	require.NoError(t, err)
-
 	// Create a cert worker stage. Input channel of Certificate, output of DirtyDomain.
-	worker := newCertWorker(0, manager, 1)
+	worker := newCertInserter(0, manager)
 	worker.Ctx = ctx
 
 	// Modify output function for the purposes of not using the allocating concurrent one:
@@ -96,29 +93,22 @@ func TestCertWorkerAllocationsOverhead(t *testing.T) {
 		pip.OutputSequentialCyclesAllowed,
 	)
 
-	// Mock a sink.
-	sinkErrCh := make(chan error)
-	worker.OutgoingChs[0] = make(chan DirtyDomain)
-	go func() {
-		t.Logf("reading all outputs from %s", debug.Chan2str(worker.OutgoingChs[0]))
-		for range worker.OutgoingChs[0] {
-		}
-		close(sinkErrCh)
-	}()
-
 	// Mock a source. Don't run it yet.
 	sendCertsCh := make(chan struct{})
 	go func() {
+		// Wait for the test to start.
 		<-sendCertsCh
-		for _, cert := range certs {
-			worker.IncomingChs[0] <- cert
+
+		// Create batches.
+		for i := 0; i < len(certs); i += manager.MultiInsertSize {
+			end := min(i+manager.MultiInsertSize, len(certs))
+			worker.IncomingChs[0] <- certs[i:end]
 		}
 		close(worker.IncomingChs[0])
 	}()
 
 	// Resume stage but not yet source.
 	worker.Prepare(ctx)
-	worker.NextErrChs[0] = sinkErrCh
 	worker.Resume(ctx)
 
 	time.Sleep(100 * time.Millisecond)
@@ -349,7 +339,7 @@ func TestAllocsDomainBatchWorkerProcessBundle(t *testing.T) {
 	// Prepare the manager and worker for the test.
 	manager, err := NewManager(1, conn, 1000, 1, nil)
 	require.NoError(t, err)
-	worker := newDomainWorker(0, manager)
+	worker := newDomainInserter(0, manager)
 	worker.Ctx = ctx
 
 	// Bundle the mock data.
@@ -386,7 +376,7 @@ func TestDomainBatchWorkerAllocationsOverhead(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a cert worker stage. Input channel of Certificate, output of DirtyDomain.
-	worker := newDomainWorker(0, manager)
+	worker := newDomainInserter(0, manager)
 	worker.Ctx = ctx
 
 	// Modify output function for the purposes of not using the allocating concurrent one:
@@ -399,7 +389,6 @@ func TestDomainBatchWorkerAllocationsOverhead(t *testing.T) {
 	// Mock a source. Don't run it yet.
 	sendDomainsCh := make(chan struct{})
 	go func() {
-
 		// Wait for the test to start.
 		<-sendDomainsCh
 

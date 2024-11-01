@@ -252,7 +252,7 @@ func TestMinimalAllocsManager(t *testing.T) {
 	N := 100
 	certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
 	// Prepare the manager and worker for the test.
-	manager := createManagerWithOutputFunction(t, ctx, conn, 2, pip.OutputSequentialCyclesAllowed)
+	manager := createManagerWithOutputFunction(t, conn, 2, pip.OutputSequentialCyclesAllowed)
 
 	// Now check the number of allocations happening inside the manager, once it runs.
 	manager.Resume(ctx)
@@ -407,7 +407,6 @@ func verifyDB(ctx context.Context, t tests.T, conn db.Conn,
 // stages in the manager for the purposes of not using the allocating concurrent one.
 func createManagerWithOutputFunction(
 	t *testing.T,
-	ctx context.Context,
 	conn db.Conn,
 	workerCount int,
 	outType pip.DebugPurposesOnlyOutputType,
@@ -417,15 +416,39 @@ func createManagerWithOutputFunction(
 	require.NoError(t, err)
 
 	stages := manager.Pipeline.Stages
-	// Source:
+
+	// A. Source:
 	pip.TestOnlyPurposeSetOutputFunction(
 		t,
 		pip.SourceAsStage(stages[0].(*pip.Source[Certificate])),
 		outType,
 	)
-	// Cert workers:
+
+	// B. Cert batchers:
 	begin := 1
 	end := 1 + workerCount
+	for i := begin; i < end; i++ {
+		pip.TestOnlyPurposeSetOutputFunction(
+			t,
+			stages[i].(*pip.Stage[Certificate, certBatch]),
+			outType,
+		)
+	}
+
+	// C. Cert inserters:
+	begin = end
+	end = end + workerCount
+	for i := begin; i < end; i++ {
+		pip.TestOnlyPurposeSetOutputFunction(
+			t,
+			pip.SinkAsStage(stages[i].(*pip.Sink[certBatch])),
+			outType,
+		)
+	}
+
+	// D. Domain extractors:
+	begin = end
+	end = end + workerCount
 	for i := begin; i < end; i++ {
 		pip.TestOnlyPurposeSetOutputFunction(
 			t,
@@ -434,7 +457,7 @@ func createManagerWithOutputFunction(
 		)
 	}
 
-	// Domain batchers:
+	// E. Domain batchers:
 	begin = end
 	end = end + workerCount
 	for i := begin; i < end; i++ {
@@ -445,7 +468,7 @@ func createManagerWithOutputFunction(
 		)
 	}
 
-	// Domain workers, sinks:
+	// F. Domain inserters, sinks:
 	begin = end
 	end = end + workerCount
 	for i := begin; i < end; i++ {
