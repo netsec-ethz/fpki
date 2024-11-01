@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
+	tr "github.com/netsec-ethz/fpki/pkg/tracing"
 )
 
 const CsvBufferSize = 64 * 1024 * 1024 // 64MB
@@ -59,33 +60,58 @@ func (c *mysqlDB) updateCertsCSV(
 	expirations []time.Time,
 	payloads [][]byte,
 ) error {
-	// Prepare the records for the CSV file.
-	records := make([][]string, len(ids))
-	for i := 0; i < len(ids); i++ {
-		records[i] = make([]string, 4)
-		records[i][0] = base64.StdEncoding.EncodeToString(ids[i][:])
-		if parents[i] != nil {
-			records[i][1] = base64.StdEncoding.EncodeToString(parents[i][:])
+	// Remove duplicates for the dirty table insertion.
+	tracer := tr.GetTracer("db")
+
+	var records [][]string
+	{
+		// Prepare the records for the CSV file.
+		_, span := tracer.Start(ctx, "prepare-records")
+
+		records = make([][]string, len(ids))
+		for i := 0; i < len(ids); i++ {
+			records[i] = make([]string, 4)
+			records[i][0] = base64.StdEncoding.EncodeToString(ids[i][:])
+			if parents[i] != nil {
+				records[i][1] = base64.StdEncoding.EncodeToString(parents[i][:])
+			}
+			records[i][2] = expirations[i].Format(time.DateTime)
+			records[i][3] = base64.StdEncoding.EncodeToString(payloads[i])
 		}
-		records[i][2] = expirations[i].Format(time.DateTime)
-		records[i][3] = base64.StdEncoding.EncodeToString(payloads[i])
+
+		span.End()
 	}
 
-	// Create temporary file.
-	tempfile, err := os.CreateTemp(TemporaryDir, "fpki-ingest-certs-*.csv")
-	if err != nil {
-		return fmt.Errorf("creating temporary file: %w", err)
-	}
-	defer os.Remove(tempfile.Name())
+	var tempfile *os.File
+	{
+		// Create temporary file.
+		_, span := tracer.Start(ctx, "create-csv")
 
-	// Write data to CSV file.
-	if err = writeToCSV(tempfile, records); err != nil {
-		return err
+		var err error
+		tempfile, err = os.CreateTemp(TemporaryDir, "fpki-ingest-certs-*.csv")
+		if err != nil {
+			return fmt.Errorf("creating temporary file: %w", err)
+		}
+		defer os.Remove(tempfile.Name())
+		tr.SetAttrString(span, "filename", tempfile.Name())
+
+		// Write data to CSV file.
+		if err = writeToCSV(tempfile, records); err != nil {
+			return err
+		}
+
+		span.End()
 	}
 
-	// Now instruct MySQL to directly ingest this file into the certs table.
-	if _, err := loadCertsTableWithCSV(ctx, c.db, tempfile.Name()); err != nil {
-		return fmt.Errorf("inserting CSV \"%s\" into DB.certs: %w", tempfile.Name(), err)
+	{
+		// Now instruct MySQL to directly ingest this file into the certs table.
+		_, span := tracer.Start(ctx, "insert-into-table")
+
+		if _, err := loadCertsTableWithCSV(ctx, c.db, tempfile.Name()); err != nil {
+			return fmt.Errorf("inserting CSV \"%s\" into DB.certs: %w", tempfile.Name(), err)
+		}
+
+		span.End()
 	}
 
 	return nil

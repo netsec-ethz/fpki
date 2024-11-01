@@ -7,21 +7,21 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
+	tr "github.com/netsec-ethz/fpki/pkg/tracing"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
 // The certificate workers stages receive Certificate as input, and:
-// 1. Batches the certificates in a slice to be inserted in the DB.
-// 2. For each certificate, it extracts domains and output them to the next stage.
+// - Batches the certificates in a slice to be inserted in the DB.
+// - For each certificate, it extracts domains and output them to the next stage.
 //
 // For this purpose we have the following stages:
-// 1. Gets a certificate and duplicates the output to stages 2 and 3 below.
+// 1. The source must send the same certificate to stages 2 and 3 below.
 // 2. Gets a certificate and batches them. It outputs a batch for stage 4
 // 3. Gets a certificate and obtains its domains and sends them to the next stages (domain batchers)
 // 4. Gets a certificate batch and inserts it into the DB.
 //
 // All stages need only one input channel. The types for each stage are:
-// 1. certDuplicator		Outputs to one certBatcher and one domainExtractor (deleteme)
 // 2. certBatcher			Outputs to one certInserter
 // 3. domainExtractor		Outputs to N domain batchers.
 // 4. certInserter			Sinks.
@@ -51,6 +51,9 @@ func newCertBatcher(
 		pip.WithProcessFunction(func(in Certificate) ([]certBatch, []int, error) {
 			w.certs.addElem(in)
 			if w.certs.currLength() == m.MultiInsertSize {
+				_, span := w.Tracer.Start(w.Ctx, "sending-batch")
+				defer span.End()
+
 				batchSlice[0] = w.certs.current()
 				w.certs.rotate()
 				return batchSlice, outChannels, nil
@@ -149,36 +152,59 @@ func newCertInserter(
 }
 
 func (w *certInserter) insertCertificates(conn db.Conn, batch certBatch) error {
+	ctx, span := w.Tracer.Start(w.Ctx, "process-batch")
+	defer span.End()
+	tr.SetAttrInt(span, "num-domains", len(batch))
+
 	// Reuse storage for the data translation.
 	w.cacheIds = w.cacheIds[:len(batch)]
 	w.cacheParents = w.cacheParents[:len(batch)]
 	w.cacheExpirations = w.cacheExpirations[:len(batch)]
 	w.cachePayloads = w.cachePayloads[:len(batch)]
 
-	for i, c := range batch {
-		w.cacheIds[i] = c.CertID
-		w.cacheParents[i] = c.ParentID
-		w.cacheExpirations[i] = c.Cert.NotAfter
-		w.cachePayloads[i] = c.Cert.Raw
+	{
+		// Flatten data structure.
+		_, span := w.Tracer.Start(ctx, "flatten")
+
+		for i, c := range batch {
+			w.cacheIds[i] = c.CertID
+			w.cacheParents[i] = c.ParentID
+			w.cacheExpirations[i] = c.Cert.NotAfter
+			w.cachePayloads[i] = c.Cert.Raw
+		}
+
+		span.End()
 	}
+	{
+		// Remove duplicates for the dirty table insertion.
+		_, span := w.Tracer.Start(ctx, "dedup-certs")
 
-	// Remove duplicated certs.
-	util.DeduplicateSliceWithStorage(
-		w.dedupStorage,
-		func(i int) common.SHA256Output {
-			return w.cacheIds[i]
-		},
-		util.Wrap(&w.cacheIds),
-		util.Wrap(&w.cacheParents),
-		util.Wrap(&w.cacheExpirations),
-		util.Wrap(&w.cachePayloads),
-	)
+		// Remove duplicated certs.
+		util.DeduplicateSliceWithStorage(
+			w.dedupStorage,
+			func(i int) common.SHA256Output {
+				return w.cacheIds[i]
+			},
+			util.Wrap(&w.cacheIds),
+			util.Wrap(&w.cacheParents),
+			util.Wrap(&w.cacheExpirations),
+			util.Wrap(&w.cachePayloads),
+		)
 
-	return conn.UpdateCerts(
-		w.Ctx,
-		w.cacheIds,
-		w.cacheParents,
-		w.cacheExpirations,
-		w.cachePayloads,
-	)
+		span.End()
+	}
+	{
+		_, span := w.Tracer.Start(ctx, "update-certs")
+
+		err := conn.UpdateCerts(
+			ctx,
+			w.cacheIds,
+			w.cacheParents,
+			w.cacheExpirations,
+			w.cachePayloads,
+		)
+
+		span.End()
+		return err
+	}
 }

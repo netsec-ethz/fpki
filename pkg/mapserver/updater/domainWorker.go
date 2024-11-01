@@ -136,8 +136,7 @@ func (w *domainInserter) processBatch(batch []DirtyDomain) error {
 
 	{
 		// Flatten data structure.
-		_, span := w.Tracer.Start(w.Ctx, "flatten")
-		defer span.End()
+		_, span := w.Tracer.Start(ctx, "flatten")
 
 		// keep storage
 		w.domainIDs = w.domainIDs[:len(batch)]
@@ -148,11 +147,12 @@ func (w *domainInserter) processBatch(batch []DirtyDomain) error {
 			w.names[i] = d.Name
 			w.certIDs[i] = d.CertID
 		}
+
+		span.End()
 	}
 	{
 		// Remove duplicates for the dirty table insertion.
-		_, span := w.Tracer.Start(w.Ctx, "dedup-dirty")
-		defer span.End()
+		_, span := w.Tracer.Start(ctx, "dedup-dirty")
 
 		w.cloneDomainIDs = append(w.cloneDomainIDs[:0], w.domainIDs...)
 		util.DeduplicateSliceWithStorage(
@@ -160,20 +160,22 @@ func (w *domainInserter) processBatch(batch []DirtyDomain) error {
 			util.WithSlice(w.cloneDomainIDs),
 			util.Wrap(&w.cloneDomainIDs),
 		)
+
+		span.End()
 	}
 	{
 		// Update dirty table.
 		_, span := w.Tracer.Start(ctx, "insert-dirty")
-		defer span.End()
 
-		if err := w.conn().InsertDomainsIntoDirty(w.Ctx, w.cloneDomainIDs); err != nil {
+		if err := w.conn().InsertDomainsIntoDirty(ctx, w.cloneDomainIDs); err != nil {
 			return fmt.Errorf("inserting domains at worker %s: %w", w.Name, err)
 		}
+
+		span.End()
 	}
 	{
 		// Remove duplicates (domainID,name)
 		_, span := w.Tracer.Start(ctx, "dedup-domain-names")
-		defer span.End()
 		tr.SetAttrInt(span, "num-original", len(w.domainIDs))
 
 		w.cloneDomainIDs = append(w.cloneDomainIDs[:0], w.domainIDs...) // clone again (was modified).
@@ -190,24 +192,29 @@ func (w *domainInserter) processBatch(batch []DirtyDomain) error {
 			util.Wrap(&w.cloneDomainIDs),
 			util.Wrap(&w.cloneNames),
 		)
+
 		// After deduplication.
 		tr.SetAttrInt(span, "num-deduplicated", len(w.cloneDomainIDs))
+		span.End()
 	}
 	{
 		// Update domains table.
 		_, span := w.Tracer.Start(ctx, "insert-domains")
-		defer span.End()
 		tr.SetAttrInt(span, "num", len(w.cloneDomainIDs))
 
-		if err := w.conn().UpdateDomains(w.Ctx, w.cloneDomainIDs, w.cloneNames); err != nil {
-			return fmt.Errorf("inserting domains at worker %s: %w", w.Name, err)
+		if err := w.conn().UpdateDomains(ctx, w.cloneDomainIDs, w.cloneNames); err != nil {
+			err := fmt.Errorf("inserting domains at worker %s: %w", w.Name, err)
+			span.RecordError(err)
+			span.End()
+			return err
 		}
+
+		span.End()
 	}
 	// Update domain_certs.
 	{
 		// Remove duplicates (domainID, certID)
 		_, span := w.Tracer.Start(ctx, "dedup-domain-certs")
-		defer span.End()
 		tr.SetAttrInt(span, "num-original", len(w.domainIDs))
 
 		w.cloneDomainIDs = append(w.cloneDomainIDs[:0], w.domainIDs...) // again
@@ -225,16 +232,21 @@ func (w *domainInserter) processBatch(batch []DirtyDomain) error {
 		)
 		// After deduplication.
 		tr.SetAttrInt(span, "num-deduplicated", len(w.cloneDomainIDs))
+		span.End()
 	}
 	{
 		// Update domain_certs table.
 		_, span := w.Tracer.Start(ctx, "insert-domain-certs")
-		defer span.End()
 		tr.SetAttrInt(span, "num", len(w.cloneCertIDs))
 
-		if err := w.conn().UpdateDomainCerts(w.Ctx, w.cloneDomainIDs, w.cloneCertIDs); err != nil {
-			return fmt.Errorf("inserting domains at worker %s: %w", w.Name, err)
+		if err := w.conn().UpdateDomainCerts(ctx, w.cloneDomainIDs, w.cloneCertIDs); err != nil {
+			err := fmt.Errorf("inserting domains at worker %s: %w", w.Name, err)
+			span.RecordError(err)
+			span.End()
+			return err
 		}
+
+		span.End()
 	}
 
 	return nil

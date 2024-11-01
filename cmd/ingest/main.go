@@ -45,6 +45,10 @@ const (
 //	   128    |     128       | 3m53.511s  |
 //	   512    |     128       | 3m39.226s  |
 //	----------------------------------------
+//
+// deleteme:
+// debugging:
+// time go run -tags=trace ./cmd/ingest/ -numparsers 1 -numdbworkers 1 -strategy onlyingest ./testdata2/
 func main() {
 	os.Exit(mainFunction())
 }
@@ -176,12 +180,13 @@ func mainFunction() int {
 				// Called for intermediate bundles. Need to coalesce, update SMT and clean dirty.
 
 				ctx, span := tr.MT().Start(ctx, "bundle-ingested")
-				defer span.End()
 
 				fmt.Println("\nAnother bundle ingestion finished.")
 				coalescePayloadsForDirtyDomains(ctx, conn)
 				updateSMT(ctx, conn)
 				cleanupDirty(ctx, conn)
+
+				span.End()
 			}
 		}
 
