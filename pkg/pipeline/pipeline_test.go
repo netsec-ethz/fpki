@@ -277,9 +277,9 @@ func TestSourceWithChannel(t *testing.T) {
 				WithSequentialOutputs[None, int](),
 				WithSourceChannel(
 					&incomingCh,
-					func(in int) (int, error) {
+					func(in int) ([]int, error) {
 						defer func() { incomingIndex++ }()
-						return incomingIndex % 2, nil
+						return []int{incomingIndex % 2}, nil
 					},
 				),
 			),
@@ -348,8 +348,8 @@ func TestStop(t *testing.T) {
 		WithStages(
 			NewSource[int](
 				"a",
-				WithSourceChannel(&incomingCh, func(in int) (int, error) {
-					return 0, nil
+				WithSourceChannel(&incomingCh, func(in int) ([]int, error) {
+					return []int{0}, nil
 				}),
 			),
 			NewStage[int, int](

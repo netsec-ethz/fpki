@@ -1,6 +1,8 @@
 package pipeline
 
-import "context"
+import (
+	"context"
+)
 
 type SourceLike interface {
 	StageLike
@@ -47,7 +49,7 @@ func WithSourceFunction[OUT any]( // deleteme
 // The processing function is called for each value to determine the output channel and error.
 func WithSourceChannel[OUT any]( // deleteme?
 	incomingCh *chan OUT,
-	processFunction func(in OUT) (int, error),
+	processFunction func(in OUT) ([]int, error),
 ) option[None, OUT] {
 	return newSourceOption(
 		func(s *Source[OUT]) {
@@ -57,28 +59,36 @@ func WithSourceChannel[OUT any]( // deleteme?
 			// Every time the stage resumes, set the source incoming channel.
 			// Since the pointed value might have changed, this is necessary between each resume
 			// calls.
+			// Additionally we resize the outs slice to the amount of out channels we have.
+			outs := make([]OUT, 0)
 			s.onResume = func() {
 				DebugPrintf("[%s] WithSourceChannel restoring source channel to %s\n",
 					s.Name, chanPtr(*incomingCh))
 				s.sourceIncomingCh = *incomingCh
+				DebugPrintf("[%s] WithSourceChannel resizing internal out slice to size %d\n",
+					s.Name, len(s.OutgoingChs))
+				outs = make([]OUT, len(s.OutgoingChs))
 			}
 
 			processFunction := processFunction // Local copy of the processing function.
-			outs := make([]OUT, 1)
-			outChs := make([]int, 1)
 			s.ProcessFunc = func(in None) ([]OUT, []int, error) {
 				DebugPrintf("[%s] source.ProcessFunc: channel is: %s\n",
 					s.Name, chanPtr(s.sourceIncomingCh))
-				for in := range s.sourceIncomingCh {
+
+				if in, ok := <-s.sourceIncomingCh; ok {
 					DebugPrintf("[%s] source channel %s got value: %v\n",
 						s.Name, chanPtr(s.sourceIncomingCh), in)
-					outCh, err := processFunction(in)
-					DebugPrintf("[%s] source channel processed value: %v, out ch: %d, err: %v\n",
-						s.Name, in, outCh, err)
-					outs[0] = in
-					outChs[0] = outCh
+					outChs, err := processFunction(in)
+					outs = outs[:0] // reuse storage
+					// Copy the same value for all the out channels.
+					for i := 0; i < len(outChs); i++ {
+						outs = append(outs, in)
+					}
+					DebugPrintf("[%s] source channel outs: %v, chs: %v, err: %v\n",
+						s.Name, outs, outChs, err)
 					return outs, outChs, err
 				}
+
 				DebugPrintf("[%s] source channel %s is closed, no more data\n",
 					s.Name, chanPtr(s.sourceIncomingCh))
 				// When the incoming channel is closed, return no more data.
