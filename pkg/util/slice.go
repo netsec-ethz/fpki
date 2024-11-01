@@ -47,13 +47,11 @@ func RemoveElementsFromSlice[T any](slice *[]T, indices []int) {
 }
 
 func ResizeSlice[T any](s *[]T, length int, fillWith T) {
-	if cap(*s) < length {
-		// Not enough capacity.
-		*s = make([]T, length)
-	} else if len(*s) < length {
+	if L := len(*s); L < length {
 		// Enough capacity, length too small.
-		for i := len(*s); i < length; i++ {
-			*s = append(*s, fillWith)
+		*s = append(*s, make([]T, length-L)...) // allocate all at once
+		for i := L; i < length; i++ {
+			(*s)[i] = fillWith
 		}
 	} else {
 		// Enough capacity, too much length.
