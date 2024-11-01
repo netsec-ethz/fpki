@@ -75,12 +75,12 @@ type noopTracer struct{}
 var _ Tracer = (*noopTracer)(nil)
 
 func (noopTracer) Start(
-	context.Context,
-	string,
-	...trace.SpanStartOption,
+	ctx context.Context,
+	s string,
+	opts ...trace.SpanStartOption,
 ) (context.Context, Span) {
 	// It seems that noop.Span{} allocates some memory, we need our own.
-	return nil, Span{}
+	return ctx, Span{}
 }
 
 type Span struct{}
