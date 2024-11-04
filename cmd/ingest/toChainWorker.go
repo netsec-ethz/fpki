@@ -126,7 +126,7 @@ func (w *lineToChainWorker) parseLine(p *Processor, line *line) (*certChain, err
 				return nil, fmt.Errorf("at line %d: %s\n%s",
 					line.number, err, line.fields[CertChainColumn])
 			}
-			w.presence.AddIDs([]*common.SHA256Output{&id})
+			w.presence.AddIDs(&id)
 			p.stats.UncachedCerts.Add(1)
 		}
 		chainIDs[i] = &id

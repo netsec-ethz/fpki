@@ -14,4 +14,4 @@ func (NoCache) Contains(*common.SHA256Output) bool {
 }
 
 // AddIDs doesn't do anything.
-func (NoCache) AddIDs([]*common.SHA256Output) {}
+func (NoCache) AddIDs(...*common.SHA256Output) {}

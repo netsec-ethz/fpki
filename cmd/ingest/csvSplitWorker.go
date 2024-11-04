@@ -55,6 +55,7 @@ func NewCsvSplitWorker(p *Processor) *csvSplitWorker {
 			if !stillLinesToSend {
 				*outs = (*outs)[:0]
 				*outChs = (*outChs)[:0]
+				p.stats.TotalFilesRead.Add(1)
 				return nil
 			}
 			(*outChs)[0] = ((*outChs)[0] + 1) % p.NumWorkers

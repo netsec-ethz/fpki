@@ -150,10 +150,10 @@ func (p *Processor) AddCsvFiles(fileNames []string) {
 // It can be joined together with a Manager to push the Certificates into the DB.
 // The created pipeline looks like this:
 //
-//	A: source, generates CsvFile
-//	B: transforms into []line, multiple outputs.
-//	C1..W: transforms into Chain.
-//	D1..W: transforms into []Certificate.
+//	A: source, generates CsvFile.
+//	B: transforms into []line, multiple outputs. csvSplitWorker.
+//	C1..W: transforms into Chain. lineToChainWorker.
+//	D1..W: transforms into []Certificate. chainToCertWorker.
 //	E: sink, multiple inputs, []Certificate.
 //
 // The indices are below:

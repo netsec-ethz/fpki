@@ -4,12 +4,15 @@ import (
 	"context"
 	"time"
 
+	"github.com/netsec-ethz/fpki/cmd/ingest/cache"
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
 	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
+
+const domainIdCacheSize = 10000
 
 // Manager contains a processing pipeline that takes certificates and stores them concurrently
 // using several workers (but the same one for the same certificate).
@@ -143,10 +146,11 @@ func (m *Manager) createPipeline(workerCount int) error {
 	}
 
 	// Prepare the domain extractors.  Stages D1..Dw
+	domainCache := cache.NewPresenceCache(domainIdCacheSize)
 	domainExtractors := make([]*domainExtractor, workerCount)
 	domainExtractorStages := make([]pip.StageLike, workerCount)
 	for i := range domainExtractors {
-		domainExtractors[i] = newDomainExtractor(i, m, workerCount)
+		domainExtractors[i] = newDomainExtractor(i, m, workerCount, domainCache)
 		domainExtractorStages[i] = domainExtractors[i].Stage
 	}
 

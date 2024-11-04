@@ -1,7 +1,10 @@
 package updater
 
 import (
+	"encoding/hex"
 	"fmt"
+	"math/rand"
+	"strings"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
@@ -129,6 +132,14 @@ func (w *domainInserter) processBatch(batch []DirtyDomain) error {
 	ctx, span := w.Tracer.Start(w.Ctx, "process-batch")
 	defer span.End()
 	tr.SetAttrInt(span, "num-domains", len(batch))
+	if tr.Enabled {
+		// Collect some IDs from the domains.
+		IDs := make([]string, 10)
+		for i := range IDs {
+			IDs[i] = hex.EncodeToString(batch[rand.Intn(len(batch))].DomainID[:])
+		}
+		tr.SetAttrString(span, "IDs", strings.Join(IDs, "\n"))
+	}
 
 	if len(batch) == 0 {
 		return nil

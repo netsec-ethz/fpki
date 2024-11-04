@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/netsec-ethz/fpki/cmd/ingest/cache"
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
@@ -73,20 +74,23 @@ func newCertBatcher(
 // domainExtractor receives one certificate and outputs to N domain batchers.
 type domainExtractor struct {
 	*pip.Stage[Certificate, DirtyDomain]
-	hasher  common.Hasher
-	domains ringCache[DirtyDomain] // Keep a copy until the next stage has finished.
+	hasher        common.Hasher
+	domains       ringCache[DirtyDomain] // Keep a copy until the next stage has finished.
+	domainIdCache cache.Cache            // Keep track of the already seen domains.
 }
 
 func newDomainExtractor(
 	id int,
 	m *Manager,
 	workerCount int,
+	domainIdCache cache.Cache,
 ) *domainExtractor {
 	// Create the domain extractor, with one domains storage, that keeps two slices of domains.
 	// These two slices have been preallocated already, and its storage is being reused.
 	w := &domainExtractor{
-		hasher:  *common.NewHasher(),
-		domains: newRingCache[DirtyDomain](10), // Preallocate 10 domains per cert.
+		hasher:        *common.NewHasher(),
+		domainIdCache: domainIdCache,
+		domains:       newRingCache[DirtyDomain](10), // Preallocate 10 domains per cert.
 	}
 	outChannels := make([]int, 0, 10)
 
@@ -97,16 +101,23 @@ func newDomainExtractor(
 			outChannels = outChannels[:0] // reuse index slice.
 			w.domains.rotate()
 			for _, name := range in.Names {
-				d := DirtyDomain{
-					DomainID: w.hasher.HashStringCopy(name),
-					CertID:   in.CertID,
-					Name:     name,
+				id := w.hasher.HashStringCopy(name)
+				if !w.domainIdCache.Contains(&id) {
+					// Add it to the cache.
+					w.domainIdCache.AddIDs(&id)
+
+					// Send it to next stages.
+					d := DirtyDomain{
+						DomainID: id,
+						CertID:   in.CertID,
+						Name:     name,
+					}
+					w.domains.addElem(d)
+					outChannels = append(
+						outChannels,
+						int(m.ShardFuncDomain(&d.DomainID)),
+					)
 				}
-				w.domains.addElem(d)
-				outChannels = append(
-					outChannels,
-					int(m.ShardFuncDomain(&d.DomainID)),
-				)
 			}
 			return w.domains.current(), outChannels, nil
 		}),
