@@ -305,6 +305,9 @@ func (s *Stage[IN, OUT]) processThisStage() {
 	traSending := s.Tracer
 	lastTiming := tr.Now()
 
+	var outs []OUT
+	var outChIndxs []int
+	var err error
 readIncoming:
 	for {
 		DebugPrintf("[%s] select-blocked on input: %s\n", s.Name, chanPtr(s.AggregatedIncomeCh))
@@ -338,9 +341,6 @@ readIncoming:
 			_, spanProcessing := traProcessing.Start(s.Ctx, "processing")
 			tr.SetAttrString(spanProcessing, "name", s.Name)
 
-			var outs []OUT
-			var outChIndxs []int
-			var err error
 			if !ok {
 				// Incoming channel was closed. No data to be written to outgoing channel.
 				DebugPrintf("[%s] input indicates no more data\n", s.Name)
@@ -380,7 +380,9 @@ readIncoming:
 					&foundError,
 				)
 				s.onSent()
-				defer tr.SpanIfLongTime(WaitIsTooLong, &lastTiming, spanSending)
+				if tr.Enabled {
+					defer tr.SpanIfLongTime(WaitIsTooLong, &lastTiming, spanSending)
+				}
 
 				DebugPrintf("[%s] sendingError = %v, shouldReturn = %v, shouldBreak = %v\n",
 					s.Name, sendingError, shouldReturn, shouldBreakReadingIncoming)

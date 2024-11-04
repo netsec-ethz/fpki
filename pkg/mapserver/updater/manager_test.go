@@ -370,6 +370,7 @@ func verifyDB(ctx context.Context, t tests.T, conn db.Conn,
 	t.Helper()
 
 	checkTable := func(field string, table string, n int) {
+		t.Helper()
 		rows, err := conn.DB().QueryContext(ctx,
 			fmt.Sprintf("SELECT %s FROM %s", field, table))
 		require.NoError(t, err)
@@ -400,7 +401,7 @@ func verifyDB(ctx context.Context, t tests.T, conn db.Conn,
 	checkTable("domain_id", "dirty", ndomains)
 
 	// Check number of cert-domains.
-	checkTable("cert_id", "domain_certs", ncerts)
+	checkTable("cert_id", "domain_certs", ndomains)
 }
 
 // createManagerWithOutputFunction creates a manager, and modifies the output functions of all the
