@@ -600,6 +600,73 @@ func TestMultipleOutputs(t *testing.T) {
 	require.ElementsMatch(t, []int{1, 2, 2, 3, 3, 4}, gotValues)
 }
 
+// TestSingleOutputMultiInput checks that multiple stages sending input to one stage, which only
+// has one output, and which sends to multiple stages, work as expected.
+// This multiple-input-single-output stage can be seen as a "collector" or "load-distributor"
+// for data.
+func TestSingleOutputMultiInput(t *testing.T) {
+	defer PrintAllDebugLines()
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	defer cancelF()
+
+	// Prepare test.
+	initialValues := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+
+	p, err := NewPipeline(
+		func(p *Pipeline) {
+			// Link function.
+			// a --> b1 --> c
+			//   |-> b2 --|
+			//
+			// But "a" has only _ONE_ output channel.
+
+			a := SourceStage[int](p)
+			b1 := StageAtIndex[int, int](p, 1)
+			b2 := StageAtIndex[int, int](p, 2)
+			c := SinkStage[int](p)
+
+			LinkStagesDistribute(a, b1, b2)
+			LinkStagesAt(b1, 0, c, 0)
+			LinkStagesAt(b2, 0, c, 1)
+		},
+		WithStages(
+			NewSource[int](
+				"a",
+				WithSourceSlice(&initialValues, func(in int) (int, error) {
+					// return in % 2, nil
+					return 0, nil
+				}),
+			),
+			NewStage(
+				"b1",
+				WithProcessFunction(func(in int) ([]int, []int, error) {
+					return []int{in + 10}, []int{0}, nil
+				}),
+			),
+			NewStage(
+				"b2",
+				WithProcessFunction(func(in int) ([]int, []int, error) {
+					return []int{in + 20}, []int{0}, nil
+				}),
+			),
+			NewSink(
+				"c",
+				WithMultiInputChannels[int, None](2),
+				WithSinkFunction(func(in int) error {
+					return nil
+				}),
+			),
+		),
+	)
+	require.NoError(t, err)
+
+	tests.TestOrTimeout(t, tests.WithContext(ctx), func(t tests.T) {
+		p.Resume(ctx)
+		err = p.Wait(ctx)
+	})
+	require.NoError(t, err)
+}
+
 func TestOnNoMoreData(t *testing.T) {
 	defer PrintAllDebugLines()
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)

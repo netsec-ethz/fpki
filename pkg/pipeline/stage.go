@@ -140,6 +140,61 @@ func LinkStagesFanOut[IN, OUT, LAST any](
 	}
 }
 
+// LinkStagesDistribute connects the single output channel of the prev stage to the single input
+// channel of multiple next stages.
+// This is done by creating a channel here, that will be closed by the prev stage when it's done.
+// The created channel will be used as output of the prev stage, and input of all next stages.
+// The error channels remain connected the same way as with LinkStagesFanOut.
+func LinkStagesDistribute[IN, OUT, NEXT any](
+	prev *Stage[IN, OUT],
+	nextStages ...*Stage[OUT, NEXT],
+) {
+	if len(prev.OutgoingChs) != 1 {
+		panic("use the distribute-connector with a single-output previous stage")
+	}
+	for i, next := range nextStages {
+		if len(next.IncomingChs) != 1 {
+			panic(fmt.Errorf("use the distribute-connector with a single-input next stage. "+
+				"Stage indexed in this call as %d has %d input channels", i, len(next.IncomingChs)))
+		}
+	}
+
+	ch := make(chan OUT)
+	prev.OutgoingChs[0] = ch
+
+	// All next stages have the new channel as their input.
+	for _, next := range nextStages {
+		DebugPrintf("linking data channels [%s] -> [%s]:%s\n", prev.Name, next.Name, chanPtr(ch))
+		next.IncomingChs[0] = ch
+	}
+
+	// All next stages send the error report to the previous stage single next-stage-error channel.
+	// Spawn a goroutine per next stage to read errors and pass them to the prev stage.
+	errCh := make(chan error)
+	prev.NextErrChs[0] = errCh
+	DebugPrintf("linking error channels to [%s]:%s <-\n", prev.Name, chanPtr(errCh))
+
+	wg := sync.WaitGroup{}
+	wg.Add(len(nextStages))
+	for _, next := range nextStages {
+		next := next
+		go func() {
+			defer wg.Done() // Done when the error channel of next stage i is closed.
+			for err := range next.ErrCh {
+				errCh <- err
+			}
+		}()
+		DebugPrintf("\tlinking error channels [%s] <- [%s]:%s\n",
+			prev.Name, next.Name, chanPtr(next.ErrCh))
+	}
+	go func() {
+		// Wait for all the next stages to close their error channel.
+		wg.Wait()
+		// Then close the aggregated one.
+		close(errCh)
+	}()
+}
+
 // Prepare creates the necessary fields of the stage to be linked with others.
 // It MUST NOT spawn any goroutines at this point.
 func (s *Stage[IN, OUT]) Prepare(ctx context.Context) {
