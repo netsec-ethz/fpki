@@ -151,7 +151,7 @@ func (p *Processor) AddCsvFiles(fileNames []string) {
 // The created pipeline looks like this:
 //
 //	A: source, generates CsvFile.
-//	B: transforms into []line, multiple outputs. csvSplitWorker.
+//	B: transforms into lines, multiple outputs. csvSplitWorker.
 //	C1..W: transforms into Chain. lineToChainWorker.
 //	D1..W: transforms into []Certificate. chainToCertWorker.
 //	E: sink, multiple inputs, []Certificate.
