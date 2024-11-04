@@ -63,6 +63,8 @@ type Stage[IN, OUT any] struct {
 	cacheCompletedOutgoingIndices []int // Cache to reuse space.
 
 	ProcessFunc func(in IN) ([]OUT, []int, error) // From 1 IN to n OUT, using n channels.
+	streamFunc  func(*[]OUT, *[]int) error        // Streaming function.
+
 	// Before stopping the pipeline. This function allows processing before stopping the pipeline.
 	onNoMoreData func() ([]OUT, []int, error)
 
@@ -88,6 +90,9 @@ func NewStage[IN, OUT any](
 		IncomingChs:                   make([]chan IN, 1),  // Per default, just one channel.
 		OutgoingChs:                   make([]chan OUT, 1), // Per default, just one channel.
 		cacheCompletedOutgoingIndices: make([]int, 0, 16),  // Init to 16 outputs per process call.
+		streamFunc: func(o *[]OUT, i *[]int) error {
+			return NoMoreData
+		},
 		onNoMoreData: func() ([]OUT, []int, error) { // Noop.
 			return nil, nil, nil
 		},
@@ -290,12 +295,14 @@ readIncoming:
 				outs, outChIndxs, err = s.ProcessFunc(in)
 			}
 			s.onProcessed()
+
 			tr.SpanIfLongTime(ProcessIsTooLong, &lastTiming, spanProcessing)
 			_, spanSending := traSending.Start(s.Ctx, "sending ")
 			tr.SetAttrString(spanSending, "name", s.Name)
 
 			switch err {
 			case nil: // do nothing
+			case StreamOutput: // do nothing. There is more data to send.
 			case NoMoreData:
 				// No more data, no error.
 				// Break out of the reading loop, after processing (possibly empty) output.
@@ -306,30 +313,39 @@ readIncoming:
 				break readIncoming
 			}
 
-			// We have multiple outputs to multiple channels.
-			DebugPrintf("[%s] sending %d outputs to channels %v\n", s.Name, len(outs), outChIndxs)
-			failedIndices := s.sendOutputs(
-				outs,
-				outChIndxs,
-				&shouldReturn,
-				&sendingError,
-				&foundError,
-			)
-			s.onSent()
-			// tr.SpanIfLongTime(WaitIsTooLong, &lastTiming, spanSending)
+			// Inner loop sending several outputs, indicated by StreamOutput.
+			for {
+				// We have multiple outputs to multiple channels.
+				DebugPrintf("[%s] sending %d outputs to channels %v\n", s.Name, len(outs), outChIndxs)
+				failedIndices := s.sendOutputs(
+					outs,
+					outChIndxs,
+					&shouldReturn,
+					&sendingError,
+					&foundError,
+				)
+				s.onSent()
+				defer tr.SpanIfLongTime(WaitIsTooLong, &lastTiming, spanSending)
 
-			DebugPrintf("[%s] sendingError = %v, shouldReturn = %v, shouldBreak = %v\n",
-				s.Name, sendingError, shouldReturn, shouldBreakReadingIncoming)
-			if sendingError {
-				s.onErrorSending(foundError, failedIndices)
-			}
+				DebugPrintf("[%s] sendingError = %v, shouldReturn = %v, shouldBreak = %v\n",
+					s.Name, sendingError, shouldReturn, shouldBreakReadingIncoming)
+				if sendingError {
+					s.onErrorSending(foundError, failedIndices)
+				}
 
-			// Determine the next action to do.
-			if shouldReturn {
-				return
-			}
-			if shouldBreakReadingIncoming || sendingError {
-				break readIncoming
+				// Determine the next action to do.
+				if shouldReturn {
+					return
+				}
+				if shouldBreakReadingIncoming || sendingError {
+					break readIncoming
+				}
+
+				// If the stage is streaming output, keep on sending.
+				if err != StreamOutput {
+					break
+				}
+				err = s.streamFunc(&outs, &outChIndxs)
 			}
 		} // end of select
 	} // end of for-loop readIncoming
@@ -660,8 +676,11 @@ func (s *Stage[IN, OUT]) readIncomingSequentially() chan IN {
 
 type None struct{}
 
-type noError struct{}
+var NoMoreData = noMoreData{}
+var StreamOutput = streamOutput{}
 
-func (noError) Error() string { return "NoMoreData" }
+type noMoreData struct{}
+type streamOutput struct{}
 
-var NoMoreData = noError{}
+func (noMoreData) Error() string   { return "NoMoreData" }
+func (streamOutput) Error() string { return "StreamOutput" }
