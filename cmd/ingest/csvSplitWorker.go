@@ -40,12 +40,12 @@ func NewCsvSplitWorker(p *Processor) *csvSplitWorker {
 	var stillLinesToSend bool
 	w.Stage = pip.NewStage[util.CsvFile, line](
 		"csv_split",
-		pip.WithMultiOutputChannels[util.CsvFile, line](p.NumWorkers),
 		pip.WithProcessFunction(func(in util.CsvFile) ([]line, []int, error) {
 			err := w.startReadingLines(in)
 			if err == nil {
 				err = pip.StreamOutput
 			}
+			// Return the cached storage, even if empty.
 			return lastOut[:0], lastOutIndex[:0], err
 		}),
 		pip.WithOutputStreamingFunction[util.CsvFile](func(outs *[]line, outChs *[]int) error {
@@ -58,7 +58,6 @@ func NewCsvSplitWorker(p *Processor) *csvSplitWorker {
 				p.stats.TotalFilesRead.Add(1)
 				return nil
 			}
-			(*outChs)[0] = ((*outChs)[0] + 1) % p.NumWorkers
 			return pip.StreamOutput
 		}),
 	)

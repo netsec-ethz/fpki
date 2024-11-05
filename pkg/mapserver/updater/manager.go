@@ -103,7 +103,7 @@ func (m *Manager) createCertificateSource(workerCount int) *pip.Source[Certifica
 //	A: source, generates Certificate, 2*W outputs, to Bi and Di
 //	B1..W: batcher, transforms into certBatch, outputs to Ci
 //	C1..W: certificate inserter. Sink.
-//	D1..W: domain extractor, transforms into DirtyDomain, outputs to E1..W
+//	D1..W: domain extractor, transforms into DirtyDomain, outputs to E1..W but no crisscross.
 //	E1..W: domain batcher, transforms into domainBatch, outputs to Fi
 //	F1..W: domain worker, inserts into DB. Sink.
 //
@@ -214,7 +214,7 @@ func (m *Manager) createPipeline(workerCount int) error {
 				pip.LinkStagesFanOut(certBatcher, pip.SinkAsStage(certInserter))
 			}
 
-			// Link domain extractors to domain batchers. Di -> E1..Ew
+			// Link domain extractors to domain batchers. Di -> E1..Ew, no crisscross.
 			for i := 0; i < workerCount; i++ {
 				domainExtractor := p.Stages[offsetDomainExtractors+i].(*pip.Stage[Certificate, DirtyDomain])
 				for j := 0; j < workerCount; j++ {

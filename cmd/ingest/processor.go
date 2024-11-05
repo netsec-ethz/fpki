@@ -234,7 +234,7 @@ func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 				    └-> Cw ---> Dw -┘
 			*/
 			a := pip.SourceStage[util.CsvFile](pipeline)
-			b := pip.StageAtIndex[util.CsvFile, line](pipeline, 1)
+			b := []*pip.Stage[util.CsvFile, line]{pip.StageAtIndex[util.CsvFile, line](pipeline, 1)}
 			c := make([]*pip.Stage[line, certChain], p.NumWorkers)
 			for i := range c {
 				c[i] = pip.StageAtIndex[line, certChain](pipeline, i+2)
@@ -243,15 +243,12 @@ func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 			for i := range c {
 				d[i] = pip.StageAtIndex[certChain, updater.Certificate](pipeline, i+2+p.NumWorkers)
 			}
-			e := pip.SinkStage[updater.Certificate](pipeline)
+			e := []*pip.Stage[updater.Certificate, pip.None]{pip.SinkStage[updater.Certificate](pipeline)}
 
-			pip.LinkStagesFanOut(a, b) //           A->B
-			for i := range c {
-				pip.LinkStagesAt(b, i, c[i], 0)  // B->Ci
-				pip.LinkStagesFanOut(c[i], d[i]) // Ci->Di
-				pip.LinkStagesAt(d[i], 0, e, i)  // Di->E
-			}
-			// done.
+			pip.LinkStagesDistribute(a, b...) // A -> B
+			pip.LinkStagesCrissCross(b, c)    // B -> Ci
+			pip.LinkStagesCrissCross(c, d)    // Ci-> Di
+			pip.LinkStagesCrissCross(d, e)    // Di-> E
 		},
 		pip.WithStages(stages...),
 		pip.WithAutoResumeAtStage(
@@ -278,7 +275,6 @@ func (p *Processor) createCertificateSink() *pip.Sink[updater.Certificate] {
 	var certProcessedCount uint64 = 0 // For the sink to call on bundle.
 	return pip.NewSink[updater.Certificate](
 		"certSink",
-		pip.WithMultiInputChannels[updater.Certificate, pip.None](p.NumWorkers),
 		pip.WithOnNoMoreData[updater.Certificate, pip.None](func() ([]pip.None, []int, error) {
 			p.certSinkHasNoMoreData = true // Flag that the pipeline has no more data to process.
 			return nil, nil, nil
@@ -304,7 +300,6 @@ func (p *Processor) createCertificatePtrSink() *pip.Sink[*updater.Certificate] {
 	var certProcessedCount uint64 = 0 // For the sink to call on bundle.
 	return pip.NewSink[*updater.Certificate](
 		"certSink",
-		pip.WithMultiInputChannels[*updater.Certificate, pip.None](p.NumWorkers),
 		pip.WithOnNoMoreData[*updater.Certificate, pip.None](func() ([]pip.None, []int, error) {
 			p.certSinkHasNoMoreData = true // Flag that the pipeline has no more data to process.
 			return nil, nil, nil
