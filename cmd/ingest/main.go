@@ -22,6 +22,7 @@ import (
 )
 
 const (
+	NumFiles     = 4
 	NumParsers   = 32
 	NumDBWriters = 32
 
@@ -69,6 +70,7 @@ func mainFunction() int {
 	memProfile := flag.String("memprofile", "", "write a memory profile to file")
 	bundleSize := flag.Uint64("bundlesize", 0, "number of certificates after which a coalesce and "+
 		"SMT update must occur. If 0, no limit, meaning coalescing and SMT updating is done once")
+	numFiles := flag.Int("numfiles", NumFiles, "Number of parallel files being read at once")
 	numParsers := flag.Int("numparsers", NumParsers, "Number of line parsers concurrently running")
 	numDBWriters := flag.Int("numdbworkers", NumDBWriters, "Number of concurrent DB writers")
 	certUpdateStrategy := flag.String("strategy", "", "strategy to update certificates\n"+
@@ -196,6 +198,7 @@ func mainFunction() int {
 			MultiInsertSize,
 			2*time.Second,
 			printStats,
+			WithNumFileReaders(*numFiles),
 			WithNumWorkers(*numParsers),
 			WithNumDBWriters(*numDBWriters),
 			WithBundleSize(*bundleSize),
