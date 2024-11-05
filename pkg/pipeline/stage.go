@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	tr "github.com/netsec-ethz/fpki/pkg/tracing"
@@ -76,6 +77,7 @@ type Stage[IN, OUT any] struct {
 		*bool,
 		*error,
 	) []int
+	closeOutChannel func(int) // Function that closes the out channel index i.
 }
 
 var _ StageLike = (*Stage[int, string])(nil)
@@ -100,6 +102,10 @@ func NewStage[IN, OUT any](
 	s.buildAggregatedInput = s.readIncomingConcurrently
 
 	s.sendOutputs = s.sendOutputsConcurrent
+
+	s.closeOutChannel = func(i int) { // default is just closing the out channel
+		close(s.OutgoingChs[i])
+	}
 
 	for _, opt := range options {
 		opt.stage(s)
@@ -145,12 +151,39 @@ func LinkStagesFanOut[IN, OUT, LAST any](
 // This is done by creating a channel here, that will be closed by the prev stage when it's done.
 // The created channel will be used as output of the prev stage, and input of all next stages.
 // The error channels remain connected the same way as with LinkStagesFanOut.
+// The sketch is as follows (p=previous, n1, n2 are next stages):
+//
+//	p -->-┌-> n1 -->
+//	      └-> n2 -->
 func LinkStagesDistribute[IN, OUT, NEXT any](
 	prev *Stage[IN, OUT],
 	nextStages ...*Stage[OUT, NEXT],
 ) {
-	if len(prev.OutgoingChs) != 1 {
-		panic("use the distribute-connector with a single-output previous stage")
+	LinkStagesCrissCross(
+		[]*Stage[IN, OUT]{prev},
+		nextStages,
+	)
+}
+
+// LinkStagesCrissCross links N stages with M stages, sharing a unique channel.
+// With this pattern, only one of the M stages will read the data, while all of the input ones
+// will write to the channel.
+// The pattern is useful to e.g. distribute data to the first available M stage.
+// Sketch:
+//
+//	a1 ─┬─> b1
+//	a2 ─┼─> b2
+//	   ...
+//	aN ─┴─> bM
+func LinkStagesCrissCross[IN, OUT, NEXT any](
+	prevStages []*Stage[IN, OUT],
+	nextStages []*Stage[OUT, NEXT],
+) {
+	for i, prev := range prevStages {
+		if len(prev.OutgoingChs) != 1 {
+			panic(fmt.Errorf("use the distribute-connector with a single-output prev stage. "+
+				"Stage indexed in this call as %d has %d output channels", i, len(prev.OutgoingChs)))
+		}
 	}
 	for i, next := range nextStages {
 		if len(next.IncomingChs) != 1 {
@@ -159,37 +192,82 @@ func LinkStagesDistribute[IN, OUT, NEXT any](
 		}
 	}
 
-	ch := make(chan OUT)
-	prev.OutgoingChs[0] = ch
-
-	// All next stages have the new channel as their input.
+	// There is only one channel for all stages, shared.
+	dataCh := make(chan OUT)
+	for _, prev := range prevStages {
+		prev.OutgoingChs[0] = dataCh
+	}
 	for _, next := range nextStages {
-		DebugPrintf("linking data channels [%s] -> [%s]:%s\n", prev.Name, next.Name, chanPtr(ch))
-		next.IncomingChs[0] = ch
+		next.IncomingChs[0] = dataCh
+	}
+	// Debug purposes.
+	if DebugEnabled {
+		for _, prev := range prevStages {
+			for _, next := range nextStages {
+				DebugPrintf("linking data channels [%s] -> [%s]:%s\n",
+					prev.Name, next.Name, chanPtr(dataCh))
+			}
+		}
+	}
+	// Because there is only one shared channel, modify the behavior of the producer stages so
+	// that they don't really close the channel until all of them have flagged to close it.
+	dataChCloseRequests := atomic.Uint32{}
+	for _, prev := range prevStages {
+		prev.closeOutChannel = func(i int) {
+			if i != 0 {
+				panic(fmt.Errorf("request for an unknown channel %d", i))
+			}
+			if now := dataChCloseRequests.Add(1); now == uint32(len(prevStages)) {
+				close(prev.OutgoingChs[i])
+			}
+		}
 	}
 
-	// All next stages send the error report to the previous stage single next-stage-error channel.
-	// Spawn a goroutine per next stage to read errors and pass them to the prev stage.
+	// All next stages send the error report to all the previous stages.
+	// Spawn a goroutine per previous stage to read errors and pass them to the prev stage.
 	errCh := make(chan error)
-	prev.NextErrChs[0] = errCh
-	DebugPrintf("linking error channels to [%s]:%s <-\n", prev.Name, chanPtr(errCh))
-
-	wg := sync.WaitGroup{}
-	wg.Add(len(nextStages))
+	DebugPrintf("linking error channels to criss-cross -< %s <-\n", chanPtr(errCh))
+	// Incoming error channels.
+	for _, prev := range prevStages {
+		prev.NextErrChs[0] = make(chan error)
+		DebugPrintf("\tin error channel [%s]:%s <-\n", prev.Name, chanPtr(prev.NextErrChs[0]))
+	}
+	go func() {
+		for err := range errCh {
+			// Error received. Send to previous stages in parallel.
+			wg := sync.WaitGroup{}
+			wg.Add(len(prevStages))
+			for _, prev := range prevStages {
+				prev := prev
+				go func() {
+					defer wg.Done()
+					prev.NextErrChs[0] <- err
+				}()
+			}
+			// Wait for the error to be sent to all previous stages.
+			wg.Wait()
+		}
+		// Close all incoming error channels.
+		for _, prev := range prevStages {
+			close(prev.NextErrChs[0])
+		}
+	}()
+	// Outgoing (emitting) error channels.
+	wgOut := sync.WaitGroup{}
+	wgOut.Add(len(nextStages))
 	for _, next := range nextStages {
 		next := next
 		go func() {
-			defer wg.Done() // Done when the error channel of next stage i is closed.
+			defer wgOut.Done() // Done when the error channel of next stage i is closed.
 			for err := range next.ErrCh {
 				errCh <- err
 			}
 		}()
-		DebugPrintf("\tlinking error channels [%s] <- [%s]:%s\n",
-			prev.Name, next.Name, chanPtr(next.ErrCh))
+		DebugPrintf("\tout error channel <- [%s]:%s\n", next.Name, chanPtr(next.ErrCh))
 	}
 	go func() {
 		// Wait for all the next stages to close their error channel.
-		wg.Wait()
+		wgOut.Wait()
 		// Then close the aggregated one.
 		close(errCh)
 	}()
@@ -254,11 +332,13 @@ func (s *Stage[IN, OUT]) StopAndWait() error {
 func (s *Stage[IN, OUT]) breakPipelineAndWait(initialErr error) error {
 	DebugPrintf("[%s] exiting _____________________________ initial err=%v\n", s.Name, initialErr)
 
-	// Indicate next stage to stop.
+	// Indicate to the next stage to stop by closing its input channel.
 	for i, outCh := range s.OutgoingChs {
 		DebugPrintf("[%s] closing output channel %d/%d: %s\n",
 			s.Name, i, len(s.OutgoingChs), chanPtr(outCh))
-		close(outCh)
+		// For efficiency reasons, and to allow multiple producer stages to output using the same
+		// channel, the function that closes the channel can be modified to have more control on it.
+		s.closeOutChannel(i)
 	}
 
 	// Read its status:
