@@ -14,7 +14,10 @@ import (
 )
 
 const (
-	WaitIsTooLong    = 1000 * time.Millisecond // If receiving/sending takes longer -> emit trace.
+	// deleteme
+	// WaitIsTooLong    = 1000 * time.Millisecond // If receiving/sending takes longer -> emit trace.
+	// ProcessIsTooLong = 1000 * time.Millisecond // If processing function takes longer -> emit trace.
+	WaitIsTooLong    = 1000 * time.Second      // If receiving/sending takes longer -> emit trace.
 	ProcessIsTooLong = 1000 * time.Millisecond // If processing function takes longer -> emit trace.
 )
 
