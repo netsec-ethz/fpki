@@ -19,7 +19,7 @@ func BenchmarkCsvSplit(b *testing.B) {
 	p := &Processor{
 		Ctx:        ctx,
 		stats:      updater.NewStatistics(time.Second, nil),
-		NumWorkers: 1,
+		NumToChain: 1,
 	}
 
 	w := NewCsvSplitWorker(p)
@@ -52,7 +52,7 @@ func BenchmarkLineToChain(b *testing.B) {
 	p := &Processor{
 		Ctx:        ctx,
 		stats:      updater.NewStatistics(time.Second, nil),
-		NumWorkers: 1,
+		NumToChain: 1,
 	}
 
 	w := NewLineToChainWorker(p, 0)
@@ -91,7 +91,7 @@ func BenchmarkChainsToCert(b *testing.B) {
 	p := &Processor{
 		Ctx:        ctx,
 		stats:      updater.NewStatistics(time.Second, nil),
-		NumWorkers: 1,
+		NumToChain: 1,
 	}
 
 	w := NewChainToCertWorker(0)
@@ -131,7 +131,7 @@ func BenchmarkCertSink(b *testing.B) {
 	p := &Processor{
 		Ctx:        ctx,
 		stats:      updater.NewStatistics(time.Second, nil),
-		NumWorkers: 1,
+		NumToChain: 1,
 		BundleSize: math.MaxUint64,
 	}
 

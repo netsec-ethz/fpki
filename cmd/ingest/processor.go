@@ -26,7 +26,8 @@ type Processor struct {
 	Ctx              context.Context
 	CsvFiles         []util.CsvFile
 	NumFileReaders   int
-	NumWorkers       int
+	NumToChain       int
+	NumToCerts       int
 	NumDBWriters     int
 	BundleSize       uint64
 	OnBundleFinished func()
@@ -49,7 +50,8 @@ func NewProcessor(
 	p := &Processor{
 		Ctx:              ctx,
 		NumFileReaders:   1,              // Default to 1 file reader.
-		NumWorkers:       1,              // Default to just 1 worker.
+		NumToChain:       1,              // Default to just 1 lineToChain.
+		NumToCerts:       1,              // Default to just 1 chainToCerts.
 		NumDBWriters:     1,              // Default to 1 db writer.
 		BundleSize:       math.MaxUint64, // Default to "no limit",
 		OnBundleFinished: func() {},      // Default to noop.
@@ -99,9 +101,15 @@ func WithNumFileReaders(numFileReaders int) processorOptions {
 	}
 }
 
-func WithNumWorkers(numWorkers int) processorOptions {
+func WithNumToChains(numWorkers int) processorOptions {
 	return func(p *Processor) {
-		p.NumWorkers = numWorkers
+		p.NumToChain = numWorkers
+	}
+}
+
+func WithNumToCerts(numWorkers int) processorOptions {
+	return func(p *Processor) {
+		p.NumToCerts = numWorkers
 	}
 }
 
@@ -158,23 +166,23 @@ func (p *Processor) AddCsvFiles(fileNames []string) {
 // It can be joined together with a Manager to push the Certificates into the DB.
 // The created pipeline looks like this:
 //
-//	A: source, generates CsvFile, crisscross output.
-//	B1..S: transforms into lines, crisscross I/O. csvSplitWorker.
-//	C1..W: transforms into Chain, crisscross I/O. lineToChainWorker.
-//	D1..W: transforms into []Certificate, crisscross I/O. chainToCertWorker.
-//	E: sink, multiple inputs, crisscross input. []Certificate.
+//	a: source, generates CsvFile, crisscross output.
+//	b1..S: transforms into lines, crisscross I/O. csvSplitWorker.
+//	c1..W: transforms into Chain, crisscross I/O. lineToChainWorker.
+//	d1..C: transforms into []Certificate, crisscross I/O. chainToCertWorker.
+//	e: sink, multiple inputs, crisscross input. []Certificate.
 //
 // The indices are below:
-// A: 0
-// B: 1..S
-// C: 1+S..1+S+W
-// D: 1+S+W..1+S+2W
-// E: 1+S+2W
+// a: 0
+// b: 1..S
+// c: 1+S..1+S+W
+// d: 1+S+W..1+S+W+C
+// e: 1+S+W+C
 //
-//	A ┌-> B1 -┌-> C1 ---> D1 -┬-> E
-//	  |-> B2  |-> C2 ---> D2 -|
+//	a ┌-> b1 -┌-> c1 ---> d1 -┬-> e
+//	  |-> b2  |-> c2 ---> d2 -|
 //	 ...     ...             ...
-//	  └-> Bw -┴-> Cw ---> Dw -┘
+//	  └-> bw -┴-> cw ---> dw -┘
 func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 	// Prepare source. It opens CSV files based on the filenames stored in the processor.
 	source := pip.NewSource[util.CsvFile](
@@ -198,13 +206,13 @@ func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 	}
 
 	// Create numParsers toChain workers. Parses lines into chains.
-	lineToChainWorkers := make([]*lineToChainWorker, p.NumWorkers)
+	lineToChainWorkers := make([]*lineToChainWorker, p.NumToChain)
 	for i := range lineToChainWorkers {
 		lineToChainWorkers[i] = NewLineToChainWorker(p, i)
 	}
 
 	// Create chain to certificates worker.
-	chainToCertWorkers := make([]*chainToCertWorker, p.NumWorkers)
+	chainToCertWorkers := make([]*chainToCertWorker, p.NumToCerts)
 	for i := range chainToCertWorkers {
 		chainToCertWorkers[i] = NewChainToCertWorker(i)
 	}
@@ -229,25 +237,27 @@ func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 	pipeline, err := pip.NewPipeline(
 		func(pipeline *pip.Pipeline) {
 			/* Link function.
-				A: source, generates CsvFile
-				B: transforms into []line, multiple outputs.
-				C1..W: transforms into Chain.
-				D1..W: transforms into []Certificate.
-				E: sink, multiple inputs.
+				a: source, generates CsvFile
+				b: transforms into line, multiple outputs.
+				c1..W: transforms into Chain.
+				d1..W: transforms into []Certificate.
+				e: sink, multiple inputs.
 			The indices are below:
-			A: 0
-			B: 1..S
-			C: 1+S..1+S+W
-			D: 1+S+W..1+S+2W
-			E: 1+S+2W
+			a: 0
+			b: 1..S
+			c: 1+S..1+S+W
+			d: 1+S+W..1+S+W+C
+			e: 1+S+2W
 
-			A -> B -┌-> C1 ---> D1 -┬-> E
-			        |-> C2 ---> D2 -|
-				   ...             ...
-				    └-> Cw ---> Dw -┘
+			a ┌-> b1 -┌-> c1 -┌-> d1 -┬-> e
+			  |-> b2 -|-> c2 -|-> d2 -|
+			 ...     ...     ...     ...
+			  └-> bS -┴-> cW -┴-> dC -┘
+
 			*/
 			S := p.NumFileReaders
-			W := p.NumWorkers
+			W := p.NumToChain
+			C := p.NumToCerts
 			a := pip.SourceStage[util.CsvFile](pipeline)
 			b := make([]*pip.Stage[util.CsvFile, line], S)
 			for i := range b {
@@ -257,8 +267,8 @@ func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 			for i := range c {
 				c[i] = pip.StageAtIndex[line, certChain](pipeline, 1+S+i)
 			}
-			d := make([]*pip.Stage[certChain, updater.Certificate], W)
-			for i := range c {
+			d := make([]*pip.Stage[certChain, updater.Certificate], C)
+			for i := range d {
 				d[i] = pip.StageAtIndex[certChain, updater.Certificate](pipeline, 1+S+W+i)
 			}
 			e := []*pip.Stage[updater.Certificate, pip.None]{pip.SinkStage[updater.Certificate](pipeline)}

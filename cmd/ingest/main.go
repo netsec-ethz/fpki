@@ -22,9 +22,10 @@ import (
 )
 
 const (
-	NumFiles     = 4
-	NumParsers   = 32
-	NumDBWriters = 32
+	NumFiles      = 4
+	NumParsers    = 32
+	NumDechainers = 4
+	NumDBWriters  = 32
 
 	MultiInsertSize = 10_000     // # of certificates, domains, etc inserted at once.
 	LruCacheSize    = 10_000_000 // Keep track of the 10 million most seen certificates.
@@ -72,6 +73,7 @@ func mainFunction() int {
 		"SMT update must occur. If 0, no limit, meaning coalescing and SMT updating is done once")
 	numFiles := flag.Int("numfiles", NumFiles, "Number of parallel files being read at once")
 	numParsers := flag.Int("numparsers", NumParsers, "Number of line parsers concurrently running")
+	numChainToCerts := flag.Int("numdechainers", NumDechainers, "Number of chain unrollers")
 	numDBWriters := flag.Int("numdbworkers", NumDBWriters, "Number of concurrent DB writers")
 	certUpdateStrategy := flag.String("strategy", "", "strategy to update certificates\n"+
 		"\"\": full work. I.e. ingest files, coalesce, and update SMT.\n"+
@@ -199,7 +201,8 @@ func mainFunction() int {
 			2*time.Second,
 			printStats,
 			WithNumFileReaders(*numFiles),
-			WithNumWorkers(*numParsers),
+			WithNumToChains(*numParsers),
+			WithNumToCerts(*numChainToCerts),
 			WithNumDBWriters(*numDBWriters),
 			WithBundleSize(*bundleSize),
 			WithOnBundleFinished(bundleProcessing),
