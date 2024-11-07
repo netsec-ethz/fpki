@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/netsec-ethz/fpki/cmd/ingest/cache"
+	"github.com/netsec-ethz/fpki/pkg/cache"
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	pip "github.com/netsec-ethz/fpki/pkg/pipeline"

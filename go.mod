@@ -10,6 +10,7 @@ require (
 	github.com/google/certificate-transparency-go v1.1.8
 	github.com/google/trillian v1.6.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
+	github.com/hashicorp/golang-lru/v2 v2.0.7
 	github.com/minio/sha256-simd v1.0.1
 	github.com/stretchr/testify v1.9.0
 	github.com/transparency-dev/merkle v0.0.2

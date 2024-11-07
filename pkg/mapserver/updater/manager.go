@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/netsec-ethz/fpki/cmd/ingest/cache"
+	"github.com/netsec-ethz/fpki/pkg/cache"
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
