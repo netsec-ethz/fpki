@@ -50,7 +50,7 @@ const (
 //
 // deleteme:
 // debugging:
-// time go run -tags=trace ./cmd/ingest/ -numparsers 1 -numdbworkers 1 -strategy onlyingest ./testdata2/
+// time go run -tags=trace ./cmd/ingest/ -numfiles 1  -numparsers 4 -numdechainers 2 -numdbworkers 4 -strategy onlyingest ./testdata2/
 func main() {
 	os.Exit(mainFunction())
 }
