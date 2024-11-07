@@ -54,6 +54,15 @@ func RandomIDsForTest(t tests.T, size int) []common.SHA256Output {
 	return IDs
 }
 
+func RandomIDPtrsForTest(t tests.T, size int) []*common.SHA256Output {
+	ids := RandomIDsForTest(t, size)
+	idPtrs := make([]*common.SHA256Output, size)
+	for i := range ids {
+		idPtrs[i] = &ids[i]
+	}
+	return idPtrs
+}
+
 func RandomLeafNames(t tests.T, N int) []string {
 	padding := util.Log2(uint(N))
 	// Dynamic format string: as many padding zeroes as indicated by padding, e.g. leaf-%03d .
