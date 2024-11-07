@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"sync"
 	"time"
@@ -25,19 +26,14 @@ import (
 		   ...
 */
 type Processor struct {
-	Ctx              context.Context
-	CsvFiles         []util.CsvFile
-	NumFileReaders   int
-	NumToChain       int
-	NumToCerts       int
-	NumDBWriters     int
-	BundleSize       uint64
-	OnBundleFinished func()
-
-	stats                 *updater.Stats //pointer to the actual stats living in Manager
-	certSinkHasNoMoreData bool           // True when the cert sink receives onNoMoreData
-
-	Pipeline *pip.Pipeline
+	Ctx            context.Context
+	CsvFiles       []util.CsvFile
+	NumFileReaders int
+	NumToChain     int
+	NumToCerts     int
+	NumDBWriters   int
+	Pipeline       *pip.Pipeline
+	Manager        *updater.Manager
 }
 
 func NewProcessor(
@@ -46,22 +42,44 @@ func NewProcessor(
 	multiInsertSize int,
 	statsUpdatePeriod time.Duration,
 	statsUpdateFun func(*updater.Stats),
-	options ...processorOptions,
+	options ...ingestOptions,
 ) (*Processor, error) {
 	// Create the processor that will hold all the information and the pipeline.
 	p := &Processor{
-		Ctx:              ctx,
-		NumFileReaders:   1,              // Default to 1 file reader.
-		NumToChain:       1,              // Default to just 1 lineToChain.
-		NumToCerts:       1,              // Default to just 1 chainToCerts.
-		NumDBWriters:     1,              // Default to 1 db writer.
-		BundleSize:       math.MaxUint64, // Default to "no limit",
-		OnBundleFinished: func() {},      // Default to noop.
-
-		certSinkHasNoMoreData: false,
+		Ctx:            ctx,
+		NumFileReaders: 1, // Default to 1 file reader.
+		NumToChain:     1, // Default to just 1 lineToChain.
+		NumToCerts:     1, // Default to just 1 chainToCerts.
+		NumDBWriters:   1, // Default to 1 db writer.
 	}
+
+	// Apply options to processor only.
 	for _, opt := range options {
-		opt(p)
+		if opt, ok := opt.(processorOptions); ok {
+			opt(p)
+		}
+	}
+
+	// Create the DB manager.
+	var err error
+	p.Manager, err = updater.NewManager(
+		p.NumDBWriters,
+		conn,
+		multiInsertSize,
+		math.MaxUint64, // = infinite per default.
+		func() {},      // onBundle: defaults to noop.
+		statsUpdatePeriod,
+		statsUpdateFun,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Apply options to processor only.
+	for _, opt := range options {
+		if opt, ok := opt.(managerOptions); ok {
+			opt(p.Manager)
+		}
 	}
 
 	// Create the pipFiles from files to Certificates.
@@ -70,25 +88,11 @@ func NewProcessor(
 		return nil, err
 	}
 
-	// Create the DB manager.
-	manager, err := updater.NewManager(
-		p.NumDBWriters,
-		conn,
-		multiInsertSize,
-		statsUpdatePeriod,
-		statsUpdateFun,
-	)
-	if err != nil {
-		return nil, err
-	}
-	// Link to the stats.
-	p.stats = manager.Stats
-
 	// Join the two pipelines.
 	pipeline := pip.JoinPipelinesRaw(
-		p.getNewLinkFunction(pipFiles, manager.Pipeline),
+		p.getNewLinkFunction(pipFiles, p.Manager.Pipeline),
 		pipFiles,
-		manager.Pipeline,
+		p.Manager.Pipeline,
 	)
 
 	// Set the joint pipeline as the pipeline and return.
@@ -96,45 +100,53 @@ func NewProcessor(
 	return p, nil
 }
 
+type ingestOptions interface{}
 type processorOptions func(*Processor)
+type managerOptions func(*updater.Manager)
 
-func WithNumFileReaders(numFileReaders int) processorOptions {
-	return func(p *Processor) {
-		p.NumFileReaders = numFileReaders
-	}
+func WithNumFileReaders(numFileReaders int) ingestOptions {
+	return processorOptions(
+		func(p *Processor) {
+			p.NumFileReaders = numFileReaders
+		})
 }
 
-func WithNumToChains(numWorkers int) processorOptions {
-	return func(p *Processor) {
-		p.NumToChain = numWorkers
-	}
+func WithNumToChains(numWorkers int) ingestOptions {
+	return processorOptions(
+		func(p *Processor) {
+			p.NumToChain = numWorkers
+		})
 }
 
-func WithNumToCerts(numWorkers int) processorOptions {
-	return func(p *Processor) {
-		p.NumToCerts = numWorkers
-	}
+func WithNumToCerts(numWorkers int) ingestOptions {
+	return processorOptions(
+		func(p *Processor) {
+			p.NumToCerts = numWorkers
+		})
 }
 
-func WithNumDBWriters(numDBWriters int) processorOptions {
-	return func(p *Processor) {
-		p.NumDBWriters = numDBWriters
-	}
+func WithNumDBWriters(numDBWriters int) ingestOptions {
+	return processorOptions(
+		func(p *Processor) {
+			p.NumDBWriters = numDBWriters
+		})
 }
 
-func WithBundleSize(bundleSize uint64) processorOptions {
-	return func(p *Processor) {
-		if bundleSize == 0 {
-			bundleSize = math.MaxUint64
-		}
-		p.BundleSize = bundleSize
-	}
+func WithBundleSize(bundleSize uint64) ingestOptions {
+	return managerOptions(
+		func(m *updater.Manager) {
+			if bundleSize == 0 {
+				bundleSize = math.MaxUint64
+			}
+			m.BundleSize = bundleSize
+		})
 }
 
-func WithOnBundleFinished(fcn func()) processorOptions {
-	return func(p *Processor) {
-		p.OnBundleFinished = fcn
-	}
+func WithOnBundleFinished(fcn func()) ingestOptions {
+	return managerOptions(
+		func(m *updater.Manager) {
+			m.OnBundleFinished = fcn
+		})
 }
 
 func (p *Processor) Resume() {
@@ -148,7 +160,7 @@ func (p *Processor) Wait() error {
 // AddGzFiles adds a CSV .gz file to the initial stage.
 // It blocks until it is accepted.
 func (p *Processor) AddGzFiles(fileNames []string) {
-	p.stats.TotalFiles.Add(int64(len(fileNames)))
+	p.Manager.Stats.TotalFiles.Add(int64(len(fileNames)))
 
 	for _, filename := range fileNames {
 		p.CsvFiles = append(p.CsvFiles, (&util.GzFile{}).WithFile(filename))
@@ -158,7 +170,7 @@ func (p *Processor) AddGzFiles(fileNames []string) {
 // AddCsvFiles adds a .csv file to the initial stage.
 // It blocks until it is accepted.
 func (p *Processor) AddCsvFiles(fileNames []string) {
-	p.stats.TotalFiles.Add(int64(len(fileNames)))
+	p.Manager.Stats.TotalFiles.Add(int64(len(fileNames)))
 
 	for _, filename := range fileNames {
 		p.CsvFiles = append(p.CsvFiles, (&util.UncompressedFile{}).WithFile(filename))
@@ -282,76 +294,34 @@ func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 			pip.LinkStagesCrissCross(d, e)    // Di-> E
 		},
 		pip.WithStages(stages...),
-		// deleteme: check and/or fix autoresume for bundle-size compliance.
-		// pip.WithAutoResumeAtStage(
-		// 	len(stages)-1,
-		// 	func() bool {
-		// 		// Call for each bundle. This call is ensured to be performed after all the next
-		// 		// stages have finished.
-		// 		p.OnBundleFinished()
-
-		// 		// resume if not finished.
-		// 		return !p.certSinkHasNoMoreData
-		// 		// return !noMoreData
-		// 	},
-		// 	func(p *pip.Pipeline) {
-		// 		// Relink function, no affected stages.
-		// 	},
-		// ),
 	)
 
 	return pipeline, err
 }
 
 func (p *Processor) createCertificateSink() *pip.Sink[updater.Certificate] {
-	var certProcessedCount uint64 = 0 // For the sink to call on bundle.
 	return pip.NewSink[updater.Certificate](
 		"certSink",
-		pip.WithOnNoMoreData[updater.Certificate, pip.None](func() ([]pip.None, []int, error) {
-			p.certSinkHasNoMoreData = true // Flag that the pipeline has no more data to process.
-			return nil, nil, nil
-		}),
 		pip.WithSinkFunction(func(in updater.Certificate) error {
-			var err error
-			certProcessedCount++
-			p.stats.WrittenCerts.Add(1)
-			p.stats.WrittenBytes.Add(int64(len(in.Cert.Raw)))
+			p.Manager.Stats.WrittenCerts.Add(1)
+			p.Manager.Stats.WrittenBytes.Add(int64(len(in.Cert.Raw)))
 
-			if certProcessedCount >= p.BundleSize {
-				// Reset counters.
-				certProcessedCount = 0
-				// Request the next stages to stop.
-				err = pip.NoMoreData
-			}
-			return err
+			return nil
 		}),
 	)
 }
 
 func (p *Processor) createCertificatePtrSink() *pip.Sink[*updater.Certificate] {
-	var certProcessedCount uint64 = 0 // For the sink to call on bundle.
 	return pip.NewSink[*updater.Certificate](
 		"certSink",
-		pip.WithOnNoMoreData[*updater.Certificate, pip.None](func() ([]pip.None, []int, error) {
-			p.certSinkHasNoMoreData = true // Flag that the pipeline has no more data to process.
-			return nil, nil, nil
-		}),
 		pip.WithSinkFunction(func(in *updater.Certificate) error {
 			if in == nil {
 				return nil
 			}
-			var err error
-			certProcessedCount++
-			p.stats.WrittenCerts.Add(1)
-			p.stats.WrittenBytes.Add(int64(len(in.Cert.Raw)))
+			p.Manager.Stats.WrittenCerts.Add(1)
+			p.Manager.Stats.WrittenBytes.Add(int64(len(in.Cert.Raw)))
 
-			if certProcessedCount >= p.BundleSize {
-				// Reset counters.
-				certProcessedCount = 0
-				// Request the next stages to stop.
-				err = pip.NoMoreData
-			}
-			return err
+			return nil
 		}),
 	)
 }
@@ -403,7 +373,7 @@ func (p *Processor) getNewLinkFunction(
 		}
 		if len(toCerts) != p.NumToCerts {
 			// We should have exactly NumToCerts stages.
-			panic("logic error")
+			panic(fmt.Errorf("logic error %d != %d", len(toCerts), p.NumToCerts))
 		}
 
 		// Obtain the incoming channels of both the cert batchers and domain extractors.
@@ -411,7 +381,7 @@ func (p *Processor) getNewLinkFunction(
 		source := dbPipeline.Source.(*pip.Source[updater.Certificate])
 		if len(source.OutgoingChs) != 2*p.NumDBWriters {
 			// We should have exactly twice NumDBWriters channels.
-			panic("logic error")
+			panic(fmt.Errorf("logic error %d != 2*%d", len(source.OutgoingChs), p.NumDBWriters))
 		}
 
 		// Error channels:

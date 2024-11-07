@@ -2,6 +2,7 @@ package updater
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/cache"
@@ -29,6 +30,10 @@ type Manager struct {
 	IncomingCertChan    chan Certificate  // Certificates arrive from this channel.
 	IncomingCertPtrChan chan *Certificate // Only one of the incoming channels is enabled.
 	Pipeline            *pip.Pipeline
+
+	BundleSize       uint64        // Number of certs when triggering a bundle call.
+	OnBundleFinished func()        // Function called when having a bundle.
+	CertsCounter     atomic.Uint64 // Updated by every inserter.
 }
 
 // NewManager creates a new manager and its workers.
@@ -40,6 +45,8 @@ func NewManager(
 	workerCount int,
 	conn db.Conn,
 	multiInsertSize int,
+	bundleSize uint64,
+	onBundleFunc func(),
 	statsUpdateFreq time.Duration,
 	statsUpdateFunc func(*Stats),
 ) (*Manager, error) {
@@ -59,6 +66,8 @@ func NewManager(
 		ShardFuncDomain:  selectPartition,
 		IncomingCertChan: make(chan Certificate),
 		// IncomingCertPtrChan: make(chan *Certificate),
+		BundleSize:       bundleSize,
+		OnBundleFinished: onBundleFunc,
 	}
 
 	// Create the pipeline and return the manager with the pipeline, and the error.

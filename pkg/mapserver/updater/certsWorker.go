@@ -2,6 +2,7 @@ package updater
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/cache"
@@ -152,10 +153,51 @@ func newCertInserter(
 		dedupStorage: make(map[common.SHA256Output]struct{}, m.MultiInsertSize),
 	}
 
+	// Instead of auto-resume done automatically on the pipeline, we manually call the OnBundle
+	// function when a bundle is created. A bundle is created when the certificate count reaches
+	// the bundle size. The certificate count is reset after the bundle is stored in the DB.
+	//
+	// deleteme TODO: check interaction with the domain inserter.
+	//
+	// The first inserter that reaches the bundle acquires the bundle lock, flags that it is already
+	// taken, and inserts the bundle. Then wakes up the rest of the inserters via the sync.Cond.
+
+	insertingBundleMu := sync.Mutex{}
+	insertingBundle := false // True when the first inserter sees the bundle.
+
 	w.Sink = pip.NewSink[CertBatch](
 		fmt.Sprintf("cert_inserter_%02d", id),
 		pip.WithSinkFunction(func(batch CertBatch) error {
-			return w.insertCertificates(m.Conn, batch)
+			// First check if we have enough certificates for a bundle.
+			if m.CertsCounter.Load() >= m.BundleSize {
+				// We have a bundle.
+
+				// Only one inserter should call the OnBundle function.
+				insertingBundleMu.Lock()
+				shouldInsert := !insertingBundle
+				if shouldInsert {
+					insertingBundle = true // only one inserter has shouldInsert==True.
+				}
+				insertingBundleMu.Unlock()
+
+				if shouldInsert {
+					defer func() {
+						insertingBundle = false
+					}()
+
+					// Call for this bundle.
+					m.OnBundleFinished()
+
+					// Restore state for the next bundle(s).
+					m.CertsCounter.Store(0) // Reset counter.
+				}
+			}
+			// If we had a bundle created above, we are done here.
+
+			// Insert the batch now.
+			err := w.insertCertificates(m.Conn, batch)
+			m.CertsCounter.Add(uint64(len(batch)))
+			return err
 		}),
 	)
 

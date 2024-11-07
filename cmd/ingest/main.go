@@ -69,6 +69,8 @@ func mainFunction() int {
 	}
 	cpuProfile := flag.String("cpuprofile", "", "write a CPU profile to file")
 	memProfile := flag.String("memprofile", "", "write a memory profile to file")
+	multiInsertSize := flag.Int("multiinsert", MultiInsertSize, "number of certificates and "+
+		"domains inserted at once in the DB")
 	bundleSize := flag.Uint64("bundlesize", 0, "number of certificates after which a coalesce and "+
 		"SMT update must occur. If 0, no limit, meaning coalescing and SMT updating is done once")
 	numFiles := flag.Int("numfiles", NumFiles, "Number of parallel files being read at once")
@@ -197,7 +199,7 @@ func mainFunction() int {
 		proc, err := NewProcessor(
 			ctx,
 			conn,
-			MultiInsertSize,
+			*multiInsertSize,
 			2*time.Second,
 			printStats,
 			WithNumFileReaders(*numFiles),
