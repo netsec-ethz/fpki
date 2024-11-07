@@ -17,6 +17,6 @@ func chanUintPtr[T any](c chan T) uintptr {
 	return *(*uintptr)(unsafe.Pointer(&c))
 }
 
-func chanPtr[T any](c chan T) string {
+func chanPtr[T any](chan T) string {
 	return ""
 }

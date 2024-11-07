@@ -2,6 +2,7 @@ package updater
 
 import (
 	"encoding/hex"
+	"fmt"
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 
@@ -19,6 +20,10 @@ type CertWithChainData struct {
 	ChainIDs      []*common.SHA256Output // The trust chain of the certificate.
 }
 
+func (c CertWithChainData) String() string {
+	return fmt.Sprintf("chain-for-%s", hex.EncodeToString(c.CertID[:]))
+}
+
 // Certificate contains all the data of just ONE certificate, without the parents.
 // It results from a call to util.UnfoldCert .
 type Certificate struct {
@@ -28,10 +33,7 @@ type Certificate struct {
 	Names    []string
 }
 
-func (c *Certificate) String() string {
-	if c == nil {
-		return "nil"
-	}
+func (c Certificate) String() string {
 	return hex.EncodeToString(c.CertID[:])
 }
 
@@ -41,10 +43,7 @@ type DirtyDomain struct {
 	Name     string
 }
 
-func (d *DirtyDomain) String() string {
-	if d == nil {
-		return "nil"
-	}
+func (d DirtyDomain) String() string {
 	return hex.EncodeToString(d.DomainID[:])
 }
 

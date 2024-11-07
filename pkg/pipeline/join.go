@@ -5,6 +5,65 @@ import (
 	"fmt"
 )
 
+func JoinPipelinesRaw(
+	newLinkFunc func(*Pipeline),
+	pipelines ...*Pipeline,
+) *Pipeline {
+	switch len(pipelines) {
+	case 0:
+		return nil
+	case 1:
+		return pipelines[0]
+	}
+
+	// Create the pipeline with a copy of the existing stages.
+	newStages := make([]StageLike, 0)
+	skippedStages := make([]StageLike, 0)
+
+	// The first pipeline keeps the sources, but not the sinks.
+	for _, s := range pipelines[0].Stages {
+		if !IsSink(s) {
+			newStages = append(newStages, s)
+		} else {
+			skippedStages = append(skippedStages, s)
+		}
+	}
+
+	// The stages other than first or last must loose their sources and sinks.
+	intermediate := pipelines[1 : len(pipelines)-1]
+	for _, pipeline := range intermediate {
+		for _, s := range pipeline.Stages {
+			if !IsSource(s) && !IsSink(s) {
+				newStages = append(newStages, s)
+			} else {
+				skippedStages = append(skippedStages, s)
+			}
+		}
+	}
+
+	// The last pipeline keeps the sinks, but not the sources.
+	for _, s := range pipelines[len(pipelines)-1].Stages {
+		if !IsSource(s) {
+			newStages = append(newStages, s)
+		} else {
+			skippedStages = append(skippedStages, s)
+		}
+	}
+
+	return &Pipeline{
+		Stages:   newStages,
+		linkFunc: newLinkFunc,
+		Source:   pipelines[0].Source,
+		Sink:     pipelines[len(pipelines)-1].Sink,
+		prepare: func(p *Pipeline) {
+			// When preparing this pipeline, prepare the new stages and also the skipped ones.
+			for _, s := range append(newStages, skippedStages...) {
+				s.Prepare(p.Ctx)
+			}
+		},
+	}
+}
+
 func JoinTwoPipelines[T any](p1, p2 *Pipeline) (*Pipeline, error) {
 	// Find sink of p1.
 	sink := p1.Sink.(*Sink[T])

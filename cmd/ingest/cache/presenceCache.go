@@ -49,7 +49,7 @@ func (c *PresenceCache) Contains(id *common.SHA256Output) bool {
 }
 
 // AddIDs is thread safe.
-func (c *PresenceCache) AddIDs(ids []*common.SHA256Output) {
+func (c *PresenceCache) AddIDs(ids ...*common.SHA256Output) {
 	c.addingMu.Lock()
 	defer c.addingMu.Unlock()
 

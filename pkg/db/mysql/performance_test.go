@@ -18,7 +18,6 @@ import (
 
 	mysqllib "github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/require"
-	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
@@ -1182,8 +1181,8 @@ func insertIntoDirty(
 
 func loadDataWithCSV(ctx context.Context, t tests.T, conn db.Conn, filepath string) {
 	ctx, span := tr.T("db").Start(ctx, "from-csv")
-
 	defer span.End()
+
 	str := `LOAD DATA CONCURRENT INFILE ? IGNORE INTO TABLE insert_test ` +
 		`FIELDS TERMINATED BY ',' ENCLOSED BY '"' LINES TERMINATED BY '\n' ` +
 		`(@cert_id,expiration,@payload) SET ` +
@@ -1306,10 +1305,8 @@ func writeSortedChunkedCsv(
 		go func() {
 			defer wg.Done()
 			_, span := tr.T("file").Start(ctx, "write-partition")
-			span.SetAttributes(
-				attribute.Int("worker-number", w),
-			)
 			defer span.End()
+			tr.SetAttrInt(span, "worker-number", w)
 
 			// We are done with this worker.
 			writeCSV(t, fName(w), chunk)

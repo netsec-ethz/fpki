@@ -79,10 +79,10 @@ func TestBasicJoinPipelines(t *testing.T) {
 		WithStages(
 			NewSource[string](
 				"d",
-				WithSourceChannel(&p2SourceCh, func(in string) (int, error) {
+				WithSourceChannel(&p2SourceCh, func(in string) ([]int, error) {
 					DebugPrintf("[d] [TEST] source channel processing called with %v\n", in)
 					p2SourceCallCount++
-					return 0, nil
+					return []int{0}, nil
 				}),
 				WithSequentialOutputs[None, string](),
 			),
@@ -239,9 +239,9 @@ func TestComplexJoinPipelines(t *testing.T) {
 		WithStages(
 			NewSource[string](
 				"a2",
-				WithSourceChannel(&p2SourceCh, func(in string) (int, error) {
+				WithSourceChannel(&p2SourceCh, func(in string) ([]int, error) {
 					defer func() { p2SourceCallCount++ }()
-					return p2SourceCallCount % 2, nil
+					return []int{p2SourceCallCount % 2}, nil
 				}),
 				WithMultiOutputChannels[None, string](2),
 				WithSequentialOutputs[None, string](),

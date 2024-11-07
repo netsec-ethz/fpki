@@ -11,6 +11,21 @@ func WithProcessFunction[IN, OUT any](
 		})
 }
 
+// WithOutputStreamingFunction allows a stage to efficiently send output several times, without
+// requiring any input to do so.
+// The function is called if the processing function returns StreamOutput as error, and for as
+// long as the streaming function continues to return StreamOutput as error.
+// While the streaming is being called, no more calls to the process function will occur, until
+// the streaming is stopped via an error other than StreamOutput.
+func WithOutputStreamingFunction[IN, OUT any](
+	streamFunc func(*[]OUT, *[]int) error,
+) option[IN, OUT] {
+	return newStageOption(
+		func(s *Stage[IN, OUT]) {
+			s.streamFunc = streamFunc
+		})
+}
+
 func WithMultiOutputChannels[IN, OUT any](
 	numberOfChannels int,
 ) option[IN, OUT] {
@@ -80,7 +95,7 @@ func WithCyclesAllowedSequentialOutputs[IN, OUT any]() option[IN, OUT] {
 // at the expense of some allocations being made.
 func WithConcurrentOutputs[IN, OUT any]() option[IN, OUT] {
 	return newStageOption(func(s *Stage[IN, OUT]) {
-		s.sendOutputs = s.sendOutputConcurrent
+		s.sendOutputs = s.sendOutputsConcurrent
 	})
 }
 
@@ -91,5 +106,11 @@ func WithConcurrentOutputs[IN, OUT any]() option[IN, OUT] {
 func WithSequentialOutputs[IN, OUT any]() option[IN, OUT] {
 	return newStageOption(func(s *Stage[IN, OUT]) {
 		s.sendOutputs = s.sendOutputsSequential
+	})
+}
+
+func WithCloseOutChannelFunc[IN, OUT any](closeOutChannelFunc func(index int)) option[IN, OUT] {
+	return newStageOption(func(s *Stage[IN, OUT]) {
+		s.closeOutChannel = closeOutChannelFunc
 	})
 }

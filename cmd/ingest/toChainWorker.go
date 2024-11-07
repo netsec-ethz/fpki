@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/base64"
-	"encoding/hex"
 	"fmt"
 	"strconv"
 	"strings"
@@ -23,11 +22,8 @@ const (
 
 type certChain updater.CertWithChainData
 
-func (cc *certChain) String() string {
-	if cc == nil {
-		return "nil"
-	}
-	return hex.EncodeToString(cc.CertID[:])
+func (c certChain) String() string {
+	return updater.CertWithChainData(c).String()
 }
 
 type lineToChainWorker struct {
@@ -126,7 +122,7 @@ func (w *lineToChainWorker) parseLine(p *Processor, line *line) (*certChain, err
 				return nil, fmt.Errorf("at line %d: %s\n%s",
 					line.number, err, line.fields[CertChainColumn])
 			}
-			w.presence.AddIDs([]*common.SHA256Output{&id})
+			w.presence.AddIDs(&id)
 			p.stats.UncachedCerts.Add(1)
 		}
 		chainIDs[i] = &id

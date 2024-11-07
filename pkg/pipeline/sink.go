@@ -6,6 +6,12 @@ type SinkLike interface {
 	StageLike
 	PrepareSink(context.Context)
 }
+
+func IsSink(s StageLike) bool {
+	_, ok := s.(SinkLike)
+	return ok
+}
+
 type Sink[IN any] struct {
 	*Stage[IN, None]
 }
@@ -21,7 +27,7 @@ func NewSink[IN any](
 	}
 
 	for _, opt := range options {
-		opt.sink(s)
+		opt.ApplyToSink(s)
 	}
 
 	return s

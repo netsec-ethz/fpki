@@ -1,16 +1,16 @@
 package pipeline
 
 type option[IN, OUT any] interface {
-	stage(*Stage[IN, OUT])
-	source(*Source[OUT])
-	sink(*Sink[IN])
+	ApplyToStage(*Stage[IN, OUT])
+	ApplyToSource(*Source[OUT])
+	ApplyToSink(*Sink[IN])
 }
 
 type baseOption[IN, OUT any] struct{}
 
-func (baseOption[IN, OUT]) stage(*Stage[IN, OUT]) {}
-func (baseOption[IN, OUT]) source(*Source[OUT])   {}
-func (baseOption[IN, OUT]) sink(*Sink[IN])        {}
+func (baseOption[IN, OUT]) ApplyToStage(*Stage[IN, OUT]) {}
+func (baseOption[IN, OUT]) ApplyToSource(*Source[OUT])   {}
+func (baseOption[IN, OUT]) ApplyToSink(*Sink[IN])        {}
 
 var _ option[int, string] = stageOption[int, string]{}
 var _ option[None, int] = sourceOption[int]{}
@@ -43,14 +43,14 @@ type sinkOption[IN any] struct {
 	option func(*Sink[IN])
 }
 
-func (o stageOption[IN, OUT]) stage(s *Stage[IN, OUT]) {
+func (o stageOption[IN, OUT]) ApplyToStage(s *Stage[IN, OUT]) {
 	o.option(s)
 }
 
-func (o sourceOption[OUT]) source(s *Source[OUT]) {
+func (o sourceOption[OUT]) ApplyToSource(s *Source[OUT]) {
 	o.option(s)
 }
 
-func (o sinkOption[IN]) sink(s *Sink[IN]) {
+func (o sinkOption[IN]) ApplyToSink(s *Sink[IN]) {
 	o.option(s)
 }

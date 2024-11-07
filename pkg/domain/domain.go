@@ -41,14 +41,9 @@ const (
 var ErrInvalidDomainName = fmt.Errorf("invalid domain name")
 
 var (
-	viableDomain *regexp.Regexp
-	correctLabel *regexp.Regexp
+	viableDomain *regexp.Regexp = regexp.MustCompile(`^(\*\.)?[^*]*$`)
+	correctLabel *regexp.Regexp = regexp.MustCompile(`^(\*|[[:alnum:]]|[[:alnum:]][[:alnum:]-]{0,61}[[:alnum:]])$`)
 )
-
-func init() {
-	viableDomain = regexp.MustCompile(`^(\*\.)?[^*]*$`)
-	correctLabel = regexp.MustCompile(`^(\*|[[:alnum:]]|[[:alnum:]][[:alnum:]-]{0,61}[[:alnum:]])$`)
-}
 
 // ExtractAffectedDomains: extract the affected domain, given a list of domain name (common name + SANs)
 func ExtractAffectedDomains(domainNames []string) []string {

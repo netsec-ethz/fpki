@@ -277,9 +277,9 @@ func TestSourceWithChannel(t *testing.T) {
 				WithSequentialOutputs[None, int](),
 				WithSourceChannel(
 					&incomingCh,
-					func(in int) (int, error) {
+					func(in int) ([]int, error) {
 						defer func() { incomingIndex++ }()
-						return incomingIndex % 2, nil
+						return []int{incomingIndex % 2}, nil
 					},
 				),
 			),
@@ -348,8 +348,8 @@ func TestStop(t *testing.T) {
 		WithStages(
 			NewSource[int](
 				"a",
-				WithSourceChannel(&incomingCh, func(in int) (int, error) {
-					return 0, nil
+				WithSourceChannel(&incomingCh, func(in int) ([]int, error) {
+					return []int{0}, nil
 				}),
 			),
 			NewStage[int, int](
@@ -598,6 +598,189 @@ func TestMultipleOutputs(t *testing.T) {
 		require.NoError(t, err)
 	})
 	require.ElementsMatch(t, []int{1, 2, 2, 3, 3, 4}, gotValues)
+}
+
+// TestSingleOutputMultiInput checks that multiple stages sending input to one stage X, which only
+// has one output, and which sends to multiple stages, work as expected.
+// This X stage can be seen as a "collector" or "load-distributor" for data, that is spread out
+// to the first available stage that reads it.
+func TestSingleOutputMultiInput(t *testing.T) {
+	defer PrintAllDebugLines()
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	defer cancelF()
+
+	// Prepare test.
+	initialValues := []int{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+	gotValues := make([]int, 0)
+
+	p, err := NewPipeline(
+		func(p *Pipeline) {
+			// Link function.
+			// a --> b1 --> c
+			//   |-> b2 --|
+			//
+			// But "a" has only _ONE_ output channel.
+
+			a := SourceStage[int](p)
+			b1 := StageAtIndex[int, int](p, 1)
+			b2 := StageAtIndex[int, int](p, 2)
+			c := SinkStage[int](p)
+
+			LinkStagesDistribute(a, b1, b2)
+			LinkStagesAt(b1, 0, c, 0)
+			LinkStagesAt(b2, 0, c, 1)
+		},
+		WithStages(
+			NewSource[int](
+				"a",
+				WithSourceSlice(&initialValues, func(in int) (int, error) {
+					return 0, nil
+				}),
+			),
+			NewStage(
+				"b1",
+				WithProcessFunction(func(in int) ([]int, []int, error) {
+					time.Sleep(10 * time.Millisecond)
+					return []int{in + 10}, []int{0}, nil
+				}),
+			),
+			NewStage(
+				"b2",
+				WithProcessFunction(func(in int) ([]int, []int, error) {
+					time.Sleep(10 * time.Millisecond)
+					return []int{in + 20}, []int{0}, nil
+				}),
+			),
+			NewSink(
+				"c",
+				WithMultiInputChannels[int, None](2),
+				WithSinkFunction(func(in int) error {
+					gotValues = append(gotValues, in)
+					return nil
+				}),
+			),
+		),
+	)
+	require.NoError(t, err)
+
+	tests.TestOrTimeout(t, tests.WithContext(ctx), func(t tests.T) {
+		p.Resume(ctx)
+		err = p.Wait(ctx)
+	})
+	require.NoError(t, err)
+
+	// Final values. We don't know the exact distribution of the data along b1 and b2, but
+	// we should see values going through both of them.
+	t.Logf("values = %v", gotValues)
+	tests.CheckAnyIsTrue(t, gotValues, func(t tests.T, v int) bool {
+		return v < 21 // went thru b1
+	})
+	tests.CheckAnyIsTrue(t, gotValues, func(t tests.T, v int) bool {
+		return v > 20 // went thru b2
+	})
+}
+
+func TestLinkStagesCrissCross(t *testing.T) {
+	defer PrintAllDebugLines()
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	defer cancelF()
+
+	// Prepare test.
+	initialValues := []int{1, 2, 3, 4, 5, 6, 7, 8}
+	gotValues1 := make([]int, 0)
+	gotValues2 := make([]int, 0)
+
+	p, err := NewPipeline(
+		func(p *Pipeline) {
+			// Link function.
+			//	a ─┬─> b1 ─┬─> c1
+			//	   └─> b2 ─┴─> c2
+			// But there is only _ONE_ input-output channel between aN and bN.
+
+			a := SourceStage[int](p)
+			b1 := StageAtIndex[int, int](p, 1)
+			b2 := StageAtIndex[int, int](p, 2)
+			c1 := SinkStage[int](p)
+			c2 := SinkStage[int](p)
+
+			LinkStagesDistribute(a, b1, b2)
+			LinkStagesCrissCross(
+				[]*Stage[int, int]{b1, b2},
+				[]*Stage[int, None]{c1, c2},
+			)
+		},
+		WithStages(
+			NewSource[int](
+				"a",
+				WithSourceSlice(&initialValues, func(in int) (int, error) {
+					return 0, nil
+				}),
+			),
+			NewStage( // adds 0
+				"b1",
+				WithProcessFunction(func(in int) ([]int, []int, error) {
+					time.Sleep(10 * time.Millisecond)
+					return []int{in}, []int{0}, nil
+				}),
+			),
+			NewStage( // adds 10
+				"b2",
+				WithProcessFunction(func(in int) ([]int, []int, error) {
+					time.Sleep(10 * time.Millisecond)
+					return []int{in + 10}, []int{0}, nil
+				}),
+			),
+			NewSink( // adds 100
+				"c1",
+				WithSinkFunction(func(in int) error {
+					time.Sleep(15 * time.Millisecond)
+					gotValues1 = append(gotValues1, in+100)
+					return nil
+				}),
+			),
+			NewSink( // adds 1000
+				"c2",
+				WithSinkFunction(func(in int) error {
+					time.Sleep(15 * time.Millisecond)
+					gotValues2 = append(gotValues2, in+1000)
+					return nil
+				}),
+			),
+		),
+	)
+	require.NoError(t, err)
+
+	tests.TestOrTimeout(t, tests.WithContext(ctx), func(t tests.T) {
+		p.Resume(ctx)
+		err = p.Wait(ctx)
+	})
+	require.NoError(t, err)
+
+	// Final values. We don't know the exact distribution of the data along b1, b2, c1, and c2,
+	// but we should see values going through both of them.
+	t.Logf("values1 = %v", gotValues1)
+	t.Logf("values2 = %v", gotValues2)
+	// Check all values at sink c1.
+	tests.CheckAllAreTrue(t, gotValues1, func(t tests.T, v int) bool {
+		return v < 1000 && v > 100
+	})
+	// Check all values at sink c2.
+	tests.CheckAllAreTrue(t, gotValues1, func(t tests.T, v int) bool {
+		return v > 1000
+	})
+
+	// Collate all values.
+	allValues := append(gotValues1, gotValues2...)
+	// Check some went thru b1.
+	tests.CheckAnyIsTrue(t, allValues, func(t tests.T, v int) bool {
+		v = v % 100
+		return v < 10 // didn't add anything to tens.
+	})
+	// Check some went thru b2.
+	tests.CheckAnyIsTrue(t, allValues, func(t tests.T, v int) bool {
+		v = v % 100
+		return v > 10 // added 10 to the value.
+	})
 }
 
 func TestOnNoMoreData(t *testing.T) {

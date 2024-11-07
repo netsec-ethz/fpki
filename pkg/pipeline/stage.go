@@ -6,17 +6,19 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	tr "github.com/netsec-ethz/fpki/pkg/tracing"
 	"github.com/netsec-ethz/fpki/pkg/util"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
 )
 
 const (
-	WaitIsTooLong    = time.Millisecond       // If receiving/sending takes longer -> emit trace.
-	ProcessIsTooLong = 100 * time.Millisecond // If processing function takes longer -> emit trace.
+	// deleteme
+	// WaitIsTooLong    = 1000 * time.Millisecond // If receiving/sending takes longer -> emit trace.
+	// ProcessIsTooLong = 1000 * time.Millisecond // If processing function takes longer -> emit trace.
+	WaitIsTooLong    = 1000 * time.Second      // If receiving/sending takes longer -> emit trace.
+	ProcessIsTooLong = 1000 * time.Millisecond // If processing function takes longer -> emit trace.
 )
 
 type StageLike interface {
@@ -26,7 +28,7 @@ type StageLike interface {
 }
 
 type StageBase struct {
-	Tracer                    trace.Tracer    // The tracer for this service.
+	Tracer                    tr.Tracer       // The tracer for this service.
 	Ctx                       context.Context // Running context of this stage.
 	Name                      string          // Name of the stage.
 	ErrCh                     chan error      // To be read by the previous stage (or trigger, if this is Source).
@@ -42,7 +44,7 @@ type StageBase struct {
 
 func newStageBase(name string) StageBase {
 	return StageBase{
-		Tracer:         tr.Tracer(name),
+		Tracer:         tr.GetTracer(name),
 		Name:           name,
 		onReceivedData: func() {},             // Noop.
 		onResume:       func() {},             // Noop.
@@ -65,6 +67,8 @@ type Stage[IN, OUT any] struct {
 	cacheCompletedOutgoingIndices []int // Cache to reuse space.
 
 	ProcessFunc func(in IN) ([]OUT, []int, error) // From 1 IN to n OUT, using n channels.
+	streamFunc  func(*[]OUT, *[]int) error        // Streaming function.
+
 	// Before stopping the pipeline. This function allows processing before stopping the pipeline.
 	onNoMoreData func() ([]OUT, []int, error)
 
@@ -76,6 +80,7 @@ type Stage[IN, OUT any] struct {
 		*bool,
 		*error,
 	) []int
+	closeOutChannel func(int) // Function that closes the out channel index i.
 }
 
 var _ StageLike = (*Stage[int, string])(nil)
@@ -90,16 +95,23 @@ func NewStage[IN, OUT any](
 		IncomingChs:                   make([]chan IN, 1),  // Per default, just one channel.
 		OutgoingChs:                   make([]chan OUT, 1), // Per default, just one channel.
 		cacheCompletedOutgoingIndices: make([]int, 0, 16),  // Init to 16 outputs per process call.
+		streamFunc: func(o *[]OUT, i *[]int) error {
+			return NoMoreData
+		},
 		onNoMoreData: func() ([]OUT, []int, error) { // Noop.
 			return nil, nil, nil
 		},
 	}
 	s.buildAggregatedInput = s.readIncomingConcurrently
 
-	s.sendOutputs = s.sendOutputConcurrent
+	s.sendOutputs = s.sendOutputsConcurrent
+
+	s.closeOutChannel = func(i int) { // default is just closing the out channel
+		close(s.OutgoingChs[i])
+	}
 
 	for _, opt := range options {
-		opt.stage(s)
+		opt.ApplyToStage(s)
 	}
 
 	return s
@@ -135,6 +147,136 @@ func LinkStagesFanOut[IN, OUT, LAST any](
 	for i, next := range nextStages {
 		LinkStagesAt(prev, i, next, 0)
 	}
+}
+
+// LinkStagesDistribute connects the single output channel of the prev stage to the single input
+// channel of multiple next stages.
+// This is done by creating a channel here, that will be closed by the prev stage when it's done.
+// The created channel will be used as output of the prev stage, and input of all next stages.
+// The error channels remain connected the same way as with LinkStagesFanOut.
+// The sketch is as follows (p=previous, n1, n2 are next stages):
+//
+//	p -->-┌-> n1 -->
+//	      └-> n2 -->
+func LinkStagesDistribute[IN, OUT, NEXT any](
+	prev *Stage[IN, OUT],
+	nextStages ...*Stage[OUT, NEXT],
+) {
+	LinkStagesCrissCross(
+		[]*Stage[IN, OUT]{prev},
+		nextStages,
+	)
+}
+
+// LinkStagesCrissCross links N stages with M stages, sharing a unique channel.
+// With this pattern, only one of the M stages will read the data, while all of the input ones
+// will write to the channel.
+// The pattern is useful to e.g. distribute data to the first available M stage.
+// Sketch:
+//
+//	a1 ─┬─> b1
+//	a2 ─┼─> b2
+//	   ...
+//	aN ─┴─> bM
+func LinkStagesCrissCross[IN, OUT, NEXT any](
+	prevStages []*Stage[IN, OUT],
+	nextStages []*Stage[OUT, NEXT],
+) {
+	for i, prev := range prevStages {
+		if len(prev.OutgoingChs) != 1 {
+			panic(fmt.Errorf("use the distribute-connector with a single-output prev stage. "+
+				"Stage indexed in this call as %d has %d output channels", i, len(prev.OutgoingChs)))
+		}
+	}
+	for i, next := range nextStages {
+		if len(next.IncomingChs) != 1 {
+			panic(fmt.Errorf("use the distribute-connector with a single-input next stage. "+
+				"Stage indexed in this call as %d has %d input channels", i, len(next.IncomingChs)))
+		}
+	}
+
+	// There is only one channel for all stages, shared.
+	dataCh := make(chan OUT)
+	for _, prev := range prevStages {
+		prev.OutgoingChs[0] = dataCh
+	}
+	for _, next := range nextStages {
+		next.IncomingChs[0] = dataCh
+	}
+	// Debug purposes.
+	if DebugEnabled {
+		for _, prev := range prevStages {
+			for _, next := range nextStages {
+				DebugPrintf("linking data channels [%s] -> [%s]:%s\n",
+					prev.Name, next.Name, chanPtr(dataCh))
+			}
+		}
+	}
+	// Because there is only one shared channel, modify the behavior of the producer stages so
+	// that they don't really close the channel until all of them have flagged to close it.
+	dataChCloseRequests := atomic.Uint32{}
+	for _, prev := range prevStages {
+		prev.closeOutChannel = func(i int) {
+			DebugPrintf("[%s] crisscross: attempt to close out channel %s, count = %d of %d\n",
+				prev.Name, chanPtr(prev.OutgoingChs[0]), dataChCloseRequests.Load()+1, len(prevStages))
+			if i != 0 {
+				panic(fmt.Errorf("request for an unknown channel %d", i))
+			}
+			if now := dataChCloseRequests.Add(1); now == uint32(len(prevStages)) {
+				DebugPrintf("[%s] crisscross: closing channel %s\n", prev.Name, chanPtr(prev.OutgoingChs[0]))
+				close(prev.OutgoingChs[0])
+			}
+		}
+	}
+
+	// All next stages send the error report to all the previous stages.
+	// Spawn a goroutine per previous stage to read errors and pass them to the prev stage.
+	errCh := make(chan error)
+	DebugPrintf("linking error channels to criss-cross -< %s <-\n", chanPtr(errCh))
+	// Incoming error channels.
+	for _, prev := range prevStages {
+		prev.NextErrChs[0] = make(chan error)
+		DebugPrintf("\tin error channel [%s]:%s <-\n", prev.Name, chanPtr(prev.NextErrChs[0]))
+	}
+	go func() {
+		for err := range errCh {
+			// Error received. Send to previous stages in parallel.
+			wg := sync.WaitGroup{}
+			wg.Add(len(prevStages))
+			for _, prev := range prevStages {
+				prev := prev
+				go func() {
+					defer wg.Done()
+					prev.NextErrChs[0] <- err
+				}()
+			}
+			// Wait for the error to be sent to all previous stages.
+			wg.Wait()
+		}
+		// Close all incoming error channels.
+		for _, prev := range prevStages {
+			close(prev.NextErrChs[0])
+		}
+	}()
+	// Outgoing (emitting) error channels.
+	wgOut := sync.WaitGroup{}
+	wgOut.Add(len(nextStages))
+	for _, next := range nextStages {
+		next := next
+		go func() {
+			defer wgOut.Done() // Done when the error channel of next stage i is closed.
+			for err := range next.ErrCh {
+				errCh <- err
+			}
+		}()
+		DebugPrintf("\tout error channel <- [%s]:%s\n", next.Name, chanPtr(next.ErrCh))
+	}
+	go func() {
+		// Wait for all the next stages to close their error channel.
+		wgOut.Wait()
+		// Then close the aggregated one.
+		close(errCh)
+	}()
 }
 
 // Prepare creates the necessary fields of the stage to be linked with others.
@@ -196,11 +338,13 @@ func (s *Stage[IN, OUT]) StopAndWait() error {
 func (s *Stage[IN, OUT]) breakPipelineAndWait(initialErr error) error {
 	DebugPrintf("[%s] exiting _____________________________ initial err=%v\n", s.Name, initialErr)
 
-	// Indicate next stage to stop.
+	// Indicate to the next stage to stop by closing its input channel.
 	for i, outCh := range s.OutgoingChs {
 		DebugPrintf("[%s] closing output channel %d/%d: %s\n",
 			s.Name, i, len(s.OutgoingChs), chanPtr(outCh))
-		close(outCh)
+		// For efficiency reasons, and to allow multiple producer stages to output using the same
+		// channel, the function that closes the channel can be modified to have more control on it.
+		s.closeOutChannel(i)
 	}
 
 	// Read its status:
@@ -237,15 +381,24 @@ func (s *Stage[IN, OUT]) processThisStage() {
 	var shouldBreakReadingIncoming bool
 	var sendingError bool
 
+	// deleteme decide if we want a service per "operation" (processing, sending, etc), or per
+	// stage instance (domain_batcher_01, etc), or a mix.
+	// traIncoming := tr.T("incoming")
+	// traProcessing := tr.T("processing")
+	// traSending := tr.T("sending")
+	traIncoming := s.Tracer
+	traProcessing := s.Tracer
+	traSending := s.Tracer
 	lastTiming := tr.Now()
 
+	var outs []OUT
+	var outChIndxs []int
+	var err error
 readIncoming:
 	for {
 		DebugPrintf("[%s] select-blocked on input: %s\n", s.Name, chanPtr(s.AggregatedIncomeCh))
-		_, spanIncoming := tr.T("incoming").Start(context.TODO(), "incoming")
-		spanIncoming.SetAttributes(
-			attribute.String("name", s.Name),
-		)
+		_, spanIncoming := traIncoming.Start(s.Ctx, "incoming")
+		tr.SetAttrString(spanIncoming, "name", s.Name)
 
 		select {
 		case <-s.StopCh:
@@ -271,14 +424,9 @@ readIncoming:
 			s.onReceivedData()
 
 			tr.SpanIfLongTime(WaitIsTooLong, &lastTiming, spanIncoming)
-			_, spanProcessing := tr.T("processing").Start(s.Ctx, "processing")
-			spanProcessing.SetAttributes(
-				attribute.String("name", s.Name),
-			)
+			_, spanProcessing := traProcessing.Start(s.Ctx, "processing")
+			tr.SetAttrString(spanProcessing, "name", s.Name)
 
-			var outs []OUT
-			var outChIndxs []int
-			var err error
 			if !ok {
 				// Incoming channel was closed. No data to be written to outgoing channel.
 				DebugPrintf("[%s] input indicates no more data\n", s.Name)
@@ -288,14 +436,14 @@ readIncoming:
 				outs, outChIndxs, err = s.ProcessFunc(in)
 			}
 			s.onProcessed()
+
 			tr.SpanIfLongTime(ProcessIsTooLong, &lastTiming, spanProcessing)
-			_, spanSending := tr.T("sending").Start(s.Ctx, "sending ")
-			spanSending.SetAttributes(
-				attribute.String("name", s.Name),
-			)
+			_, spanSending := traSending.Start(s.Ctx, "sending ")
+			tr.SetAttrString(spanSending, "name", s.Name)
 
 			switch err {
 			case nil: // do nothing
+			case StreamOutput: // do nothing. There is more data to send.
 			case NoMoreData:
 				// No more data, no error.
 				// Break out of the reading loop, after processing (possibly empty) output.
@@ -306,30 +454,41 @@ readIncoming:
 				break readIncoming
 			}
 
-			// We have multiple outputs to multiple channels.
-			DebugPrintf("[%s] sending %d outputs to channels %v\n", s.Name, len(outs), outChIndxs)
-			failedIndices := s.sendOutputs(
-				outs,
-				outChIndxs,
-				&shouldReturn,
-				&sendingError,
-				&foundError,
-			)
-			s.onSent()
-			tr.SpanIfLongTime(WaitIsTooLong, &lastTiming, spanSending)
+			// Inner loop sending several outputs, indicated by StreamOutput.
+			for {
+				// We have multiple outputs to multiple channels.
+				DebugPrintf("[%s] sending %d outputs to channels %v\n", s.Name, len(outs), outChIndxs)
+				failedIndices := s.sendOutputs(
+					outs,
+					outChIndxs,
+					&shouldReturn,
+					&sendingError,
+					&foundError,
+				)
+				s.onSent()
+				if tr.Enabled {
+					defer tr.SpanIfLongTime(WaitIsTooLong, &lastTiming, spanSending)
+				}
 
-			DebugPrintf("[%s] sendingError = %v, shouldReturn = %v, shouldBreak = %v\n",
-				s.Name, sendingError, shouldReturn, shouldBreakReadingIncoming)
-			if sendingError {
-				s.onErrorSending(foundError, failedIndices)
-			}
+				DebugPrintf("[%s] sendingError = %v, shouldReturn = %v, shouldBreak = %v\n",
+					s.Name, sendingError, shouldReturn, shouldBreakReadingIncoming)
+				if sendingError {
+					s.onErrorSending(foundError, failedIndices)
+				}
 
-			// Determine the next action to do.
-			if shouldReturn {
-				return
-			}
-			if shouldBreakReadingIncoming || sendingError {
-				break readIncoming
+				// Determine the next action to do.
+				if shouldReturn {
+					return
+				}
+				if shouldBreakReadingIncoming || sendingError {
+					break readIncoming
+				}
+
+				// If the stage is streaming output, keep on sending.
+				if err != StreamOutput {
+					break
+				}
+				err = s.streamFunc(&outs, &outChIndxs)
 			}
 		} // end of select
 	} // end of for-loop readIncoming
@@ -381,11 +540,11 @@ func (s *Stage[IN, OUT]) sendOutputsSequential(
 	return failedIndices
 }
 
-// sendOutputConcurrent sends the possibly multiple outputs to each out channel concurrently.
+// sendOutputsConcurrent sends the possibly multiple outputs to each out channel concurrently.
 // This function will allocate memory, since it spawns a goroutine per output channel, and
 // synchronizes with all of them.
 // TODO: create the goroutines at NewStage time, and unblock them with e.g. a sync.Cond.
-func (s *Stage[IN, OUT]) sendOutputConcurrent(
+func (s *Stage[IN, OUT]) sendOutputsConcurrent(
 	outs []OUT,
 	outChIndxs []int,
 	shouldReturn *bool,
@@ -660,8 +819,11 @@ func (s *Stage[IN, OUT]) readIncomingSequentially() chan IN {
 
 type None struct{}
 
-type noError struct{}
+var NoMoreData = noMoreData{}
+var StreamOutput = streamOutput{}
 
-func (noError) Error() string { return "NoMoreData" }
+type noMoreData struct{}
+type streamOutput struct{}
 
-var NoMoreData = noError{}
+func (noMoreData) Error() string   { return "NoMoreData" }
+func (streamOutput) Error() string { return "StreamOutput" }

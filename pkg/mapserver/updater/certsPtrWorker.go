@@ -30,11 +30,10 @@ type CertPtrWorker struct {
 func NewCertPtrWorker(
 	id int,
 	m *Manager,
-	conn db.Conn,
 	workerCount int,
 ) *CertPtrWorker {
 	w := &CertPtrWorker{
-		baseWorker: *newBaseWorker(id, m, conn),
+		baseWorker: *newBaseWorker(m),
 		hasher:     *common.NewHasher(),
 
 		Certs:  make([]*Certificate, 0, m.MultiInsertSize),
@@ -81,6 +80,10 @@ func NewCertPtrWorker(
 	return w
 }
 
+func (w CertPtrWorker) conn() db.Conn {
+	return w.Manager.Conn
+}
+
 // processBundle processes a bundle of certificates and extracts their associated domains.
 // The function resets the certificate bundle slice to zero size after it is done.
 func (w *CertPtrWorker) processBundle() ([]*DirtyDomain, error) {
@@ -91,7 +94,7 @@ func (w *CertPtrWorker) processBundle() ([]*DirtyDomain, error) {
 
 	// Insert the certificates into the DB.
 	if err := w.insertCertificates(); err != nil {
-		return nil, fmt.Errorf("inserting certificates at worker %d: %w", w.Id, err)
+		return nil, fmt.Errorf("inserting certificates at worker %s: %w", w.Name, err)
 	}
 
 	// Extract the associated domain objects. The domains stay in w.Domains.
@@ -128,7 +131,7 @@ func (w *CertPtrWorker) insertCertificates() error {
 		util.Wrap(&w.cachePayloads),
 	)
 
-	return w.Conn.UpdateCerts(
+	return w.conn().UpdateCerts(
 		w.Ctx,
 		w.cacheIds,
 		w.cacheParents,

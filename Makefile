@@ -21,6 +21,9 @@ build_mapserver:
 build_ingest:
 	@go build -o bin/ingest ./cmd/ingest/
 
+build_ingest_with_tracing:
+	@go build -tags=trace -o bin/ingest ./cmd/ingest/
+
 build_policy_log:
 	@go build -o bin/logserver_exec cmd/logserver/logserver_exec.go
 	@go build -o bin/logsigner_exec cmd/logsigner/logsigner_exec.go

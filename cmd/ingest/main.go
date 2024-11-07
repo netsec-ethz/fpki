@@ -22,8 +22,10 @@ import (
 )
 
 const (
-	NumParsers   = 32
-	NumDBWriters = 32
+	NumFiles      = 4
+	NumParsers    = 32
+	NumDechainers = 4
+	NumDBWriters  = 32
 
 	MultiInsertSize = 10_000     // # of certificates, domains, etc inserted at once.
 	LruCacheSize    = 10_000_000 // Keep track of the 10 million most seen certificates.
@@ -45,6 +47,10 @@ const (
 //	   128    |     128       | 3m53.511s  |
 //	   512    |     128       | 3m39.226s  |
 //	----------------------------------------
+//
+// deleteme:
+// debugging:
+// time go run -tags=trace ./cmd/ingest/ -numparsers 1 -numdbworkers 1 -strategy onlyingest ./testdata2/
 func main() {
 	os.Exit(mainFunction())
 }
@@ -65,7 +71,9 @@ func mainFunction() int {
 	memProfile := flag.String("memprofile", "", "write a memory profile to file")
 	bundleSize := flag.Uint64("bundlesize", 0, "number of certificates after which a coalesce and "+
 		"SMT update must occur. If 0, no limit, meaning coalescing and SMT updating is done once")
+	numFiles := flag.Int("numfiles", NumFiles, "Number of parallel files being read at once")
 	numParsers := flag.Int("numparsers", NumParsers, "Number of line parsers concurrently running")
+	numChainToCerts := flag.Int("numdechainers", NumDechainers, "Number of chain unrollers")
 	numDBWriters := flag.Int("numdbworkers", NumDBWriters, "Number of concurrent DB writers")
 	certUpdateStrategy := flag.String("strategy", "", "strategy to update certificates\n"+
 		"\"\": full work. I.e. ingest files, coalesce, and update SMT.\n"+
@@ -176,12 +184,13 @@ func mainFunction() int {
 				// Called for intermediate bundles. Need to coalesce, update SMT and clean dirty.
 
 				ctx, span := tr.MT().Start(ctx, "bundle-ingested")
-				defer span.End()
 
 				fmt.Println("\nAnother bundle ingestion finished.")
 				coalescePayloadsForDirtyDomains(ctx, conn)
 				updateSMT(ctx, conn)
 				cleanupDirty(ctx, conn)
+
+				span.End()
 			}
 		}
 
@@ -191,7 +200,9 @@ func mainFunction() int {
 			MultiInsertSize,
 			2*time.Second,
 			printStats,
-			WithNumWorkers(*numParsers),
+			WithNumFileReaders(*numFiles),
+			WithNumToChains(*numParsers),
+			WithNumToCerts(*numChainToCerts),
 			WithNumDBWriters(*numDBWriters),
 			WithBundleSize(*bundleSize),
 			WithOnBundleFinished(bundleProcessing),

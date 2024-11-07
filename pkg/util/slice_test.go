@@ -96,6 +96,7 @@ func TestResizeSlice(t *testing.T) {
 		cap       int
 		len       int
 		requested int
+		fillWith  int
 	}{
 		"noop": {
 			cap:       1,
@@ -122,6 +123,10 @@ func TestResizeSlice(t *testing.T) {
 			len:       0,
 			requested: 4,
 		},
+		"filled": {
+			requested: 3,
+			fillWith:  42,
+		},
 		"nil": {
 			nilSlice:  true,
 			requested: 6,
@@ -137,7 +142,7 @@ func TestResizeSlice(t *testing.T) {
 			origAddr := (*[0]int)(s)
 			t.Logf("ini addr = %p", origAddr)
 
-			util.ResizeSlice(&s, tc.requested, 0)
+			util.ResizeSlice(&s, tc.requested, tc.fillWith)
 			require.Equal(t, tc.requested, len(s))
 
 			gotAddr := (*[0]int)(s)
@@ -150,6 +155,10 @@ func TestResizeSlice(t *testing.T) {
 			} else {
 				// Expect storage to be different.
 				require.False(t, origAddr == gotAddr)
+				// Expect new values to be filled.
+				for i, v := range s[tc.len:] {
+					require.Equal(t, tc.fillWith, v, "at index %d", i+tc.len)
+				}
 			}
 		})
 	}
