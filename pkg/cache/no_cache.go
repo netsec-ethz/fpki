@@ -4,6 +4,8 @@ import "github.com/netsec-ethz/fpki/pkg/common"
 
 type NoCache struct{}
 
+var _ Cache = (*NoCache)(nil)
+
 func NewNoCache() NoCache {
 	return NoCache{}
 }

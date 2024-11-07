@@ -16,6 +16,8 @@ type PresenceCache struct {
 	addingMu sync.Mutex
 }
 
+var _ Cache = (*PresenceCache)(nil)
+
 type set map[common.SHA256Output]struct{}
 
 func NewPresenceCache(initialSize int) *PresenceCache {
