@@ -431,7 +431,7 @@ func createManagerWithOutputFunction(
 	for i := begin; i < end; i++ {
 		pip.TestOnlyPurposeSetOutputFunction(
 			t,
-			stages[i].(*pip.Stage[Certificate, certBatch]),
+			stages[i].(*pip.Stage[Certificate, CertBatch]),
 			outType,
 		)
 	}
@@ -442,7 +442,7 @@ func createManagerWithOutputFunction(
 	for i := begin; i < end; i++ {
 		pip.TestOnlyPurposeSetOutputFunction(
 			t,
-			pip.SinkAsStage(stages[i].(*pip.Sink[certBatch])),
+			pip.SinkAsStage(stages[i].(*pip.Sink[CertBatch])),
 			outType,
 		)
 	}

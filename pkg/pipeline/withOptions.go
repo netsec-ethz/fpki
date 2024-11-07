@@ -108,3 +108,9 @@ func WithSequentialOutputs[IN, OUT any]() option[IN, OUT] {
 		s.sendOutputs = s.sendOutputsSequential
 	})
 }
+
+func WithCloseOutChannelFunc[IN, OUT any](closeOutChannelFunc func(index int)) option[IN, OUT] {
+	return newStageOption(func(s *Stage[IN, OUT]) {
+		s.closeOutChannel = closeOutChannelFunc
+	})
+}

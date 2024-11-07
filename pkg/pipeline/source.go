@@ -10,11 +10,17 @@ type SourceLike interface {
 	GetSourceBase() *SourceBase
 }
 
+func IsSource(s StageLike) bool {
+	_, ok := s.(SourceLike)
+	return ok
+}
+
 type Source[OUT any] struct {
 	*Stage[None, OUT]
 	SourceBase
 	// Channel used for the source, if configured with one.
-	sourceIncomingCh chan OUT
+	sourceIncomingCh  chan OUT
+	sourceProcessFunc func(OUT) ([]int, error)
 }
 
 var _ SourceLike = (*Source[int])(nil)
@@ -28,7 +34,7 @@ func NewSource[OUT any](
 	}
 
 	for _, opt := range options {
-		opt.source(s)
+		opt.ApplyToSource(s)
 	}
 
 	return s
@@ -55,6 +61,7 @@ func WithSourceChannel[OUT any]( // deleteme?
 		func(s *Source[OUT]) {
 			// Set the source incoming channel initially to the value of the pointer.
 			s.sourceIncomingCh = *incomingCh
+			s.sourceProcessFunc = processFunction // Local copy of the processing function.
 
 			// Every time the stage resumes, set the source incoming channel.
 			// Since the pointed value might have changed, this is necessary between each resume
@@ -70,7 +77,6 @@ func WithSourceChannel[OUT any]( // deleteme?
 				outs = make([]OUT, len(s.OutgoingChs))
 			}
 
-			processFunction := processFunction // Local copy of the processing function.
 			s.ProcessFunc = func(in None) ([]OUT, []int, error) {
 				DebugPrintf("[%s] source.ProcessFunc: channel is: %s\n",
 					s.Name, chanPtr(s.sourceIncomingCh))
@@ -78,7 +84,7 @@ func WithSourceChannel[OUT any]( // deleteme?
 				if in, ok := <-s.sourceIncomingCh; ok {
 					DebugPrintf("[%s] source channel %s got value: %v\n",
 						s.Name, chanPtr(s.sourceIncomingCh), in)
-					outChs, err := processFunction(in)
+					outChs, err := s.sourceProcessFunc(in)
 					outs = outs[:0] // reuse storage
 					// Copy the same value for all the out channels.
 					for i := 0; i < len(outChs); i++ {
@@ -179,6 +185,10 @@ func (s *Source[OUT]) Prepare(ctx context.Context) {
 			}
 		}
 	}(s.ErrCh)
+}
+
+func (s *Source[OUT]) SourceProcessFunc() func(OUT) ([]int, error) {
+	return s.sourceProcessFunc
 }
 
 type SourceBase struct {

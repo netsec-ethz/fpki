@@ -21,11 +21,11 @@ func TestOnlyPurposeSetOutputFunction[IN, OUT any](
 	}
 	switch outType {
 	case OutputSequential:
-		WithSequentialOutputs[IN, OUT]().stage(s)
+		WithSequentialOutputs[IN, OUT]().ApplyToStage(s)
 	case OutputSequentialCyclesAllowed:
-		WithCyclesAllowedSequentialOutputs[IN, OUT]().stage(s)
+		WithCyclesAllowedSequentialOutputs[IN, OUT]().ApplyToStage(s)
 	case OutputConcurrent:
-		WithConcurrentOutputs[IN, OUT]().stage(s)
+		WithConcurrentOutputs[IN, OUT]().ApplyToStage(s)
 	default:
 		panic("DEBUG ONLY FUNCTION DebugOnlyPurposeSetOutputFunction BAD type")
 	}

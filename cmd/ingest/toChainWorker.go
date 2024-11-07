@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/base64"
-	"encoding/hex"
 	"fmt"
 	"strconv"
 	"strings"
@@ -23,11 +22,8 @@ const (
 
 type certChain updater.CertWithChainData
 
-func (cc *certChain) String() string {
-	if cc == nil {
-		return "nil"
-	}
-	return hex.EncodeToString(cc.CertID[:])
+func (c certChain) String() string {
+	return updater.CertWithChainData(c).String()
 }
 
 type lineToChainWorker struct {

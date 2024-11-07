@@ -71,7 +71,8 @@ import (
 // 3.1. Go to 2.2.1.
 type Pipeline struct {
 	linkFunc func(p *Pipeline)
-	Ctx      context.Context // Running context.
+	prepare  func(p *Pipeline) // prepare function
+	Ctx      context.Context   // Running context.
 	Stages   []StageLike
 	Source   SourceLike
 	Sink     SinkLike
@@ -83,7 +84,13 @@ func NewPipeline(
 ) (*Pipeline, error) {
 	p := &Pipeline{
 		linkFunc: linkFunc,
+		prepare: func(p *Pipeline) {
+			for _, s := range p.Stages {
+				s.Prepare(p.Ctx)
+			}
+		},
 	}
+
 	for _, opt := range options {
 		opt(p)
 	}
@@ -201,7 +208,7 @@ func SinkStage[IN any](p *Pipeline) *Stage[IN, None] {
 
 func (p *Pipeline) Resume(ctx context.Context) {
 	p.Ctx = ctx
-	p.prepare()
+	p.prepare(p)
 	p.linkFunc(p)
 	// Now resume in reverse order
 	for i := len(p.Stages) - 1; i >= 0; i-- {
@@ -223,10 +230,8 @@ func (p *Pipeline) Wait(ctx context.Context) error {
 	return <-p.Stages[0].Base().ErrCh
 }
 
-func (p *Pipeline) prepare() {
-	for _, s := range p.Stages {
-		s.Prepare(p.Ctx)
-	}
+func (p *Pipeline) LinkFunction() func(*Pipeline) {
+	return p.linkFunc
 }
 
 // check finds the source and sink of this pipeline, or reports an error.

@@ -111,7 +111,7 @@ func NewStage[IN, OUT any](
 	}
 
 	for _, opt := range options {
-		opt.stage(s)
+		opt.ApplyToStage(s)
 	}
 
 	return s
@@ -217,11 +217,14 @@ func LinkStagesCrissCross[IN, OUT, NEXT any](
 	dataChCloseRequests := atomic.Uint32{}
 	for _, prev := range prevStages {
 		prev.closeOutChannel = func(i int) {
+			DebugPrintf("[%s] crisscross: attempt to close out channel %s, count = %d of %d\n",
+				prev.Name, chanPtr(prev.OutgoingChs[0]), dataChCloseRequests.Load()+1, len(prevStages))
 			if i != 0 {
 				panic(fmt.Errorf("request for an unknown channel %d", i))
 			}
 			if now := dataChCloseRequests.Add(1); now == uint32(len(prevStages)) {
-				close(prev.OutgoingChs[i])
+				DebugPrintf("[%s] crisscross: closing channel %s\n", prev.Name, chanPtr(prev.OutgoingChs[0]))
+				close(prev.OutgoingChs[0])
 			}
 		}
 	}

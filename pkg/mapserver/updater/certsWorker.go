@@ -27,12 +27,12 @@ import (
 // 3. domainExtractor		Outputs to N domain batchers.
 // 4. certInserter			Sinks.
 
-// certBatch is a slice of certificates.
-type certBatch []Certificate
+// CertBatch is a slice of certificates.
+type CertBatch []Certificate
 
 // certBatcher receives one certificate and outputs one batch.
 type certBatcher struct {
-	*pip.Stage[Certificate, certBatch]
+	*pip.Stage[Certificate, CertBatch]
 	certs ringCache[Certificate] // Created once, reused.
 }
 
@@ -45,11 +45,11 @@ func newCertBatcher(
 		certs: newRingCache[Certificate](m.MultiInsertSize),
 	}
 
-	batchSlice := make([]certBatch, 1)
+	batchSlice := make([]CertBatch, 1)
 	outChannels := []int{0}
-	w.Stage = pip.NewStage[Certificate, certBatch](
+	w.Stage = pip.NewStage[Certificate, CertBatch](
 		fmt.Sprintf("cert_batcher_%02d", id),
-		pip.WithProcessFunction(func(in Certificate) ([]certBatch, []int, error) {
+		pip.WithProcessFunction(func(in Certificate) ([]CertBatch, []int, error) {
 			w.certs.addElem(in)
 			if w.certs.currLength() == m.MultiInsertSize {
 				_, span := w.Tracer.Start(w.Ctx, "sending-batch")
@@ -61,7 +61,7 @@ func newCertBatcher(
 			}
 			return nil, nil, nil
 		}),
-		pip.WithOnNoMoreData[Certificate, certBatch](func() ([]certBatch, []int, error) {
+		pip.WithOnNoMoreData[Certificate, CertBatch](func() ([]CertBatch, []int, error) {
 			batchSlice[0] = w.certs.current()
 			w.certs.rotate()
 			return batchSlice, outChannels, nil
@@ -129,7 +129,7 @@ func newDomainExtractor(
 // certInserter receives one certBatch and inserts it into the DB. It is a sink.
 // deleteme: this stage should actually be more than one: writing the CSVs, updating tables.
 type certInserter struct {
-	*pip.Sink[certBatch]
+	*pip.Sink[CertBatch]
 	// Cache storage arrays used to unfold Certificate objects into the DB fields.
 	cacheIds         []common.SHA256Output
 	cacheParents     []*common.SHA256Output
@@ -152,9 +152,9 @@ func newCertInserter(
 		dedupStorage: make(map[common.SHA256Output]struct{}, m.MultiInsertSize),
 	}
 
-	w.Sink = pip.NewSink[certBatch](
+	w.Sink = pip.NewSink[CertBatch](
 		fmt.Sprintf("cert_inserter_%02d", id),
-		pip.WithSinkFunction(func(batch certBatch) error {
+		pip.WithSinkFunction(func(batch CertBatch) error {
 			return w.insertCertificates(m.Conn, batch)
 		}),
 	)
@@ -162,7 +162,7 @@ func newCertInserter(
 	return w
 }
 
-func (w *certInserter) insertCertificates(conn db.Conn, batch certBatch) error {
+func (w *certInserter) insertCertificates(conn db.Conn, batch CertBatch) error {
 	ctx, span := w.Tracer.Start(w.Ctx, "process-batch")
 	defer span.End()
 	tr.SetAttrInt(span, "num-domains", len(batch))

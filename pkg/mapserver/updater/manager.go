@@ -147,6 +147,7 @@ func (m *Manager) createPipeline(workerCount int) error {
 
 	// Prepare the domain extractors.  Stages D1..Dw
 	domainCache := cache.NewPresenceCache(domainIdCacheSize)
+
 	domainExtractors := make([]*domainExtractor, workerCount)
 	domainExtractorStages := make([]pip.StageLike, workerCount)
 	for i := range domainExtractors {
@@ -192,7 +193,7 @@ func (m *Manager) createPipeline(workerCount int) error {
 
 			// Link source with cert batchers. A -> B1..w
 			for i := 0; i < workerCount; i++ {
-				certBatcher := p.Stages[offsetCertBatchers+i].(*pip.Stage[Certificate, certBatch])
+				certBatcher := p.Stages[offsetCertBatchers+i].(*pip.Stage[Certificate, CertBatch])
 				pip.LinkStagesAt(
 					pip.SourceAsStage(source), i,
 					certBatcher, 0,
@@ -209,8 +210,8 @@ func (m *Manager) createPipeline(workerCount int) error {
 
 			// Link cert batchers to cert inserters. Bi -> Ci
 			for i := 0; i < workerCount; i++ {
-				certBatcher := p.Stages[offsetCertBatchers+i].(*pip.Stage[Certificate, certBatch])
-				certInserter := p.Stages[offsetCertInserters+i].(*pip.Sink[certBatch])
+				certBatcher := p.Stages[offsetCertBatchers+i].(*pip.Stage[Certificate, CertBatch])
+				certInserter := p.Stages[offsetCertInserters+i].(*pip.Sink[CertBatch])
 				pip.LinkStagesFanOut(certBatcher, pip.SinkAsStage(certInserter))
 			}
 

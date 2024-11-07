@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
 	"github.com/netsec-ethz/fpki/pkg/util"
+	"github.com/netsec-ethz/fpki/pkg/util/debug"
 )
 
 // Processor is the processor that takes file names and process them into certificates.
@@ -83,10 +85,11 @@ func NewProcessor(
 	p.stats = manager.Stats
 
 	// Join the two pipelines.
-	pipeline, err := pip.JoinTwoPipelines[updater.Certificate](pipFiles, manager.Pipeline)
-	if err != nil {
-		return nil, err
-	}
+	pipeline := pip.JoinPipelinesRaw(
+		p.getNewLinkFunction(pipFiles, manager.Pipeline),
+		pipFiles,
+		manager.Pipeline,
+	)
 
 	// Set the joint pipeline as the pipeline and return.
 	p.Pipeline = pipeline
@@ -182,7 +185,7 @@ func (p *Processor) AddCsvFiles(fileNames []string) {
 //	a ┌-> b1 -┌-> c1 ---> d1 -┬-> e
 //	  |-> b2  |-> c2 ---> d2 -|
 //	 ...     ...             ...
-//	  └-> bw -┴-> cw ---> dw -┘
+//	  └-> bS -┴-> cW ---> dC -┘
 func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 	// Prepare source. It opens CSV files based on the filenames stored in the processor.
 	source := pip.NewSource[util.CsvFile](
@@ -279,21 +282,22 @@ func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 			pip.LinkStagesCrissCross(d, e)    // Di-> E
 		},
 		pip.WithStages(stages...),
-		pip.WithAutoResumeAtStage(
-			len(stages)-1,
-			func() bool {
-				// Call for each bundle. This call is ensured to be performed after all the next
-				// stages have finished.
-				p.OnBundleFinished()
+		// deleteme: check and/or fix autoresume for bundle-size compliance.
+		// pip.WithAutoResumeAtStage(
+		// 	len(stages)-1,
+		// 	func() bool {
+		// 		// Call for each bundle. This call is ensured to be performed after all the next
+		// 		// stages have finished.
+		// 		p.OnBundleFinished()
 
-				// resume if not finished.
-				return !p.certSinkHasNoMoreData
-				// return !noMoreData
-			},
-			func(p *pip.Pipeline) {
-				// Relink function, no affected stages.
-			},
-		),
+		// 		// resume if not finished.
+		// 		return !p.certSinkHasNoMoreData
+		// 		// return !noMoreData
+		// 	},
+		// 	func(p *pip.Pipeline) {
+		// 		// Relink function, no affected stages.
+		// 	},
+		// ),
 	)
 
 	return pipeline, err
@@ -350,4 +354,151 @@ func (p *Processor) createCertificatePtrSink() *pip.Sink[*updater.Certificate] {
 			return err
 		}),
 	)
+}
+
+// getNewLinkFunction links the first with the second pipeline overriding the sink and source of
+// the first and second pipeline, respectively.
+//
+//	The first pipeline looks like:
+//	a ┌-> b1 -┌-> c1 ---> d1 -┬-> e
+//	  |-> b2  |-> c2 ---> d2 -|
+//	 ...     ...             ...
+//	  └-> bS -┴-> cW ---> dC -┘
+//
+// The stages previous to the sink are crisscross linked to the sink, with NumToCerts count.
+//
+//	The second pipeline looks like:
+//	a -┌-> b1 ---> c1
+//	   |-> b2 ---> c2
+//	  ...
+//	   |-> bw ---> cw
+//	   |
+//	   |-> d1 -┬-> e1 ---> f1
+//	   |-> d2 -|-> e2 ---> f2
+//	  ...     .|.         ...
+//	   └-> dw -┴-> ew ---> fw
+//
+// With the source sending duplicate outputs to b and d depending on its own source function.
+// Thus the source has 2*NumDBWriters out channels.
+// We could link p1.sink.incoming to be the same as the p2.source.sourceChannel, but that is
+// exactly what the pip.JoinTwoPipelines does and it has performance issues.
+// What we do instead is replace each output channel of p1.di with a new one, that receives the
+// Certificate and run the p2.source.sourceProcessFunc to obtain the next two stages at p2.
+func (p *Processor) getNewLinkFunction(
+	filesPipeline *pip.Pipeline,
+	dbPipeline *pip.Pipeline,
+) func(*pip.Pipeline) {
+	return func(*pip.Pipeline) {
+		// First link both pipelines as usual.
+		filesPipeline.LinkFunction()(filesPipeline)
+		dbPipeline.LinkFunction()(dbPipeline)
+
+		// Find the ToCerts stages.
+		toCerts := make([]*pip.Stage[certChain, updater.Certificate], 0)
+		for _, s := range filesPipeline.Stages {
+			s, ok := s.(*pip.Stage[certChain, updater.Certificate])
+			if ok {
+				toCerts = append(toCerts, s)
+			}
+		}
+		if len(toCerts) != p.NumToCerts {
+			// We should have exactly NumToCerts stages.
+			panic("logic error")
+		}
+
+		// Obtain the incoming channels of both the cert batchers and domain extractors.
+		// This is equivalent to obtaining the out channels of p2.source.
+		source := dbPipeline.Source.(*pip.Source[updater.Certificate])
+		if len(source.OutgoingChs) != 2*p.NumDBWriters {
+			// We should have exactly twice NumDBWriters channels.
+			panic("logic error")
+		}
+
+		// Error channels:
+
+		// Link the error channels, as many as receivers of errors.
+		errChs := make([]chan error, p.NumToCerts)
+		for i := range errChs {
+			errChs[i] = make(chan error)
+		}
+		for i := range toCerts {
+			toCerts[i].NextErrChs[0] = errChs[i]
+		}
+		// For each error received from the second pipeline, send an error to the first one.
+		wgErrChs := sync.WaitGroup{}
+		wgErrChs.Add(len(source.NextErrChs))
+		for _, errCh := range source.NextErrChs {
+			errCh := errCh
+			go func() {
+				defer wgErrChs.Done() // Signal that this error channel is closed.
+				for err := range errCh {
+					util.SendToAllChannels(errChs, err)
+				}
+			}()
+		}
+		// Once all error channels from p2 are closed, close all error channels.
+		go func() {
+			wgErrChs.Wait()
+			for _, errCh := range errChs {
+				close(errCh)
+			}
+		}()
+
+		// Data channels:
+
+		// Create as many new data channels as NumToCerts stages.
+		chans := make([]chan updater.Certificate, p.NumToCerts)
+		for i := range chans {
+			chans[i] = make(chan updater.Certificate)
+		}
+
+		// Link toCerts' out channels to the new channels.
+		// Restore the default behavior of closing the output channel (ignore crisscross).
+		for i := range toCerts {
+			toCerts[i].OutgoingChs[0] = chans[i]
+			opt := pip.WithCloseOutChannelFunc[certChain, updater.Certificate](func(index int) {
+				close(toCerts[i].OutgoingChs[index])
+			})
+			opt.ApplyToStage(toCerts[i])
+		}
+
+		// Now send each Certificate to both bi and di stages, according to the p2.source.sourceFunc.
+		sourceFunc := source.SourceProcessFunc()
+
+		// For each of the out channels of the first pipeline.
+		wg := sync.WaitGroup{}
+		wg.Add(len(chans))
+		for _, ch := range chans {
+			ch := ch
+			go func() {
+				defer wg.Done() // Signal that another output channel has been closed.
+				// For each Certificate that the first pipeline outputs.
+				pip.DebugPrintf("[processor] listening on data channel %s\n", debug.Chan2str(ch))
+				for in := range ch {
+					pip.DebugPrintf("[processor] got value on channel %s\n", debug.Chan2str(ch))
+					// Get the indices of the correct cert batcher and domain extractor to send it.
+					chs, err := sourceFunc(in)
+					_ = err // ignore error
+
+					// Send both in parallel.
+					util.SendToAllChannels(
+						[]chan updater.Certificate{
+							source.OutgoingChs[chs[0]],
+							source.OutgoingChs[chs[1]],
+						},
+						in)
+				} // for each Certificate.
+				pip.DebugPrintf("[processor] incoming channel %s is closed\n", debug.Chan2str(ch))
+			}()
+		} // for each output channel.
+
+		// Once all output channels have been closed, close all incoming channels of p2.
+		go func() {
+			wg.Wait()
+			for _, ch := range source.OutgoingChs {
+				pip.DebugPrintf("[processor] closing data channel %s\n", debug.Chan2str(ch))
+				close(ch)
+			}
+		}()
+	}
 }
