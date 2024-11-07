@@ -8,7 +8,7 @@ import (
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 
-	"github.com/netsec-ethz/fpki/cmd/ingest/cache"
+	"github.com/netsec-ethz/fpki/pkg/cache"
 	"github.com/netsec-ethz/fpki/pkg/common"
 	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
 )
