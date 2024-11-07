@@ -29,14 +29,14 @@ func (c certChain) String() string {
 type lineToChainWorker struct {
 	*pip.Stage[line, certChain]
 
-	now      time.Time
-	presence cache.Cache // IDs of certificates already seen
+	now   time.Time
+	cache cache.Cache // IDs of certificates already seen
 }
 
 func NewLineToChainWorker(p *Processor, numWorker int) *lineToChainWorker {
 	w := &lineToChainWorker{
-		now:      time.Now(),
-		presence: cache.NewPresenceCache(LruCacheSize),
+		now:   time.Now(),
+		cache: cache.NewLruCache(LruCacheSize),
 	}
 
 	// Prepare stage.
@@ -85,7 +85,7 @@ func (w *lineToChainWorker) parseLine(p *Processor, line *line) (*certChain, err
 
 	// Get the leaf certificate ID.
 	certID := common.SHA256Hash32Bytes(rawBytes)
-	if w.presence.Contains(&certID) {
+	if w.cache.Contains(&certID) {
 		// For some reason this leaf certificate has been ingested already. Skip.
 		return nil, nil
 	}
@@ -115,14 +115,14 @@ func (w *lineToChainWorker) parseLine(p *Processor, line *line) (*certChain, err
 		p.stats.ReadCerts.Add(1)
 		// Check if the parent certificate is in the cache.
 		id := common.SHA256Hash32Bytes(rawBytes)
-		if !w.presence.Contains(&id) {
+		if !w.cache.Contains(&id) {
 			// Not seen before, push it to the DB.
 			chain[i], err = ctx509.ParseCertificate(rawBytes)
 			if err != nil {
 				return nil, fmt.Errorf("at line %d: %s\n%s",
 					line.number, err, line.fields[CertChainColumn])
 			}
-			w.presence.AddIDs(&id)
+			w.cache.AddIDs(&id)
 			p.stats.UncachedCerts.Add(1)
 		}
 		chainIDs[i] = &id

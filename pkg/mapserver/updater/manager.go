@@ -146,7 +146,7 @@ func (m *Manager) createPipeline(workerCount int) error {
 	}
 
 	// Prepare the domain extractors.  Stages D1..Dw
-	domainCache := cache.NewPresenceCache(domainIdCacheSize)
+	domainCache := cache.NewLruCache(domainIdCacheSize)
 
 	domainExtractors := make([]*domainExtractor, workerCount)
 	domainExtractorStages := make([]pip.StageLike, workerCount)
