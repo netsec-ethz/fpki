@@ -2,6 +2,7 @@ package updater
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -21,6 +22,7 @@ const domainIdCacheSize = 10000
 // The requirement of using the same worker for a given certificate or domain prevents deadlocks
 // in the DBE.
 type Manager struct {
+	inserterConcurrency
 	Conn            db.Conn                         // DB
 	MultiInsertSize int                             // amount of entries before calling the DB
 	Stats           *Stats                          // Statistics about the update
@@ -30,10 +32,6 @@ type Manager struct {
 	IncomingCertChan    chan Certificate  // Certificates arrive from this channel.
 	IncomingCertPtrChan chan *Certificate // Only one of the incoming channels is enabled.
 	Pipeline            *pip.Pipeline
-
-	BundleSize       uint64        // Number of certs when triggering a bundle call.
-	OnBundleFinished func()        // Function called when having a bundle.
-	CertsCounter     atomic.Uint64 // Updated by every inserter.
 }
 
 // NewManager creates a new manager and its workers.
@@ -59,15 +57,14 @@ func NewManager(
 
 	// Create the Manager structure.
 	m := &Manager{
-		Conn:             conn,
-		MultiInsertSize:  multiInsertSize,
-		Stats:            NewStatistics(statsUpdateFreq, statsUpdateFunc),
-		ShardFuncCert:    selectPartition,
-		ShardFuncDomain:  selectPartition,
-		IncomingCertChan: make(chan Certificate),
+		inserterConcurrency: newInserterConcurrency(bundleSize, onBundleFunc),
+		Conn:                conn,
+		MultiInsertSize:     multiInsertSize,
+		Stats:               NewStatistics(statsUpdateFreq, statsUpdateFunc),
+		ShardFuncCert:       selectPartition,
+		ShardFuncDomain:     selectPartition,
+		IncomingCertChan:    make(chan Certificate),
 		// IncomingCertPtrChan: make(chan *Certificate),
-		BundleSize:       bundleSize,
-		OnBundleFinished: onBundleFunc,
 	}
 
 	// Create the pipeline and return the manager with the pipeline, and the error.
@@ -247,4 +244,51 @@ func (m *Manager) createPipeline(workerCount int) error {
 	)
 
 	return err
+}
+
+type inserterConcurrency struct {
+	BundleSize       uint64        // Number of certs when triggering a bundle call.
+	OnBundleFinished func()        // Function called when having a bundle.
+	CertsCounter     atomic.Uint64 // Updated by every inserter.
+	inserters        sync.WaitGroup
+	insertingMu      sync.Mutex
+}
+
+func newInserterConcurrency(bundleSize uint64, onBundleFinished func()) inserterConcurrency {
+	return inserterConcurrency{
+		BundleSize:       bundleSize,
+		OnBundleFinished: onBundleFinished,
+		inserters:        sync.WaitGroup{},
+		insertingMu:      sync.Mutex{},
+	}
+}
+
+// startInserting must be called by any routine modifying the DB.
+// It returns a function that must be run after the routine is done.
+// startInserting will run the OnBundleFunction if the count of inserter certs is enough.
+func (ins *inserterConcurrency) startInserting() (doneFunc func(newCertsInserted int)) {
+	// Serialize all calls via the common mutex.
+	ins.insertingMu.Lock()
+
+	// Add this inserter to the barrier.
+	ins.inserters.Add(1)
+
+	if ins.CertsCounter.Load() >= ins.BundleSize {
+		// Wait until all inserters are done.
+		ins.inserters.Done() // Discount this inserter.
+		ins.inserters.Wait()
+		ins.inserters.Add(1) // Add this inserter again.
+
+		// Run the bundle function.
+		ins.OnBundleFinished()
+
+		// Reset the counter.
+		ins.CertsCounter.Store(0)
+	}
+	ins.insertingMu.Unlock() // Go concurrent again.
+
+	return func(newCertsInserted int) {
+		ins.CertsCounter.Add(uint64(newCertsInserted))
+		ins.inserters.Done()
+	}
 }
