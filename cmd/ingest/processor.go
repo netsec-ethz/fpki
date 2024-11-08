@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/db"
@@ -26,14 +27,18 @@ import (
 		   ...
 */
 type Processor struct {
-	Ctx            context.Context
-	CsvFiles       []util.CsvFile
-	NumFileReaders int
-	NumToChain     int
-	NumToCerts     int
-	NumDBWriters   int
-	Pipeline       *pip.Pipeline
-	Manager        *updater.Manager
+	Ctx               context.Context
+	CsvFiles          []util.CsvFile
+	NumFileReaders    int
+	NumToChain        int
+	NumToCerts        int
+	NumDBWriters      int
+	Pipeline          *pip.Pipeline
+	Manager           *updater.Manager
+	bundleSize        uint64
+	onBundleFinished  func()
+	certsBeforeBundle atomic.Uint64
+	doingBundle       atomic.Bool
 }
 
 func NewProcessor(
@@ -51,6 +56,11 @@ func NewProcessor(
 		NumToChain:     1, // Default to just 1 lineToChain.
 		NumToCerts:     1, // Default to just 1 chainToCerts.
 		NumDBWriters:   1, // Default to 1 db writer.
+
+		bundleSize:        math.MaxUint64,
+		onBundleFinished:  func() {}, // Noop.
+		certsBeforeBundle: atomic.Uint64{},
+		doingBundle:       atomic.Bool{},
 	}
 
 	// Apply options to processor only.
@@ -95,6 +105,37 @@ func NewProcessor(
 		p.Manager.Pipeline,
 	)
 
+	// At the chainToCert stages we evaluate if need to stop. These stages are the last ones right
+	// before the sink, with NumToCerts number of them.
+	evaluateAt := make([]int, 0, p.NumToCerts)
+	for i := len(pipFiles.Stages); i > len(pipFiles.Stages)-p.NumToCerts; i-- {
+		evaluateAt = append(evaluateAt, i-2)
+	}
+
+	stallOption := pip.WithStallStages(
+		append(pipFiles.Stages, p.Manager.Pipeline.Stages...), // all stages, both pipelines.
+		// Function when stalled:
+		func() {
+			// Call the function.
+			p.onBundleFinished()
+
+			// Reset the counter.
+			p.certsBeforeBundle.Store(0)
+			// Reset the bundle running indicator.
+			p.doingBundle.Store(false)
+		},
+		// Function determining when to stall:
+		func(sl pip.StageLike) bool {
+			if p.certsBeforeBundle.Load() > p.bundleSize && p.doingBundle.CompareAndSwap(false, true) {
+				return true
+			}
+			return false
+		},
+		// Evaluate at every chainToCerts stage.
+		pipFiles.StagesAt(evaluateAt...),
+	)
+	stallOption(pipeline)
+
 	// Set the joint pipeline as the pipeline and return.
 	p.Pipeline = pipeline
 	return p, nil
@@ -132,29 +173,34 @@ func WithNumDBWriters(numDBWriters int) ingestOptions {
 		})
 }
 
-// func WithBundleSize(bundleSize uint64) ingestOptions {
-// 	return managerOptions(
-// 		func(m *updater.Manager) {
-// 			if bundleSize == 0 {
-// 				bundleSize = math.MaxUint64
-// 			}
-// 			m.BundleSize = bundleSize
-// 		})
-// }
+func WithBundleSize(bundleSize uint64) ingestOptions {
+	return processorOptions(
+		func(p *Processor) {
+			if bundleSize == 0 {
+				bundleSize = math.MaxUint64
+			}
+			p.bundleSize = bundleSize
+		})
+}
 
-// func WithOnBundleFinished(fcn func()) ingestOptions {
-// 	return managerOptions(
-// 		func(m *updater.Manager) {
-// 			m.OnBundleFinished = fcn
-// 		})
-// }
+func WithOnBundleFinished(fcn func()) ingestOptions {
+	return processorOptions(
+		func(p *Processor) {
+			p.onBundleFinished = fcn
+		})
+}
 
 func (p *Processor) Resume() {
 	p.Pipeline.Resume(p.Ctx)
 }
 
 func (p *Processor) Wait() error {
-	return p.Pipeline.Wait(p.Ctx)
+	err := p.Pipeline.Wait(p.Ctx)
+	// Check if there is a bundle pending.
+	if p.certsBeforeBundle.Load() > 0 {
+		p.onBundleFinished()
+	}
+	return err
 }
 
 // AddGzFiles adds a CSV .gz file to the initial stage.
@@ -229,7 +275,7 @@ func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 	// Create chain to certificates worker.
 	chainToCertWorkers := make([]*chainToCertWorker, p.NumToCerts)
 	for i := range chainToCertWorkers {
-		chainToCertWorkers[i] = NewChainToCertWorker(i)
+		chainToCertWorkers[i] = NewChainToCertWorker(i, p)
 	}
 
 	// Create sink for certificate pointers.

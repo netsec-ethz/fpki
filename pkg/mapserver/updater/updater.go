@@ -575,9 +575,11 @@ func UpdateSMT(ctx context.Context, conn db.Conn) error {
 	fmt.Printf("\nsmt [%s]: SMT updated\n", time.Now().Format(time.Stamp))
 
 	// Save root value:
-	err = conn.SaveRoot(ctx, (*common.SHA256Output)(smtTrie.Root))
-	if err != nil {
-		return err
+	if smtTrie.Root != nil {
+		err = conn.SaveRoot(ctx, (*common.SHA256Output)(smtTrie.Root))
+		if err != nil {
+			return err
+		}
 	}
 	fmt.Printf("smt [%s]: new root saved\n", time.Now().Format(time.Stamp))
 
