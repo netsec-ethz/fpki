@@ -1305,7 +1305,7 @@ func TestAutoResumeAtSink(t *testing.T) {
 	require.Equal(t, []int{11, 22, 13, 24, 15, 26, 17}, gotValues)
 }
 
-func TestStallPipeline(t *testing.T) {
+func TestStallStages(t *testing.T) {
 	defer PrintAllDebugLines()
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
 	defer cancelF()
@@ -1384,6 +1384,96 @@ func TestStallPipeline(t *testing.T) {
 		p.Resume(ctx)
 		err := p.Wait(ctx)
 		DebugPrintf("[TEST] error 1: %v\n", err)
+		require.NoError(t, err)
+	})
+	require.ElementsMatch(t, []int{101, 12, 103, 14, 101, 12, 103, 14}, gotValues)
+}
+
+// TestStallStagesConcurrency checks that the stages are still processed concurrently, also with
+// the use of the WithStallStages option.
+func TestStallStagesConcurrency(t *testing.T) {
+	defer PrintAllDebugLines()
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	defer cancelF()
+
+	// Prepare test.
+	sentValues := atomic.Uint32{}
+	gotValues := make([]int, 0)
+	alreadyChecked := atomic.Bool{}
+
+	// Create pipeline.
+	p, err := NewPipeline(
+		func(p *Pipeline) {
+			// 1 ->2 ->4
+			//  \->3_/
+			s1 := p.Stages[0].(*Source[int])
+			s2 := p.Stages[1].(*Stage[int, int])
+			s3 := p.Stages[2].(*Stage[int, int])
+			s4 := p.Stages[3].(*Sink[int])
+
+			LinkStagesAt(SourceAsStage(s1), 0, s2, 0)
+			LinkStagesAt(SourceAsStage(s1), 1, s3, 0)
+			LinkStagesAt(s2, 0, SinkAsStage(s4), 0)
+			LinkStagesAt(s3, 0, SinkAsStage(s4), 1)
+		},
+		WithStages(
+			NewSource[int](
+				"1", // source.
+				WithSourceSlice(&[]int{1, 2, 3, 4, 1, 2, 3, 4}, func(in int) (int, error) {
+					defer sentValues.Add(1)
+					return in % 2, nil
+				}),
+				WithMultiOutputChannels[None, int](2),
+			),
+			// Stage 2 has two output channels, to 3 and to 4.
+			NewStage[int, int](
+				"2", // adds 10.
+				WithProcessFunction(func(in int) ([]int, []int, error) {
+					for !alreadyChecked.Load() {
+					}
+
+					return []int{in + 10}, []int{0}, nil
+				}),
+			),
+			NewStage[int, int](
+				"3", // adds 100.
+				WithProcessFunction(func(in int) ([]int, []int, error) {
+					defer alreadyChecked.Store(true)
+					return []int{in + 100}, []int{0}, nil
+				}),
+			),
+			NewSink[int](
+				"4", // sink.
+				WithSinkFunction(func(in int) error {
+					// Let's make the sink quite slow. This should check the workingStagesWg.
+					gotValues = append(gotValues, in)
+					return nil
+				}),
+				WithMultiInputChannels[int, None](2),
+			),
+		),
+	)
+	require.NoError(t, err)
+	WithStallStages(
+		p.StagesAt(0, 1, 2, 3),
+		// Per bundle:
+		func() {
+			t.Logf("gotValues = %v", gotValues)
+		},
+		// Should stall?
+		func(s StageLike) bool {
+			stall := len(gotValues)%4 == 0
+			t.Logf("stall evaluated at %s will return %v", s.Base().Name, stall)
+			return stall
+		},
+		p.StagesAt(3),
+	)(p)
+
+	// Resume all stages. There is nobody reading the last channel, so the pipeline will stall.
+	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
+		p.Resume(ctx)
+		err := p.Wait(ctx)
+		DebugPrintf("[TEST] error: %v\n", err)
 		require.NoError(t, err)
 	})
 	require.ElementsMatch(t, []int{101, 12, 103, 14, 101, 12, 103, 14}, gotValues)

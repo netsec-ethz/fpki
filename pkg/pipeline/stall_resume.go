@@ -94,6 +94,9 @@ func WithAutoResumeAtStage(
 // Finally, when the indicated stages are stalled, the whenStalled function is called.
 // There can be several concurrent calls to the shouldStallPipeline evaluation function,
 // but only one to whenStalled.
+// Finally, the evaluation is done on the indicated stages, even before receiving data, while
+// the execution of whenStalled is done on a separate goroutine, as soon as all pertinent
+// stages are out of their processing function (not waiting for output to be sent).
 func WithStallStages(
 	stallTheseStages []StageLike,
 	whenStalled func(),
@@ -133,7 +136,7 @@ func WithStallStages(
 
 				// Indicate to stall the pipeline if should stall and this is the first time.
 				if stall {
-					DebugPrintf("[%s] [stall] this stage will stall the pipeline\n", s.Base().Name)
+					DebugPrintf("[%s] [stall] [stall-releaser] this stage will stall the pipeline\n", s.Base().Name)
 					// Run in separate goroutine, to avoid blocking this stage if it is also
 					// part of the stallTheseStages.
 					go func() {
@@ -163,9 +166,8 @@ func WithStallStages(
 		for _, s := range stallTheseStages {
 			s := s
 
-			// Get the previous onBeforeData.
+			// Simply try to obtain the mutex stallMu.
 			prevOnBeforeData := s.Base().onBeforeData
-
 			s.Base().onBeforeData = func() {
 				// Call the previous onBeforeData.
 				prevOnBeforeData()
