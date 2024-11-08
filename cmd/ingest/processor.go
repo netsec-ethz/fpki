@@ -132,22 +132,22 @@ func WithNumDBWriters(numDBWriters int) ingestOptions {
 		})
 }
 
-func WithBundleSize(bundleSize uint64) ingestOptions {
-	return managerOptions(
-		func(m *updater.Manager) {
-			if bundleSize == 0 {
-				bundleSize = math.MaxUint64
-			}
-			m.BundleSize = bundleSize
-		})
-}
+// func WithBundleSize(bundleSize uint64) ingestOptions {
+// 	return managerOptions(
+// 		func(m *updater.Manager) {
+// 			if bundleSize == 0 {
+// 				bundleSize = math.MaxUint64
+// 			}
+// 			m.BundleSize = bundleSize
+// 		})
+// }
 
-func WithOnBundleFinished(fcn func()) ingestOptions {
-	return managerOptions(
-		func(m *updater.Manager) {
-			m.OnBundleFinished = fcn
-		})
-}
+// func WithOnBundleFinished(fcn func()) ingestOptions {
+// 	return managerOptions(
+// 		func(m *updater.Manager) {
+// 			m.OnBundleFinished = fcn
+// 		})
+// }
 
 func (p *Processor) Resume() {
 	p.Pipeline.Resume(p.Ctx)

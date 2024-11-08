@@ -145,10 +145,6 @@ func (w *domainInserter) processBatch(batch []DirtyDomain) error {
 		return nil
 	}
 
-	// Announce that there is a new inserter about to modify the DB.
-	doneFunc := w.Manager.startInserting()
-	defer doneFunc(0) // no new certificates inserted.
-
 	{
 		// Flatten data structure.
 		_, span := w.Tracer.Start(ctx, "flatten")

@@ -164,9 +164,6 @@ func newCertInserter(
 	w.Sink = pip.NewSink[CertBatch](
 		fmt.Sprintf("cert_inserter_%02d", id),
 		pip.WithSinkFunction(func(batch CertBatch) error {
-			doneFunc := m.startInserting()
-			defer doneFunc(len(batch))
-
 			// Insert the batch now.
 			return w.insertCertificates(m.Conn, batch)
 		}),

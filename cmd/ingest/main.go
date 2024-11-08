@@ -196,6 +196,8 @@ func mainFunction() int {
 			}
 		}
 
+		_ = bundleProcessing
+
 		proc, err := NewProcessor(
 			ctx,
 			conn,
@@ -206,8 +208,8 @@ func mainFunction() int {
 			WithNumToChains(*numParsers),
 			WithNumToCerts(*numChainToCerts),
 			WithNumDBWriters(*numDBWriters),
-			WithBundleSize(*bundleSize),
-			WithOnBundleFinished(bundleProcessing),
+			// WithBundleSize(*bundleSize),
+			// WithOnBundleFinished(bundleProcessing),
 		)
 		exitIfError(err)
 

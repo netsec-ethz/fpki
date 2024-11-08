@@ -35,6 +35,7 @@ type StageBase struct {
 	StopCh                    chan None       // Indicates to this stage to stop.
 	NextErrChs                []chan error    // Next stage's error channel.
 	NextStagesAggregatedErrCh chan error      // Aggregated nexErrChs
+	onBeforeData              func()          // Callback before attempting to get dat from incoming.
 	onReceivedData            func()          // Callback after getting data from incoming.
 	onResume                  func()          // Callback before Resume() starts.
 	onProcessed               func()          // Callback after process.
@@ -46,6 +47,7 @@ func newStageBase(name string) StageBase {
 	return StageBase{
 		Tracer:         tr.GetTracer(name),
 		Name:           name,
+		onBeforeData:   func() {},             // Noop.
 		onReceivedData: func() {},             // Noop.
 		onResume:       func() {},             // Noop.
 		onProcessed:    func() {},             // Noop.
@@ -396,6 +398,8 @@ func (s *Stage[IN, OUT]) processThisStage() {
 	var err error
 readIncoming:
 	for {
+		s.onBeforeData()
+
 		DebugPrintf("[%s] select-blocked on input: %s\n", s.Name, chanPtr(s.AggregatedIncomeCh))
 		_, spanIncoming := traIncoming.Start(s.Ctx, "incoming")
 		tr.SetAttrString(spanIncoming, "name", s.Name)
