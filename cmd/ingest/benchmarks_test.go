@@ -94,7 +94,7 @@ func BenchmarkChainsToCert(b *testing.B) {
 		NumToChain: 1,
 	}
 
-	w := NewChainToCertWorker(0)
+	w := NewChainToCertWorker(0, p)
 	w.Prepare(ctx)
 
 	// Mock linking.
@@ -156,7 +156,7 @@ func BenchmarkCertSink(b *testing.B) {
 }
 
 func getManager(t tests.T) *updater.Manager {
-	m, err := updater.NewManager(1, nil, math.MaxInt, math.MaxUint64, nil, time.Hour, nil)
+	m, err := updater.NewManager(1, nil, 10_000, math.MaxUint64, nil, time.Hour, nil)
 	require.NoError(t, err)
 	return m
 }

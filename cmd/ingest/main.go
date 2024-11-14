@@ -196,8 +196,6 @@ func mainFunction() int {
 			}
 		}
 
-		_ = bundleProcessing
-
 		proc, err := NewProcessor(
 			ctx,
 			conn,
