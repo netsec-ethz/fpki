@@ -55,7 +55,7 @@ func NewCsvSplitWorker(p *Processor) *csvSplitWorker {
 			if !stillLinesToSend {
 				*outs = (*outs)[:0]
 				*outChs = (*outChs)[:0]
-				p.stats.TotalFilesRead.Add(1)
+				p.Manager.Stats.TotalFilesRead.Add(1)
 				return nil
 			}
 			return pip.StreamOutput

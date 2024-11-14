@@ -3,8 +3,6 @@ package pipeline
 import (
 	"context"
 	"fmt"
-
-	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
 // Pipeline represents a data processing pipeline.
@@ -111,89 +109,6 @@ func WithStages(stages ...StageLike) pipelineOptions {
 	}
 }
 
-func WithAutoResumeAtStage(
-	targetStage int,
-	shouldResumeNow func() bool,
-	relink func(*Pipeline),
-	affectedStages ...int,
-) pipelineOptions {
-	return func(p *Pipeline) {
-		origLinkFunc := p.linkFunc
-		// Sort the affected stages so that Resume can walk backwards.
-		affectedStages := util.Qsort(affectedStages)
-
-		p.linkFunc = func(p *Pipeline) {
-			DebugPrintf("[autoresume] calling original link function\n")
-			origLinkFunc(p)
-
-			// Replace the target's error channel with a new one, but keep the original one open.
-			// Every time the target sends a message to its error channel, forward it to the
-			// original one (the one that the previous stage has linked).
-			// But when the target closes its error channel, if shouldResumeNow indicates so,
-			// create a new error channel and keep the same behavior as before.
-
-			// Tag the target stage.
-			target := p.Stages[targetStage]
-
-			// Replace the salient error channel of the target stage.
-			origErrCh := target.Base().ErrCh
-			DebugPrintf("[autoresume] orig error channel: %s\n", chanPtr(origErrCh))
-			newErrCh := make(chan error)
-			target.Base().ErrCh = newErrCh
-			DebugPrintf("[autoresume] new error channel: %s\n", chanPtr(newErrCh))
-
-			go func() {
-				for {
-					for err := range newErrCh {
-						DebugPrintf("[autoresume] err from target: %v\n", err)
-						// Pass it along.
-						origErrCh <- err
-					}
-					DebugPrintf("[autoresume] target error channel %s is closed\n",
-						chanPtr(newErrCh))
-
-					// The target closed the error channel, check whether to resume automatically.
-					if !shouldResumeNow() {
-						DebugPrintf("[autoresume] *************** closing sniffer error channel\n")
-						// The function indicates not to resume, close the new error channel.
-						close(origErrCh)
-						// And exit, as once not resuming means stopping.
-						return
-					}
-
-					DebugPrintf("[autoresume] request to resume: true. Affected stages: %v\n",
-						affectedStages)
-					// Auto resume was requested, prepare affected stages.
-					for i := len(affectedStages) - 1; i >= 0; i-- {
-						p.Stages[affectedStages[i]].Prepare(p.Ctx)
-					}
-
-					// The target stage needs a new error and stop channels.
-					newErrCh = make(chan error)
-					target.Base().ErrCh = newErrCh
-					target.Base().StopCh = make(chan None)
-
-					if sink, ok := target.(SinkLike); ok {
-						sink.PrepareSink(p.Ctx)
-					}
-					DebugPrintf("[autoresume] stages prepared\n")
-
-					relink(p)
-					DebugPrintf("[autoresume] relink called\n")
-
-					// Resume all affected and target stages.
-					for i := len(affectedStages) - 1; i >= 0; i-- {
-						p.Stages[affectedStages[i]].Resume(p.Ctx)
-					}
-					// Also the target stage.
-					target.Resume(p.Ctx)
-					DebugPrintf("[autoresume] stages resumed\n")
-				}
-			}()
-		}
-	}
-}
-
 func StageAtIndex[IN, OUT any](p *Pipeline, index int) *Stage[IN, OUT] {
 	return p.Stages[index].(*Stage[IN, OUT])
 }
@@ -230,8 +145,16 @@ func (p *Pipeline) Wait(ctx context.Context) error {
 	return <-p.Stages[0].Base().ErrCh
 }
 
-func (p *Pipeline) LinkFunction() func(*Pipeline) {
+func (p Pipeline) LinkFunction() func(*Pipeline) {
 	return p.linkFunc
+}
+
+func (p Pipeline) StagesAt(indices ...int) []StageLike {
+	stages := make([]StageLike, 0, len(indices))
+	for _, i := range indices {
+		stages = append(stages, p.Stages[i])
+	}
+	return stages
 }
 
 // check finds the source and sink of this pipeline, or reports an error.

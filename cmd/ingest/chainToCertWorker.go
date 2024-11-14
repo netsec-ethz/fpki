@@ -15,7 +15,7 @@ type chainToCertWorker struct {
 	channelsCache []int // reuse storage
 }
 
-func NewChainToCertWorker(numWorker int) *chainToCertWorker {
+func NewChainToCertWorker(numWorker int, p *Processor) *chainToCertWorker {
 	w := &chainToCertWorker{}
 	name := fmt.Sprintf("toCerts_%02d", numWorker)
 	w.Stage = pip.NewStage[certChain, updater.Certificate](
@@ -27,6 +27,9 @@ func NewChainToCertWorker(numWorker int) *chainToCertWorker {
 
 			// Recreate channel indices, all to zero.
 			util.ResizeSlice(&w.channelsCache, len(certs), 0)
+
+			// Increment the count of certs.
+			p.certsBeforeBundle.Add(uint64(len(certs)))
 
 			return certs, w.channelsCache, nil
 		}),

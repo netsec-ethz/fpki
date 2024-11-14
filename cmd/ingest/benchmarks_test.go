@@ -18,7 +18,7 @@ func BenchmarkCsvSplit(b *testing.B) {
 	ctx := context.Background()
 	p := &Processor{
 		Ctx:        ctx,
-		stats:      updater.NewStatistics(time.Second, nil),
+		Manager:    getManager(b),
 		NumToChain: 1,
 	}
 
@@ -51,7 +51,7 @@ func BenchmarkLineToChain(b *testing.B) {
 	ctx := context.Background()
 	p := &Processor{
 		Ctx:        ctx,
-		stats:      updater.NewStatistics(time.Second, nil),
+		Manager:    getManager(b),
 		NumToChain: 1,
 	}
 
@@ -90,11 +90,11 @@ func BenchmarkChainsToCert(b *testing.B) {
 	ctx := context.Background()
 	p := &Processor{
 		Ctx:        ctx,
-		stats:      updater.NewStatistics(time.Second, nil),
+		Manager:    getManager(b),
 		NumToChain: 1,
 	}
 
-	w := NewChainToCertWorker(0)
+	w := NewChainToCertWorker(0, p)
 	w.Prepare(ctx)
 
 	// Mock linking.
@@ -130,9 +130,8 @@ func BenchmarkCertSink(b *testing.B) {
 	ctx := context.Background()
 	p := &Processor{
 		Ctx:        ctx,
-		stats:      updater.NewStatistics(time.Second, nil),
+		Manager:    getManager(b),
 		NumToChain: 1,
-		BundleSize: math.MaxUint64,
 	}
 
 	w := p.createCertificateSink()
@@ -154,6 +153,12 @@ func BenchmarkCertSink(b *testing.B) {
 	b.Logf("read %d certificates in %s", len(certs), b.Elapsed().String())
 
 	<-w.ErrCh
+}
+
+func getManager(t tests.T) *updater.Manager {
+	m, err := updater.NewManager(1, nil, 10_000, math.MaxUint64, nil, time.Hour, nil)
+	require.NoError(t, err)
+	return m
 }
 
 func getLines(t tests.T, filename string, count int) []line {

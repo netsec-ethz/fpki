@@ -50,7 +50,7 @@ const (
 //
 // deleteme:
 // debugging:
-// time go run -tags=trace ./cmd/ingest/ -numparsers 1 -numdbworkers 1 -strategy onlyingest ./testdata2/
+// time go run -tags=trace ./cmd/ingest/ -numfiles 1  -numparsers 4 -numdechainers 2 -numdbworkers 4 -strategy onlyingest ./testdata2/
 func main() {
 	os.Exit(mainFunction())
 }
@@ -69,6 +69,8 @@ func mainFunction() int {
 	}
 	cpuProfile := flag.String("cpuprofile", "", "write a CPU profile to file")
 	memProfile := flag.String("memprofile", "", "write a memory profile to file")
+	multiInsertSize := flag.Int("multiinsert", MultiInsertSize, "number of certificates and "+
+		"domains inserted at once in the DB")
 	bundleSize := flag.Uint64("bundlesize", 0, "number of certificates after which a coalesce and "+
 		"SMT update must occur. If 0, no limit, meaning coalescing and SMT updating is done once")
 	numFiles := flag.Int("numfiles", NumFiles, "Number of parallel files being read at once")
@@ -197,7 +199,7 @@ func mainFunction() int {
 		proc, err := NewProcessor(
 			ctx,
 			conn,
-			MultiInsertSize,
+			*multiInsertSize,
 			2*time.Second,
 			printStats,
 			WithNumFileReaders(*numFiles),

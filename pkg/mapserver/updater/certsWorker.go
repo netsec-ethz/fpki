@@ -152,9 +152,19 @@ func newCertInserter(
 		dedupStorage: make(map[common.SHA256Output]struct{}, m.MultiInsertSize),
 	}
 
+	// Instead of auto-resume done automatically on the pipeline, we manually call the OnBundle
+	// function when a bundle is created. A bundle is created when the certificate count reaches
+	// the bundle size. The certificate count is reset after the bundle is stored in the DB.
+	//
+	// deleteme TODO: check interaction with the domain inserter.
+	//
+	// The first inserter that reaches the bundle acquires the bundle lock, flags that it is already
+	// taken, and inserts the bundle. Then wakes up the rest of the inserters via the sync.Cond.
+
 	w.Sink = pip.NewSink[CertBatch](
 		fmt.Sprintf("cert_inserter_%02d", id),
 		pip.WithSinkFunction(func(batch CertBatch) error {
+			// Insert the batch now.
 			return w.insertCertificates(m.Conn, batch)
 		}),
 	)

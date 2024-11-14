@@ -79,9 +79,9 @@ func (w *lineToChainWorker) parseLine(p *Processor, line *line) (*certChain, err
 	}
 
 	// Update statistics.
-	p.stats.ReadBytes.Add(int64(len(rawBytes)))
-	p.stats.ReadCerts.Add(1)
-	p.stats.UncachedCerts.Add(1)
+	p.Manager.Stats.ReadBytes.Add(int64(len(rawBytes)))
+	p.Manager.Stats.ReadCerts.Add(1)
+	p.Manager.Stats.UncachedCerts.Add(1)
 
 	// Get the leaf certificate ID.
 	certID := common.SHA256Hash32Bytes(rawBytes)
@@ -111,8 +111,8 @@ func (w *lineToChainWorker) parseLine(p *Processor, line *line) (*certChain, err
 				line.number, err, line.fields[CertChainColumn])
 		}
 		// Update statistics.
-		p.stats.ReadBytes.Add(int64(len(rawBytes)))
-		p.stats.ReadCerts.Add(1)
+		p.Manager.Stats.ReadBytes.Add(int64(len(rawBytes)))
+		p.Manager.Stats.ReadCerts.Add(1)
 		// Check if the parent certificate is in the cache.
 		id := common.SHA256Hash32Bytes(rawBytes)
 		if !w.cache.Contains(&id) {
@@ -123,7 +123,7 @@ func (w *lineToChainWorker) parseLine(p *Processor, line *line) (*certChain, err
 					line.number, err, line.fields[CertChainColumn])
 			}
 			w.cache.AddIDs(&id)
-			p.stats.UncachedCerts.Add(1)
+			p.Manager.Stats.UncachedCerts.Add(1)
 		}
 		chainIDs[i] = &id
 	}
