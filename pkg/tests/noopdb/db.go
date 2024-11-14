@@ -25,6 +25,22 @@ func (*Conn) TruncateAllTables(context.Context) error {
 	return nil
 }
 
+func (*Conn) InsertCsvIntoCerts(context.Context, string) error {
+	return nil
+}
+
+func (*Conn) InsertCsvIntoDirty(context.Context, string) error {
+	return nil
+}
+
+func (*Conn) InsertCsvIntoDomains(context.Context, string) error {
+	return nil
+}
+
+func (*Conn) InsertCsvIntoDomainCerts(context.Context, string) error {
+	return nil
+}
+
 func (*Conn) UpdateDomains(context.Context, []common.SHA256Output, []string) error {
 	return nil
 }

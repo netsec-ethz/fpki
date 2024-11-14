@@ -12,7 +12,7 @@ import (
 )
 
 // Connect: connect to db, using the config file
-func Connect(config *db.Configuration) (db.Conn, error) {
+func Connect(config *db.Configuration) (*mysqlDB, error) {
 	if config == nil {
 		return nil, fmt.Errorf("nil config not allowed")
 	}

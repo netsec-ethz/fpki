@@ -51,6 +51,11 @@ func (c *mysqlDB) InsertDomainsIntoDirty(
 	return c.insertDomainsIntoDirtyCSV(ctx, domainIDs)
 }
 
+func (c *mysqlDB) InsertCsvIntoDirty(ctx context.Context, filename string) error {
+	_, err := loadDirtyTableWithCSV(ctx, c.db, filename)
+	return err
+}
+
 func (c *mysqlDB) insertDomainsIntoDirtyCSV(
 	ctx context.Context,
 	domainIDs []common.SHA256Output,

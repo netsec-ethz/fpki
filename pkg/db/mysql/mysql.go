@@ -32,9 +32,10 @@ func PartitionByIdLSB(id *common.SHA256Output, nBits int) uint {
 }
 
 type mysqlDB struct {
-	db.Conn
 	db *sql.DB
 }
+
+var _ db.Conn = (*mysqlDB)(nil)
 
 // NewMysqlDB is called to create a new instance of the mysqlDB.
 func NewMysqlDB(db *sql.DB) (*mysqlDB, error) {
@@ -77,6 +78,11 @@ func (c *mysqlDB) UpdateDomains(
 ) error {
 	// return c.updateDomainsMemory(ctx, domainIDs, domainNames)
 	return c.updateDomainsCSV(ctx, domainIDs, domainNames)
+}
+
+func (c *mysqlDB) InsertCsvIntoDomains(ctx context.Context, filename string) error {
+	_, err := loadDomainsTableWithCSV(ctx, c.db, filename)
+	return err
 }
 
 func (c *mysqlDB) updateDomainsCSV(

@@ -39,6 +39,9 @@ type dirty interface {
 	// domains have not been fully processed yet.
 	InsertDomainsIntoDirty(ctx context.Context, ids []common.SHA256Output) error
 
+	// InsertCsvIntoDirty inserts all the domain IDs in the CSV file into the dirty table.
+	InsertCsvIntoDirty(ctx context.Context, filename string) error
+
 	// RecomputeDirtyDomainsCertAndPolicyIDs retrieves dirty domains from the dirty list, starting
 	// at firstRow and finishing at lastRow (for a total of lastRow - firstRow + 1 domains),
 	// computes the aggregated payload for their certificates and policies, and stores it in the DB.
@@ -51,6 +54,13 @@ type dirty interface {
 }
 
 type certs interface {
+
+	// InsertCsvIntoCerts inserts all the certificate fields into the certs table.
+	InsertCsvIntoCerts(ctx context.Context, filename string) error
+
+	// InsertCsvIntoDomainCerts inserts all the certificate-domain records into the domain_certs
+	// table.
+	InsertCsvIntoDomainCerts(ctx context.Context, filename string) error
 
 	// CheckCertsExist returns a slice of true/false values. Each value indicates if
 	// the corresponding certificate identified by its ID is already present in the DB.
@@ -133,6 +143,9 @@ type Conn interface {
 
 	// TruncateAllTables resets the DB to an initial state.
 	TruncateAllTables(ctx context.Context) error
+
+	// InsertCsvIntoDomains inserts all the domains in the CSV into the domains table.
+	InsertCsvIntoDomains(ctx context.Context, filename string) error
 
 	// UpdateDomains updates the domains table.
 	UpdateDomains(
