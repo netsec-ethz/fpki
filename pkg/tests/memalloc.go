@@ -65,7 +65,7 @@ func DumpMemoryProfile(t T, fileName string) {
 	f, err := os.Create(fileName)
 	require.NoError(t, err)
 
-	err = pprof.WriteHeapProfile(f)
+	err = pprof.Lookup("heap").WriteTo(f, 0) // use "heap" or "allocs"
 	require.NoError(t, err)
 
 	err = f.Close()

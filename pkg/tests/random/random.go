@@ -17,6 +17,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var keyCreatingRandomCerts = RandomRSAPrivateKey(tests.NewTestObject("test_RSA_key"))
+
 // randReader is a type implementing io.Reader which _fools_ `rsa.GenerateKey` to always generate
 // reproducible keys if the random source is deterministic (reproducible).
 // Use this reader only in tests.
@@ -75,8 +77,6 @@ func RandomLeafNames(t tests.T, N int) []string {
 	}
 	return names
 }
-
-var keyCreatingRandomCerts = RandomRSAPrivateKey(tests.NewTestObject("test_RSA_key"))
 
 // RandomX509Cert creates a random x509 certificate, with correct ASN.1 DER representation.
 func RandomX509Cert(t tests.T, domain string) ctx509.Certificate {
@@ -396,7 +396,7 @@ func RandomPolicyCertificateRevocation(t tests.T) *common.PolicyCertificateRevoc
 	)
 }
 
-// RandomRSAPrivateKey generates a NON-cryptographycally secure RSA private key.
+// RandomRSAPrivateKey generates a NON-cryptographically secure RSA private key.
 func RandomRSAPrivateKey(t tests.T) *rsa.PrivateKey {
 	privateKeyPair, err := rsa.GenerateKey(NewRandReader(), 2048)
 	require.NoError(t, err)
