@@ -156,12 +156,12 @@ func TestRunWhenFalse(t *testing.T) {
 // TestMapUpdaterStartFetchingRemaining checks that the updater is able to keep a tally of
 // which indices have been already updated and write them down in the DB.
 func TestMapUpdaterStartFetchingRemaining(t *testing.T) {
-	ctx, cancelF := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancelF()
-
 	// Configure a test DB.
 	config, removeF := testdb.ConfigureTestDB(t)
 	defer removeF()
+
+	ctx, cancelF := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancelF()
 
 	url := "myURL"
 	updater, err := NewMapUpdater(config, []string{url}, map[string]string{}, 0)
@@ -306,12 +306,12 @@ func TestMapUpdaterStartFetchingRemaining(t *testing.T) {
 // TestMapUpdaterStartFetchingRemainingNextDay checks that after a full round of updates,
 // the next call to StartFetchingRemaining continues with the last unfetched index.
 func TestMapUpdaterStartFetchingRemainingNextDay(t *testing.T) {
-	ctx, cancelF := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancelF()
-
 	// Configure a test DB.
 	config, removeF := testdb.ConfigureTestDB(t)
 	defer removeF()
+
+	ctx, cancelF := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancelF()
 
 	url := "myURL_" + t.Name()
 	updater, err := NewMapUpdater(config, []string{url}, map[string]string{}, 0)
@@ -382,12 +382,12 @@ func TestMapUpdaterStartFetchingRemainingNextDay(t *testing.T) {
 }
 
 func TestMultipleFetchers(t *testing.T) {
-	ctx, cancelF := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancelF()
-
 	// Configure a test DB.
 	config, removeF := testdb.ConfigureTestDB(t)
 	defer removeF()
+
+	ctx, cancelF := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancelF()
 
 	urls := []string{
 		t.Name() + "_1",
@@ -404,50 +404,51 @@ func TestMultipleFetchers(t *testing.T) {
 	fetcherSizes := []int64{10, 11, 12}
 	for i, url := range urls {
 		sentCertCount := int64(0)
-		fetcher := &mockFetcher{} // "forward" define it to use it in its own definition
-		fetcher = &mockFetcher{
+		fetcher := &mockFetcher{
 			url:  url,
 			size: fetcherSizes[i],
 			STH:  []byte{byte(i), 2, 3, 4},
-			onNextBatch: func(ctx context.Context) bool {
-				// Returns elements in batchSize: still something to return if size not reached.
-				return fetcher.size-sentCertCount > 0
-			},
-			onReturnNextBatch: func() (
-				[]ctx509.Certificate, // certs
-				[][]*ctx509.Certificate, // chains
-				int,
-				error,
-			) {
-				// Return a slice of nil certs and chains, with the correct size.
-				onReturnNextBatchCalls++
-				// The n variable is the number of items to return.
-				n := batchSize
-				if sentCertCount+batchSize > fetcher.size {
-					n = fetcher.size % batchSize
-				}
-				randomCerts := make([]ctx509.Certificate, n)
-				for i := range randomCerts {
-					randomCerts[i] = random.RandomX509Cert(t, t.Name())
-				}
-				sentCertCount += n
-				return randomCerts,
-					make([][]*ctx509.Certificate, n),
-					0,
-					nil
-			},
 			onStopFetching: func() {
 				onStopFetchingCalls++
 			},
 		}
+		fetcher.onNextBatch = func(ctx context.Context) bool {
+			// Returns elements in batchSize: still something to return if size not reached.
+			return fetcher.size-sentCertCount > 0
+		}
+		fetcher.onReturnNextBatch = func() (
+			[]ctx509.Certificate, // certs
+			[][]*ctx509.Certificate, // chains
+			int,
+			error,
+		) {
+			// Return a slice of nil certs and chains, with the correct size.
+			onReturnNextBatchCalls++
+			// The n variable is the number of items to return.
+			n := batchSize
+			if sentCertCount+batchSize > fetcher.size {
+				n = fetcher.size % batchSize
+			}
+			randomCerts := make([]ctx509.Certificate, n)
+			for i := range randomCerts {
+				randomCerts[i] = random.RandomX509Cert(t, t.Name())
+			}
+			sentCertCount += n
+			return randomCerts,
+				make([][]*ctx509.Certificate, n),
+				0,
+				nil
+		}
 		updater.Fetchers[i] = fetcher
 	}
 
+	t.Logf("[%s] starting to fetch", time.Now().Format(time.StampMilli))
 	err = updater.StartFetchingRemaining()
 	require.NoError(t, err)
 	count := 0
 	for {
 		hasBatch, err := updater.NextBatch(ctx)
+		t.Logf("[%s] has batch? %v", time.Now().Format(time.StampMilli), hasBatch)
 		require.NoError(t, err)
 		if !hasBatch {
 			break

@@ -7,62 +7,63 @@ import (
 	"fmt"
 	"os"
 	"time"
+	"unsafe"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 )
 
 const (
-	CsvBufferSize = 64 * 1024 * 1024 // 64MB
-	TemporaryDir  = "/mnt/data/tmp"
+	CsvBufferSize  = 64 * 1024 * 1024 // 64MB
+	TemporaryDir   = "/mnt/data/tmp"
+	MaxFieldLength = 1024 * 1024 // 1MB
 )
 
-func CreateCsvCerts(certs []Certificate) (string, error) {
-	return writeToCSV("fpki-ingest-certs-*.csv", certs, func(c Certificate) []string {
-		return []string{
-			// 4 columns: ID, parentID, expTime, payload.
-			idToBase64(c.CertID),
-			idOrNilToBase64(c.ParentID),
-			timeToString(c.Cert.NotAfter),
-			bytesToBase64(c.Cert.Raw),
+func CreateStorage(nRows, nCols int, fieldLengths ...int) [][][]byte {
+	storage := make([][][]byte, nRows)
+	for i := range storage {
+		storage[i] = make([][]byte, nCols)
+		for j := range storage[i] {
+			storage[i][j] = make([]byte, 0, fieldLengths[j])
 		}
-	})
+	}
+	return storage
 }
 
-func CreateCsvDirty(domains []DirtyDomain) (string, error) {
-	return writeToCSV("fpki-ingest-dirty-*.csv", domains, func(d DirtyDomain) []string {
-		return []string{
-			// 1 column: ID.
-			idToBase64(d.DomainID),
-		}
-	})
+func CreateCsvCerts(storage [][][]byte, certs []Certificate) (string, error) {
+	return writeRecordsWithStorage(storage, writeCSV, "fpki-ingest-certs-*.csv",
+		certs, recordsForCert)
 }
 
-func CreateCsvDomains(domains []DirtyDomain) (string, error) {
-	return writeToCSV("fpki-ingest-domains-*.csv", domains, func(d DirtyDomain) []string {
-		return []string{
-			// 2 columns: ID, name.
-			idToBase64(d.DomainID),
-			d.Name,
-		}
-	})
+func CreateCsvDirty(storage [][][]byte, domains []DirtyDomain) (string, error) {
+	return writeRecordsWithStorage(storage, writeCSV, "fpki-ingest-dirty-*.csv",
+		domains, recordsForDirty)
 }
 
-func CreateCsvDomainCerts(domains []DirtyDomain) (string, error) {
-	return writeToCSV("fpki-ingest-domain_certs-*.csv", domains, func(d DirtyDomain) []string {
-		return []string{
-			// 2 columns:
-			idToBase64(d.DomainID),
-			idToBase64(d.CertID),
-		}
-	})
+func CreateCsvDomains(storage [][][]byte, domains []DirtyDomain) (string, error) {
+	return writeRecordsWithStorage(storage, writeCSV, "fpki-ingest-domains-*.csv",
+		domains, recordsForDomains)
 }
 
-func writeToCSV[T any](preffix string, data []T, toRecords func(T) []string) (string, error) {
-	records := make([][]string, len(data))
+func CreateCsvDomainCerts(storage [][][]byte, domains []DirtyDomain) (string, error) {
+	return writeRecordsWithStorage(storage, writeCSV, "fpki-ingest-domain_certs-*.csv",
+		domains, recordsForDomainCerts)
+}
+
+func writeRecordsWithStorage[T any](
+	dst [][][]byte, // with the correct len(dst) == len(data), each len(dst[i]) == len(toRecords(data[i]))
+	writerFunc func(string, [][][]byte) (string, error), // The function to write to disk.
+	prefix string,
+	data []T,
+	toRecords func(dst [][]byte, field T),
+) (string, error) {
 	for i, d := range data {
-		records[i] = toRecords(d)
+		toRecords(dst[i], d)
 	}
 
+	return writerFunc(prefix, dst[:len(data)])
+}
+
+func writeCSV(preffix string, storage [][][]byte) (string, error) {
 	// Create a temporary file.
 	tempFile, err := os.CreateTemp(TemporaryDir, preffix)
 	if err != nil {
@@ -76,7 +77,19 @@ func writeToCSV[T any](preffix string, data []T, toRecords func(T) []string) (st
 	w := bufio.NewWriterSize(tempFile, CsvBufferSize)
 	csv := csv.NewWriter(w)
 
-	csv.WriteAll(records)
+	// Convert to lines.
+	lines := make([][]string, len(storage))
+	for i, lineByteSlices := range storage {
+		lines[i] = make([]string, len(lineByteSlices))
+		for j := range lineByteSlices {
+			if len(lineByteSlices[j]) > 0 {
+				a := &lineByteSlices[j][0]
+				lines[i][j] = unsafe.String(a, len(lineByteSlices[j]))
+			}
+		}
+	}
+
+	csv.WriteAll(lines)
 	csv.Flush()
 
 	if err := w.Flush(); err != nil {
@@ -90,21 +103,57 @@ func writeToCSV[T any](preffix string, data []T, toRecords func(T) []string) (st
 	return tempFile.Name(), nil
 }
 
-func idToBase64(id common.SHA256Output) string {
-	return bytesToBase64(id[:])
+func recordsForCert(dst [][]byte, c Certificate) {
+	// 4 columns: ID, parentID, expTime, payload.
+	idToBase64WithStorage(&dst[0], c.CertID)
+	idOrNilToBase64WithStorage(&dst[1], c.ParentID)
+	timeToStringWithStorage(&dst[2], c.Cert.NotAfter)
+	bytesToBase64WithStorage(&dst[3], c.Cert.Raw)
 }
 
-func idOrNilToBase64(idPtr *common.SHA256Output) string {
+func recordsForDirty(dst [][]byte, d DirtyDomain) {
+	// 1 column: ID.
+	idToBase64WithStorage(&dst[0], d.DomainID)
+}
+
+func recordsForDomains(dst [][]byte, d DirtyDomain) {
+	// 2 columns: ID, name.
+	idToBase64WithStorage(&dst[0], d.DomainID)
+	stringToStorage(&dst[1], d.Name)
+}
+
+func recordsForDomainCerts(dst [][]byte, d DirtyDomain) {
+	// 2 columns:
+	idToBase64WithStorage(&dst[0], d.DomainID)
+	idToBase64WithStorage(&dst[0], d.CertID)
+}
+
+func idToBase64WithStorage(storage *[]byte, id common.SHA256Output) string {
+	return bytesToBase64WithStorage(storage, id[:])
+}
+
+func idOrNilToBase64WithStorage(storage *[]byte, idPtr *common.SHA256Output) string {
 	if idPtr == nil {
+		*storage = (*storage)[:0]
 		return ""
 	}
-	return bytesToBase64(idPtr[:])
+	return bytesToBase64WithStorage(storage, idPtr[:])
 }
 
-func bytesToBase64(b []byte) string {
-	return base64.StdEncoding.EncodeToString(b)
+func bytesToBase64WithStorage(storage *[]byte, b []byte) string {
+	*storage = (*storage)[:0]
+	base64.StdEncoding.AppendEncode(*storage, b)
+	*storage = (*storage)[:base64.StdEncoding.EncodedLen(len(b))]
+	return unsafe.String(&((*storage)[0]), len(*storage))
 }
 
-func timeToString(t time.Time) string {
-	return t.Format(time.DateTime)
+func timeToStringWithStorage(storage *[]byte, t time.Time) string {
+	*storage = (*storage)[:0]
+	*storage = t.AppendFormat(*storage, time.DateTime)
+	return unsafe.String(&((*storage)[0]), len(*storage))
+}
+
+func stringToStorage(storage *[]byte, s string) {
+	*storage = (*storage)[:0]
+	*storage = append(*storage, []byte(s)...)
 }

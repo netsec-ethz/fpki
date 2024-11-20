@@ -2,14 +2,17 @@ package updater
 
 import (
 	"fmt"
-	"time"
+	"os"
 
 	"github.com/netsec-ethz/fpki/pkg/cache"
 	"github.com/netsec-ethz/fpki/pkg/common"
-	"github.com/netsec-ethz/fpki/pkg/db"
 	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
-	tr "github.com/netsec-ethz/fpki/pkg/tracing"
-	"github.com/netsec-ethz/fpki/pkg/util"
+)
+
+const (
+	IdBase64Len      = 44          // 32 bytes = (n + 2) / 3 * 4
+	ExpTimeBase64Len = 50          // expiration time
+	PayloadBase64Len = 1024 * 1024 // 1MB payload
 )
 
 // The certificate workers stages receive Certificate as input, and:
@@ -18,14 +21,18 @@ import (
 //
 // For this purpose we have the following stages:
 // 1. The source must send the same certificate to stages 2 and 3 below.
-// 2. Gets a certificate and batches them. It outputs a batch for stage 4
-// 3. Gets a certificate and obtains its domains and sends them to the next stages (domain batchers)
-// 4. Gets a certificate batch and inserts it into the DB.
+// 2. Gets a certificate and batches them. It outputs a batch for stage 4.
+// 3. Gets a certificate and obtains its domains and sends them to the next domain batcher stages.
+// 4. Gets a certificate batch and creates a CSV file. Outputs a filename for stage 5.
+// 5. Gets a CSV file and inserts it into the DB. Outputs a filename for stage 6.
+// 6. Removes the CSV file.
 //
 // All stages need only one input channel. The types for each stage are:
-// 2. certBatcher			Outputs to one certInserter
+// 2. certBatcher			Outputs to one certBatchToCsv
 // 3. domainExtractor		Outputs to N domain batchers.
-// 4. certInserter			Sinks.
+// 4. certBatchToCsv		Outputs to 1 certCsvInserter.
+// 5. certCsvInserter		Outputs to 1 certCsvRemover.
+// 6. certCsvRemover		Sinks.
 
 // CertBatch is a slice of certificates.
 type CertBatch []Certificate
@@ -126,106 +133,79 @@ func newDomainExtractor(
 	return w
 }
 
-// certInserter receives one certBatch and inserts it into the DB. It is a sink.
-// deleteme: this stage should actually be more than one: writing the CSVs, updating tables.
-type certInserter struct {
-	*pip.Sink[CertBatch]
-	// Cache storage arrays used to unfold Certificate objects into the DB fields.
-	cacheIds         []common.SHA256Output
-	cacheParents     []*common.SHA256Output
-	cacheExpirations []time.Time
-	cachePayloads    [][]byte
-
-	dedupStorage map[common.SHA256Output]struct{} // For dedup to not allocate.
+// certBatchToCsv receives one certBatch and creates a CSV file.
+type certBatchToCsv struct {
+	*pip.Stage[CertBatch, string]
 }
 
-func newCertInserter(
+func newCertBatchToCsv(
 	id int,
 	m *Manager,
-) *certInserter {
-	w := &certInserter{
-		cacheIds:         make([]common.SHA256Output, 0, m.MultiInsertSize),
-		cacheParents:     make([]*common.SHA256Output, 0, m.MultiInsertSize),
-		cacheExpirations: make([]time.Time, 0, m.MultiInsertSize),
-		cachePayloads:    make([][]byte, 0, m.MultiInsertSize),
+) *certBatchToCsv {
+	w := &certBatchToCsv{}
 
-		dedupStorage: make(map[common.SHA256Output]struct{}, m.MultiInsertSize),
-	}
+	// Prepare pre-reserved storage for the strings.
+	storage := CreateStorage(m.MultiInsertSize, 4,
+		IdBase64Len,
+		IdBase64Len,
+		ExpTimeBase64Len,
+		PayloadBase64Len,
+	)
 
-	// Instead of auto-resume done automatically on the pipeline, we manually call the OnBundle
-	// function when a bundle is created. A bundle is created when the certificate count reaches
-	// the bundle size. The certificate count is reset after the bundle is stored in the DB.
-	//
-	// deleteme TODO: check interaction with the domain inserter.
-	//
-	// The first inserter that reaches the bundle acquires the bundle lock, flags that it is already
-	// taken, and inserts the bundle. Then wakes up the rest of the inserters via the sync.Cond.
+	filenameSlice := make([]string, 1)
+	outChs := make([]int, 1)
+	var err error
+	w.Stage = pip.NewStage[CertBatch, string](
+		fmt.Sprintf("cert_batch_to_csv_%02d", id),
+		pip.WithProcessFunction(func(batch CertBatch) ([]string, []int, error) {
+			_, span := w.Tracer.Start(w.Ctx, "create-csv")
+			defer span.End()
 
-	w.Sink = pip.NewSink[CertBatch](
-		fmt.Sprintf("cert_inserter_%02d", id),
-		pip.WithSinkFunction(func(batch CertBatch) error {
-			// Insert the batch now.
-			return w.insertCertificates(m.Conn, batch)
+			filenameSlice[0], err = CreateCsvCerts(storage, batch)
+			return filenameSlice, outChs, err
 		}),
 	)
 
 	return w
 }
 
-func (w *certInserter) insertCertificates(conn db.Conn, batch CertBatch) error {
-	ctx, span := w.Tracer.Start(w.Ctx, "process-batch")
-	defer span.End()
-	tr.SetAttrInt(span, "num-domains", len(batch))
+type certCsvInserter struct {
+	*pip.Stage[string, string]
+}
 
-	// Reuse storage for the data translation.
-	w.cacheIds = w.cacheIds[:len(batch)]
-	w.cacheParents = w.cacheParents[:len(batch)]
-	w.cacheExpirations = w.cacheExpirations[:len(batch)]
-	w.cachePayloads = w.cachePayloads[:len(batch)]
+func newCertCsvInserter(id int, m *Manager) *certCsvInserter {
+	w := &certCsvInserter{}
 
-	{
-		// Flatten data structure.
-		_, span := w.Tracer.Start(ctx, "flatten")
+	filenameSlice := make([]string, 1)
+	outChs := make([]int, 1)
+	var err error
 
-		for i, c := range batch {
-			w.cacheIds[i] = c.CertID
-			w.cacheParents[i] = c.ParentID
-			w.cacheExpirations[i] = c.Cert.NotAfter
-			w.cachePayloads[i] = c.Cert.Raw
-		}
+	w.Stage = pip.NewStage[string, string](
+		fmt.Sprintf("cert_csv_inserter_%02d", id),
+		pip.WithProcessFunction(func(in string) ([]string, []int, error) {
+			ctx, span := w.Tracer.Start(w.Ctx, "csv-to-db")
+			defer span.End()
 
-		span.End()
-	}
-	{
-		// Remove duplicates for the dirty table insertion.
-		_, span := w.Tracer.Start(ctx, "dedup-certs")
+			// Call the db to insert.
+			filenameSlice[0] = in
+			err = m.Conn.InsertCsvIntoCerts(ctx, in)
+			return filenameSlice, outChs, err
+		}),
+	)
+	return w
+}
 
-		// Remove duplicated certs.
-		util.DeduplicateSliceWithStorage(
-			w.dedupStorage,
-			func(i int) common.SHA256Output {
-				return w.cacheIds[i]
-			},
-			util.Wrap(&w.cacheIds),
-			util.Wrap(&w.cacheParents),
-			util.Wrap(&w.cacheExpirations),
-			util.Wrap(&w.cachePayloads),
-		)
+type certCsvRemover struct {
+	*pip.Sink[string]
+}
 
-		span.End()
-	}
-	{
-		_, span := w.Tracer.Start(ctx, "update-certs")
-
-		err := conn.UpdateCerts(
-			ctx,
-			w.cacheIds,
-			w.cacheParents,
-			w.cacheExpirations,
-			w.cachePayloads,
-		)
-
-		span.End()
-		return err
+func newCertCsvRemover(id int) *certCsvRemover {
+	return &certCsvRemover{
+		Sink: pip.NewSink[string](
+			fmt.Sprintf("cert_csv_remover_%02d", id),
+			pip.WithSinkFunction(func(in string) error {
+				return os.Remove(in)
+			}),
+		),
 	}
 }

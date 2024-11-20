@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"regexp"
 )
 
 // Pipeline represents a data processing pipeline.
@@ -119,6 +120,26 @@ func SourceStage[OUT any](p *Pipeline) *Stage[None, OUT] {
 
 func SinkStage[IN any](p *Pipeline) *Stage[IN, None] {
 	return SinkAsStage(p.Stages[len(p.Stages)-1].(*Sink[IN]))
+}
+
+func FindStagesByType[IN, OUT any](stages []StageLike) []*Stage[IN, OUT] {
+	found := make([]*Stage[IN, OUT], 0)
+	for _, s := range stages {
+		if s, ok := s.(*Stage[IN, OUT]); ok {
+			found = append(found, s)
+		}
+	}
+	return found
+}
+
+func FindStagesByTypeAndName[IN, OUT any](stages []StageLike, rexp *regexp.Regexp) []*Stage[IN, OUT] {
+	found := make([]*Stage[IN, OUT], 0)
+	for _, s := range stages {
+		if s, ok := s.(*Stage[IN, OUT]); ok && rexp.MatchString(s.Name) {
+			found = append(found, s)
+		}
+	}
+	return found
 }
 
 func (p *Pipeline) Resume(ctx context.Context) {
