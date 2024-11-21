@@ -3,6 +3,7 @@ package mysql_test
 import (
 	"bufio"
 	"context"
+	"database/sql"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/csv"
@@ -1044,6 +1045,72 @@ func BenchmarkReadPerformance(b *testing.B) {
 			testWithPartitions(b, "key", createTableKey, 64)
 		})
 	})
+}
+
+// BenchmarkCreateTableInnoDB measures 126346740 ns/op (0.12s) [mysql-community-server 8.4.2]
+func BenchmarkCreateTableInnoDB(b *testing.B) {
+	b.SetParallelism(1)
+	createFunc := func() {
+		db, err := sql.Open("mysql", "root@unix(/var/run/mysqld/mysqld.sock)/")
+		require.NoError(b, err)
+
+		strs := []string{
+			"DROP DATABASE IF EXISTS testdb",
+			"CREATE DATABASE testdb",
+			"CREATE TABLE testdb.domains (\n" +
+				"  domain_id VARBINARY(32) NOT NULL,\n" +
+				"  domain_name VARCHAR(300) COLLATE ascii_bin DEFAULT NULL,\n" +
+				"\n" +
+				"  PRIMARY KEY (domain_id),\n" +
+				"  INDEX domain_name (domain_name)\n" +
+				") ENGINE=InnoDB CHARSET=binary COLLATE=binary\n" +
+				"PARTITION BY LINEAR KEY (domain_id) PARTITIONS 32",
+		}
+		for _, str := range strs {
+			_, err = db.Exec(str)
+			require.NoError(b, err)
+		}
+
+		err = db.Close()
+		require.NoError(b, err)
+	}
+
+	for i := 0; i < b.N; i++ {
+		createFunc()
+	}
+}
+
+// BenchmarkCreateTableMyIsam measures 2130136 ns/op (0.002s) [mysql-community-server 8.4.2]
+func BenchmarkCreateTableMyIsam(b *testing.B) {
+	b.SetParallelism(1)
+	createFunc := func() {
+		db, err := sql.Open("mysql", "root@unix(/var/run/mysqld/mysqld.sock)/")
+		require.NoError(b, err)
+
+		strs := []string{
+			"DROP DATABASE IF EXISTS testdb",
+			"CREATE DATABASE testdb",
+			"CREATE TABLE testdb.domains (\n" +
+				"domain_id VARBINARY(32) NOT NULL,\n" +
+				"domain_name VARCHAR(300) COLLATE ascii_bin DEFAULT NULL,\n" +
+				"\n" +
+				"PRIMARY KEY (domain_id),\n" +
+				"INDEX domain_id (domain_id),\n" +
+				"INDEX domain_name (domain_name)\n" +
+				") ENGINE=MyISAM CHARSET=binary COLLATE=binary;",
+		}
+		for _, str := range strs {
+			_, err = db.Exec(str)
+			require.NoError(b, err)
+		}
+
+		err = db.Close()
+		require.NoError(b, err)
+	}
+
+	for i := 0; i < b.N; i++ {
+		createFunc()
+	}
 }
 
 func exec(ctx context.Context, t tests.T, conn db.Conn, query string, args ...any) {
