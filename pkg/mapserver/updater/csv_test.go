@@ -70,6 +70,97 @@ func TestRecordsForCert(t *testing.T) {
 	require.Equal(t, base64.StdEncoding.EncodeToString(c.Cert.Raw), string(row[3]))
 }
 
+func TestRecordsForDirty(t *testing.T) {
+	storage := CreateStorage(1, 1, IdBase64Len)
+
+	// One domain to domain_certs records.
+	d := randomDirtyDomain(t)
+	allocs := tests.AllocsPerRun(func() {
+		recordsForDirty(storage[0], d)
+	})
+	require.Equal(t, 0, allocs)
+	require.Len(t, storage, 1)
+	row := storage[0]
+	require.Len(t, row, 1)
+	for i, field := range row {
+		t.Logf("field %d: %s", i, string(field))
+	}
+	require.Equal(t, base64.StdEncoding.EncodeToString(d.DomainID[:]), string(row[0]))
+
+	// Another cert to records.
+	d = randomDirtyDomain(t)
+	recordsForDirty(storage[0], d)
+	require.Len(t, storage, 1)
+	row = storage[0]
+	require.Len(t, row, 1)
+	for i, field := range row {
+		t.Logf("field %d: %s", i, string(field))
+	}
+	require.Equal(t, base64.StdEncoding.EncodeToString(d.DomainID[:]), string(row[0]))
+}
+
+func TestRecordsForDomains(t *testing.T) {
+	storage := CreateStorage(1, 2, IdBase64Len, DomainNameLen)
+
+	// One domain to domain_certs records.
+	d := randomDirtyDomain(t)
+	allocs := tests.AllocsPerRun(func() {
+		recordsForDomains(storage[0], d)
+	})
+	require.Equal(t, 0, allocs)
+	require.Len(t, storage, 1)
+	row := storage[0]
+	require.Len(t, row, 2)
+	for i, field := range row {
+		t.Logf("field %d: %s", i, string(field))
+	}
+	require.Equal(t, base64.StdEncoding.EncodeToString(d.DomainID[:]), string(row[0]))
+	require.Equal(t, d.Name, string(row[1]))
+
+	// Another cert to records.
+	d = randomDirtyDomain(t)
+	recordsForDomains(storage[0], d)
+	require.Len(t, storage, 1)
+	row = storage[0]
+	require.Len(t, row, 2)
+	for i, field := range row {
+		t.Logf("field %d: %s", i, string(field))
+	}
+	require.Equal(t, base64.StdEncoding.EncodeToString(d.DomainID[:]), string(row[0]))
+	require.Equal(t, d.Name, string(row[1]))
+}
+
+func TestRecordsForDomainCerts(t *testing.T) {
+	storage := CreateStorage(1, 2, IdBase64Len, IdBase64Len)
+
+	// One domain to domain_certs records.
+	d := randomDirtyDomain(t)
+	allocs := tests.AllocsPerRun(func() {
+		recordsForDomainCerts(storage[0], d)
+	})
+	require.Equal(t, 0, allocs)
+	require.Len(t, storage, 1)
+	row := storage[0]
+	require.Len(t, row, 2)
+	for i, field := range row {
+		t.Logf("field %d: %s", i, string(field))
+	}
+	require.Equal(t, base64.StdEncoding.EncodeToString(d.DomainID[:]), string(row[0]))
+	require.Equal(t, base64.StdEncoding.EncodeToString(d.CertID[:]), string(row[1]))
+
+	// Another cert to records.
+	d = randomDirtyDomain(t)
+	recordsForDomainCerts(storage[0], d)
+	require.Len(t, storage, 1)
+	row = storage[0]
+	require.Len(t, row, 2)
+	for i, field := range row {
+		t.Logf("field %d: %s", i, string(field))
+	}
+	require.Equal(t, base64.StdEncoding.EncodeToString(d.DomainID[:]), string(row[0]))
+	require.Equal(t, base64.StdEncoding.EncodeToString(d.CertID[:]), string(row[1]))
+}
+
 func randomCertificate(t tests.T) Certificate {
 	name := random.RandomLeafNames(t, 1)[0]
 	return Certificate{
@@ -77,6 +168,16 @@ func randomCertificate(t tests.T) Certificate {
 		ParentID: random.RandomIDPtrsForTest(t, 1)[0],
 		Cert:     random.RandomX509Cert(t, name),
 		Names:    []string{name},
+	}
+}
+
+func randomDirtyDomain(t tests.T) DirtyDomain {
+	name := random.RandomLeafNames(t, 1)[0]
+	id := common.SHA256Hash32Bytes([]byte(name))
+	return DirtyDomain{
+		DomainID: id,
+		CertID:   random.RandomIDsForTest(t, 1)[0],
+		Name:     name,
 	}
 }
 

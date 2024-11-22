@@ -125,7 +125,7 @@ func recordsForDomains(dst [][]byte, d DirtyDomain) {
 func recordsForDomainCerts(dst [][]byte, d DirtyDomain) {
 	// 2 columns:
 	idToBase64WithStorage(&dst[0], d.DomainID)
-	idToBase64WithStorage(&dst[0], d.CertID)
+	idToBase64WithStorage(&dst[1], d.CertID)
 }
 
 func idToBase64WithStorage(storage *[]byte, id common.SHA256Output) string {

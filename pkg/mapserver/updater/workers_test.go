@@ -123,8 +123,10 @@ func TestDomainBatcherNotBlocking(t *testing.T) {
 		blockSinkProcessing <- struct{}{}
 	}()
 
-	// Wait for both goroutines.
-	wg.Wait()
+	tests.TestOrTimeout(t, tests.WithContext(ctx), func(t tests.T) {
+		// Wait for both goroutines.
+		wg.Wait()
+	})
 
 	// Check that the current sent domain count is larger.
 	t.Logf("previous: %d, current: %d", last, sending.Load())
@@ -188,107 +190,6 @@ func TestDomainBatcherAllocationOverhead(t *testing.T) {
 	// Resume stage but not yet source.
 	worker.Prepare(ctx)
 	worker.NextErrChs[0] = sinkErrCh
-	worker.Resume(ctx)
-
-	time.Sleep(100 * time.Millisecond)
-	runtime.GC()
-	time.Sleep(100 * time.Millisecond)
-
-	allocs := tests.AllocsPerRun(func() {
-		// All is set up. Start processing and measure allocations.
-		sendDomainsCh <- struct{}{}
-		// Wait for completion.
-		err = <-worker.ErrCh
-	})
-	require.NoError(t, err)
-	t.Logf("allocs = %d", allocs)
-	// The test is flaky: sometimes we get 0 allocations, sometimes 1 or even more.
-	require.LessOrEqual(t, allocs, N/10)
-}
-
-// TestAllocsDomainBatchWorkerProcessBundle checks that the calls to deduplicate elements in
-// DomainBatchWorker do not need special memory allocations, due to the static fields present in
-// the struct.
-func TestAllocsDomainBatchWorkerProcessBundle(t *testing.T) {
-	defer pip.PrintAllDebugLines()
-
-	// Domain worker use of allocation calls.
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
-	defer cancelF()
-
-	// DB with no operations.
-	conn := &noopdb.Conn{}
-
-	// Create mock certificates.
-	N := 10
-	certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
-
-	// Prepare the manager and worker for the test.
-	manager, err := NewManager(1, conn, 1000, math.MaxUint64, nil, time.Hour, nil)
-	require.NoError(t, err)
-	worker := newDomainInserter(0, manager)
-	worker.Ctx = ctx
-
-	// Bundle the mock data.
-	batch := extractDomains(certs)
-	batch = batch[:min(len(batch), manager.MultiInsertSize)] // limit to the size of the bundle
-
-	// Measure the test function.
-	allocsPerRun := tests.AllocsPerRun(func() {
-		worker.processBatch(batch)
-	})
-
-	// We should have 0 new allocations.
-	t.Logf("%d allocations", allocsPerRun)
-	require.Equal(t, 0, allocsPerRun)
-}
-
-// TestDomainBatchWorkerAllocationsOverhead checks the extra amount of memory that the domain worker
-// uses, other than that used by the main processing function processBundle.
-func TestDomainBatchWorkerAllocationsOverhead(t *testing.T) {
-	defer pip.PrintAllDebugLines()
-
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
-	defer cancelF()
-
-	// DB with no operations.
-	conn := &noopdb.Conn{}
-
-	// Create mock certificates.
-	N := 100
-	certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
-	domains := extractDomains(certs)
-
-	manager, err := NewManager(1, conn, 10, math.MaxUint64, nil, time.Hour, nil)
-	require.NoError(t, err)
-
-	// Create a cert worker stage. Input channel of Certificate, output of DirtyDomain.
-	worker := newDomainInserter(0, manager)
-	worker.Ctx = ctx
-
-	// Modify output function for the purposes of not using the allocating concurrent one:
-	pip.TestOnlyPurposeSetOutputFunction(
-		t,
-		worker.Stage,
-		pip.OutputSequentialCyclesAllowed,
-	)
-
-	// Mock a source. Don't run it yet.
-	sendDomainsCh := make(chan struct{})
-	go func() {
-		// Wait for the test to start.
-		<-sendDomainsCh
-
-		// Create batches.
-		for i := 0; i < len(domains); i += manager.MultiInsertSize {
-			end := min(i+manager.MultiInsertSize, len(domains))
-			worker.IncomingChs[0] <- domains[i:end]
-		}
-		close(worker.IncomingChs[0])
-	}()
-
-	// Resume stage but not yet source.
-	worker.Prepare(ctx)
 	worker.Resume(ctx)
 
 	time.Sleep(100 * time.Millisecond)

@@ -11,6 +11,7 @@ import (
 
 const (
 	IdBase64Len      = 44          // 32 bytes = (n + 2) / 3 * 4
+	DomainNameLen    = 256         // 256 characters
 	ExpTimeBase64Len = 50          // expiration time
 	PayloadBase64Len = 1024 * 1024 // 1MB payload
 )

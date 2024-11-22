@@ -1,15 +1,5 @@
 package updater
 
-type baseWorker struct {
-	Manager *Manager
-}
-
-func newBaseWorker(m *Manager) *baseWorker {
-	return &baseWorker{
-		Manager: m,
-	}
-}
-
 const ringCacheN = 2
 
 type ringCache[T any] struct {

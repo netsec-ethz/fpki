@@ -115,23 +115,25 @@ func (m *Manager) createCertificateSource(workerCount int) *pip.Source[Certifica
 //
 // The indices are below:
 // A: 0
-// B: 1..W				batchers
+// B: 1..W				cert batchers
 // C: W+1..2W			domain extractors
 // D: 2W+1..3W			csv creators
 // E: 3W+1..4W			csv inserters
 // F: 4W+1..5W			csv removers
 // G: 5W+1..6W			domain batchers
-// H: 6W+1..7W			domain inserters
+// H: 6W+1..7W			domain csv creators
+// I: 7W+1..8W			domain csv inserters
+// J: 8W+1..9W			domain csv removers
 //
 //	A -┌-> B1 ---> D1 ---> E1 ---> F1
 //	   |-> B2 ---> D2 ---> E2 ---> F2
 //	  ...
 //	   |-> Bw ---> Dw ---> Ew ---> Fw
 //	   |
-//	   |-> C1 -┬-> G1 ---> H1
-//	   |-> C2 -|-> G2 ---> H2
+//	   |-> C1 -┬-> G1 ---> H1 ---> I1 ---> J1
+//	   |-> C2 -|-> G2 ---> H2 ---> I2 ---> J2
 //	  ...     .|.
-//	   └-> Cw -┴-> Gw ---> Hw
+//	   └-> Cw -┴-> Gw ---> Hw ---> Iw ---> Jw
 //	.
 func (m *Manager) createPipeline(workerCount int) error {
 	// Get the Certificate from the channel and pass it along.
@@ -187,12 +189,29 @@ func (m *Manager) createPipeline(workerCount int) error {
 		domainBatcherStages[i] = domainBatchers[i].Stage
 	}
 
-	// Prepare the domain inserters. Sinks H1...Hw
-	domainInserters := make([]*domainInserter, workerCount)
-	domainInserterStages := make([]pip.StageLike, workerCount)
-	for i := range domainInserters {
-		domainInserters[i] = newDomainInserter(i, m)
-		domainInserterStages[i] = domainInserters[i].Sink
+	// Prepare the domain csv creators. Stages H1..Hw
+	domainCsvsCreators := make([]*domainsToCsvs, workerCount)
+	domainCsvsCreatorStages := make([]pip.StageLike, workerCount)
+	for i := range domainCsvsCreators {
+		domainCsvsCreators[i] = newDomainsToCsvs(i, m)
+		domainCsvsCreatorStages[i] = domainCsvsCreators[i].Stage
+	}
+
+	// Prepare the domain csv inserters. Sinks I1...Iw
+	domainCsvInserters := make([]*domainCsvsInserter, workerCount)
+	domainCsvInserterStages := make([]pip.StageLike, workerCount)
+	for i := range domainCsvInserters {
+		domainCsvInserters[i] = newDomainCsvsInserter(i, m)
+		domainCsvInserterStages[i] = domainCsvInserters[i].Stage
+	}
+
+	// Prepare the domain csv removers. Stages J1..Jw
+	// Prepare the domain csv inserters. Sinks I1...Iw
+	domainCsvsRemovers := make([]*domainCsvsRemover, workerCount)
+	domainCsvsRemoverStages := make([]pip.StageLike, workerCount)
+	for i := range domainCsvsRemovers {
+		domainCsvsRemovers[i] = newDomainCsvsRemover(i)
+		domainCsvsRemoverStages[i] = domainCsvsRemovers[i].Sink
 	}
 
 	// Collect all stages.
@@ -205,8 +224,10 @@ func (m *Manager) createPipeline(workerCount int) error {
 	stages = append(stages, certCsvInserterStages...) // E
 	stages = append(stages, certCsvRemoverStages...)  // F
 
-	stages = append(stages, domainBatcherStages...)  // G
-	stages = append(stages, domainInserterStages...) // H
+	stages = append(stages, domainBatcherStages...)     // G
+	stages = append(stages, domainCsvsCreatorStages...) // H
+	stages = append(stages, domainCsvInserterStages...) // I
+	stages = append(stages, domainCsvsRemoverStages...) // J
 
 	// Create pipeline.
 	var err error
@@ -253,7 +274,7 @@ func (m *Manager) createPipeline(workerCount int) error {
 				)
 			}
 
-			// Link domain extractors to domain batchers. Di -> E1..Ew, no crisscross.
+			// Link domain extractors to domain batchers. Ci -> G1..Gw, no crisscross.
 			for i, extractor := range domainExtractors {
 				for j, batcher := range domainBatchers {
 					pip.LinkStagesAt(
@@ -263,11 +284,27 @@ func (m *Manager) createPipeline(workerCount int) error {
 				}
 			}
 
-			// Link domain batchers with domain inserters.
+			// Link domain batchers with domain csv creators.
 			for i, batcher := range domainBatchers {
 				pip.LinkStagesFanOut(
 					batcher.Stage,
-					domainInserters[i].Stage,
+					domainCsvsCreators[i].Stage,
+				)
+			}
+
+			// Link domain csv creators with domain csv inserters.
+			for i, batcher := range domainCsvsCreators {
+				pip.LinkStagesFanOut(
+					batcher.Stage,
+					domainCsvInserters[i].Stage,
+				)
+			}
+
+			// Link domain csv inserters with domain csvs removers.
+			for i, batcher := range domainCsvInserters {
+				pip.LinkStagesFanOut(
+					batcher.Stage,
+					domainCsvsRemovers[i].Stage,
 				)
 			}
 		},
