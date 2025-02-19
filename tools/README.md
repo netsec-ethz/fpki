@@ -1,4 +1,4 @@
-# Develpment tools
+# Development tools
 
 
 ## Installing the database
