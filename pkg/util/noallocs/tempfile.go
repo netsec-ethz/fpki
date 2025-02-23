@@ -14,9 +14,18 @@ const (
 
 // CreateTempFile creates a named temporary file using prefix as the initial path and prefix.
 // The passed storage has to be big enough to hold the prefix + number of random chars (10) + 1.
-func CreateTempFile(storage []byte, prefix string) (filename string, err error) {
-	pathPtr := stringToBytePtr(storage, prefix)
-	storage[len(prefix)+numberOfRandomChars] = 0 // Null terminated string.
+func CreateTempFile(storage []byte, prefix, suffix string) (filename string, err error) {
+	// Copy prefix and suffix.
+	copy(storage, []byte(prefix))
+	copy(storage[len(prefix)+numberOfRandomChars:], []byte(suffix))
+
+	// Get the *byte from the name.
+	pathPtr := StringToBytePtr(storage, prefix)
+
+	// Null terminated string..
+	storage[len(prefix)+numberOfRandomChars+len(suffix)] = 0
+
+	// Randomize and try to open.
 	var fd int
 	for attempts := 0; attempts < 10; attempts++ {
 		randomFilenameChars(storage[len(prefix) : len(prefix)+numberOfRandomChars])
@@ -25,7 +34,7 @@ func CreateTempFile(storage []byte, prefix string) (filename string, err error) 
 		case nil:
 			// Close the file descriptor.
 			err = unix.Close(fd)
-			filename = unsafe.String(pathPtr, len(prefix)+numberOfRandomChars)
+			filename = unsafe.String(pathPtr, len(prefix)+numberOfRandomChars+len(suffix))
 			return
 		case unix.EEXIST:
 			continue
