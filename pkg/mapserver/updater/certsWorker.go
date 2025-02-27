@@ -10,10 +10,12 @@ import (
 )
 
 const (
-	IdBase64Len      = 44          // 32 bytes = (n + 2) / 3 * 4
-	DomainNameLen    = 256         // 256 characters
-	ExpTimeBase64Len = 50          // expiration time
-	PayloadBase64Len = 1024 * 1024 // 1MB payload
+	IdBase64Len       = 44          // 32 bytes = (n + 2) / 3 * 4
+	DomainNameLen     = 256         // 256 characters
+	ExpTimeBase64Len  = 50          // expiration time
+	PayloadBase64Len  = 1024 * 1024 // 1MB payload
+	FilepathLen       = 2048        // 2K for file paths
+	FilepathCacheSize = 8           // 8 filepaths inflight (toward next stages)
 )
 
 // The certificate workers stages receive Certificate as input, and:
@@ -152,8 +154,10 @@ func newCertBatchToCsv(
 		ExpTimeBase64Len,
 		PayloadBase64Len,
 	)
+	// Storage to keep the different temporary file names per call to the process function.
+	filenamesStorage := createFilepathRingCache()
 
-	filenameSlice := make([]string, 1)
+	filenameSlice := make([]string, 1) // holds the slice (not the storage) of the temp file.
 	outChs := make([]int, 1)
 	var err error
 	w.Stage = pip.NewStage[CertBatch, string](
@@ -162,7 +166,7 @@ func newCertBatchToCsv(
 			_, span := w.Tracer.Start(w.Ctx, "create-csv")
 			defer span.End()
 
-			filenameSlice[0], err = CreateCsvCerts(storage, batch)
+			filenameSlice[0], err = CreateCsvCerts(storage, filenamesStorage.Rotate(), batch)
 			return filenameSlice, outChs, err
 		}),
 	)

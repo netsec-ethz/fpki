@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -115,13 +114,18 @@ func TestManagerStart(t *testing.T) {
 			ctx, cancelF := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancelF()
 
+			t.Logf("%s starting", time.Now().Format(time.StampMicro))
+
 			// Configure a test DB.
 			config, removeF := testdb.ConfigureTestDB(t)
 			defer removeF()
+			t.Logf("%s DB configured", time.Now().Format(time.StampMicro))
 
 			// Connect to the DB.
+			t.Logf("%s connecting to DB", time.Now().Format(time.StampMicro))
 			conn := testdb.Connect(t, config)
 			defer conn.Close()
+			t.Logf("%s connected to DB", time.Now().Format(time.StampMicro))
 
 			manager, err := NewManager(
 				tc.NWorkers,
@@ -145,6 +149,9 @@ func TestManagerStart(t *testing.T) {
 
 			tests.TestOrTimeout(t, tests.WithContext(ctx), func(t tests.T) {
 				manager.Resume(ctx)
+				pip.DebugPrintf("Pipeline resumed\n")
+				t.Logf("%s Pipeline resumed", time.Now().Format(time.StampMicro))
+
 				processCertificates(t, manager, certs)
 				manager.Stop()
 				err := manager.Wait(ctx)
@@ -252,7 +259,6 @@ func TestManagerResume(t *testing.T) {
 }
 
 func TestMinimalAllocsManager(t *testing.T) {
-	t.Skip("deleteme test fails now, probablly due to the creation of the CSV records.")
 	defer pip.PrintAllDebugLines()
 
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
@@ -442,41 +448,60 @@ func createManagerWithOutputFunction(
 	)
 
 	// B. Cert batchers:
-	for _, s := range pip.FindStagesByType[Certificate, CertBatch](stages) {
+	for _, s := range findStagesByType[pip.Stage[Certificate, CertBatch]](t, stages) {
 		pip.TestOnlyPurposeSetOutputFunction(t, s, outType)
 	}
 
 	// C. Domain extractors:
-	for _, s := range pip.FindStagesByType[Certificate, DirtyDomain](stages) {
+	for _, s := range findStagesByType[pip.Stage[Certificate, DirtyDomain]](t, stages) {
 		pip.TestOnlyPurposeSetOutputFunction(t, s, outType)
 	}
 
 	// D. Cert csv creators:
-	for _, s := range pip.FindStagesByType[CertBatch, string](stages) {
+	for _, s := range findStagesByType[pip.Stage[CertBatch, string]](t, stages) {
 		pip.TestOnlyPurposeSetOutputFunction(t, s, outType)
 	}
 
 	// E. Cert csv inserters:
-	for _, s := range pip.FindStagesByType[string, string](stages) {
+	for _, s := range findStagesByType[pip.Stage[string, string]](t, stages) {
 		pip.TestOnlyPurposeSetOutputFunction(t, s, outType)
 	}
 
 	// F. Cert csv removers:
-	re, err := regexp.Compile("cert_csv_remover")
-	require.NoError(t, err)
-	for _, s := range pip.FindStagesByTypeAndName[string, pip.None](stages, re) {
-		pip.TestOnlyPurposeSetOutputFunction(t, s, outType)
+	for _, s := range findStagesByType[pip.Sink[string]](t, stages) {
+		pip.TestOnlyPurposeSetOutputFunction(t, s.Stage, outType)
 	}
 
 	// G. Domain batchers:
-	for _, s := range pip.FindStagesByType[DirtyDomain, domainBatch](stages) {
+	for _, s := range findStagesByType[pip.Stage[DirtyDomain, domainBatch]](t, stages) {
 		pip.TestOnlyPurposeSetOutputFunction(t, s, outType)
 	}
 
-	// H. Domain inserters, sinks:
-	for _, s := range pip.FindStagesByType[domainBatch, pip.None](stages) {
+	// H. Domain csv creators:
+	for _, s := range findStagesByType[pip.Stage[domainBatch, domainsCsvFilenames]](t, stages) {
 		pip.TestOnlyPurposeSetOutputFunction(t, s, outType)
+	}
+
+	// I. Domain csv inserters:
+	for _, s := range findStagesByType[pip.Stage[domainsCsvFilenames, domainsCsvFilenames]](t, stages) {
+		pip.TestOnlyPurposeSetOutputFunction(t, s, outType)
+	}
+
+	// J. Domain csv removers, sinks:
+	for _, s := range findStagesByType[pip.Sink[domainsCsvFilenames]](t, stages) {
+		pip.TestOnlyPurposeSetOutputFunction(t, s.Stage, outType)
 	}
 
 	return manager
+}
+
+func findStagesByType[T any, PT interface{ *T }](t tests.T, stages []pip.StageLike) []PT {
+	found := make([]PT, 0)
+	for _, s := range stages {
+		if s, ok := s.(PT); ok {
+			found = append(found, s)
+		}
+	}
+	require.Greaterf(t, len(found), 0, "the type '%T' was not found", *new(T))
+	return found
 }

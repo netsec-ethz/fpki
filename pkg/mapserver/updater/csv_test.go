@@ -2,6 +2,8 @@ package updater
 
 import (
 	"encoding/base64"
+	"encoding/csv"
+	"os"
 	"testing"
 	"time"
 
@@ -68,6 +70,41 @@ func TestRecordsForCert(t *testing.T) {
 	require.Equal(t, idPtrToStr(c.ParentID), string(row[1]))
 	require.Equal(t, c.Cert.NotAfter.Format(time.DateTime), string(row[2]))
 	require.Equal(t, base64.StdEncoding.EncodeToString(c.Cert.Raw), string(row[3]))
+}
+
+func TestCreateCsvCerts(t *testing.T) {
+	N := 1
+	certs := make([]Certificate, N)
+	for i := range certs {
+		certs[i] = randomCertificate(t)
+	}
+
+	storage := CreateStorage(N, 4, IdBase64Len, IdBase64Len, ExpTimeBase64Len, PayloadBase64Len)
+	filenameStorage := make([]byte, FilepathLen)
+
+	// This function is similar to CreateCsvCerts, without actually writing a file.
+	createCsvCerts := func(
+		storage [][][]byte,
+		certs []Certificate,
+	) {
+		noop := func([]byte, string, string, [][][]byte) (string, error) {
+			return "", nil
+		}
+		writeRecordsWithStorage(
+			storage,
+			noop,
+			filenameStorage,
+			"mock-prefix",
+			"mock-suffix",
+			certs,
+			recordsForCert,
+		)
+	}
+
+	allocs := tests.AllocsPerRun(func() {
+		createCsvCerts(storage, certs)
+	})
+	require.Equal(t, 0, allocs)
 }
 
 func TestRecordsForDirty(t *testing.T) {
@@ -159,6 +196,66 @@ func TestRecordsForDomainCerts(t *testing.T) {
 	}
 	require.Equal(t, base64.StdEncoding.EncodeToString(d.DomainID[:]), string(row[0]))
 	require.Equal(t, base64.StdEncoding.EncodeToString(d.CertID[:]), string(row[1]))
+}
+
+func TestWriteCsvCerts(t *testing.T) {
+	storage := CreateStorage(10, 4,
+		IdBase64Len,
+		IdBase64Len,
+		ExpTimeBase64Len,
+		PayloadBase64Len,
+	)
+	filenameStorage := make([]byte, FilepathLen)
+	certs := make([]Certificate, 3)
+	for i := range certs {
+		certs[i] = randomCertificate(t)
+	}
+
+	tempFilename, err := CreateCsvCerts(storage, filenameStorage, certs)
+	require.NoError(t, err)
+
+	t.Logf("temp filepath: %s", tempFilename)
+	// Open csv and check.
+	f, err := os.Open(tempFilename)
+	require.NoError(t, err)
+	r := csv.NewReader(f)
+	rows, err := r.ReadAll()
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	// Parse contents and store.
+	require.Equal(t, len(certs), len(rows))
+	ids := make([]*common.SHA256Output, len(certs))
+	parents := make([]*common.SHA256Output, len(certs))
+	expTimes := make([]time.Time, len(certs))
+	payloads := make([][]byte, len(certs))
+	for i, row := range rows {
+		require.Equal(t, 4, len(row))
+		// ID, parentID, time, payload.
+		id, err := base64.StdEncoding.DecodeString(row[0])
+		require.NoError(t, err)
+		parent, err := base64.StdEncoding.DecodeString(row[1])
+		require.NoError(t, err)
+		expTime, err := time.Parse(time.DateTime, row[2])
+		require.NoError(t, err)
+		payload, err := base64.StdEncoding.DecodeString(row[3])
+		require.NoError(t, err)
+
+		ids[i] = (*common.SHA256Output)(id)
+		parents[i] = (*common.SHA256Output)(parent)
+		expTimes[i] = expTime
+		payloads[i] = payload
+	}
+	// Check equality to original values.
+	for i, orig := range certs {
+		require.Equal(t, &orig.CertID, ids[i])
+		require.Equal(t, orig.ParentID, parents[i])
+		require.Equal(t, orig.Cert.NotAfter, expTimes[i])
+		require.Equal(t, orig.Cert.Raw, payloads[i])
+	}
+
+	// Finally, remove temporary file.
+	require.NoError(t, os.Remove(tempFilename))
 }
 
 func randomCertificate(t tests.T) Certificate {

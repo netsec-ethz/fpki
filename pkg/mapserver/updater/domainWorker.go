@@ -90,14 +90,24 @@ func newDomainsToCsvs(
 	storageDirty := CreateStorage(m.MultiInsertSize, 1,
 		IdBase64Len,
 	)
+	// Storage to keep the different temporary file names per call to the process function.
+	dirtyFilenameStorage := createFilepathRingCache()
+
+	// Storage for the field values.
 	storageDomains := CreateStorage(m.MultiInsertSize, 2,
 		IdBase64Len,
 		DomainNameLen,
 	)
+	// Storage to keep the different temporary file names per call to the process function.
+	domainsFilenameStorage := createFilepathRingCache()
+
+	// Storage for the field values.
 	storageDomainCerts := CreateStorage(m.MultiInsertSize, 2,
 		IdBase64Len,
 		IdBase64Len,
 	)
+	// Storage to keep the different temporary file names per call to the process function.
+	domainCertsFilenameStorage := createFilepathRingCache()
 
 	filenameSlice := make([]domainsCsvFilenames, 1)
 	outChs := make([]int, 1)
@@ -112,15 +122,26 @@ func newDomainsToCsvs(
 				return nil, nil, nil
 			}
 
-			filenameSlice[0].dirtyFile, err = CreateCsvDirty(storageDirty, batch)
+			filenameSlice[0].dirtyFile, err = CreateCsvDirty(
+				storageDirty,
+				dirtyFilenameStorage.Rotate(),
+				batch)
 			if err != nil {
 				return nil, nil, err
 			}
-			filenameSlice[0].domainsFile, err = CreateCsvDomains(storageDomains, batch)
+
+			filenameSlice[0].domainsFile, err = CreateCsvDomains(
+				storageDomains,
+				domainsFilenameStorage.Rotate(),
+				batch)
 			if err != nil {
 				return nil, nil, err
 			}
-			filenameSlice[0].domainCertsFile, err = CreateCsvDomainCerts(storageDomainCerts, batch)
+
+			filenameSlice[0].domainCertsFile, err = CreateCsvDomainCerts(
+				storageDomainCerts,
+				domainCertsFilenameStorage.Rotate(),
+				batch)
 
 			return filenameSlice, outChs, err
 		}),

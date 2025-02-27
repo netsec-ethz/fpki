@@ -1,20 +1,18 @@
 package updater
 
 import (
-	"bufio"
 	"encoding/base64"
-	"encoding/csv"
 	"fmt"
-	"os"
 	"time"
 	"unsafe"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/util/noallocs"
 )
 
 const (
 	CsvBufferSize  = 64 * 1024 * 1024 // 64MB
-	TemporaryDir   = "/mnt/data/tmp"
+	TemporaryDir   = "/mnt/data/tmp/"
 	MaxFieldLength = 1024 * 1024 // 1MB
 )
 
@@ -29,30 +27,76 @@ func CreateStorage(nRows, nCols int, fieldLengths ...int) [][][]byte {
 	return storage
 }
 
-func CreateCsvCerts(storage [][][]byte, certs []Certificate) (string, error) {
-	return writeRecordsWithStorage(storage, writeCSV, "fpki-ingest-certs-*.csv",
-		certs, recordsForCert)
+func CreateCsvCerts(
+	storage [][][]byte,
+	filenameStorage []byte,
+	certs []Certificate,
+) (string, error) {
+	return writeRecordsWithStorage(
+		storage,
+		writeCSV,
+		filenameStorage,
+		TemporaryDir+"fpki-ingest-certs-",
+		".csv",
+		certs,
+		recordsForCert,
+	)
 }
 
-func CreateCsvDirty(storage [][][]byte, domains []DirtyDomain) (string, error) {
-	return writeRecordsWithStorage(storage, writeCSV, "fpki-ingest-dirty-*.csv",
-		domains, recordsForDirty)
+func CreateCsvDirty(
+	storage [][][]byte,
+	filenameStorage []byte,
+	domains []DirtyDomain,
+) (string, error) {
+	return writeRecordsWithStorage(
+		storage,
+		writeCSV,
+		filenameStorage,
+		TemporaryDir+"fpki-ingest-dirty-",
+		".csv",
+		domains,
+		recordsForDirty,
+	)
 }
 
-func CreateCsvDomains(storage [][][]byte, domains []DirtyDomain) (string, error) {
-	return writeRecordsWithStorage(storage, writeCSV, "fpki-ingest-domains-*.csv",
-		domains, recordsForDomains)
+func CreateCsvDomains(
+	storage [][][]byte,
+	filenameStorage []byte,
+	domains []DirtyDomain,
+) (string, error) {
+	return writeRecordsWithStorage(
+		storage,
+		writeCSV,
+		filenameStorage,
+		TemporaryDir+"fpki-ingest-domains-",
+		".csv",
+		domains,
+		recordsForDomains,
+	)
 }
 
-func CreateCsvDomainCerts(storage [][][]byte, domains []DirtyDomain) (string, error) {
-	return writeRecordsWithStorage(storage, writeCSV, "fpki-ingest-domain_certs-*.csv",
-		domains, recordsForDomainCerts)
+func CreateCsvDomainCerts(
+	storage [][][]byte,
+	filenameStorage []byte,
+	domains []DirtyDomain,
+) (string, error) {
+	return writeRecordsWithStorage(
+		storage,
+		writeCSV,
+		filenameStorage,
+		TemporaryDir+"fpki-ingest-domain_certs-",
+		".csv",
+		domains,
+		recordsForDomainCerts,
+	)
 }
 
 func writeRecordsWithStorage[T any](
 	dst [][][]byte, // with the correct len(dst) == len(data), each len(dst[i]) == len(toRecords(data[i]))
-	writerFunc func(string, [][][]byte) (string, error), // The function to write to disk.
+	writerFunc func([]byte, string, string, [][][]byte) (string, error), // The function to write to disk.
+	filenameStorage []byte,
 	prefix string,
+	suffix string,
 	data []T,
 	toRecords func(dst [][]byte, field T),
 ) (string, error) {
@@ -60,47 +104,53 @@ func writeRecordsWithStorage[T any](
 		toRecords(dst[i], d)
 	}
 
-	return writerFunc(prefix, dst[:len(data)])
+	return writerFunc(filenameStorage, prefix, suffix, dst[:len(data)])
 }
 
-func writeCSV(preffix string, storage [][][]byte) (string, error) {
+var (
+	commaChar   = []byte{','}
+	newlineChar = []byte{'\n'}
+)
+
+func writeCSV(filenameStorage []byte, prefix, suffix string, storage [][][]byte) (string, error) {
 	// Create a temporary file.
-	tempFile, err := os.CreateTemp(TemporaryDir, preffix)
+	filename, err := noallocs.CreateTempFile(filenameStorage, prefix, suffix)
 	if err != nil {
 		return "", fmt.Errorf("creating temporary file: %w", err)
 	}
 
-	errFcn := func(err error) (string, error) {
-		return "", fmt.Errorf("writing CSV file: %w", err)
+	fd, err := noallocs.Open(filenameStorage, filename)
+	if err != nil {
+		return "", fmt.Errorf("opening temporary file %s: %w", filename, err)
 	}
 
-	w := bufio.NewWriterSize(tempFile, CsvBufferSize)
-	csv := csv.NewWriter(w)
-
-	// Convert to lines.
-	lines := make([][]string, len(storage))
-	for i, lineByteSlices := range storage {
-		lines[i] = make([]string, len(lineByteSlices))
-		for j := range lineByteSlices {
-			if len(lineByteSlices[j]) > 0 {
-				a := &lineByteSlices[j][0]
-				lines[i][j] = unsafe.String(a, len(lineByteSlices[j]))
+	for _, row := range storage {
+		i := 0
+		for ; i < min(1, len(row)); i++ {
+			if err = noallocs.Write(fd, row[0]); err != nil {
+				return "", fmt.Errorf("writing to temporary file %s: %w", filename, err)
 			}
+		}
+		for ; i < len(row); i++ {
+			if err = noallocs.Write(fd, commaChar); err != nil {
+				return "", fmt.Errorf("writing to temporary file %s: %w", filename, err)
+			}
+			field := row[i]
+			// for _, field := range row {
+			if err = noallocs.Write(fd, field); err != nil {
+				return "", fmt.Errorf("writing to temporary file %s: %w", filename, err)
+			}
+		}
+		if err = noallocs.Write(fd, newlineChar); err != nil {
+			return "", fmt.Errorf("writing to temporary file %s: %w", filename, err)
 		}
 	}
 
-	csv.WriteAll(lines)
-	csv.Flush()
-
-	if err := w.Flush(); err != nil {
-		return errFcn(err)
-
-	}
-	if err := tempFile.Close(); err != nil {
-		return errFcn(err)
+	if err = noallocs.Close(fd); err != nil {
+		return "", fmt.Errorf("closing temporary file %s: %w", filename, err)
 	}
 
-	return tempFile.Name(), nil
+	return filename, nil
 }
 
 func recordsForCert(dst [][]byte, c Certificate) {

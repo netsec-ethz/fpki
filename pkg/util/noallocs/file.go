@@ -8,7 +8,7 @@ import (
 )
 
 func Open(storage []byte, filename string) (int, error) {
-	ptr := stringToBytePtr(storage, filename)
+	ptr := StringToBytePtr(storage, filename)
 	return createFile(
 		ptr,
 		unix.O_RDWR|unix.O_CREAT|unix.O_APPEND|unix.O_LARGEFILE,
@@ -27,18 +27,6 @@ func Write(fd int, data []byte) error {
 	}
 
 	return err
-}
-
-// stringToBytePtr returns a pointer to a null terminated string. The passed storage will be used
-// to store the bytes of the name, and has to be at least len(str) +1 in size.
-func stringToBytePtr(storage []byte, str string) *byte {
-	// If they point to the same place, return that pointer.
-	if &storage[0] != &([]byte(str)[0]) {
-		// If they don't point to the same place, modify the storage.
-		storage[len(str)] = 0 // Null terminated string.
-		copy(storage, str)    // Bytes of the string.
-	}
-	return &storage[0]
 }
 
 func createFile(pathPtr *byte, flags int, perm int) (fd int, err error) {
