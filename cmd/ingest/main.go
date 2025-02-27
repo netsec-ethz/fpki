@@ -12,23 +12,23 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
+	tr "github.com/netsec-ethz/fpki/pkg/tracing"
+	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
 const (
-	NumFileReaders = 8
-	NumParsers     = 32
-	NumDBWriters   = 32
+	NumFiles      = 4
+	NumParsers    = 32
+	NumDechainers = 4
+	NumDBWriters  = 32
 
-	BatchSize    = 100000           // # of certificates inserted at once.
-	LruCacheSize = 10 * 1000 * 1000 // Keep track of the 10 million most seen certificates.
-)
-
-const (
-	CertificateColumn = 3
-	CertChainColumn   = 4
+	MultiInsertSize = 10_000     // # of certificates, domains, etc inserted at once.
+	LruCacheSize    = 10_000_000 // Keep track of the 10 million most seen certificates.
 )
 
 // Times gathered at jupiter, 64 gz files, no CSV
@@ -36,12 +36,32 @@ const (
 // MyISAM overwrite, no pk (invalid DB):	1m 33s 	374 Mb/s
 // MyISAM overwrite, afterwards pk: 		3m 22s	175.9 Mb/s
 // MyISAM keep, already with pk:			2m 26s	241.0 Mb/s
-
+//
+//	articuno, /mnt/data/certificatestore/test/
+//	----------------------------------------
+//	#Parsers  |  #DB Writers  |    Time    |
+//	----------------------------------------
+//	    32    |     128       | 0m49.365s  |   <------ using pointers, but there was a bug.
+//	    32    |      32       | 4m23.960s  |
+//	   128    |      32       | 4m36.166s  |
+//	   128    |     128       | 3m53.511s  |
+//	   512    |     128       | 3m39.226s  |
+//	----------------------------------------
+//
+// deleteme:
+// debugging:
+// time go run -tags=trace ./cmd/ingest/ -numfiles 1  -numparsers 4 -numdechainers 2 -numdbworkers 4 -strategy onlyingest ./testdata2/
 func main() {
 	os.Exit(mainFunction())
 }
+
 func mainFunction() int {
 	ctx := context.Background()
+	defer util.ShutdownFunction()
+
+	tr.SetGlobalTracerName("ingest-cli")
+	ctx, span := tr.MT().Start(ctx, "main")
+	defer span.End()
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage:\n%s directory\n", os.Args[0])
@@ -49,35 +69,39 @@ func mainFunction() int {
 	}
 	cpuProfile := flag.String("cpuprofile", "", "write a CPU profile to file")
 	memProfile := flag.String("memprofile", "", "write a memory profile to file")
+	multiInsertSize := flag.Int("multiinsert", MultiInsertSize, "number of certificates and "+
+		"domains inserted at once in the DB")
 	bundleSize := flag.Uint64("bundlesize", 0, "number of certificates after which a coalesce and "+
 		"SMT update must occur. If 0, no limit, meaning coalescing and SMT updating is done once")
-	certUpdateStrategy := flag.String("strategy", "keep", "strategy to update certificates\n"+
-		"\"overwrite\": always send certificates to DB, even if they exist already.\n"+
-		"\"keep\": first check if each certificate exists already in DB before sending it.\n"+
+	numFiles := flag.Int("numfiles", NumFiles, "Number of parallel files being read at once")
+	numParsers := flag.Int("numparsers", NumParsers, "Number of line parsers concurrently running")
+	numChainToCerts := flag.Int("numdechainers", NumDechainers, "Number of chain unrollers")
+	numDBWriters := flag.Int("numdbworkers", NumDBWriters, "Number of concurrent DB writers")
+	certUpdateStrategy := flag.String("strategy", "", "strategy to update certificates\n"+
+		"\"\": full work. I.e. ingest files, coalesce, and update SMT.\n"+
+		"\"onlyingest\": do not coalesce or update SMT after ingesting files.\n"+
 		"\"skipingest\": only coalesce payloads of domains in the dirty table and update SMT.\n"+
-		"\"smtupdate\": only update the SMT.\n"+
-		`If data transfer to DB is expensive, "keep" is recommended.`)
+		"\"onlysmtupdate\": only update the SMT.\n")
 	flag.Parse()
 
-	// Update strategy.
-	var strategy CertificateUpdateStrategy
-	var skipIngest bool
-	var smtUpdateOnly bool
+	var (
+		ingestCerts   bool
+		onlyIngest    bool
+		onlySmtUpdate bool
+	)
 	switch *certUpdateStrategy {
-	case "overwrite":
-		strategy = CertificateUpdateOverwrite
-	case "keep":
-		strategy = CertificateUpdateKeepExisting
+	case "onlyingest":
+		onlyIngest = true
+		fallthrough // also ingest certs
+	case "":
+		ingestCerts = true
 	case "skipingest":
-		skipIngest = true
-	case "smtupdate":
-		smtUpdateOnly = true
+		// ingestCerts is already false
+	case "onlysmtupdate":
+		onlySmtUpdate = true
 	default:
 		panic(fmt.Errorf("bad update strategy: %v", *certUpdateStrategy))
 	}
-
-	// Do we have to ingest certificates?
-	ingestCerts := !skipIngest && !smtUpdateOnly
 
 	// If we will ingest certificates, we need a path.
 	if ingestCerts && flag.NArg() != 1 {
@@ -92,6 +116,10 @@ func mainFunction() int {
 
 	// Profiling:
 	stopProfiles := func() {
+		if *cpuProfile != "" || *memProfile != "" {
+			fmt.Fprintln(os.Stderr, "\nStopping profiling")
+		}
+
 		if *cpuProfile != "" {
 			pprof.StopCPUProfile()
 		}
@@ -102,19 +130,23 @@ func mainFunction() int {
 			exitIfError(err)
 		}
 	}
+
 	if *cpuProfile != "" {
 		f, err := os.Create(*cpuProfile)
 		exitIfError(err)
 		err = pprof.StartCPUProfile(f)
 		exitIfError(err)
+		defer func() {
+			exitIfError(f.Close())
+		}()
 	}
-	defer stopProfiles()
 
 	// Signals catching:
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
-		<-signals
+		sg := <-signals
+		fmt.Fprintf(os.Stderr, "signal caught %s\n", sg.String())
 		stopProfiles()
 		os.Exit(1)
 	}()
@@ -137,32 +169,67 @@ func mainFunction() int {
 	}
 
 	if ingestCerts {
+		ctx, span := tr.MT().Start(ctx, "file-ingestion")
+		defer span.End()
+
 		// All GZ and CSV files found under the directory of the argument.
 		gzFiles, csvFiles := listOurFiles(flag.Arg(0))
 		fmt.Printf("# gzFiles: %d, # csvFiles: %d\n", len(gzFiles), len(csvFiles))
 
-		proc := NewProcessor(conn, strategy)
-		// Set parameters to the processor.
-		proc.BundleMaxSize = *bundleSize
-		proc.OnBundleFinished = func() {
-			// Called for intermediate bundles. Need to coalesce, update SMT and clean dirty.
-			fmt.Println("Another bundle ingestion finished.")
-			coalescePayloadsForDirtyDomains(ctx, conn)
-			updateSMT(ctx, conn)
-			cleanupDirty(ctx, conn)
+		bundleProcessing := func() {
+			// do not coalesce, or update smt.
+			fmt.Println("\nAnother bundle ingestion finished.")
 		}
+		if !onlyIngest {
+			bundleProcessing = func() {
+				// Regular operation: coalesce and update SMT.
+				// Called for intermediate bundles. Need to coalesce, update SMT and clean dirty.
+
+				ctx, span := tr.MT().Start(ctx, "bundle-ingested")
+
+				fmt.Println("\nAnother bundle ingestion finished.")
+				coalescePayloadsForDirtyDomains(ctx, conn)
+				updateSMT(ctx, conn)
+				cleanupDirty(ctx, conn)
+
+				span.End()
+			}
+		}
+
+		proc, err := NewProcessor(
+			ctx,
+			conn,
+			*multiInsertSize,
+			2*time.Second,
+			printStats,
+			WithNumFileReaders(*numFiles),
+			WithNumToChains(*numParsers),
+			WithNumToCerts(*numChainToCerts),
+			WithNumDBWriters(*numDBWriters),
+			WithBundleSize(*bundleSize),
+			WithOnBundleFinished(bundleProcessing),
+		)
+		exitIfError(err)
 
 		// Add the files to the processor.
 		proc.AddGzFiles(gzFiles)
 		proc.AddCsvFiles(csvFiles)
 
+		fmt.Printf("[%s] Starting ingesting files ...\n",
+			time.Now().Format(time.StampMilli))
 		// Update certificates and chains, and wait until finished.
+		proc.Resume()
+
 		exitIfError(proc.Wait())
+
+		stopProfiles()
+
+		return 0
 	}
 
 	// The certificates had been ingested. If we had set a bundle size, we still need to process
 	// the last bundle. If we hadn't, we will process it all.
-	if !smtUpdateOnly {
+	if !onlySmtUpdate {
 		// Coalesce the payloads of all modified domains.
 		coalescePayloadsForDirtyDomains(ctx, conn)
 	}
@@ -176,6 +243,9 @@ func mainFunction() int {
 	// Close DB.
 	err = conn.Close()
 	exitIfError(err)
+
+	stopProfiles()
+
 	return 0
 }
 
@@ -226,6 +296,31 @@ func filenameToFirstSize(name string) uint64 {
 	n, err := strconv.ParseUint(tokens[0], 10, 64)
 	exitIfError(err)
 	return n
+}
+
+func printStats(s *updater.Stats) {
+	readFiles := s.TotalFilesRead.Load()
+	totalFiles := s.TotalFiles.Load()
+
+	readCerts := s.ReadCerts.Load()
+	readBytes := s.ReadBytes.Load()
+	writtenCerts := s.WrittenCerts.Load()
+	writtenBytes := s.WrittenBytes.Load()
+
+	uncachedCerts := s.UncachedCerts.Load()
+	secondsSinceStart := float64(time.Since(s.CreateTime).Seconds())
+
+	msg := fmt.Sprintf("%d/%d Files read. %d certs read, %d written. %.0f certs/s "+
+		"(%.0f%% uncached), %.1f | %.1f Mb/s r|w                    ",
+		readFiles, totalFiles,
+		readCerts, writtenCerts,
+		float64(readCerts)/secondsSinceStart,
+		float64(uncachedCerts)*100./float64(readCerts),
+		float64(readBytes)/1024./1024./secondsSinceStart,
+		float64(writtenBytes)/1024./1024./secondsSinceStart,
+	)
+
+	fmt.Fprintf(os.Stderr, "%s\r", msg)
 }
 
 func exitIfError(err error) {

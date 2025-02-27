@@ -1,361 +1,520 @@
 package main
 
 import (
-	"encoding/base64"
-	"encoding/csv"
+	"context"
 	"fmt"
-	"io"
 	"math"
-	"os"
-	"strconv"
-	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	ctx509 "github.com/google/certificate-transparency-go/x509"
-
-	"github.com/netsec-ethz/fpki/cmd/ingest/cache"
-	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
+	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
+	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
 	"github.com/netsec-ethz/fpki/pkg/util"
+	"github.com/netsec-ethz/fpki/pkg/util/debug"
 )
 
-// Processor is the pipeline that takes file names and process them into certificates
-// inside the DB and SMT. It is composed of several different stages,
-// described in the `start` method.
+// Processor is the processor that takes file names and process them into certificates.
+// It makes use of a pipeline that keeps the order of the certificates. Depicted below:
+/*
+ CsvFile ---┌-> line1 -> Chain1 ┌-> Cert1.1
+			|                   |-> Cert1.2
+			|                  ...
+			|-> line2 -> Chain2 ┌-> Cert2.1
+			|                   |-> Cert2.2
+			|                  ...
+		   ...
+*/
 type Processor struct {
-	Conn  db.Conn
-	cache cache.Cache // IDs of certificates pushed to DB.
-	now   time.Time
-
-	incomingFileCh    chan util.CsvFile       // New files with certificates to be ingested
-	certWithChainChan chan *CertWithChainData // After parsing files
-	parsedCertCh      chan *CertificateNode   // After finding parents, to be sent to DB and SMT
-	certProcessor     *CertificateProcessor   // Processes certificate nodes (with parent pointer)
-
-	BundleMaxSize    uint64 // Max # of certs before calling OnBundle
-	OnBundleFinished func()
-
-	errorCh chan error // Errors accumulate here
-	doneCh  chan error // Signals Processor is done
+	Ctx               context.Context
+	CsvFiles          []util.CsvFile
+	NumFileReaders    int
+	NumToChain        int
+	NumToCerts        int
+	NumDBWriters      int
+	Pipeline          *pip.Pipeline
+	Manager           *updater.Manager
+	bundleSize        uint64
+	onBundleFinished  func()
+	certsBeforeBundle atomic.Uint64
+	doingBundle       atomic.Bool
 }
 
-type CertWithChainData struct {
-	CertID        *common.SHA256Output   // The ID (the SHA256) of the certificate.
-	Cert          *ctx509.Certificate    // The payload of the certificate.
-	ChainIDs      []*common.SHA256Output // The trust chain of the certificate.
-	ChainPayloads []*ctx509.Certificate  // The payloads of the chain. Is nil if already cached.
-}
-
-func NewProcessor(conn db.Conn, certUpdateStrategy CertificateUpdateStrategy) *Processor {
-	parsedCertCh := make(chan *CertificateNode)
+func NewProcessor(
+	ctx context.Context,
+	conn db.Conn,
+	multiInsertSize int,
+	statsUpdatePeriod time.Duration,
+	statsUpdateFun func(*updater.Stats),
+	options ...ingestOptions,
+) (*Processor, error) {
+	// Create the processor that will hold all the information and the pipeline.
 	p := &Processor{
-		Conn:              conn,
-		cache:             cache.NewPresenceCache(LruCacheSize),
-		now:               time.Now(),
-		incomingFileCh:    make(chan util.CsvFile),
-		certWithChainChan: make(chan *CertWithChainData),
-		parsedCertCh:      parsedCertCh,
-		certProcessor:     NewCertProcessor(conn, parsedCertCh, certUpdateStrategy),
+		Ctx:            ctx,
+		NumFileReaders: 1, // Default to 1 file reader.
+		NumToChain:     1, // Default to just 1 lineToChain.
+		NumToCerts:     1, // Default to just 1 chainToCerts.
+		NumDBWriters:   1, // Default to 1 db writer.
 
-		BundleMaxSize:    math.MaxUint64, // originally set to "no limit"
-		OnBundleFinished: func() {},      // originally set to noop
-
-		errorCh: make(chan error),
-		doneCh:  make(chan error),
+		bundleSize:        math.MaxUint64,
+		onBundleFinished:  func() {}, // Noop.
+		certsBeforeBundle: atomic.Uint64{},
+		doingBundle:       atomic.Bool{},
 	}
-	p.start()
-	return p
-}
 
-// start starts the pipeline. The pipeline consists on the following transformations:
-// - File to rows.
-// - Row to certificate with chain.
-// - Certificate with chain to certificate with immediate parent.
-// This pipeline ends here, and it's picked up by other processor.
-// Each stage (transformation) is represented by a goroutine spawned in this start function.
-// Each stage reads from the previous channel and outputs to the next channel.
-// Each stage closes the channel it outputs to.
-func (p *Processor) start() {
-	// Process files and parse the CSV contents:
-	go func() {
-		// Spawn a fixed number of file readers.
-		wg := sync.WaitGroup{}
-		wg.Add(NumFileReaders)
-		for r := 0; r < NumFileReaders; r++ {
-			go func() {
-				defer wg.Done()
-				for f := range p.incomingFileCh {
-					p.processFile(f)
-				}
-			}()
+	// Apply options to processor only.
+	for _, opt := range options {
+		if opt, ok := opt.(processorOptions); ok {
+			opt(p)
 		}
-		wg.Wait()
-		fmt.Println()
-		fmt.Println("Done with incoming files, closing parsed data channel.")
-		// Because we are done writing parsed content, close this stage's output channel:
-		close(p.certWithChainChan)
-	}()
+	}
 
-	// Process the parsed content into the DB.
-	// OnBundleFinished, called from callForEachBundle, would coalesce certs and update the SMT.
-	go func() {
-		var flyingCertCount uint64
-		for data := range p.certWithChainChan {
-			certs, certIDs, parentIDs, names := util.UnfoldCert(data.Cert, data.CertID,
-				data.ChainPayloads, data.ChainIDs)
-			for i := range certs {
-				// Add the certificate.
-				p.parsedCertCh <- &CertificateNode{
-					CertID:   certIDs[i],
-					Cert:     certs[i],
-					ParentID: parentIDs[i],
-					Names:    names[i],
-				}
-				flyingCertCount++
+	// Create the DB manager.
+	var err error
+	p.Manager, err = updater.NewManager(
+		p.NumDBWriters,
+		conn,
+		multiInsertSize,
+		math.MaxUint64, // = infinite per default.
+		func() {},      // onBundle: defaults to noop.
+		statsUpdatePeriod,
+		statsUpdateFun,
+	)
+	if err != nil {
+		return nil, err
+	}
 
-				// Check that if by adding this certificate we exceed the maximum amount of
-				// "flying" certificates (not coalesced and whose SMT is not updated).
-				// If so, we need to call the OnBundleFinished callback.
-				if flyingCertCount == p.BundleMaxSize {
-					p.callForEachBundle(true)
-					flyingCertCount = 0
-				}
+	// Apply options to processor only.
+	for _, opt := range options {
+		if opt, ok := opt.(managerOptions); ok {
+			opt(p.Manager)
+		}
+	}
+
+	// Create the pipFiles from files to Certificates.
+	pipFiles, err := p.createFilesToCertsPipeline()
+	if err != nil {
+		return nil, err
+	}
+
+	// Join the two pipelines.
+	pipeline := pip.JoinPipelinesRaw(
+		p.getNewLinkFunction(pipFiles, p.Manager.Pipeline),
+		pipFiles,
+		p.Manager.Pipeline,
+	)
+
+	// At the chainToCert stages we evaluate if need to stop. These stages are the last ones right
+	// before the sink, with NumToCerts number of them.
+	evaluateAt := make([]int, 0, p.NumToCerts)
+	for i := len(pipFiles.Stages); i > len(pipFiles.Stages)-p.NumToCerts; i-- {
+		evaluateAt = append(evaluateAt, i-2)
+	}
+
+	stallOption := pip.WithStallStages(
+		append(pipFiles.Stages, p.Manager.Pipeline.Stages...), // all stages, both pipelines.
+		// Function when stalled:
+		func() {
+			// Call the function.
+			p.onBundleFinished()
+
+			// Reset the counter.
+			p.certsBeforeBundle.Store(0)
+			// Reset the bundle running indicator.
+			p.doingBundle.Store(false)
+		},
+		// Function determining when to stall:
+		func(sl pip.StageLike) bool {
+			if p.certsBeforeBundle.Load() > p.bundleSize && p.doingBundle.CompareAndSwap(false, true) {
+				return true
 			}
-		}
+			return false
+		},
+		// Evaluate at every chainToCerts stage.
+		pipFiles.StagesAt(evaluateAt...),
+	)
+	stallOption(pipeline)
 
-		resume := false
-		if flyingCertCount > 0 {
-			resume = true
-		}
-
-		p.callForEachBundle(resume)
-
-		// There is no more processing to do, close the errors channel and allow the
-		// error processor to finish.
-		close(p.errorCh)
-	}()
-
-	go func() {
-		// Print errors and return error if there was any error printed:
-		p.doneCh <- p.processErrorChannel()
-	}()
+	// Set the joint pipeline as the pipeline and return.
+	p.Pipeline = pipeline
+	return p, nil
 }
 
-// callForEachBundle waits until all certificates have been updated in the DB.
-// If the parameter resume is true, it will prepare the certificate processor for more bundles.
-func (p *Processor) callForEachBundle(resume bool) {
-	// Signal the cert processor that we don't send more certificates.
-	close(p.parsedCertCh)
-	// Wait for the cert processor to finish.
-	p.certProcessor.Wait()
-	// Actual call per bundle.
-	p.OnBundleFinished()
-	if resume {
-		p.parsedCertCh = make(chan *CertificateNode)
-		p.certProcessor.Resume(p.parsedCertCh)
-		// p.certProcessor = NewCertProcessor(p.Conn, p.parsedCertCh, p.certProcessor.strategy)
-	}
+type ingestOptions interface{}
+type processorOptions func(*Processor)
+type managerOptions func(*updater.Manager)
+
+func WithNumFileReaders(numFileReaders int) ingestOptions {
+	return processorOptions(
+		func(p *Processor) {
+			p.NumFileReaders = numFileReaders
+		})
+}
+
+func WithNumToChains(numWorkers int) ingestOptions {
+	return processorOptions(
+		func(p *Processor) {
+			p.NumToChain = numWorkers
+		})
+}
+
+func WithNumToCerts(numWorkers int) ingestOptions {
+	return processorOptions(
+		func(p *Processor) {
+			p.NumToCerts = numWorkers
+		})
+}
+
+func WithNumDBWriters(numDBWriters int) ingestOptions {
+	return processorOptions(
+		func(p *Processor) {
+			p.NumDBWriters = numDBWriters
+		})
+}
+
+func WithBundleSize(bundleSize uint64) ingestOptions {
+	return processorOptions(
+		func(p *Processor) {
+			if bundleSize == 0 {
+				bundleSize = math.MaxUint64
+			}
+			p.bundleSize = bundleSize
+		})
+}
+
+func WithOnBundleFinished(fcn func()) ingestOptions {
+	return processorOptions(
+		func(p *Processor) {
+			p.onBundleFinished = fcn
+		})
+}
+
+func (p *Processor) Resume() {
+	p.Pipeline.Resume(p.Ctx)
 }
 
 func (p *Processor) Wait() error {
-	// Close the parsing and incoming channels:
-	close(p.incomingFileCh)
-
-	// Wait until all data has been processed.
-	return <-p.doneCh
+	err := p.Pipeline.Wait(p.Ctx)
+	// Check if there is a bundle pending.
+	if p.certsBeforeBundle.Load() > 0 {
+		p.onBundleFinished()
+	}
+	return err
 }
 
 // AddGzFiles adds a CSV .gz file to the initial stage.
 // It blocks until it is accepted.
 func (p *Processor) AddGzFiles(fileNames []string) {
-	// Tell the certificate processor that we have these new files.
-	p.certProcessor.TotalFiles.Add(int64(len(fileNames)))
-	// Parse the file and send it to the CSV parser.
+	p.Manager.Stats.TotalFiles.Add(int64(len(fileNames)))
+
 	for _, filename := range fileNames {
-		p.incomingFileCh <- (&util.GzFile{}).WithFile(filename)
+		p.CsvFiles = append(p.CsvFiles, (&util.GzFile{}).WithFile(filename))
 	}
 }
 
-// AddGzFiles adds a .csv file to the initial stage.
+// AddCsvFiles adds a .csv file to the initial stage.
 // It blocks until it is accepted.
 func (p *Processor) AddCsvFiles(fileNames []string) {
-	// Tell the certificate processor that we have these new files.
-	p.certProcessor.TotalFiles.Add(int64(len(fileNames)))
-	// Parse the file and send it to the CSV parser.
+	p.Manager.Stats.TotalFiles.Add(int64(len(fileNames)))
+
 	for _, filename := range fileNames {
-		p.incomingFileCh <- (&util.UncompressedFile{}).WithFile(filename)
+		p.CsvFiles = append(p.CsvFiles, (&util.UncompressedFile{}).WithFile(filename))
 	}
 }
 
-// processFile processes any File.
-// This stage is responsible of parsing the data into X509 certificates and chains.
-func (p *Processor) processFile(f util.CsvFile) {
-	r, err := f.Open()
-	if err != nil {
-		p.errorCh <- err
-		return
+// createFilesToCertsPipeline creates a pipeline that processes CSV and GZ files into Certificates.
+// It can be joined together with a Manager to push the Certificates into the DB.
+// The created pipeline looks like this:
+//
+//	a: source, generates CsvFile, crisscross output.
+//	b1..S: transforms into lines, crisscross I/O. csvSplitWorker.
+//	c1..W: transforms into Chain, crisscross I/O. lineToChainWorker.
+//	d1..C: transforms into []Certificate, crisscross I/O. chainToCertWorker.
+//	e: sink, multiple inputs, crisscross input. []Certificate.
+//
+// The indices are below:
+// a: 0
+// b: 1..S
+// c: 1+S..1+S+W
+// d: 1+S+W..1+S+W+C
+// e: 1+S+W+C
+//
+//	a ┌-> b1 -┌-> c1 ---> d1 -┬-> e
+//	  |-> b2  |-> c2 ---> d2 -|
+//	 ...     ...             ...
+//	  └-> bS -┴-> cW ---> dC -┘
+func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
+	// Prepare source. It opens CSV files based on the filenames stored in the processor.
+	source := pip.NewSource[util.CsvFile](
+		"open-csv-files",
+		pip.WithSourceSlice(&p.CsvFiles, func(in util.CsvFile) (int, error) {
+			return 0, nil
+		}),
+	)
+	sourceFunc := source.ProcessFunc
+	source.ProcessFunc = func(in pip.None) ([]util.CsvFile, []int, error) {
+		_, span := source.Tracer.Start(source.Ctx, "file")
+		outs, chans, err := sourceFunc(in)
+		span.End()
+		return outs, chans, err
 	}
-	// ingestWithCSV will send data to the cert with chain channel
-	if err := p.ingestWithCSV(r); err != nil {
-		p.errorCh <- err
-		return
+
+	// Create CSV split worker.
+	splitters := make([]*csvSplitWorker, p.NumFileReaders)
+	for i := range splitters {
+		splitters[i] = NewCsvSplitWorker(p)
 	}
-	if err := f.Close(); err != nil {
-		p.errorCh <- err
-		return
+
+	// Create numParsers toChain workers. Parses lines into chains.
+	lineToChainWorkers := make([]*lineToChainWorker, p.NumToChain)
+	for i := range lineToChainWorkers {
+		lineToChainWorkers[i] = NewLineToChainWorker(p, i)
 	}
-}
 
-// ingestWithCSV spawns as many goroutines as specified by the constant `NumParsers`,
-// that divide the CSV rows and parse them.
-// For efficiency reasons, the whole file is read at once in memory, and its rows divided
-// from there.
-func (p *Processor) ingestWithCSV(fileReader io.Reader) error {
-	reader := csv.NewReader(fileReader)
-	reader.FieldsPerRecord = -1 // don't check number of fields
+	// Create chain to certificates worker.
+	chainToCertWorkers := make([]*chainToCertWorker, p.NumToCerts)
+	for i := range chainToCertWorkers {
+		chainToCertWorkers[i] = NewChainToCertWorker(i, p)
+	}
 
-	parseFunction := func(fields []string, lineNo int) error {
-		// First avoid even parsing already expired certs.
-		n, err := getExpiration(fields)
-		if err != nil {
-			return err
-		}
-		if p.now.After(time.Unix(n, 0)) {
-			// Skip this certificate.
-			return nil
-		}
+	// Create sink for certificate pointers.
+	sink := p.createCertificateSink()
 
-		// From this point on, we need to parse the certificate.
-		rawBytes, err := base64.StdEncoding.DecodeString(fields[CertificateColumn])
-		if err != nil {
-			return err
-		}
-		// Update statistics.
-		p.certProcessor.ReadBytes.Add(int64(len(rawBytes)))
-		p.certProcessor.ReadCerts.Inc()
-		p.certProcessor.UncachedCerts.Inc()
+	stages := []pip.StageLike{
+		source,
+	}
+	for _, w := range splitters {
+		stages = append(stages, w.Stage)
+	}
+	for _, w := range lineToChainWorkers {
+		stages = append(stages, w.Stage)
+	}
+	for _, w := range chainToCertWorkers {
+		stages = append(stages, w.Stage)
+	}
+	stages = append(stages, sink)
 
-		// Get the leaf certificate ID.
-		certID := common.SHA256Hash32Bytes(rawBytes)
-		if p.cache.Contains(&certID) {
-			// For some reason this leaf certificate has been ingested already. Skip.
-			return nil
-		}
-		cert, err := ctx509.ParseCertificate(rawBytes)
-		if err != nil {
-			return err
-		}
+	pipeline, err := pip.NewPipeline(
+		func(pipeline *pip.Pipeline) {
+			/* Link function.
+				a: source, generates CsvFile
+				b: transforms into line, multiple outputs.
+				c1..W: transforms into Chain.
+				d1..W: transforms into []Certificate.
+				e: sink, multiple inputs.
+			The indices are below:
+			a: 0
+			b: 1..S
+			c: 1+S..1+S+W
+			d: 1+S+W..1+S+W+C
+			e: 1+S+2W
 
-		if p.now.After(cert.NotAfter) {
-			// Don't ingest already expired certificates.
-			return nil
-		}
+			a ┌-> b1 -┌-> c1 -┌-> d1 -┬-> e
+			  |-> b2 -|-> c2 -|-> d2 -|
+			 ...     ...     ...     ...
+			  └-> bS -┴-> cW -┴-> dC -┘
 
-		// The certificate chain is a list of base64 strings separated by semicolon (;).
-		strs := strings.Split(fields[CertChainColumn], ";")
-		chain := make([]*ctx509.Certificate, len(strs))
-		chainIDs := make([]*common.SHA256Output, len(strs))
-		for i, s := range strs {
-			rawBytes, err = base64.StdEncoding.DecodeString(s)
-			if err != nil {
-				return fmt.Errorf("at line %d: %s\n%s", lineNo, err, fields[CertChainColumn])
+			*/
+			S := p.NumFileReaders
+			W := p.NumToChain
+			C := p.NumToCerts
+			a := pip.SourceStage[util.CsvFile](pipeline)
+			b := make([]*pip.Stage[util.CsvFile, line], S)
+			for i := range b {
+				b[i] = pip.StageAtIndex[util.CsvFile, line](pipeline, 1+i)
 			}
-			// Update statistics.
-			p.certProcessor.ReadBytes.Add(int64(len(rawBytes)))
-			p.certProcessor.ReadCerts.Inc()
-			// Check if the parent certificate is in the cache.
-			id := common.SHA256Hash32Bytes(rawBytes)
-			if !p.cache.Contains(&id) {
-				// Not seen before, push it to the DB.
-				chain[i], err = ctx509.ParseCertificate(rawBytes)
-				if err != nil {
-					return fmt.Errorf("at line %d: %s\n%s", lineNo, err, fields[CertChainColumn])
+			c := make([]*pip.Stage[line, certChain], W)
+			for i := range c {
+				c[i] = pip.StageAtIndex[line, certChain](pipeline, 1+S+i)
+			}
+			d := make([]*pip.Stage[certChain, updater.Certificate], C)
+			for i := range d {
+				d[i] = pip.StageAtIndex[certChain, updater.Certificate](pipeline, 1+S+W+i)
+			}
+			e := []*pip.Stage[updater.Certificate, pip.None]{pip.SinkStage[updater.Certificate](pipeline)}
+
+			pip.LinkStagesDistribute(a, b...) // A -> B
+			pip.LinkStagesCrissCross(b, c)    // Bi-> Ci
+			pip.LinkStagesCrissCross(c, d)    // Ci-> Di
+			pip.LinkStagesCrissCross(d, e)    // Di-> E
+		},
+		pip.WithStages(stages...),
+	)
+
+	return pipeline, err
+}
+
+func (p *Processor) createCertificateSink() *pip.Sink[updater.Certificate] {
+	return pip.NewSink[updater.Certificate](
+		"certSink",
+		pip.WithSinkFunction(func(in updater.Certificate) error {
+			p.Manager.Stats.WrittenCerts.Add(1)
+			p.Manager.Stats.WrittenBytes.Add(int64(len(in.Cert.Raw)))
+
+			return nil
+		}),
+	)
+}
+
+func (p *Processor) createCertificatePtrSink() *pip.Sink[*updater.Certificate] {
+	return pip.NewSink[*updater.Certificate](
+		"certSink",
+		pip.WithSinkFunction(func(in *updater.Certificate) error {
+			if in == nil {
+				return nil
+			}
+			p.Manager.Stats.WrittenCerts.Add(1)
+			p.Manager.Stats.WrittenBytes.Add(int64(len(in.Cert.Raw)))
+
+			return nil
+		}),
+	)
+}
+
+// getNewLinkFunction links the first with the second pipeline overriding the sink and source of
+// the first and second pipeline, respectively.
+//
+//	The first pipeline looks like:
+//	a ┌-> b1 -┌-> c1 ---> d1 -┬-> e
+//	  |-> b2  |-> c2 ---> d2 -|
+//	 ...     ...             ...
+//	  └-> bS -┴-> cW ---> dC -┘
+//
+// The stages previous to the sink are crisscross linked to the sink, with NumToCerts count.
+//
+//	The second pipeline looks like:
+//	a -┌-> b1 ---> c1
+//	   |-> b2 ---> c2
+//	  ...
+//	   |-> bw ---> cw
+//	   |
+//	   |-> d1 -┬-> e1 ---> f1
+//	   |-> d2 -|-> e2 ---> f2
+//	  ...     .|.         ...
+//	   └-> dw -┴-> ew ---> fw
+//
+// With the source sending duplicate outputs to b and d depending on its own source function.
+// Thus the source has 2*NumDBWriters out channels.
+// We could link p1.sink.incoming to be the same as the p2.source.sourceChannel, but that is
+// exactly what the pip.JoinTwoPipelines does and it has performance issues.
+// What we do instead is replace each output channel of p1.di with a new one, that receives the
+// Certificate and run the p2.source.sourceProcessFunc to obtain the next two stages at p2.
+func (p *Processor) getNewLinkFunction(
+	filesPipeline *pip.Pipeline,
+	dbPipeline *pip.Pipeline,
+) func(*pip.Pipeline) {
+	return func(*pip.Pipeline) {
+		// First link both pipelines as usual.
+		filesPipeline.LinkFunction()(filesPipeline)
+		dbPipeline.LinkFunction()(dbPipeline)
+
+		// Find the ToCerts stages.
+		toCerts := make([]*pip.Stage[certChain, updater.Certificate], 0)
+		for _, s := range filesPipeline.Stages {
+			s, ok := s.(*pip.Stage[certChain, updater.Certificate])
+			if ok {
+				toCerts = append(toCerts, s)
+			}
+		}
+		if len(toCerts) != p.NumToCerts {
+			// We should have exactly NumToCerts stages.
+			panic(fmt.Errorf("logic error %d != %d", len(toCerts), p.NumToCerts))
+		}
+
+		// Obtain the incoming channels of both the cert batchers and domain extractors.
+		// This is equivalent to obtaining the out channels of p2.source.
+		source := dbPipeline.Source.(*pip.Source[updater.Certificate])
+		if len(source.OutgoingChs) != 2*p.NumDBWriters {
+			// We should have exactly twice NumDBWriters channels.
+			panic(fmt.Errorf("logic error %d != 2*%d", len(source.OutgoingChs), p.NumDBWriters))
+		}
+
+		// Error channels:
+
+		// Link the error channels, as many as receivers of errors.
+		errChs := make([]chan error, p.NumToCerts)
+		for i := range errChs {
+			errChs[i] = make(chan error)
+		}
+		for i := range toCerts {
+			toCerts[i].NextErrChs[0] = errChs[i]
+		}
+		// For each error received from the second pipeline, send an error to the first one.
+		wgErrChs := sync.WaitGroup{}
+		wgErrChs.Add(len(source.NextErrChs))
+		for _, errCh := range source.NextErrChs {
+			errCh := errCh
+			go func() {
+				defer wgErrChs.Done() // Signal that this error channel is closed.
+				for err := range errCh {
+					util.SendToAllChannels(errChs, err)
 				}
-				p.cache.AddIDs([]*common.SHA256Output{&id})
-				p.certProcessor.UncachedCerts.Inc()
-			}
-			chainIDs[i] = &id
+			}()
 		}
-		p.certWithChainChan <- &CertWithChainData{
-			Cert:          cert,
-			CertID:        &certID,
-			ChainPayloads: chain,
-			ChainIDs:      chainIDs,
-		}
-		return nil
-	}
-
-	type lineAndFields struct {
-		lineNo int
-		fields []string
-	}
-	recordsChan := make(chan *lineAndFields)
-
-	wg := sync.WaitGroup{}
-	wg.Add(NumParsers)
-	for r := 0; r < NumParsers; r++ {
+		// Once all error channels from p2 are closed, close all error channels.
 		go func() {
-			defer wg.Done()
-			for x := range recordsChan {
-				if err := parseFunction(x.fields, x.lineNo); err != nil {
-					panic(err)
-				}
+			wgErrChs.Wait()
+			for _, errCh := range errChs {
+				close(errCh)
+			}
+		}()
+
+		// Data channels:
+
+		// Create as many new data channels as NumToCerts stages.
+		chans := make([]chan updater.Certificate, p.NumToCerts)
+		for i := range chans {
+			chans[i] = make(chan updater.Certificate)
+		}
+
+		// Link toCerts' out channels to the new channels.
+		// Restore the default behavior of closing the output channel (ignore crisscross).
+		for i := range toCerts {
+			toCerts[i].OutgoingChs[0] = chans[i]
+			opt := pip.WithCloseOutChannelFunc[certChain, updater.Certificate](func(index int) {
+				close(toCerts[i].OutgoingChs[index])
+			})
+			opt.ApplyToStage(toCerts[i])
+		}
+
+		// Now send each Certificate to both bi and di stages, according to the p2.source.sourceFunc.
+		sourceFunc := source.SourceProcessFunc()
+
+		// For each of the out channels of the first pipeline.
+		wg := sync.WaitGroup{}
+		wg.Add(len(chans))
+		for _, ch := range chans {
+			ch := ch
+			go func() {
+				defer wg.Done() // Signal that another output channel has been closed.
+				// For each Certificate that the first pipeline outputs.
+				pip.DebugPrintf("[processor] listening on data channel %s\n", debug.Chan2str(ch))
+				for in := range ch {
+					pip.DebugPrintf("[processor] got value on channel %s\n", debug.Chan2str(ch))
+					// Get the indices of the correct cert batcher and domain extractor to send it.
+					chs, err := sourceFunc(in)
+					_ = err // ignore error
+
+					// Send both in parallel.
+					util.SendToAllChannels(
+						[]chan updater.Certificate{
+							source.OutgoingChs[chs[0]],
+							source.OutgoingChs[chs[1]],
+						},
+						in)
+				} // for each Certificate.
+				pip.DebugPrintf("[processor] incoming channel %s is closed\n", debug.Chan2str(ch))
+			}()
+		} // for each output channel.
+
+		// Once all output channels have been closed, close all incoming channels of p2.
+		go func() {
+			wg.Wait()
+			for _, ch := range source.OutgoingChs {
+				pip.DebugPrintf("[processor] closing data channel %s\n", debug.Chan2str(ch))
+				close(ch)
 			}
 		}()
 	}
-	records, err := reader.ReadAll()
-	if err != nil {
-		return err
-	}
-	for lineNo, fields := range records {
-		if len(fields) == 0 { // there exist empty lines (e.g. at the end of the gz files)
-			continue
-		}
-		recordsChan <- &lineAndFields{
-			lineNo: lineNo,
-			fields: fields,
-		}
-	}
-	close(recordsChan)
-	wg.Wait()
-	p.certProcessor.TotalFilesRead.Add(1) // one more file had been read
-
-	return nil
-}
-
-// processErrorChannel outputs the errors it encounters in the errors channel.
-// Returns with error if any is found, or nil if no error.
-func (p *Processor) processErrorChannel() error {
-	var errorsFound bool
-	for err := range p.errorCh {
-		if err == nil {
-			continue
-		}
-		errorsFound = true
-		fmt.Fprintf(os.Stderr, "%s\n", err)
-	}
-	if errorsFound {
-		return fmt.Errorf("errors found while processing. See above")
-	}
-	return nil
-}
-
-// getExpiration returns the expiration time in seconds. It is stored already in seconds on the
-// last column of the CSV entry, usually index 7.
-func getExpiration(fields []string) (int64, error) {
-	// Because some entries in the CSVs are malformed by not escaping their SAN field, we cannot
-	// reliably use a column index, but the last column of the entry.
-	expirationColumn := len(fields) - 1
-
-	s := strings.Split(fields[expirationColumn], ".")
-	if len(s) != 2 {
-		return 0, fmt.Errorf("unrecognized timestamp in the last column: %s", fields[expirationColumn])
-	}
-	exp, err := strconv.ParseInt(s[0], 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("parsing the expiration time \"%s\" got: %w",
-			fields[expirationColumn], err)
-	}
-	return exp, nil
 }

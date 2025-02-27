@@ -133,7 +133,7 @@ func checkResponse(
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	dec := json.NewDecoder(resp.Body)
-	var proofChain []*mapcommon.MapServerResponse
+	var proofChain []mapcommon.MapServerResponse
 	err = dec.Decode(&proofChain)
 	require.NoError(t, err)
 	resp.Body.Close()
@@ -148,10 +148,10 @@ func checkResponse(
 	policyIDs := make(map[common.SHA256Output]struct{})
 	for _, p := range proofChain {
 		for _, id := range common.BytesToIDs(p.DomainEntry.CertIDs) {
-			certIDs[*id] = struct{}{}
+			certIDs[id] = struct{}{}
 		}
 		for _, id := range common.BytesToIDs(p.DomainEntry.PolicyIDs) {
-			policyIDs[*id] = struct{}{}
+			policyIDs[id] = struct{}{}
 		}
 	}
 
@@ -203,7 +203,7 @@ func checkResponse(
 }
 
 // checkProof checks the proof to be correct.
-func checkProof(t tests.T, payloadID *common.SHA256Output, proofs []*mapcommon.MapServerResponse) {
+func checkProof(t tests.T, payloadID *common.SHA256Output, proofs []mapcommon.MapServerResponse) {
 	t.Helper()
 	// Determine if we are checking an absence or presence.
 	if payloadID == nil {
@@ -214,7 +214,7 @@ func checkProof(t tests.T, payloadID *common.SHA256Output, proofs []*mapcommon.M
 		require.Equal(t, mapcommon.PoP, proofs[len(proofs)-1].PoI.ProofType, "PoP not found")
 	}
 	for _, proof := range proofs {
-		proofType, isCorrect, err := prover.VerifyProofByDomain(proof)
+		proofType, isCorrect, err := prover.VerifyProofByDomain(&proof)
 		require.NoError(t, err)
 		require.True(t, isCorrect)
 
@@ -226,7 +226,7 @@ func checkProof(t tests.T, payloadID *common.SHA256Output, proofs []*mapcommon.M
 			// The ID passed as argument must be one of the IDs present in the domain entry.
 			allIDs := append(common.BytesToIDs(proof.DomainEntry.CertIDs),
 				common.BytesToIDs(proof.DomainEntry.PolicyIDs)...)
-			require.Contains(t, allIDs, payloadID)
+			require.Contains(t, allIDs, *payloadID)
 		}
 	}
 }
@@ -235,7 +235,7 @@ func checkProof(t tests.T, payloadID *common.SHA256Output, proofs []*mapcommon.M
 // expected (not just included, but the same set of IDs).
 func checkIDsInProof(
 	t tests.T,
-	proofChain []*mapcommon.MapServerResponse,
+	proofChain []mapcommon.MapServerResponse,
 	IDs []common.SHA256Output) {
 
 	// Extract all IDs from the proof chain.
@@ -244,12 +244,12 @@ func checkIDsInProof(
 		// Certificates.
 		ids := common.BytesToIDs(proofChain[i].DomainEntry.CertIDs)
 		for _, id := range ids {
-			allIDs[*id] = struct{}{}
+			allIDs[id] = struct{}{}
 		}
 		// Policies.
 		ids = common.BytesToIDs(proofChain[i].DomainEntry.PolicyIDs)
 		for _, id := range ids {
-			allIDs[*id] = struct{}{}
+			allIDs[id] = struct{}{}
 		}
 	}
 

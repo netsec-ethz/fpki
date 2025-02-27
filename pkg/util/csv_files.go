@@ -9,6 +9,7 @@ import (
 type CsvFile interface {
 	WithFile(string) CsvFile
 	Filename() string
+	String() string
 	Open() (io.Reader, error)
 	Close() error
 }
@@ -22,6 +23,10 @@ func (f *baseFile) Filename() string {
 	return f.FileName
 }
 
+func (f *baseFile) String() string {
+	return f.FileName
+}
+
 func (f *baseFile) Close() error {
 	return f.reader.Close()
 }
@@ -31,6 +36,8 @@ type GzFile struct {
 
 	gzReader *gzip.Reader
 }
+
+var _ CsvFile = (*GzFile)(nil)
 
 func (f *GzFile) WithFile(fn string) CsvFile {
 	f.FileName = fn
@@ -61,6 +68,8 @@ func (f *GzFile) Close() error {
 type UncompressedFile struct {
 	baseFile
 }
+
+var _ CsvFile = (*UncompressedFile)(nil)
 
 func (f *UncompressedFile) WithFile(fn string) CsvFile {
 	f.FileName = fn

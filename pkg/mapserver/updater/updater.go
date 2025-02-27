@@ -39,7 +39,12 @@ type MapUpdater struct {
 }
 
 // NewMapUpdater: return a new map updater.
-func NewMapUpdater(config *db.Configuration, urls []string, localCertificateFolders map[string]string, csvIngestionMaxRows uint64) (*MapUpdater, error) {
+func NewMapUpdater(
+	config *db.Configuration,
+	urls []string,
+	localCertificateFolders map[string]string,
+	csvIngestionMaxRows uint64,
+) (*MapUpdater, error) {
 	if len(urls) == 0 {
 		return nil, fmt.Errorf("no URLs")
 	}
@@ -47,6 +52,11 @@ func NewMapUpdater(config *db.Configuration, urls []string, localCertificateFold
 	dbConn, err := mysql.Connect(config)
 	if err != nil {
 		return nil, fmt.Errorf("NewMapUpdater | db.Connect | %w", err)
+	}
+
+	_, err = dbConn.DB().Exec("ALTER INSTANCE DISABLE INNODB REDO_LOG;")
+	if err != nil {
+		return nil, err
 	}
 
 	fetchers := make([]logfetcher.Fetcher, len(urls))
@@ -189,16 +199,16 @@ func (u *MapUpdater) UpdateCertsLocally(
 	certChainList [][][]byte,
 ) error {
 
-	expirations := make([]*time.Time, 0, len(certList))
-	certs := make([]*ctx509.Certificate, 0, len(certList))
+	expirations := make([]time.Time, 0, len(certList))
+	certs := make([]ctx509.Certificate, 0, len(certList))
 	certChains := make([][]*ctx509.Certificate, 0, len(certList))
 	for i, certRaw := range certList {
 		cert, err := ctx509.ParseCertificate(certRaw)
 		if err != nil {
 			return err
 		}
-		certs = append(certs, cert)
-		expirations = append(expirations, &cert.NotAfter)
+		certs = append(certs, *cert)
+		expirations = append(expirations, cert.NotAfter)
 
 		chain := make([]*ctx509.Certificate, len(certChainList[i]))
 		for i, certChainItemRaw := range certChainList[i] {
@@ -268,7 +278,7 @@ func (u *MapUpdater) startNextFetcher(ctx context.Context, updateStartTime time.
 
 func (u *MapUpdater) verifyValidity(
 	ctx context.Context,
-	leafCerts []*ctx509.Certificate,
+	leafCerts []ctx509.Certificate,
 	chains [][]*ctx509.Certificate,
 ) error {
 
@@ -283,7 +293,7 @@ func (u *MapUpdater) verifyValidity(
 
 func (u *MapUpdater) updateCertBatch(
 	ctx context.Context,
-	leafCerts []*ctx509.Certificate,
+	leafCerts []ctx509.Certificate,
 	chains [][]*ctx509.Certificate,
 ) error {
 
@@ -320,8 +330,10 @@ func (u *MapUpdater) updatePolicyCerts(
 }
 
 func UpdateWithOverwrite(ctx context.Context, conn db.Conn, domainNames [][]string,
-	certIDs, parentCertIDs []*common.SHA256Output,
-	certs []*ctx509.Certificate, certExpirations []*time.Time,
+	certIDs []common.SHA256Output,
+	parentCertIDs []*common.SHA256Output,
+	certs []ctx509.Certificate,
+	certExpirations []time.Time,
 	policies []common.PolicyDocument,
 ) error {
 
@@ -338,7 +350,7 @@ func UpdateWithOverwrite(ctx context.Context, conn db.Conn, domainNames [][]stri
 
 	// Insert all specified policies.
 	payloads = make([][]byte, len(policies))
-	policyIDs := make([]*common.SHA256Output, len(policies))
+	policyIDs := make([]common.SHA256Output, len(policies))
 	policySubjects := make([]string, len(policies))
 	for i, pol := range policies {
 		payload, err := common.ToJSON(pol)
@@ -346,8 +358,7 @@ func UpdateWithOverwrite(ctx context.Context, conn db.Conn, domainNames [][]stri
 			return err
 		}
 		payloads[i] = payload
-		id := common.SHA256Hash32Bytes(payload)
-		policyIDs[i] = &id
+		policyIDs[i] = common.SHA256Hash32Bytes(payload)
 		policySubjects[i] = pol.Domain()
 	}
 	err = insertPolicies(ctx, conn, policySubjects, policyIDs, payloads)
@@ -355,9 +366,14 @@ func UpdateWithOverwrite(ctx context.Context, conn db.Conn, domainNames [][]stri
 	return err
 }
 
-func UpdateWithKeepExisting(ctx context.Context, conn db.Conn, domainNames [][]string,
-	certIDs, parentCertIDs []*common.SHA256Output,
-	certs []*ctx509.Certificate, certExpirations []*time.Time,
+func UpdateWithKeepExisting(
+	ctx context.Context,
+	conn db.Conn,
+	domainNames [][]string,
+	certIDs []common.SHA256Output,
+	parentCertIDs []*common.SHA256Output,
+	certs []ctx509.Certificate,
+	certExpirations []time.Time,
 	policies []common.PolicyDocument,
 ) error {
 
@@ -389,7 +405,7 @@ func UpdateWithKeepExisting(ctx context.Context, conn db.Conn, domainNames [][]s
 
 	// Prepare data structures for the policies.
 	payloads = make([][]byte, len(policies))
-	policyIDs := make([]*common.SHA256Output, len(policies))
+	policyIDs := make([]common.SHA256Output, len(policies))
 	policySubjects := make([]string, len(policies))
 	for i, pol := range policies {
 		payload, err := pol.Raw()
@@ -397,8 +413,7 @@ func UpdateWithKeepExisting(ctx context.Context, conn db.Conn, domainNames [][]s
 			return err
 		}
 		payloads[i] = payload
-		id := common.SHA256Hash32Bytes(payload)
-		policyIDs[i] = &id
+		policyIDs[i] = common.SHA256Hash32Bytes(payload)
 		policySubjects[i] = pol.Domain()
 	}
 	// Check which policies are already present in the DB.
@@ -466,7 +481,7 @@ func updateSMTfromDomains(
 	ctx context.Context,
 	conn db.Conn,
 	smtTrie *trie.Trie,
-	domainIDs []*common.SHA256Output,
+	domainIDs []common.SHA256Output,
 	max_bundle_size int,
 ) error {
 
@@ -496,7 +511,7 @@ func updateSMTfromDomains(
 func updateSMTfromKeyValues(
 	ctx context.Context,
 	smtTrie *trie.Trie,
-	entries []*db.KeyValuePair,
+	entries []db.KeyValuePair,
 ) error {
 
 	// Adapt data type.
@@ -504,14 +519,14 @@ func updateSMTfromKeyValues(
 	if err != nil {
 		return err
 	}
-	fmt.Printf("smt.updateSMTfromKeyValues [%s]: keys and values obtained\n", time.Now().Format(time.Stamp))
+	fmt.Printf("\nsmt.updateSMTfromKeyValues [%s]: keys and values obtained\n", time.Now().Format(time.Stamp))
 
 	// Update the tree.
 	_, err = smtTrie.Update(ctx, keys, values)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("smt.updateSMTfromKeyValues [%s]: in-memory tree updated\n", time.Now().Format(time.Stamp))
+	fmt.Printf("\nsmt.updateSMTfromKeyValues [%s]: in-memory tree updated\n", time.Now().Format(time.Stamp))
 
 	// And update the tree in the DB.
 	err = smtTrie.Commit(ctx)
@@ -519,7 +534,7 @@ func updateSMTfromKeyValues(
 	if err != nil {
 		return err
 	}
-	fmt.Printf("smt.updateSMTfromKeyValues [%s]: tree committed to DB\n", time.Now().Format(time.Stamp))
+	fmt.Printf("\nsmt.updateSMTfromKeyValues [%s]: tree committed to DB\n", time.Now().Format(time.Stamp))
 	return nil
 }
 
@@ -562,12 +577,14 @@ func UpdateSMT(ctx context.Context, conn db.Conn) error {
 		return err
 	}
 
-	fmt.Printf("smt [%s]: SMT updated\n", time.Now().Format(time.Stamp))
+	fmt.Printf("\nsmt [%s]: SMT updated\n", time.Now().Format(time.Stamp))
 
 	// Save root value:
-	err = conn.SaveRoot(ctx, (*common.SHA256Output)(smtTrie.Root))
-	if err != nil {
-		return err
+	if smtTrie.Root != nil {
+		err = conn.SaveRoot(ctx, (*common.SHA256Output)(smtTrie.Root))
+		if err != nil {
+			return err
+		}
 	}
 	fmt.Printf("smt [%s]: new root saved\n", time.Now().Format(time.Stamp))
 
@@ -584,22 +601,31 @@ func loadRoot(ctx context.Context, conn db.Conn) ([]byte, error) {
 	return root, nil
 }
 
-func insertCerts(ctx context.Context, conn db.Conn, names [][]string,
-	ids, parentIDs []*common.SHA256Output, expirations []*time.Time, payloads [][]byte) error {
+func insertCerts(
+	ctx context.Context,
+	conn db.Conn,
+	names [][]string,
+	ids []common.SHA256Output,
+	parentIDs []*common.SHA256Output,
+	expirations []time.Time,
+	payloads [][]byte,
+) error {
+
+	if len(ids) == 0 {
+		return nil
+	}
 
 	// Send hash, parent hash, expiration and payload to the certs table.
-	fmt.Printf("deleteme insertCerts [%s] inserting certificates ...\n", time.Now().Format(time.StampMilli))
 	if err := conn.UpdateCerts(ctx, ids, parentIDs, expirations, payloads); err != nil {
 		return fmt.Errorf("inserting certificates: %w", err)
 	}
-	fmt.Printf("deleteme insertCerts [%s] certificates inserted.\n", time.Now().Format(time.StampMilli))
 	// around 3 seconds for this ^^ (100K certs)
 
 	// Add new entries from names into the domains table iff they are leaves.
 	estimatedSize := len(ids) * 2 // Number of IDs / 3 ~~ is the number of leaves. 6 names per leaf.
 	newNames := make([]string, 0, estimatedSize)
-	newIDs := make([]*common.SHA256Output, 0, estimatedSize)
-	domainIDs := make([]*common.SHA256Output, 0, estimatedSize)
+	newIDs := make([]common.SHA256Output, 0, estimatedSize)
+	domainIDs := make([]common.SHA256Output, 0, estimatedSize)
 	for i, names := range names {
 		// Iff the certificate is a leaf certificate it will have a non-nil names slice: insert
 		// one entry per name.
@@ -607,34 +633,41 @@ func insertCerts(ctx context.Context, conn db.Conn, names [][]string,
 			newNames = append(newNames, name)
 			newIDs = append(newIDs, ids[i])
 			domainID := common.SHA256Hash32Bytes([]byte(name))
-			domainIDs = append(domainIDs, &domainID)
+			domainIDs = append(domainIDs, domainID)
 		}
 	}
 	// Push the changes of the domains to the DB.
-	fmt.Printf("deleteme insertCerts [%s] updating domains ...\n", time.Now().Format(time.StampMilli))
+	if err := conn.InsertDomainsIntoDirty(ctx, domainIDs); err != nil {
+		return fmt.Errorf("updating domains: %w", err)
+	}
 	if err := conn.UpdateDomains(ctx, domainIDs, newNames); err != nil {
 		return fmt.Errorf("updating domains: %w", err)
 	}
-	fmt.Printf("deleteme insertCerts [%s] updating domain_certs ...\n", time.Now().Format(time.StampMilli))
 	if err := conn.UpdateDomainCerts(ctx, domainIDs, newIDs); err != nil {
 		return fmt.Errorf("updating domain_certs: %w", err)
 	}
-	fmt.Printf("deleteme insertCerts [%s] domains updated\n", time.Now().Format(time.StampMilli))
 	// around 8 seconds for this ^^ (100K certs)
 
 	return nil
 }
 
-func insertPolicies(ctx context.Context, conn db.Conn, names []string, ids []*common.SHA256Output,
+func insertPolicies(ctx context.Context, conn db.Conn, names []string, ids []common.SHA256Output,
 	payloads [][]byte) error {
+
+	if len(ids) == 0 {
+		return nil
+	}
 
 	// TODO(juagargi) use parent IDs for the policies
 
 	// Push the changes of the domains to the DB.
-	domainIDs := make([]*common.SHA256Output, len(names))
+	domainIDs := make([]common.SHA256Output, len(names))
 	for i, name := range names {
-		domainID := common.SHA256Hash32Bytes([]byte(name))
-		domainIDs[i] = &domainID
+		domainIDs[i] = common.SHA256Hash32Bytes([]byte(name))
+	}
+
+	if err := conn.InsertDomainsIntoDirty(ctx, domainIDs); err != nil {
+		return fmt.Errorf("inserting domains in dirty: %w", err)
 	}
 	if err := conn.UpdateDomains(ctx, domainIDs, names); err != nil {
 		return fmt.Errorf("updating domains: %w", err)
@@ -644,10 +677,10 @@ func insertPolicies(ctx context.Context, conn db.Conn, names []string, ids []*co
 	// Sequence of nil parent ids:
 	parents := make([]*common.SHA256Output, len(ids))
 	// Sequence of expiration times way in the future:
-	expirations := make([]*time.Time, len(ids))
+	expirations := make([]time.Time, len(ids))
 	for i := range expirations {
 		t := time.Date(3000, 1, 1, 0, 0, 0, 0, time.UTC) // TODO(juagargi) use real expirations.
-		expirations[i] = &t
+		expirations[i] = t
 	}
 	// Update policies:
 	if err := conn.UpdatePolicies(ctx, ids, parents, expirations, payloads); err != nil {
@@ -678,7 +711,7 @@ func runWhenFalse(mask []bool, fcn func(to, from int)) int {
 // deleteme TODO this function takes the payload and computes the hash of it. The hash is already
 // stored in the DB with the new design: change both the function RetrieveDomainEntries and
 // remove the hashing from this keyValuePairToSMTInput function.
-func keyValuePairToSMTInput(keyValuePair []*db.KeyValuePair) ([][]byte, [][]byte, error) {
+func keyValuePairToSMTInput(keyValuePair []db.KeyValuePair) ([][]byte, [][]byte, error) {
 	type inputPair struct {
 		Key   [32]byte
 		Value []byte

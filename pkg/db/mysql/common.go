@@ -8,7 +8,9 @@ import (
 
 // RetrievePolicyPayloads returns the payload for each certificate OR policy identified by the IDs
 // parameter, in the same order (element i corresponds to IDs[i]).
-func (c *mysqlDB) RetrieveCertificateOrPolicyPayloads(ctx context.Context, IDs []*common.SHA256Output,
+func (c *mysqlDB) RetrieveCertificateOrPolicyPayloads(
+	ctx context.Context,
+	IDs []common.SHA256Output,
 ) ([][]byte, error) {
 	str := "SELECT policy_id,payload from policies WHERE policy_id IN " +
 		repeatStmt(1, len(IDs)) +
@@ -16,6 +18,7 @@ func (c *mysqlDB) RetrieveCertificateOrPolicyPayloads(ctx context.Context, IDs [
 		repeatStmt(1, len(IDs))
 	params := make([]any, 2*len(IDs))
 	for i, id := range IDs {
+		id := id
 		params[i] = id[:]
 		params[len(IDs)+i] = id[:]
 	}
@@ -37,7 +40,8 @@ func (c *mysqlDB) RetrieveCertificateOrPolicyPayloads(ctx context.Context, IDs [
 	// Sort them in the same order as the IDs.
 	payloads := make([][]byte, len(IDs))
 	for i, id := range IDs {
-		payloads[i] = m[*id]
+		id := id
+		payloads[i] = m[id]
 	}
 
 	return payloads, nil

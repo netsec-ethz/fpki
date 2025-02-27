@@ -262,7 +262,7 @@ func (s *MapServer) apiGetPayloads(w http.ResponseWriter, r *http.Request, retur
 			http.StatusBadRequest)
 		return
 	}
-	ids := make([]*common.SHA256Output, len(hexIDs)/common.SHA256Size/2)
+	ids := make([]common.SHA256Output, len(hexIDs)/common.SHA256Size/2)
 	for i := 0; i < len(ids); i++ {
 		h := hexIDs[i*common.SHA256Size*2 : (i+1)*common.SHA256Size*2]
 		id, err := hex.DecodeString(h)
@@ -270,7 +270,7 @@ func (s *MapServer) apiGetPayloads(w http.ResponseWriter, r *http.Request, retur
 			http.Error(w, fmt.Sprintf("not a hexadecimal ID: %s", h), http.StatusBadRequest)
 			return
 		}
-		ids[i] = (*common.SHA256Output)(id)
+		ids[i] = (common.SHA256Output)(id)
 	}
 
 	// Obtain the bytes.

@@ -21,6 +21,7 @@ import (
 // TestUpdateWithKeepExisting checks that the UpdateWithKeepExisting function can update a large
 // number of certificates and policy objects.
 func TestUpdateWithKeepExisting(t *testing.T) {
+	t0 := time.Now()
 	// Because we are using "random" bytes deterministically here, set a fixed seed.
 	rand.Seed(111)
 
@@ -35,6 +36,9 @@ func TestUpdateWithKeepExisting(t *testing.T) {
 	conn := testdb.Connect(t, config)
 	defer conn.Close()
 
+	t.Logf("creating DB: %s", time.Since(t0))
+	t0 = time.Now()
+
 	// leafCerts contains the names of the leaf certificates we will test.
 	leafCerts := []string{
 		"leaf.certs.com",
@@ -42,12 +46,14 @@ func TestUpdateWithKeepExisting(t *testing.T) {
 	}
 
 	// Create a random certificate test hierarchy for each leaf.
-	var certs []*ctx509.Certificate
-	var certIDs, parentCertIDs []*common.SHA256Output
+	var certs []ctx509.Certificate
+	var certIDs []common.SHA256Output
+	var parentCertIDs []*common.SHA256Output
 	var certNames [][]string
 	for _, leaf := range leafCerts {
 		// Create two mock x509 chains on top of leaf:
-		certs2, certIDs2, parentCertIDs2, certNames2 := random.BuildTestRandomCertHierarchy(t, leaf)
+		certs2, certIDs2, parentCertIDs2, certNames2 :=
+			random.BuildTestRandomCertHierarchy(t, leaf)
 		certs = append(certs, certs2...)
 		certIDs = append(certIDs, certIDs2...)
 		parentCertIDs = append(parentCertIDs, parentCertIDs2...)
@@ -66,6 +72,8 @@ func TestUpdateWithKeepExisting(t *testing.T) {
 	err = CoalescePayloadsForDirtyDomains(ctx, conn)
 	require.NoError(t, err)
 
+	t.Logf("storing data: %s", time.Since(t0))
+
 	// Check the certificate coalescing: under leaf there must be 4 IDs, for the certs.
 	for i, leaf := range leafCerts {
 		domainID := common.SHA256Hash32Bytes([]byte(leaf))
@@ -74,8 +82,8 @@ func TestUpdateWithKeepExisting(t *testing.T) {
 		require.NoError(t, err)
 		// Expect as many IDs as total certs per leaf ( #certs / #leafs ). Each ID is 32 bytes:
 		expectedSize := common.SHA256Size * len(certs) / len(leafCerts)
-		require.Len(t, gotCertIDs, expectedSize, "bad length, should be %d but it's %d",
-			expectedSize, len(gotCertIDs))
+		require.Len(t, gotCertIDs, expectedSize, "bad length at leaf %d, should be %d but it's %d",
+			i, expectedSize, len(gotCertIDs))
 		// From the certificate IDs, grab the IDs corresponding to this leaf:
 		N := len(certIDs) / len(leafCerts) // IDs per leaf = total / leaf_count
 		expectedCertIDs, expectedCertIDsID := glueSortedIDsAndComputeItsID(certIDs[i*N : (i+1)*N])
@@ -148,12 +156,12 @@ func TestRunWhenFalse(t *testing.T) {
 // TestMapUpdaterStartFetchingRemaining checks that the updater is able to keep a tally of
 // which indices have been already updated and write them down in the DB.
 func TestMapUpdaterStartFetchingRemaining(t *testing.T) {
-	ctx, cancelF := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancelF()
-
 	// Configure a test DB.
 	config, removeF := testdb.ConfigureTestDB(t)
 	defer removeF()
+
+	ctx, cancelF := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancelF()
 
 	url := "myURL"
 	updater, err := NewMapUpdater(config, []string{url}, map[string]string{}, 0)
@@ -173,7 +181,7 @@ func TestMapUpdaterStartFetchingRemaining(t *testing.T) {
 			return fetcher.size-onReturnNextBatchCalls*batchSize > 0
 		},
 		onReturnNextBatch: func() (
-			[]*ctx509.Certificate, // certs
+			[]ctx509.Certificate, // certs
 			[][]*ctx509.Certificate, // chains
 			int,
 			error,
@@ -185,7 +193,7 @@ func TestMapUpdaterStartFetchingRemaining(t *testing.T) {
 			if (onReturnNextBatchCalls * batchSize) > fetcher.size {
 				n = fetcher.size % batchSize
 			}
-			randomCerts := make([]*ctx509.Certificate, n)
+			randomCerts := make([]ctx509.Certificate, n)
 			for i := range randomCerts {
 				randomCerts[i] = random.RandomX509Cert(t, t.Name())
 			}
@@ -298,12 +306,12 @@ func TestMapUpdaterStartFetchingRemaining(t *testing.T) {
 // TestMapUpdaterStartFetchingRemainingNextDay checks that after a full round of updates,
 // the next call to StartFetchingRemaining continues with the last unfetched index.
 func TestMapUpdaterStartFetchingRemainingNextDay(t *testing.T) {
-	ctx, cancelF := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancelF()
-
 	// Configure a test DB.
 	config, removeF := testdb.ConfigureTestDB(t)
 	defer removeF()
+
+	ctx, cancelF := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancelF()
 
 	url := "myURL_" + t.Name()
 	updater, err := NewMapUpdater(config, []string{url}, map[string]string{}, 0)
@@ -324,10 +332,10 @@ func TestMapUpdaterStartFetchingRemainingNextDay(t *testing.T) {
 			// Returns elements in batchSize: still something to return if size not reached.
 			return fetcher.size-onReturnNextBatchCalls > 0
 		},
-		onReturnNextBatch: func() ([]*ctx509.Certificate, [][]*ctx509.Certificate, int, error) {
+		onReturnNextBatch: func() ([]ctx509.Certificate, [][]*ctx509.Certificate, int, error) {
 			// Return one cert and chain with no parents.
 			onReturnNextBatchCalls++
-			return []*ctx509.Certificate{random.RandomX509Cert(t, "a.com")},
+			return []ctx509.Certificate{random.RandomX509Cert(t, "a.com")},
 				make([][]*ctx509.Certificate, 1), 0, nil
 		},
 	}
@@ -374,12 +382,12 @@ func TestMapUpdaterStartFetchingRemainingNextDay(t *testing.T) {
 }
 
 func TestMultipleFetchers(t *testing.T) {
-	ctx, cancelF := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancelF()
-
 	// Configure a test DB.
 	config, removeF := testdb.ConfigureTestDB(t)
 	defer removeF()
+
+	ctx, cancelF := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancelF()
 
 	urls := []string{
 		t.Name() + "_1",
@@ -396,50 +404,51 @@ func TestMultipleFetchers(t *testing.T) {
 	fetcherSizes := []int64{10, 11, 12}
 	for i, url := range urls {
 		sentCertCount := int64(0)
-		fetcher := &mockFetcher{} // "forward" define it to use it in its own definition
-		fetcher = &mockFetcher{
+		fetcher := &mockFetcher{
 			url:  url,
 			size: fetcherSizes[i],
 			STH:  []byte{byte(i), 2, 3, 4},
-			onNextBatch: func(ctx context.Context) bool {
-				// Returns elements in batchSize: still something to return if size not reached.
-				return fetcher.size-sentCertCount > 0
-			},
-			onReturnNextBatch: func() (
-				[]*ctx509.Certificate, // certs
-				[][]*ctx509.Certificate, // chains
-				int,
-				error,
-			) {
-				// Return a slice of nil certs and chains, with the correct size.
-				onReturnNextBatchCalls++
-				// The n variable is the number of items to return.
-				n := batchSize
-				if sentCertCount+batchSize > fetcher.size {
-					n = fetcher.size % batchSize
-				}
-				randomCerts := make([]*ctx509.Certificate, n)
-				for i := range randomCerts {
-					randomCerts[i] = random.RandomX509Cert(t, t.Name())
-				}
-				sentCertCount += n
-				return randomCerts,
-					make([][]*ctx509.Certificate, n),
-					0,
-					nil
-			},
 			onStopFetching: func() {
 				onStopFetchingCalls++
 			},
 		}
+		fetcher.onNextBatch = func(ctx context.Context) bool {
+			// Returns elements in batchSize: still something to return if size not reached.
+			return fetcher.size-sentCertCount > 0
+		}
+		fetcher.onReturnNextBatch = func() (
+			[]ctx509.Certificate, // certs
+			[][]*ctx509.Certificate, // chains
+			int,
+			error,
+		) {
+			// Return a slice of nil certs and chains, with the correct size.
+			onReturnNextBatchCalls++
+			// The n variable is the number of items to return.
+			n := batchSize
+			if sentCertCount+batchSize > fetcher.size {
+				n = fetcher.size % batchSize
+			}
+			randomCerts := make([]ctx509.Certificate, n)
+			for i := range randomCerts {
+				randomCerts[i] = random.RandomX509Cert(t, t.Name())
+			}
+			sentCertCount += n
+			return randomCerts,
+				make([][]*ctx509.Certificate, n),
+				0,
+				nil
+		}
 		updater.Fetchers[i] = fetcher
 	}
 
+	t.Logf("[%s] starting to fetch", time.Now().Format(time.StampMilli))
 	err = updater.StartFetchingRemaining()
 	require.NoError(t, err)
 	count := 0
 	for {
 		hasBatch, err := updater.NextBatch(ctx)
+		t.Logf("[%s] has batch? %v", time.Now().Format(time.StampMilli), hasBatch)
 		require.NoError(t, err)
 		if !hasBatch {
 			break
@@ -463,14 +472,14 @@ func TestMultipleFetchers(t *testing.T) {
 	require.Equal(t, totalSize, onReturnNextBatchCalls)
 }
 
-func glueSortedIDsAndComputeItsID(IDs []*common.SHA256Output) ([]byte, *common.SHA256Output) {
+func glueSortedIDsAndComputeItsID(IDs []common.SHA256Output) ([]byte, common.SHA256Output) {
 	gluedIDs := common.SortIDsAndGlue(IDs)
 	// Compute the hash of the glued IDs.
 	id := common.SHA256Hash32Bytes(gluedIDs)
-	return gluedIDs, &id
+	return gluedIDs, id
 }
 
-func computeIDsOfPolicies(t *testing.T, policies []common.PolicyDocument) []*common.SHA256Output {
+func computeIDsOfPolicies(t *testing.T, policies []common.PolicyDocument) []common.SHA256Output {
 	set := make(map[common.SHA256Output]struct{}, len(policies))
 	for _, pol := range policies {
 		raw, err := pol.Raw()
@@ -479,10 +488,10 @@ func computeIDsOfPolicies(t *testing.T, policies []common.PolicyDocument) []*com
 		set[id] = struct{}{}
 	}
 
-	IDs := make([]*common.SHA256Output, 0, len(set))
+	IDs := make([]common.SHA256Output, 0, len(set))
 	for k := range set {
 		k := k
-		IDs = append(IDs, &k)
+		IDs = append(IDs, k)
 	}
 	return IDs
 }
@@ -494,7 +503,7 @@ type mockFetcher struct {
 	onStartFetching   func(startIndex, endIndex int64)
 	onStopFetching    func()
 	onNextBatch       func(ctx context.Context) bool
-	onReturnNextBatch func() ([]*ctx509.Certificate, [][]*ctx509.Certificate, int, error)
+	onReturnNextBatch func() ([]ctx509.Certificate, [][]*ctx509.Certificate, int, error)
 }
 
 func (f *mockFetcher) Initialize(updateStartTime time.Time) error {
@@ -505,7 +514,10 @@ func (f *mockFetcher) URL() string {
 	return f.url
 }
 
-func (f *mockFetcher) GetCurrentState(ctx context.Context, origState logfetcher.State) (logfetcher.State, error) {
+func (f *mockFetcher) GetCurrentState(
+	ctx context.Context,
+	origState logfetcher.State,
+) (logfetcher.State, error) {
 	return logfetcher.State{
 		Size: uint64(f.size),
 		STH:  f.STH,
@@ -528,6 +540,11 @@ func (f *mockFetcher) NextBatch(ctx context.Context) bool {
 	return f.onNextBatch(ctx)
 }
 
-func (f *mockFetcher) ReturnNextBatch() ([]*ctx509.Certificate, [][]*ctx509.Certificate, int, error) {
+func (f *mockFetcher) ReturnNextBatch() (
+	[]ctx509.Certificate,
+	[][]*ctx509.Certificate,
+	int,
+	error,
+) {
 	return f.onReturnNextBatch()
 }

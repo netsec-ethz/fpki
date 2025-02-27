@@ -31,26 +31,34 @@ func UpdateDBwithRandomCerts(
 	conn db.Conn,
 	domains []string,
 	certsOrPolicies []CertsPoliciesOrBoth,
-) (certs []*ctx509.Certificate, policies []common.PolicyDocument,
-	IDs, parentIDs []*common.SHA256Output, names [][]string) {
+) (
+	// returns:
+	certs []ctx509.Certificate,
+	policies []common.PolicyDocument,
+	IDs []common.SHA256Output,
+	parentIDs []*common.SHA256Output,
+	names [][]string,
+) {
 
 	// Prepare the return variables.
-	certs = make([]*ctx509.Certificate, 0, 4*len(domains))
-	IDs = make([]*common.SHA256Output, 0, len(certs))
+	certs = make([]ctx509.Certificate, 0, 4*len(domains))
+	IDs = make([]common.SHA256Output, 0, len(certs))
 	parentIDs = make([]*common.SHA256Output, 0, len(certs))
 	names = make([][]string, 0, len(certs))
 	policies = make([]common.PolicyDocument, 0, len(certs))
 
 	// Generate and insert into DB the requested certificate hierarchies.
 	for i, domain := range domains {
-		var c []*ctx509.Certificate
-		var certIDs, parentCertIDs []*common.SHA256Output
+		var certsPerDomain []ctx509.Certificate
+		var certIDs []common.SHA256Output
+		var parentCertIDs []*common.SHA256Output
 		var domainNames [][]string
 		var pols []common.PolicyDocument
 
 		// Generate random hierarchies depending of the selection.
 		if certsOrPolicies[i] != PoliciesOnly {
-			c, certIDs, parentCertIDs, domainNames = random.BuildTestRandomCertHierarchy(t, domain)
+			certsPerDomain, certIDs, parentCertIDs, domainNames =
+				random.BuildTestRandomCertHierarchy(t, domain)
 		}
 		if certsOrPolicies[i] != CertsOnly {
 			pols = random.BuildTestRandomPolicyHierarchy(t, domain)
@@ -58,11 +66,11 @@ func UpdateDBwithRandomCerts(
 
 		// Insert all generated hierarchies into DB.
 		err := updater.UpdateWithKeepExisting(ctx, conn, domainNames, certIDs, parentCertIDs,
-			c, util.ExtractExpirations(c), pols)
+			certsPerDomain, util.ExtractExpirations(certsPerDomain), pols)
 		require.NoError(t, err)
 
 		// Add to return variables.
-		certs = append(certs, c...)
+		certs = append(certs, certsPerDomain...)
 		IDs = append(IDs, certIDs...)
 		parentIDs = append(parentIDs, parentCertIDs...)
 		names = append(names, domainNames...)
