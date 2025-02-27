@@ -66,3 +66,66 @@ to the table.
 6. Update the SMT with the material from (4), and using the domains in `dirty`.
 7. Store the `tree` table in DB.
 8. Truncate the `dirty` table.
+
+
+# Notes
+
+List last deadlock in mysql:
+```sql
+SHOW ENGINE INNODB STATUS \G
+```
+
+In Ubuntu, in order to be able to read files (necessary for LOAD DATA INFILE), we have to modify
+the apparmor configuration for the mysql daemon.
+
+```bash
+echo "# Site-specific additions and overrides for usr.sbin.mysqld.
+# For more details, please see /etc/apparmor.d/local/README.
+
+# Allow MySQL to read files from /tmp/ and /mnt/data/tmp/
+  /tmp/ r,
+  /tmp/** rw,
+  /mnt/data/tmp/ r,
+  /mnt/data/tmp/**  rw,
+" | sudo tee /etc/apparmor.d/local/usr.sbin.mysqld
+sudo sed -i 's/#include <local\/usr.sbin.mysqld>/include <local\/usr.sbin.mysqld>/' /etc/apparmor.d/usr.sbin.mysqld
+sudo systemctl restart apparmor.service
+```
+
+Some useful SQL to debug, etc:
+```sql
+-- Enable the general query log to capture all SQL statements sent to the MySQL server.
+-- This can be useful for identifying what queries are running at any given time,
+-- but it can also generate a lot of data.
+SET GLOBAL general_log = 'ON';
+SET GLOBAL general_log_file = '/tmp/query.log';
+
+-- Enable InnoDB monitors to get more detailed information about InnoDB's internal operations.
+-- This includes details about transactions and locks.
+SET GLOBAL innodb_status_output = 'ON';
+SET GLOBAL innodb_status_output_locks = 'ON';
+
+-- See currently running queries. This can help you identify long-running
+-- transactions and the queries they're executing.
+SHOW PROCESSLIST;
+```
+
+## Encountered bugs, etc
+
+Running UTs under `pkg/mapserver/updater`:
+```
+...
+2024-05-27T16:11:39.571043Z 0 [ERROR] [MY-012872] [InnoDB] [FATAL] Semaphore wait has lasted > 600 seconds. We intentionally crash the server because it appears to be hung.
+2024-05-27T16:11:39.571071Z 0 [ERROR] [MY-013183] [InnoDB] Assertion failure: srv0srv.cc:1878:ib::fatal triggered thread 140692931946048
+InnoDB: We intentionally generate a memory trap.
+InnoDB: Submit a detailed bug report to http://bugs.mysql.com.
+InnoDB: If you get repeated assertion failures or crashes, even
+InnoDB: immediately after the mysqld startup, there may be
+InnoDB: corruption in the InnoDB tablespace. Please refer to
+InnoDB: http://dev.mysql.com/doc/refman/8.0/en/forcing-innodb-recovery.html
+InnoDB: about forcing recovery.
+2024-05-27T16:11:39Z UTC - mysqld got signal 6 ;
+...
+```
+According to the `query.log` one UT was trying to create some tables.
+Maybe another UT was using the same DB and for some reason there was a deadlock?

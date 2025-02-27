@@ -2,16 +2,19 @@ package testdb
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"io"
 	"os/exec"
+	"strings"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
 	"github.com/netsec-ethz/fpki/pkg/tests"
 	"github.com/netsec-ethz/fpki/tools"
-	"github.com/stretchr/testify/require"
 )
 
 type Conn db.Conn
@@ -25,8 +28,7 @@ func Connect(t tests.T, config *db.Configuration) db.Conn {
 // ConfigureTestDB creates a new configuration and database with the name of the test, and
 // returns the configuration and the DB removal function that should be called with defer.
 func ConfigureTestDB(t tests.T) (*db.Configuration, func()) {
-	dbName := t.Name()
-	config := db.NewConfig(mysql.WithDefaults(), mysql.WithEnvironment(), db.WithDB(dbName))
+	dbName, config := configureTestDBOnly(t)
 
 	// New context to create the DB.
 	ctx, cancelF := context.WithTimeout(context.Background(), 2*time.Second)
@@ -38,13 +40,49 @@ func ConfigureTestDB(t tests.T) (*db.Configuration, func()) {
 
 	// Return the configuration and removal function.
 	removeFunc := func() {
-		ctx, cancelF := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancelF := context.WithTimeout(context.Background(), 30*time.Second)
 		err = removeTestDB(ctx, t, config)
 		require.NoError(t, err)
 		cancelF()
 	}
 
 	return config, removeFunc
+}
+
+func ConfigureTestDBOnly(t tests.T) *db.Configuration {
+	_, conf := configureTestDBOnly(t)
+	return conf
+}
+
+// ExistsDB is a quick and dirty hack to know if a db exists.
+func ExistsDB(t tests.T, dbName string) bool {
+	conn, err := sql.Open("mysql", "root@/sys")
+	require.NoError(t, err)
+	defer conn.Close()
+	row := conn.QueryRow(fmt.Sprintf(
+		"SELECT COUNT(*) FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = '%s'",
+		dbName))
+	require.NoError(t, row.Err())
+
+	var numDBs int
+	err = row.Scan(&numDBs)
+	require.NoError(t, err)
+
+	return numDBs >= 1
+}
+
+func configureTestDBOnly(t tests.T) (string, *db.Configuration) {
+	dbName := t.Name()
+	// Remove spurious characters.
+	dbName = strings.ReplaceAll(dbName, "/", "_")
+
+	config := db.NewConfig(
+		mysql.WithDefaults(),
+		mysql.WithLocalSocket("/var/run/mysqld/mysqld.sock"),
+		mysql.WithEnvironment(),
+		db.WithDB(dbName))
+
+	return dbName, config
 }
 
 // createTestDB creates a new and ready test DB with the same structure as the F-PKI one.
@@ -119,6 +157,7 @@ func createTestDB(ctx context.Context, dbName string) error {
 // removeTestDB removes a test DB that was created with CreateTestDB.
 func removeTestDB(ctx context.Context, t tests.T, config *db.Configuration) error {
 	conn := Connect(t, config)
+	defer conn.Close()
 	str := fmt.Sprintf("DROP DATABASE IF EXISTS %s", config.DBName)
 	_, err := conn.DB().ExecContext(ctx, str)
 	require.NoError(t, err, "error removing the database")

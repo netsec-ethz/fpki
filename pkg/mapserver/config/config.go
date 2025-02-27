@@ -9,11 +9,13 @@ import (
 )
 
 type Config struct {
-	CTLogServerURLs    []string
-	DBConfig           *db.Configuration
-	CertificatePemFile string // A X509 pem certificate
-	PrivateKeyPemFile  string // A RSA pem key
-	HttpAPIPort        int
+	CTLogServerURLs     []string
+	CertificateFolders  map[string]string
+	DBConfig            *db.Configuration
+	CertificatePemFile  string // A X509 pem certificate
+	PrivateKeyPemFile   string // A RSA pem key
+	HttpAPIPort         int
+	CsvIngestionMaxRows uint64
 
 	UpdateAt    util.TimeOfDayWrap
 	UpdateTimer util.DurationWrap

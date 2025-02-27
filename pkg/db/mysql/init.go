@@ -12,7 +12,7 @@ import (
 )
 
 // Connect: connect to db, using the config file
-func Connect(config *db.Configuration) (db.Conn, error) {
+func Connect(config *db.Configuration) (*mysqlDB, error) {
 	if config == nil {
 		return nil, fmt.Errorf("nil config not allowed")
 	}
@@ -31,8 +31,10 @@ func Connect(config *db.Configuration) (db.Conn, error) {
 	// This avoids routines creating connections to the DB and holding vast amounts of
 	// data (which impact the heap), and forcing to slow down the pipelines until the existing
 	// DB connections complete their work.
-	maxConnections := 8
+	// maxConnections := 8
+	maxConnections := 64 // deleteme ?
 	db.SetMaxOpenConns(maxConnections)
+	db.SetMaxIdleConns(maxConnections)
 
 	// Set the maximum idle connection time to a lower value than the mysql wait_timeout (8h) to
 	// ensure that idle connections that are closed by the mysql DB are not reused

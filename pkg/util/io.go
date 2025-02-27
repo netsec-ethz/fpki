@@ -73,25 +73,25 @@ func CertificateFromPEMFile(filename string) (*ctx509.Certificate, error) {
 		return nil, err
 	}
 	r := NewCertReader(f)
-	certs := make([]*ctx509.Certificate, 1)
+	certs := make([]ctx509.Certificate, 1)
 	_, err = r.Read(certs)
 	if err != nil {
 		return nil, err
 	}
 	// If no certificate was found, certs[0] will be nil.
-	return certs[0], nil
+	return &certs[0], nil
 }
 
 func CertificateFromPEMBytes(pem []byte) (*ctx509.Certificate, error) {
 	f := bytes.NewReader(pem)
 	r := NewCertReader(f)
-	certs := make([]*ctx509.Certificate, 1)
+	certs := make([]ctx509.Certificate, 1)
 	_, err := r.Read(certs)
 	if err != nil {
 		return nil, err
 	}
 	// If no certificate was found, certs[0] will be nil.
-	return certs[0], nil
+	return &certs[0], nil
 }
 
 // RSAKeyFromFile loads an RSA private key from file in PEM format.
@@ -157,8 +157,9 @@ func PolicyCertificateFromBytes(data []byte) (*common.PolicyCertificate, error) 
 // The returned names contains nil unless the corresponding certificate is a leaf certificate.
 func LoadCertsAndChainsFromCSV(
 	fileContents []byte,
-) (payloads []*ctx509.Certificate,
-	IDs []*common.SHA256Output,
+) (
+	payloads []ctx509.Certificate,
+	IDs []common.SHA256Output,
 	parentIDs []*common.SHA256Output,
 	names [][]string,
 	errRet error,
@@ -173,7 +174,7 @@ func LoadCertsAndChainsFromCSV(
 		errRet = err
 		return
 	}
-	leafs := make([]*ctx509.Certificate, 0, len(payloads))
+	leafs := make([]ctx509.Certificate, 0, len(payloads))
 	chains := make([][]*ctx509.Certificate, 0, len(payloads))
 	for _, fields := range records {
 		if len(fields) == 0 {
@@ -185,7 +186,7 @@ func LoadCertsAndChainsFromCSV(
 			errRet = err
 			return
 		}
-		leafs = append(leafs, cert)
+		leafs = append(leafs, *cert)
 
 		// Parse the chain.
 		// The certificate chain is a list of base64 strings separated by semicolon (;).

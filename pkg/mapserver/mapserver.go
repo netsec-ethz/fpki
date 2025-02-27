@@ -90,7 +90,8 @@ func NewMapServer(ctx context.Context, conf *config.Config) (*MapServer, error) 
 	}
 
 	// Create map updater.
-	updater, err := updater.NewMapUpdater(conf.DBConfig, conf.CTLogServerURLs)
+	updater, err := updater.NewMapUpdater(conf.DBConfig, conf.CTLogServerURLs,
+		conf.CertificateFolders, conf.CsvIngestionMaxRows)
 	if err != nil {
 		return nil, fmt.Errorf("error creating new map updater: %w", err)
 	}
@@ -261,7 +262,7 @@ func (s *MapServer) apiGetPayloads(w http.ResponseWriter, r *http.Request, retur
 			http.StatusBadRequest)
 		return
 	}
-	ids := make([]*common.SHA256Output, len(hexIDs)/common.SHA256Size/2)
+	ids := make([]common.SHA256Output, len(hexIDs)/common.SHA256Size/2)
 	for i := 0; i < len(ids); i++ {
 		h := hexIDs[i*common.SHA256Size*2 : (i+1)*common.SHA256Size*2]
 		id, err := hex.DecodeString(h)
@@ -269,7 +270,7 @@ func (s *MapServer) apiGetPayloads(w http.ResponseWriter, r *http.Request, retur
 			http.Error(w, fmt.Sprintf("not a hexadecimal ID: %s", h), http.StatusBadRequest)
 			return
 		}
-		ids[i] = (*common.SHA256Output)(id)
+		ids[i] = (common.SHA256Output)(id)
 	}
 
 	// Obtain the bytes.
@@ -316,7 +317,9 @@ func (s *MapServer) pruneAndUpdate(ctx context.Context) {
 // dirty domains, coming from both prune and update.
 func (s *MapServer) prune(ctx context.Context) error {
 	fmt.Printf("======== prune started  at %s\n", getTime())
-	defer fmt.Printf("======== prune finished at %s\n\n", getTime())
+	defer func() {
+		fmt.Printf("======== prune finished at %s\n\n", getTime())
+	}()
 
 	err := s.Updater.Conn.PruneCerts(ctx, time.Now())
 	if err != nil {
@@ -328,7 +331,9 @@ func (s *MapServer) prune(ctx context.Context) error {
 
 func (s *MapServer) update(ctx context.Context) error {
 	fmt.Printf("======== update started  at %s\n", getTime())
-	defer fmt.Printf("======== update finished at %s\n\n", getTime())
+	defer func() {
+		fmt.Printf("======== update finished at %s\n\n", getTime())
+	}()
 
 	if err := s.updateCerts(ctx); err != nil {
 		return fmt.Errorf("updating certs: %w", err)
@@ -356,26 +361,20 @@ func (s *MapServer) update(ctx context.Context) error {
 }
 
 func (s *MapServer) updateCerts(ctx context.Context) error {
-	if err := s.Updater.StartFetchingRemaining(); err != nil {
-		return fmt.Errorf("retrieving start and end indices: %w", err)
-	}
-	defer s.Updater.StopFetching()
+	// restart updater
+	s.Updater.StartFetchingRemaining()
 
 	// Main update loop.
-	start := time.Now()
-	for s.Updater.NextBatch(ctx) {
-		// print progress information
-		logUrl, currentIndex, maxIndex, err := s.Updater.GetProgress()
+	for {
+		hasBatch, err := s.Updater.NextBatch(ctx)
 		if err != nil {
-			return fmt.Errorf("retrieve progress: %s", err)
+			return fmt.Errorf("waiting for next batch of x509 certificates: %w", err)
 		}
-		fmt.Printf("Running updater for log %s in range (%d, %d)\n", logUrl, currentIndex, maxIndex)
+		if !hasBatch {
+			break
+		}
 
-		fetchDuration := time.Now().Sub(start)
-		start = time.Now()
-
-		n, err := s.Updater.UpdateNextBatch(ctx)
-		fmt.Printf("Fetched %d certs in %.2f seconds at %s\n", n, fetchDuration.Seconds(), getTime())
+		_, err = s.Updater.UpdateNextBatch(ctx)
 		if err != nil {
 			// We stop the loop here, as probably requires manual inspection of the logs, etc.
 			return fmt.Errorf("updating next batch of x509 certificates: %w", err)

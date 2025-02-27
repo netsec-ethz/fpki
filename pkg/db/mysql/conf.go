@@ -56,16 +56,24 @@ func WithLocalSocket(path string) db.ConfigurationModFunction {
 }
 
 func WithDefaults() db.ConfigurationModFunction {
+	// Notes:
+	// transaction_isolation: value corresponds to SET GLOBAL TRANSACTION ISOLATION LEVEL value
+	// autocommit is true per default. We want to ensure this, as it prevents the start of a new
+	//		transaction on every new connection, and we would need to commit on every statement,
+	//		to prevent interlocks when inserting data from multiple workers.
 	return func(c *db.Configuration) *db.Configuration {
 		defaults := map[string]string{
-			keyUser:             "root",
-			keyPassword:         "",
-			keyHost:             "127.0.0.1",
-			keyPort:             "",
-			"interpolateParams": "true", // 1 round trip per query
-			"collation":         "binary",
-			"maxAllowedPacket":  "1073741824", // 1G (cannot use "1G" as the driver uses Atoi)
-			"parseTime":         "true",       // driver parses DATETIME into time.Time
+			keyUser:                 "root",
+			keyPassword:             "",
+			keyHost:                 "127.0.0.1",
+			keyPort:                 "",
+			"interpolateParams":     "true", // 1 round trip per query
+			"collation":             "binary",
+			"maxAllowedPacket":      "1073741824", // 1G (cannot use "1G" as the driver uses Atoi)
+			"parseTime":             "true",       // driver parses DATETIME into time.Time
+			"transaction_isolation": "'READ-UNCOMMITTED'",
+			"autocommit":            "true", // each statement is a transaction. Otherwise
+			// we need to commit and could encounter inter locks with InnoDB.
 		}
 		for k, v := range defaults {
 			c.Values[k] = v

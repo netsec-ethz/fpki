@@ -100,6 +100,7 @@ func TestSplitE2LD(t *testing.T) {
 	}
 
 	for name, v := range test {
+		name, v := name, v
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			result, err := SplitE2LD(v.input)

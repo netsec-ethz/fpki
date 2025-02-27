@@ -12,7 +12,7 @@ func TestExtractCertDomains(t *testing.T) {
 	require.NoError(t, err)
 	r := NewCertReader(z)
 
-	certs := make([]*ctx509.Certificate, 5)
+	certs := make([]ctx509.Certificate, 5)
 	n, err := r.Read(certs)
 	require.NoError(t, err)
 	require.Equal(t, len(certs), n)
@@ -24,6 +24,6 @@ func TestExtractCertDomains(t *testing.T) {
 		{"www.knocknok-fashion.com", "knocknok-fashion.com"},
 	}
 	for i, names := range names {
-		require.ElementsMatch(t, names, ExtractCertDomains(certs[i]))
+		require.ElementsMatch(t, names, ExtractCertDomains(&certs[i]))
 	}
 }

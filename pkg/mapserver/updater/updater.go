@@ -26,22 +26,37 @@ type MapUpdater struct {
 	Fetchers []logfetcher.Fetcher
 	Conn     db.Conn
 
-	currFetcher int              // the fetcher being used once StartFetchingRemaining is called
-	lastState   logfetcher.State // last known server status
-	currState   logfetcher.State // the current status
+	updateStartTime        time.Time        // the time when the update process was started (used to decide whether to consider a certificate expired or not)
+	currFetcher            int              // the fetcher being used once StartFetchingRemaining is called
+	currFetcherInitialized bool             // false if the current fetcher has not yet been initialized by calling startNextFetcher()
+	origState              logfetcher.State // server status before starting the update process
+	lastState              logfetcher.State // the current DB status (tracking the current number of inserted certs)
+	targetState            logfetcher.State // the target status (tracking the maximum index of certs that we want to get from the fetcher)
 	// Don't use a Trie in memory. The updater just creates one when needed and disposes of it
 	// afterwards.
+
+	lastBatchFinished time.Time // the time when the last batch finished processing (only used for debugging/logging)
 }
 
 // NewMapUpdater: return a new map updater.
-func NewMapUpdater(config *db.Configuration, urls []string) (*MapUpdater, error) {
+func NewMapUpdater(
+	config *db.Configuration,
+	urls []string,
+	localCertificateFolders map[string]string,
+	csvIngestionMaxRows uint64,
+) (*MapUpdater, error) {
 	if len(urls) == 0 {
-		return nil, fmt.Errorf("No URLs")
+		return nil, fmt.Errorf("no URLs")
 	}
 	// db conn for map updater
 	dbConn, err := mysql.Connect(config)
 	if err != nil {
 		return nil, fmt.Errorf("NewMapUpdater | db.Connect | %w", err)
+	}
+
+	_, err = dbConn.DB().Exec("ALTER INSTANCE DISABLE INNODB REDO_LOG;")
+	if err != nil {
+		return nil, err
 	}
 
 	fetchers := make([]logfetcher.Fetcher, len(urls))
@@ -53,7 +68,11 @@ func NewMapUpdater(config *db.Configuration, urls []string) (*MapUpdater, error)
 		}
 		alreadyURLs[url] = struct{}{}
 		// Keep a new fetcher for the url.
-		fetchers[i], err = logfetcher.NewLogFetcher(url)
+		if folder, ok := localCertificateFolders[url]; ok {
+			fetchers[i], err = logfetcher.NewLocalLogFetcher(url, folder, csvIngestionMaxRows)
+		} else {
+			fetchers[i], err = logfetcher.NewHttpLogFetcher(url)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -65,30 +84,53 @@ func NewMapUpdater(config *db.Configuration, urls []string) (*MapUpdater, error)
 	}, nil
 }
 
-func (u *MapUpdater) GetProgress() (string, int, int, error) {
-	return u.Fetchers[u.currFetcher].URL(), int(u.lastState.Size), int(u.currState.Size), nil
+// GetProgress returns the URL of the current fetcher, four sizes for the log (those being
+// original, in DB, target and real sizes), and error.
+func (u *MapUpdater) GetProgress(ctx context.Context) (string, int, int, int, int, error) {
+	if u.currFetcher >= len(u.Fetchers) {
+		return "", 0, 0, 0, 0, nil
+	}
+	realState, err := u.Fetchers[u.currFetcher].GetCurrentState(ctx, u.origState)
+	if err != nil {
+		return "", 0, 0, 0, 0, err
+	}
+	return u.Fetchers[u.currFetcher].URL(),
+		int(u.origState.Size),
+		int(u.lastState.Size),
+		int(u.targetState.Size),
+		int(realState.Size),
+		nil
 }
 
-// StartFetchingRemaining retrieves the last stored index number for this CT log server, and the
-// current last index, and uses them to call StartFetching.
-// It returns an error if there was one retrieving the start or end indices.
+// StartFetchingRemaining resets updater to the current fetcher and restarts the fetching process
 func (u *MapUpdater) StartFetchingRemaining() error {
 	u.currFetcher = 0
-	ctx, cancelF := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancelF()
-
-	return u.startNextFetcher(ctx)
+	u.currFetcherInitialized = false
+	u.updateStartTime = time.Now()
+	fmt.Printf("Starting new update cycle at %s\n", u.updateStartTime.UTC().Format(time.RFC3339))
+	return nil
 }
 
-func (u *MapUpdater) StopFetching() {
-	if u.currFetcher < len(u.Fetchers) {
-		// Stop the previous fetcher.
+func (u *MapUpdater) NextBatch(ctx context.Context) (bool, error) {
+	// find next fetcher that has a batch available
+	for u.currFetcher < len(u.Fetchers) {
+		if !u.currFetcherInitialized {
+			err := u.startNextFetcher(ctx, u.updateStartTime)
+			if err != nil {
+				return false, err
+			}
+			u.currFetcherInitialized = true
+		}
+		if u.Fetchers[u.currFetcher].NextBatch(ctx) {
+			// if a next batch exists, return true
+			return true, nil
+		}
+		// otherwise stop the fetcher and prepare the next fetcher
 		u.Fetchers[u.currFetcher].StopFetching()
+		u.currFetcher++
+		u.currFetcherInitialized = false
 	}
-}
-
-func (u *MapUpdater) NextBatch(ctx context.Context) bool {
-	return u.currFetcher < len(u.Fetchers) && u.Fetchers[u.currFetcher].NextBatch(ctx)
+	return false, nil
 }
 
 // UpdateNextBatch downloads the next batch from the CT log server and updates the domain and
@@ -97,7 +139,7 @@ func (u *MapUpdater) NextBatch(ctx context.Context) bool {
 // inserting into the DB. See also NextBatch.
 func (u *MapUpdater) UpdateNextBatch(ctx context.Context) (int, error) {
 	fetcher := u.Fetchers[u.currFetcher]
-	certs, chains, err := fetcher.ReturnNextBatch()
+	certs, chains, excludedCerts, err := fetcher.ReturnNextBatch()
 	if err != nil {
 		return 0, fmt.Errorf("fetcher: %w", err)
 	}
@@ -116,7 +158,7 @@ func (u *MapUpdater) UpdateNextBatch(ctx context.Context) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("validity from CT log server: %w", err)
 	}
-	fmt.Printf("Verified validity of %d certs in %.2f seconds at %s\n", len(certs), time.Now().Sub(start).Seconds(), getTime())
+	verificationTime := time.Now().Sub(start).Seconds()
 
 	// Insert into DB.
 	start = time.Now()
@@ -124,19 +166,26 @@ func (u *MapUpdater) UpdateNextBatch(ctx context.Context) (int, error) {
 	if err != nil {
 		return n, err
 	}
-	fmt.Printf("Inserted %d certs into DB in %.2f seconds at %s\n", len(certs), time.Now().Sub(start).Seconds(), getTime())
+	insertionTime := time.Now().Sub(start).Seconds()
 
 	// Store the last status obtained from the fetcher as updated.
-	u.lastState.Size += uint64(n)
-	fmt.Printf("Storing new last status: %+v\n", u.lastState.Size)
-	if u.lastState.Size == u.currState.Size {
+	u.lastState.Size += uint64(n) + uint64(excludedCerts)
+
+	// print progress information
+	totalTime := time.Now().Sub(u.lastBatchFinished).Seconds()
+	u.lastBatchFinished = time.Now()
+	logUrl, origIndex, currentIndex, maxIndex, realMaxIndex, progressErr := u.GetProgress(ctx)
+
+	if progressErr != nil {
+		err = fmt.Errorf("error printing progress information: %s", err)
+	} else {
+		fmt.Printf("Batch with size %d (%d excluded) updated in %.2fs (%.2fs verifying, %.2fs inserting); log %s progress: (current %d [%.0f%%], target %d, real %d) at %s\n", n, excludedCerts, totalTime, verificationTime, insertionTime, logUrl, currentIndex, 100.0*(float64(currentIndex)-float64(origIndex))/(float64(maxIndex)-float64(origIndex)), maxIndex, realMaxIndex, getTime())
+	}
+	if u.lastState.Size == u.targetState.Size {
 		// Update the DB with all certs collected from this fetcher
 		err = u.Conn.UpdateLastCTlogServerState(ctx, fetcher.URL(),
-			int64(u.currState.Size),
-			u.currState.STH)
-		// Prepare the next fetcher:
-		u.currFetcher++
-		u.startNextFetcher(ctx)
+			int64(u.targetState.Size),
+			u.targetState.STH)
 	}
 
 	return n, err
@@ -150,16 +199,16 @@ func (u *MapUpdater) UpdateCertsLocally(
 	certChainList [][][]byte,
 ) error {
 
-	expirations := make([]*time.Time, 0, len(certList))
-	certs := make([]*ctx509.Certificate, 0, len(certList))
+	expirations := make([]time.Time, 0, len(certList))
+	certs := make([]ctx509.Certificate, 0, len(certList))
 	certChains := make([][]*ctx509.Certificate, 0, len(certList))
 	for i, certRaw := range certList {
 		cert, err := ctx509.ParseCertificate(certRaw)
 		if err != nil {
 			return err
 		}
-		certs = append(certs, cert)
-		expirations = append(expirations, &cert.NotAfter)
+		certs = append(certs, *cert)
+		expirations = append(expirations, cert.NotAfter)
 
 		chain := make([]*ctx509.Certificate, len(certChainList[i]))
 		for i, certChainItemRaw := range certChainList[i] {
@@ -192,16 +241,17 @@ func (u *MapUpdater) CoalescePayloadsForDirtyDomains(ctx context.Context) error 
 	return CoalescePayloadsForDirtyDomains(ctx, u.Conn)
 }
 
-func (u *MapUpdater) startNextFetcher(ctx context.Context) error {
-	if u.currFetcher > 0 && u.currFetcher-1 < len(u.Fetchers) {
-		// Stop the previous fetcher.
-		u.Fetchers[u.currFetcher-1].StopFetching()
-	}
+func (u *MapUpdater) startNextFetcher(ctx context.Context, updateStartTime time.Time) error {
 	if u.currFetcher >= len(u.Fetchers) {
 		return nil
 	}
 
 	fetcher := u.Fetchers[u.currFetcher]
+	err := fetcher.Initialize(updateStartTime)
+	if err != nil {
+		return fmt.Errorf("initializing fetcher %+v: %s", fetcher, err)
+	}
+
 	lastSize, lastSTH, err := u.Conn.LastCTlogServerState(ctx, fetcher.URL())
 	if err != nil {
 		return fmt.Errorf("getting the last retrieved index number from DB: %w", err)
@@ -209,23 +259,26 @@ func (u *MapUpdater) startNextFetcher(ctx context.Context) error {
 	// TODO(juagargi): use the fetcher's ctClient to get a new STH, and verify STH consistency
 	// between the new and the old heads.
 
-	u.lastState = logfetcher.State{
+	u.origState = logfetcher.State{
 		Size: uint64(lastSize),
 		STH:  lastSTH,
 	}
 
-	u.currState, err = fetcher.GetCurrentState(ctx)
+	u.lastState = u.origState
+
+	u.targetState, err = fetcher.GetCurrentState(ctx, u.origState)
 	if err != nil {
 		return fmt.Errorf("getting the size of the CT log server: %w", err)
 	}
 
-	fetcher.StartFetching(lastSize, int64(u.currState.Size)-1)
+	u.lastBatchFinished = time.Now()
+	fetcher.StartFetching(lastSize, int64(u.targetState.Size)-1)
 	return nil
 }
 
 func (u *MapUpdater) verifyValidity(
 	ctx context.Context,
-	leafCerts []*ctx509.Certificate,
+	leafCerts []ctx509.Certificate,
 	chains [][]*ctx509.Certificate,
 ) error {
 
@@ -240,7 +293,7 @@ func (u *MapUpdater) verifyValidity(
 
 func (u *MapUpdater) updateCertBatch(
 	ctx context.Context,
-	leafCerts []*ctx509.Certificate,
+	leafCerts []ctx509.Certificate,
 	chains [][]*ctx509.Certificate,
 ) error {
 
@@ -277,8 +330,10 @@ func (u *MapUpdater) updatePolicyCerts(
 }
 
 func UpdateWithOverwrite(ctx context.Context, conn db.Conn, domainNames [][]string,
-	certIDs, parentCertIDs []*common.SHA256Output,
-	certs []*ctx509.Certificate, certExpirations []*time.Time,
+	certIDs []common.SHA256Output,
+	parentCertIDs []*common.SHA256Output,
+	certs []ctx509.Certificate,
+	certExpirations []time.Time,
 	policies []common.PolicyDocument,
 ) error {
 
@@ -295,7 +350,7 @@ func UpdateWithOverwrite(ctx context.Context, conn db.Conn, domainNames [][]stri
 
 	// Insert all specified policies.
 	payloads = make([][]byte, len(policies))
-	policyIDs := make([]*common.SHA256Output, len(policies))
+	policyIDs := make([]common.SHA256Output, len(policies))
 	policySubjects := make([]string, len(policies))
 	for i, pol := range policies {
 		payload, err := common.ToJSON(pol)
@@ -303,8 +358,7 @@ func UpdateWithOverwrite(ctx context.Context, conn db.Conn, domainNames [][]stri
 			return err
 		}
 		payloads[i] = payload
-		id := common.SHA256Hash32Bytes(payload)
-		policyIDs[i] = &id
+		policyIDs[i] = common.SHA256Hash32Bytes(payload)
 		policySubjects[i] = pol.Domain()
 	}
 	err = insertPolicies(ctx, conn, policySubjects, policyIDs, payloads)
@@ -312,9 +366,14 @@ func UpdateWithOverwrite(ctx context.Context, conn db.Conn, domainNames [][]stri
 	return err
 }
 
-func UpdateWithKeepExisting(ctx context.Context, conn db.Conn, domainNames [][]string,
-	certIDs, parentCertIDs []*common.SHA256Output,
-	certs []*ctx509.Certificate, certExpirations []*time.Time,
+func UpdateWithKeepExisting(
+	ctx context.Context,
+	conn db.Conn,
+	domainNames [][]string,
+	certIDs []common.SHA256Output,
+	parentCertIDs []*common.SHA256Output,
+	certs []ctx509.Certificate,
+	certExpirations []time.Time,
 	policies []common.PolicyDocument,
 ) error {
 
@@ -346,7 +405,7 @@ func UpdateWithKeepExisting(ctx context.Context, conn db.Conn, domainNames [][]s
 
 	// Prepare data structures for the policies.
 	payloads = make([][]byte, len(policies))
-	policyIDs := make([]*common.SHA256Output, len(policies))
+	policyIDs := make([]common.SHA256Output, len(policies))
 	policySubjects := make([]string, len(policies))
 	for i, pol := range policies {
 		payload, err := pol.Raw()
@@ -354,8 +413,7 @@ func UpdateWithKeepExisting(ctx context.Context, conn db.Conn, domainNames [][]s
 			return err
 		}
 		payloads[i] = payload
-		id := common.SHA256Hash32Bytes(payload)
-		policyIDs[i] = &id
+		policyIDs[i] = common.SHA256Hash32Bytes(payload)
 		policySubjects[i] = pol.Domain()
 	}
 	// Check which policies are already present in the DB.
@@ -385,33 +443,98 @@ func CoalescePayloadsForDirtyDomains(ctx context.Context, conn db.Conn) error {
 	return nil
 }
 
-func UpdateSMTfromDomains(
+// updateSMTfromDirty updates the SMT splitting the dirty domain IDs in bundles, whose size
+// is controlled by the max_bundle_size argument.
+// Each one of the updates to obtain the IDs, update SMT and commit tree is done SEQUENTIALLY.
+func updateSMTfromDirty(
 	ctx context.Context,
 	conn db.Conn,
 	smtTrie *trie.Trie,
-	domainIDs []*common.SHA256Output,
+	max_bundle_size uint64,
 ) error {
 
-	// Read those certificates:
-	entries, err := conn.RetrieveDomainEntries(ctx, domainIDs)
+	// We split the certificates into bundles.
+	count, err := conn.DirtyCount(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("obtaining dirty domains count: %w", err)
 	}
+	bundleCount := count / max_bundle_size
+	for i := uint64(0); i <= bundleCount; i++ {
+		// Read those certificates:
+		s := i * max_bundle_size
+		e := min(s+max_bundle_size, count)
+		fmt.Printf("smt.updateSMTfromDirty [%s]: retrieving certs from DB\n"+
+			"\t\t[%8d,%8d) %3d/%3d\n", time.Now().Format(time.Stamp), s, e, i+1, bundleCount+1)
+		entries, err := conn.RetrieveDomainEntriesDirtyOnes(ctx, s, e)
+		if err != nil {
+			return err
+		}
+		err = updateSMTfromKeyValues(ctx, smtTrie, entries)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func updateSMTfromDomains(
+	ctx context.Context,
+	conn db.Conn,
+	smtTrie *trie.Trie,
+	domainIDs []common.SHA256Output,
+	max_bundle_size int,
+) error {
+
+	// We split the certificates into bundles.
+	bundleCount := len(domainIDs) / max_bundle_size
+	for i := 0; i <= bundleCount; i++ {
+		// Read those certificates:
+		s := i * max_bundle_size
+		e := min(s+max_bundle_size, len(domainIDs))
+		fmt.Printf("smt.updateSMTfromDomains [%s]: retrieving certs from DB\n"+
+			"\t\t[%8d,%8d) %3d/%3d\n", time.Now().Format(time.Stamp), s, e, i+1, bundleCount+1)
+		entries, err := conn.RetrieveDomainEntries(ctx, domainIDs[s:e])
+		if err != nil {
+			return err
+		}
+		fmt.Printf("smt.updateSMTfromDomains [%s]: got certs from DB\n", time.Now().Format(time.Stamp))
+
+		err = updateSMTfromKeyValues(ctx, smtTrie, entries)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func updateSMTfromKeyValues(
+	ctx context.Context,
+	smtTrie *trie.Trie,
+	entries []db.KeyValuePair,
+) error {
+
+	// Adapt data type.
 	keys, values, err := keyValuePairToSMTInput(entries)
 	if err != nil {
 		return err
 	}
+	fmt.Printf("\nsmt.updateSMTfromKeyValues [%s]: keys and values obtained\n", time.Now().Format(time.Stamp))
 
 	// Update the tree.
 	_, err = smtTrie.Update(ctx, keys, values)
 	if err != nil {
 		return err
 	}
+	fmt.Printf("\nsmt.updateSMTfromKeyValues [%s]: in-memory tree updated\n", time.Now().Format(time.Stamp))
+
 	// And update the tree in the DB.
 	err = smtTrie.Commit(ctx)
+	// TODO: clean records on the `dirty` table that correspond to [s:e]
 	if err != nil {
 		return err
 	}
+	fmt.Printf("\nsmt.updateSMTfromKeyValues [%s]: tree committed to DB\n", time.Now().Format(time.Stamp))
 	return nil
 }
 
@@ -424,28 +547,46 @@ func UpdateSMT(ctx context.Context, conn db.Conn) error {
 	if err != nil {
 		return err
 	}
+	fmt.Printf("smt [%s]: root loaded\n", time.Now().Format(time.Stamp))
+
 	// Load SMT.
 	smtTrie, err := trie.NewTrie(root, common.SHA256Hash, conn)
 	if err != nil {
 		return fmt.Errorf("with root \"%s\", creating NewTrie: %w", hex.EncodeToString(root), err)
 	}
 	// smtTrie.CacheHeightLimit = 32
+	fmt.Printf("smt [%s]: tree created\n", time.Now().Format(time.Stamp))
 
-	// Get the dirty domains.
-	domains, err := conn.RetrieveDirtyDomains(ctx)
+	// Commented out: testing if the in-db join-with-dirty table is faster.
+
+	// // Get the dirty domains.
+	// domains, err := conn.RetrieveDirtyDomains(ctx)
+	// if err != nil {
+	// 	return err
+	// }
+	// fmt.Printf("smt [%s]: dirty domains loaded\n", time.Now().Format(time.Stamp))
+
+	// err = updateSMTfromDomains(ctx, conn, smtTrie, domains, 1_000_000)
+	// if err != nil {
+	// 	return err
+	// }
+
+	// Updating SMT directly from dirty table.
+	err = updateSMTfromDirty(ctx, conn, smtTrie, 1_000_000)
 	if err != nil {
 		return err
 	}
-	err = UpdateSMTfromDomains(ctx, conn, smtTrie, domains)
-	if err != nil {
-		return err
-	}
+
+	fmt.Printf("\nsmt [%s]: SMT updated\n", time.Now().Format(time.Stamp))
 
 	// Save root value:
-	err = conn.SaveRoot(ctx, (*common.SHA256Output)(smtTrie.Root))
-	if err != nil {
-		return err
+	if smtTrie.Root != nil {
+		err = conn.SaveRoot(ctx, (*common.SHA256Output)(smtTrie.Root))
+		if err != nil {
+			return err
+		}
 	}
+	fmt.Printf("smt [%s]: new root saved\n", time.Now().Format(time.Stamp))
 
 	return nil
 }
@@ -460,19 +601,31 @@ func loadRoot(ctx context.Context, conn db.Conn) ([]byte, error) {
 	return root, nil
 }
 
-func insertCerts(ctx context.Context, conn db.Conn, names [][]string,
-	ids, parentIDs []*common.SHA256Output, expirations []*time.Time, payloads [][]byte) error {
+func insertCerts(
+	ctx context.Context,
+	conn db.Conn,
+	names [][]string,
+	ids []common.SHA256Output,
+	parentIDs []*common.SHA256Output,
+	expirations []time.Time,
+	payloads [][]byte,
+) error {
+
+	if len(ids) == 0 {
+		return nil
+	}
 
 	// Send hash, parent hash, expiration and payload to the certs table.
 	if err := conn.UpdateCerts(ctx, ids, parentIDs, expirations, payloads); err != nil {
 		return fmt.Errorf("inserting certificates: %w", err)
 	}
+	// around 3 seconds for this ^^ (100K certs)
 
 	// Add new entries from names into the domains table iff they are leaves.
 	estimatedSize := len(ids) * 2 // Number of IDs / 3 ~~ is the number of leaves. 6 names per leaf.
 	newNames := make([]string, 0, estimatedSize)
-	newIDs := make([]*common.SHA256Output, 0, estimatedSize)
-	domainIDs := make([]*common.SHA256Output, 0, estimatedSize)
+	newIDs := make([]common.SHA256Output, 0, estimatedSize)
+	domainIDs := make([]common.SHA256Output, 0, estimatedSize)
 	for i, names := range names {
 		// Iff the certificate is a leaf certificate it will have a non-nil names slice: insert
 		// one entry per name.
@@ -480,30 +633,41 @@ func insertCerts(ctx context.Context, conn db.Conn, names [][]string,
 			newNames = append(newNames, name)
 			newIDs = append(newIDs, ids[i])
 			domainID := common.SHA256Hash32Bytes([]byte(name))
-			domainIDs = append(domainIDs, &domainID)
+			domainIDs = append(domainIDs, domainID)
 		}
 	}
 	// Push the changes of the domains to the DB.
+	if err := conn.InsertDomainsIntoDirty(ctx, domainIDs); err != nil {
+		return fmt.Errorf("updating domains: %w", err)
+	}
 	if err := conn.UpdateDomains(ctx, domainIDs, newNames); err != nil {
 		return fmt.Errorf("updating domains: %w", err)
 	}
 	if err := conn.UpdateDomainCerts(ctx, domainIDs, newIDs); err != nil {
 		return fmt.Errorf("updating domain_certs: %w", err)
 	}
+	// around 8 seconds for this ^^ (100K certs)
 
 	return nil
 }
 
-func insertPolicies(ctx context.Context, conn db.Conn, names []string, ids []*common.SHA256Output,
+func insertPolicies(ctx context.Context, conn db.Conn, names []string, ids []common.SHA256Output,
 	payloads [][]byte) error {
+
+	if len(ids) == 0 {
+		return nil
+	}
 
 	// TODO(juagargi) use parent IDs for the policies
 
 	// Push the changes of the domains to the DB.
-	domainIDs := make([]*common.SHA256Output, len(names))
+	domainIDs := make([]common.SHA256Output, len(names))
 	for i, name := range names {
-		domainID := common.SHA256Hash32Bytes([]byte(name))
-		domainIDs[i] = &domainID
+		domainIDs[i] = common.SHA256Hash32Bytes([]byte(name))
+	}
+
+	if err := conn.InsertDomainsIntoDirty(ctx, domainIDs); err != nil {
+		return fmt.Errorf("inserting domains in dirty: %w", err)
 	}
 	if err := conn.UpdateDomains(ctx, domainIDs, names); err != nil {
 		return fmt.Errorf("updating domains: %w", err)
@@ -513,10 +677,10 @@ func insertPolicies(ctx context.Context, conn db.Conn, names []string, ids []*co
 	// Sequence of nil parent ids:
 	parents := make([]*common.SHA256Output, len(ids))
 	// Sequence of expiration times way in the future:
-	expirations := make([]*time.Time, len(ids))
+	expirations := make([]time.Time, len(ids))
 	for i := range expirations {
 		t := time.Date(3000, 1, 1, 0, 0, 0, 0, time.UTC) // TODO(juagargi) use real expirations.
-		expirations[i] = &t
+		expirations[i] = t
 	}
 	// Update policies:
 	if err := conn.UpdatePolicies(ctx, ids, parents, expirations, payloads); err != nil {
@@ -547,7 +711,7 @@ func runWhenFalse(mask []bool, fcn func(to, from int)) int {
 // deleteme TODO this function takes the payload and computes the hash of it. The hash is already
 // stored in the DB with the new design: change both the function RetrieveDomainEntries and
 // remove the hashing from this keyValuePairToSMTInput function.
-func keyValuePairToSMTInput(keyValuePair []*db.KeyValuePair) ([][]byte, [][]byte, error) {
+func keyValuePairToSMTInput(keyValuePair []db.KeyValuePair) ([][]byte, [][]byte, error) {
 	type inputPair struct {
 		Key   [32]byte
 		Value []byte

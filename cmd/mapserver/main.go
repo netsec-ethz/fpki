@@ -19,7 +19,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
-const VERSION = "0.1.0"
+const VERSION = "0.2.1"
 
 const waitForExitBeforePanicTime = 10 * time.Second
 
@@ -138,11 +138,12 @@ func writeSampleConfig() error {
 		mysql.WithLocalSocket("/var/run/mysqld/mysqld.sock"),
 	)
 	conf := &config.Config{
-		DBConfig:           dbConfig,
-		CTLogServerURLs:    []string{"https://ct.googleapis.com/logs/xenon2023/"},
-		CertificatePemFile: "tests/testdata/servercert.pem",
-		PrivateKeyPemFile:  "tests/testdata/serverkey.pem",
-		HttpAPIPort:        8443,
+		DBConfig:            dbConfig,
+		CTLogServerURLs:     []string{"https://ct.googleapis.com/logs/xenon2023/"},
+		CertificatePemFile:  "tests/testdata/servercert.pem",
+		PrivateKeyPemFile:   "tests/testdata/serverkey.pem",
+		HttpAPIPort:         8443,
+		CsvIngestionMaxRows: 1000 * 1000,
 
 		UpdateAt: util.NewTimeOfDay(3, 00, 00, 00),
 		UpdateTimer: util.DurationWrap{
@@ -189,7 +190,7 @@ func runWithConfig(
 		return fmt.Errorf("error converting public key to DER base64: %w", err)
 	}
 	if root == nil {
-		fmt.Printf("Running empy map server (%s) with public key: %s\n", VERSION, base64PublicKey)
+		fmt.Printf("Running empty map server (%s) with public key: %s\n", VERSION, base64PublicKey)
 	} else {
 		fmt.Printf("Running map server (%s) with root: %x and public key: %s\n", VERSION, *root, base64PublicKey)
 	}

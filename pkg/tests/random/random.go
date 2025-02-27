@@ -2,6 +2,7 @@ package random
 
 import (
 	"crypto/rsa"
+	"fmt"
 	"io"
 	"math/big"
 	"math/rand"
@@ -12,8 +13,11 @@ import (
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/tests"
+	"github.com/netsec-ethz/fpki/pkg/util"
 	"github.com/stretchr/testify/require"
 )
+
+var keyCreatingRandomCerts = RandomRSAPrivateKey(tests.NewTestObject("test_RSA_key"))
 
 // randReader is a type implementing io.Reader which _fools_ `rsa.GenerateKey` to always generate
 // reproducible keys if the random source is deterministic (reproducible).
@@ -43,11 +47,40 @@ func RandomBytesForTest(t tests.T, size int) []byte {
 	return buff
 }
 
-var keyCreatingRandomCerts = RandomRSAPrivateKey(tests.NewTestObject("test_RSA_key"))
+func RandomIDsForTest(t tests.T, size int) []common.SHA256Output {
+	IDs := make([]common.SHA256Output, size)
+	for i := 0; i < size; i++ {
+		// Random, valid IDs.
+		copy(IDs[i][:], RandomBytesForTest(t, common.SHA256Size))
+	}
+	return IDs
+}
+
+func RandomIDPtrsForTest(t tests.T, size int) []*common.SHA256Output {
+	ids := RandomIDsForTest(t, size)
+	idPtrs := make([]*common.SHA256Output, size)
+	for i := range ids {
+		idPtrs[i] = &ids[i]
+	}
+	return idPtrs
+}
+
+func RandomLeafNames(t tests.T, N int) []string {
+	padding := util.Log2(uint(N))
+	// Dynamic format string: as many padding zeroes as indicated by padding, e.g. leaf-%03d .
+	format := fmt.Sprintf("leaf-%%0%dd", padding)
+
+	names := make([]string, N)
+	for i := 0; i < N; i++ {
+		// Dynamic format string: as many padding zeroes as indicated by the variable `p` :
+		names[i] = fmt.Sprintf(format, i)
+	}
+	return names
+}
 
 // RandomX509Cert creates a random x509 certificate, with correct ASN.1 DER representation.
-func RandomX509Cert(t tests.T, domain string) *ctx509.Certificate {
-	template := &ctx509.Certificate{
+func RandomX509Cert(t tests.T, domain string) ctx509.Certificate {
+	template := ctx509.Certificate{
 		SerialNumber: big.NewInt(rand.Int63()),
 		Subject: pkix.Name{
 			CommonName: domain,
@@ -59,8 +92,8 @@ func RandomX509Cert(t tests.T, domain string) *ctx509.Certificate {
 	}
 	derBytes, err := ctx509.CreateCertificate(
 		NewRandReader(),
-		template,
-		template,
+		&template,
+		&template,
 		&keyCreatingRandomCerts.PublicKey,
 		keyCreatingRandomCerts,
 	)
@@ -91,34 +124,170 @@ func BuildTestRandomPolicyHierarchy(t tests.T, domainName string) []common.Polic
 // chains: the first chain is domainName->c1.com->c0.com , and the second chain is
 // domainName->c0.com .
 func BuildTestRandomCertHierarchy(t tests.T, domainName string) (
-	certs []*ctx509.Certificate, IDs, parentIDs []*common.SHA256Output, names [][]string) {
+	// returns:
+	certs []ctx509.Certificate,
+	IDs []common.SHA256Output,
+	parentIDs []*common.SHA256Output,
+	names [][]string,
+) {
 
 	// Create all certificates.
-	certs = make([]*ctx509.Certificate, 4)
+	certs = make([]ctx509.Certificate, 4)
 	certs[0] = RandomX509Cert(t, "c0.com")
 	certs[1] = RandomX509Cert(t, "c1.com")
 	certs[2] = RandomX509Cert(t, domainName)
 	certs[3] = RandomX509Cert(t, domainName)
 
 	// IDs:
-	IDs = make([]*common.SHA256Output, len(certs))
+	IDs = make([]common.SHA256Output, len(certs))
 	for i, c := range certs {
 		id := common.SHA256Hash32Bytes(c.Raw)
-		IDs[i] = &id
+		IDs[i] = id
 	}
-
-	// Names: only c2 and c3 are leaves, the rest should be nil.
-	names = make([][]string, len(certs))
-	names[2] = certs[2].DNSNames
-	names[3] = certs[3].DNSNames
+	names = [][]string{
+		{"c0.com"},
+		{"c1.com"},
+		certs[2].DNSNames,
+		certs[3].DNSNames,
+	}
 
 	// Parent IDs.
 	parentIDs = make([]*common.SHA256Output, len(certs))
 	// First chain:
-	parentIDs[1] = IDs[0]
-	parentIDs[2] = IDs[1]
+	parentIDs[1] = &IDs[0]
+	parentIDs[2] = &IDs[1]
 	// Second chain:
-	parentIDs[3] = IDs[0]
+	parentIDs[3] = &IDs[0]
+
+	return
+}
+
+// BuildTestRandomCertTree returns a test certificate tree.
+//
+//	           c0
+//	           |
+//	           c1
+//	    /     /      \
+//	   |      |       |
+//	leaf1   leaf2   leaf3 .....
+//
+// These are the return values:
+// certs[0] = c0
+// certs[1] = c1
+// certs[2] = leaves[0]
+// certs[3] = c0
+// certs[4] = c1
+// certs[5] = leaves[1]
+// etc.
+// certs[0] == certs[3] and so on.
+func BuildTestRandomCertTree(t tests.T, domainNames ...string) (
+	// returns:
+	certs []ctx509.Certificate,
+	IDs []common.SHA256Output,
+	parentIDs []*common.SHA256Output,
+	names [][]string,
+) {
+	// Reserve return values: 3 entries per domain name.
+	N := len(domainNames) * 3
+	certs = make([]ctx509.Certificate, N)
+	IDs = make([]common.SHA256Output, N)
+	parentIDs = make([]*common.SHA256Output, N)
+	names = make([][]string, N)
+
+	// Create the ancestry.
+	name0 := "c0.com"
+	name1 := "c1.com"
+	c0 := RandomX509Cert(t, name0)
+	c1 := RandomX509Cert(t, name1)
+	id0 := common.SHA256Hash32Bytes(c0.Raw)
+	id1 := common.SHA256Hash32Bytes(c1.Raw)
+
+	// For each leaf:
+	for i, leaf := range domainNames {
+		c0 := c0
+		c1 := c1
+		c := RandomX509Cert(t, leaf)
+		certs[i*3+0] = c0
+		certs[i*3+1] = c1
+		certs[i*3+2] = c
+
+		id0 := id0
+		id1 := id1
+		id := common.SHA256Hash32Bytes(c.Raw)
+		IDs[i*3+0] = id0
+		IDs[i*3+1] = id1
+		IDs[i*3+2] = id
+
+		parentIDs[i*3+0] = nil
+		parentIDs[i*3+1] = &id0
+		parentIDs[i*3+2] = &id1
+
+		names[i*3+0] = c0.DNSNames
+		names[i*3+1] = c1.DNSNames
+		names[i*3+2] = c.DNSNames
+	}
+
+	return
+}
+
+// BuildTestRandomUniqueCertsTree returns a set of unique certificates.
+// This function is similar to BuildTestRandomCertTree but it never returns the same ID twice.
+//
+//	           c0
+//	           |
+//	           c1
+//	    /     /      \
+//	   |      |       |
+//	leaf1   leaf2   leaf3 .....
+//
+// These are the return values:
+// certs[0] = c0
+// certs[1] = c1
+// certs[2] = leaves[0]
+// certs[3] = leaves[2]
+// certs[4] = leaves[3]
+// etc.
+func BuildTestRandomUniqueCertsTree(t tests.T, domainNames ...string) (
+	// returns:
+	certs []ctx509.Certificate,
+	IDs []common.SHA256Output,
+	parentIDs []*common.SHA256Output,
+	names [][]string,
+) {
+	// Reserve return values: 2 entries for parents, plus leaves.
+	N := len(domainNames) + 2
+	certs = make([]ctx509.Certificate, N)
+	IDs = make([]common.SHA256Output, N)
+	parentIDs = make([]*common.SHA256Output, N)
+	names = make([][]string, N)
+
+	// Create the ancestry.
+	name0 := "c0.com"
+	name1 := "c1.com"
+	c0 := RandomX509Cert(t, name0)
+	c1 := RandomX509Cert(t, name1)
+	id0 := common.SHA256Hash32Bytes(c0.Raw)
+	id1 := common.SHA256Hash32Bytes(c1.Raw)
+	// Store the ancestry.
+	names[0] = c0.DNSNames
+	names[1] = c1.DNSNames
+	certs[0] = c0
+	certs[1] = c1
+	IDs[0] = id0
+	IDs[1] = id1
+	parentIDs[0] = nil
+	parentIDs[1] = &id0
+
+	// For each leaf:
+	for i, leaf := range domainNames {
+		c := RandomX509Cert(t, leaf)
+		id := common.SHA256Hash32Bytes(c.Raw)
+
+		certs[i+2] = c
+		IDs[i+2] = id
+		parentIDs[i+2] = &id1
+		names[i+2] = c.DNSNames
+	}
 
 	return
 }
@@ -227,7 +396,7 @@ func RandomPolicyCertificateRevocation(t tests.T) *common.PolicyCertificateRevoc
 	)
 }
 
-// RandomRSAPrivateKey generates a NON-cryptographycally secure RSA private key.
+// RandomRSAPrivateKey generates a NON-cryptographically secure RSA private key.
 func RandomRSAPrivateKey(t tests.T) *rsa.PrivateKey {
 	privateKeyPair, err := rsa.GenerateKey(NewRandReader(), 2048)
 	require.NoError(t, err)

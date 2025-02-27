@@ -15,7 +15,7 @@ func TestCertWriter(t *testing.T) {
 	// Load three certificates.
 	N := 3
 	r := NewCertReader(bytes.NewBuffer(payload))
-	certs := make([]*ctx509.Certificate, N)
+	certs := make([]ctx509.Certificate, N)
 	n, err := r.Read(certs)
 	require.NoError(t, err)
 	require.Equal(t, N, n)

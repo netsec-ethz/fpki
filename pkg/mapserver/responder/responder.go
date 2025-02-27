@@ -84,7 +84,7 @@ func (r *MapResponder) GetProof(ctx context.Context, domainName string,
 		// If it is a proof of presence, obtain the payload.
 		de := &mapCommon.DomainEntry{
 			DomainName: domainPart,
-			DomainID:   &domainPartID,
+			DomainID:   domainPartID,
 		}
 		proofType := mapCommon.PoA
 		if isPoP {
@@ -104,7 +104,7 @@ func (r *MapResponder) GetProof(ctx context.Context, domainName string,
 			allIDs := append(common.BytesToIDs(de.CertIDs), common.BytesToIDs(de.PolicyIDs)...)
 			v := common.SortIDsAndGlue(allIDs)
 			vID := common.SHA256Hash32Bytes(v)
-			de.DomainValue = &vID
+			de.DomainValue = vID
 
 			// TODO(juagargi) the sorting and concatenation should happen inside the DB.
 		}

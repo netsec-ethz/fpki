@@ -144,7 +144,7 @@ func checkProof(t *testing.T, payloadID *common.SHA256Output, proofs []*mapcommo
 			// The ID passed as argument must be one of the IDs present in the domain entry.
 			allIDs := append(common.BytesToIDs(proof.DomainEntry.CertIDs),
 				common.BytesToIDs(proof.DomainEntry.PolicyIDs)...)
-			require.Contains(t, allIDs, payloadID)
+			require.Contains(t, allIDs, *payloadID)
 		}
 	}
 }

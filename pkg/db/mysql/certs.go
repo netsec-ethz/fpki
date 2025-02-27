@@ -3,16 +3,23 @@ package mysql
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
+	tr "github.com/netsec-ethz/fpki/pkg/tracing"
 )
+
+const CsvBufferSize = 64 * 1024 * 1024 // 64MB
+
+const TemporaryDir = "/mnt/data/tmp"
 
 // CheckCertsExist returns a slice of true/false values. Each value indicates if
 // the corresponding certificate identified by its ID is already present in the DB.
-func (c *mysqlDB) CheckCertsExist(ctx context.Context, ids []*common.SHA256Output) ([]bool, error) {
+func (c *mysqlDB) CheckCertsExist(ctx context.Context, ids []common.SHA256Output) ([]bool, error) {
 	if len(ids) == 0 {
 		// If empty, return empty.
 		return nil, nil
@@ -36,17 +43,102 @@ func (c *mysqlDB) CheckCertsExist(ctx context.Context, ids []*common.SHA256Outpu
 	return presence, err
 }
 
-func (c *mysqlDB) UpdateCerts(ctx context.Context, ids, parents []*common.SHA256Output,
-	expirations []*time.Time, payloads [][]byte) error {
+func (c *mysqlDB) UpdateCerts(
+	ctx context.Context,
+	ids []common.SHA256Output,
+	parents []*common.SHA256Output,
+	expirations []time.Time,
+	payloads [][]byte,
+) error {
+	return c.updateCertsCSV(ctx, ids, parents, expirations, payloads)
+}
+
+func (c *mysqlDB) InsertCsvIntoCerts(ctx context.Context, filename string) error {
+	_, err := loadCertsTableWithCSV(ctx, c.db, filename)
+	return err
+}
+
+func (c *mysqlDB) updateCertsCSV(
+	ctx context.Context,
+	ids []common.SHA256Output,
+	parents []*common.SHA256Output,
+	expirations []time.Time,
+	payloads [][]byte,
+) error {
+	// Remove duplicates for the dirty table insertion.
+	tracer := tr.GetTracer("db")
+
+	var records [][]string
+	{
+		// Prepare the records for the CSV file.
+		_, span := tracer.Start(ctx, "prepare-records")
+
+		records = make([][]string, len(ids))
+		for i := 0; i < len(ids); i++ {
+			records[i] = make([]string, 4)
+			records[i][0] = base64.StdEncoding.EncodeToString(ids[i][:])
+			if parents[i] != nil {
+				records[i][1] = base64.StdEncoding.EncodeToString(parents[i][:])
+			}
+			records[i][2] = expirations[i].Format(time.DateTime)
+			records[i][3] = base64.StdEncoding.EncodeToString(payloads[i])
+		}
+
+		span.End()
+	}
+
+	var tempfile *os.File
+	{
+		// Create temporary file.
+		_, span := tracer.Start(ctx, "create-csv")
+
+		var err error
+		tempfile, err = os.CreateTemp(TemporaryDir, "fpki-ingest-certs-*.csv")
+		if err != nil {
+			return fmt.Errorf("creating temporary file: %w", err)
+		}
+		defer os.Remove(tempfile.Name())
+		tr.SetAttrString(span, "filename", tempfile.Name())
+
+		// Write data to CSV file.
+		if err = writeToCSV(tempfile, records); err != nil {
+			return err
+		}
+
+		span.End()
+	}
+
+	{
+		// Now instruct MySQL to directly ingest this file into the certs table.
+		_, span := tracer.Start(ctx, "insert-into-table")
+
+		if _, err := loadCertsTableWithCSV(ctx, c.db, tempfile.Name()); err != nil {
+			return fmt.Errorf("inserting CSV \"%s\" into DB.certs: %w", tempfile.Name(), err)
+		}
+
+		span.End()
+	}
+
+	return nil
+}
+
+func (c *mysqlDB) updateCertsMemory(
+	ctx context.Context,
+	ids []common.SHA256Output,
+	parents []*common.SHA256Output,
+	expirations []time.Time,
+	payloads [][]byte,
+) error {
 
 	if len(ids) == 0 {
 		return nil
 	}
+
 	// TODO(juagargi) set a prepared statement in constructor
 	// Because the primary key is the SHA256 of the payload, if there is a clash, it must
 	// be that the certificates are identical. Thus always REPLACE or INSERT IGNORE.
 	const N = 4
-	str := "REPLACE INTO certs (cert_id, parent_id, expiration, payload) VALUES " +
+	str := "INSERT IGNORE INTO certs (cert_id, parent_id, expiration, payload) VALUES " +
 		repeatStmt(len(ids), N)
 	data := make([]interface{}, N*len(ids))
 	for i := range ids {
@@ -66,12 +158,62 @@ func (c *mysqlDB) UpdateCerts(ctx context.Context, ids, parents []*common.SHA256
 }
 
 // UpdateDomainCerts updates the domain_certs table.
-func (c *mysqlDB) UpdateDomainCerts(ctx context.Context,
-	domainIDs, certIDs []*common.SHA256Output) error {
+func (c *mysqlDB) UpdateDomainCerts(
+	ctx context.Context,
+	domainIDs []common.SHA256Output,
+	certIDs []common.SHA256Output,
+) error {
+	// return c.updateDomainCertsMemory(ctx, domainIDs, certIDs)
+	return c.updateDomainCertsCSV(ctx, domainIDs, certIDs)
+}
 
+func (c *mysqlDB) InsertCsvIntoDomainCerts(ctx context.Context, filename string) error {
+	_, err := loadDomainCertsTableWithCSV(ctx, c.db, filename)
+	return err
+}
+
+func (c *mysqlDB) updateDomainCertsCSV(
+	ctx context.Context,
+	domainIDs []common.SHA256Output,
+	certIDs []common.SHA256Output,
+) error {
+	// Prepare the records for the CSV file.
+	records := make([][]string, len(domainIDs))
+	for i := 0; i < len(domainIDs); i++ {
+		records[i] = make([]string, 2)
+		records[i][0] = base64.StdEncoding.EncodeToString(domainIDs[i][:])
+		records[i][1] = base64.StdEncoding.EncodeToString(certIDs[i][:])
+	}
+
+	// Create temporary file.
+	tempfile, err := os.CreateTemp(TemporaryDir, "fpki-ingest-domain_certs-*.csv")
+	if err != nil {
+		return fmt.Errorf("creating temporary file: %w", err)
+	}
+	defer os.Remove(tempfile.Name())
+
+	// Write data to CSV file.
+	if err = writeToCSV(tempfile, records); err != nil {
+		return err
+	}
+
+	// Now instruct MySQL to directly ingest this file into the certs table.
+	if _, err := loadDomainCertsTableWithCSV(ctx, c.db, tempfile.Name()); err != nil {
+		return fmt.Errorf("inserting CSV \"%s\" into DB.domain_certs: %w", tempfile.Name(), err)
+	}
+
+	return nil
+}
+
+func (c *mysqlDB) updateDomainCertsMemory(
+	ctx context.Context,
+	domainIDs []common.SHA256Output,
+	certIDs []common.SHA256Output,
+) error {
 	if len(domainIDs) == 0 {
 		return nil
 	}
+
 	// Insert into domain_certs:
 	str := "INSERT IGNORE INTO domain_certs (domain_id,cert_id) VALUES " +
 		repeatStmt(len(certIDs), 2)
@@ -80,6 +222,7 @@ func (c *mysqlDB) UpdateDomainCerts(ctx context.Context,
 		data[2*i] = domainIDs[i][:]
 		data[2*i+1] = certIDs[i][:]
 	}
+
 	_, err := c.db.ExecContext(ctx, str, data...)
 
 	return err
@@ -88,29 +231,32 @@ func (c *mysqlDB) UpdateDomainCerts(ctx context.Context,
 // RetrieveDomainCertificatesIDs retrieves the domain's certificate payload ID and the payload itself,
 // given the domain ID.
 func (c *mysqlDB) RetrieveDomainCertificatesIDs(ctx context.Context, domainID common.SHA256Output,
-) (*common.SHA256Output, []byte, error) {
+) (common.SHA256Output, []byte, error) {
 
 	str := "SELECT cert_ids_id, cert_ids FROM domain_payloads WHERE domain_id = ?"
 	var certIDsID, certIDs []byte
 	err := c.db.QueryRowContext(ctx, str, domainID[:]).Scan(&certIDsID, &certIDs)
 	if err != nil && err != sql.ErrNoRows {
-		return nil, nil, fmt.Errorf("RetrieveDomainCertificatesIDs | %w", err)
+		return common.SHA256Output{}, nil, fmt.Errorf("RetrieveDomainCertificatesIDs | %w", err)
 	}
-	var IDptr *common.SHA256Output
+	var ID common.SHA256Output
 	if certIDsID != nil {
-		IDptr = (*common.SHA256Output)(certIDsID)
+		ID = (common.SHA256Output)(certIDsID)
 	}
-	return IDptr, certIDs, nil
+	return ID, certIDs, nil
 }
 
 // RetrieveCertificatePayloads returns the payload for each certificate identified by the IDs
 // parameter, in the same order (element i corresponds to IDs[i]).
-func (c *mysqlDB) RetrieveCertificatePayloads(ctx context.Context, IDs []*common.SHA256Output,
+func (c *mysqlDB) RetrieveCertificatePayloads(
+	ctx context.Context,
+	IDs []common.SHA256Output,
 ) ([][]byte, error) {
 
 	str := "SELECT cert_id,payload from certs WHERE cert_id IN " + repeatStmt(1, len(IDs))
 	params := make([]any, len(IDs))
 	for i, id := range IDs {
+		id := id
 		params[i] = id[:]
 	}
 	rows, err := c.db.QueryContext(ctx, str, params...)
@@ -131,7 +277,7 @@ func (c *mysqlDB) RetrieveCertificatePayloads(ctx context.Context, IDs []*common
 	// Sort them in the same order as the IDs.
 	payloads := make([][]byte, len(IDs))
 	for i, id := range IDs {
-		payloads[i] = m[*id]
+		payloads[i] = m[id]
 	}
 
 	return payloads, nil
@@ -171,12 +317,13 @@ func (c *mysqlDB) PruneCerts(ctx context.Context, now time.Time) error {
 // may fail with a message like:
 // Error 1436 (HY000): Thread stack overrun:  1028624 bytes used of a 1048576 byte stack,
 // and 20000 bytes needed.  Use 'mysqld --thread_stack=#' to specify a bigger stack.
-func (c *mysqlDB) checkCertsExist(ctx context.Context, ids []*common.SHA256Output,
+func (c *mysqlDB) checkCertsExist(ctx context.Context, ids []common.SHA256Output,
 	present []bool) error {
 
 	// Slice to be used in the SQL query:
 	data := make([]interface{}, len(ids))
 	for i, id := range ids {
+		id := id
 		data[i] = id[:]
 	}
 
@@ -220,6 +367,45 @@ func (c *mysqlDB) pruneCerts(ctx context.Context, now time.Time) error {
 	// We thus look for certificates with expiration less than now.
 
 	str := "CALL prune_expired(?)"
-	_, err := c.db.ExecContext(ctx, str, now)
+	_, err := c.db.ExecContext(ctx, str, now.Format(time.DateTime))
 	return err
+}
+
+func loadCertsTableWithCSV(
+	ctx context.Context,
+	db *sql.DB,
+	filepath string,
+) (sql.Result, error) {
+
+	// Set read permissions to all.
+	if err := os.Chmod(filepath, 0644); err != nil {
+		return nil, fmt.Errorf("setting permissions to file \"%s\": %w", filepath, err)
+	}
+
+	str := `LOAD DATA CONCURRENT INFILE ? IGNORE INTO TABLE certs ` +
+		`FIELDS TERMINATED BY ',' ENCLOSED BY '"' LINES TERMINATED BY '\n' ` +
+		`(@cert_id,@parent_id,expiration,@payload) SET ` +
+		`cert_id = FROM_BASE64(@cert_id),` +
+		`parent_id = FROM_BASE64(@parent_id),` +
+		`payload = FROM_BASE64(@payload);`
+	return db.ExecContext(ctx, str, filepath)
+}
+
+func loadDomainCertsTableWithCSV(
+	ctx context.Context,
+	db *sql.DB,
+	filepath string,
+) (sql.Result, error) {
+
+	// Set read permissions to all.
+	if err := os.Chmod(filepath, 0644); err != nil {
+		return nil, fmt.Errorf("setting permissions to file \"%s\": %w", filepath, err)
+	}
+
+	str := `LOAD DATA CONCURRENT INFILE ? IGNORE INTO TABLE domain_certs ` +
+		`FIELDS TERMINATED BY ',' ENCLOSED BY '"' LINES TERMINATED BY '\n' ` +
+		`(@domain_id,@cert_id) SET ` +
+		`domain_id = FROM_BASE64(@domain_id),` +
+		`cert_id = FROM_BASE64(@cert_id);`
+	return db.ExecContext(ctx, str, filepath)
 }
