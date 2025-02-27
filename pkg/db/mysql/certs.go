@@ -53,6 +53,11 @@ func (c *mysqlDB) UpdateCerts(
 	return c.updateCertsCSV(ctx, ids, parents, expirations, payloads)
 }
 
+func (c *mysqlDB) InsertCsvIntoCerts(ctx context.Context, filename string) error {
+	_, err := loadCertsTableWithCSV(ctx, c.db, filename)
+	return err
+}
+
 func (c *mysqlDB) updateCertsCSV(
 	ctx context.Context,
 	ids []common.SHA256Output,
@@ -160,6 +165,11 @@ func (c *mysqlDB) UpdateDomainCerts(
 ) error {
 	// return c.updateDomainCertsMemory(ctx, domainIDs, certIDs)
 	return c.updateDomainCertsCSV(ctx, domainIDs, certIDs)
+}
+
+func (c *mysqlDB) InsertCsvIntoDomainCerts(ctx context.Context, filename string) error {
+	_, err := loadDomainCertsTableWithCSV(ctx, c.db, filename)
+	return err
 }
 
 func (c *mysqlDB) updateDomainCertsCSV(

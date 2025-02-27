@@ -114,13 +114,18 @@ func TestManagerStart(t *testing.T) {
 			ctx, cancelF := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancelF()
 
+			t.Logf("%s starting", time.Now().Format(time.StampMicro))
+
 			// Configure a test DB.
 			config, removeF := testdb.ConfigureTestDB(t)
 			defer removeF()
+			t.Logf("%s DB configured", time.Now().Format(time.StampMicro))
 
 			// Connect to the DB.
+			t.Logf("%s connecting to DB", time.Now().Format(time.StampMicro))
 			conn := testdb.Connect(t, config)
 			defer conn.Close()
+			t.Logf("%s connected to DB", time.Now().Format(time.StampMicro))
 
 			manager, err := NewManager(
 				tc.NWorkers,
@@ -144,6 +149,9 @@ func TestManagerStart(t *testing.T) {
 
 			tests.TestOrTimeout(t, tests.WithContext(ctx), func(t tests.T) {
 				manager.Resume(ctx)
+				pip.DebugPrintf("Pipeline resumed\n")
+				t.Logf("%s Pipeline resumed", time.Now().Format(time.StampMicro))
+
 				processCertificates(t, manager, certs)
 				manager.Stop()
 				err := manager.Wait(ctx)
@@ -269,15 +277,18 @@ func TestMinimalAllocsManager(t *testing.T) {
 	manager.Resume(ctx)
 	processCertificates(t, manager, certs)
 	time.Sleep(100 * time.Millisecond)
-	var err error
-	allocsPerRun := tests.AllocsPerRun(func() {
-		manager.Stop()
-		err = manager.Wait(ctx)
+	tests.TestOrTimeout(t, tests.WithContext(ctx), func(t tests.T) {
+		var err error
+		allocsPerRun := tests.AllocsPerRun(func() {
+			manager.Stop()
+			err = manager.Wait(ctx)
+		})
+		require.NoError(t, err)
+
+		t.Logf("allocations = %d", allocsPerRun)
+		// The test is noisy, we sometimes get 2 allocations, etc.
+		require.LessOrEqual(t, allocsPerRun, N/10)
 	})
-	require.NoError(t, err)
-	t.Logf("allocations = %d", allocsPerRun)
-	// The test is noisy, we sometimes get 2 allocations, etc.
-	require.LessOrEqual(t, allocsPerRun, N/10)
 }
 
 func diffAncestryHierarchy(t tests.T, leaves ...string) []Certificate {
@@ -345,7 +356,7 @@ func toCertificates(
 	names [][]string,
 ) []Certificate {
 
-	certs := make([]Certificate, 0)
+	certs := make([]Certificate, 0, len(payloads))
 	for i := 0; i < len(payloads); i++ {
 		c := Certificate{
 			CertID:   ids[i],
@@ -437,59 +448,60 @@ func createManagerWithOutputFunction(
 	)
 
 	// B. Cert batchers:
-	begin := 1
-	end := 1 + workerCount
-	for i := begin; i < end; i++ {
-		pip.TestOnlyPurposeSetOutputFunction(
-			t,
-			stages[i].(*pip.Stage[Certificate, CertBatch]),
-			outType,
-		)
+	for _, s := range findStagesByType[pip.Stage[Certificate, CertBatch]](t, stages) {
+		pip.TestOnlyPurposeSetOutputFunction(t, s, outType)
 	}
 
-	// C. Cert inserters:
-	begin = end
-	end = end + workerCount
-	for i := begin; i < end; i++ {
-		pip.TestOnlyPurposeSetOutputFunction(
-			t,
-			pip.SinkAsStage(stages[i].(*pip.Sink[CertBatch])),
-			outType,
-		)
+	// C. Domain extractors:
+	for _, s := range findStagesByType[pip.Stage[Certificate, DirtyDomain]](t, stages) {
+		pip.TestOnlyPurposeSetOutputFunction(t, s, outType)
 	}
 
-	// D. Domain extractors:
-	begin = end
-	end = end + workerCount
-	for i := begin; i < end; i++ {
-		pip.TestOnlyPurposeSetOutputFunction(
-			t,
-			stages[i].(*pip.Stage[Certificate, DirtyDomain]),
-			outType,
-		)
+	// D. Cert csv creators:
+	for _, s := range findStagesByType[pip.Stage[CertBatch, string]](t, stages) {
+		pip.TestOnlyPurposeSetOutputFunction(t, s, outType)
 	}
 
-	// E. Domain batchers:
-	begin = end
-	end = end + workerCount
-	for i := begin; i < end; i++ {
-		pip.TestOnlyPurposeSetOutputFunction(
-			t,
-			stages[i].(*pip.Stage[DirtyDomain, domainBatch]),
-			outType,
-		)
+	// E. Cert csv inserters:
+	for _, s := range findStagesByType[pip.Stage[string, string]](t, stages) {
+		pip.TestOnlyPurposeSetOutputFunction(t, s, outType)
 	}
 
-	// F. Domain inserters, sinks:
-	begin = end
-	end = end + workerCount
-	for i := begin; i < end; i++ {
-		pip.TestOnlyPurposeSetOutputFunction(
-			t,
-			pip.SinkAsStage(stages[i].(*pip.Sink[domainBatch])),
-			outType,
-		)
+	// F. Cert csv removers:
+	for _, s := range findStagesByType[pip.Sink[string]](t, stages) {
+		pip.TestOnlyPurposeSetOutputFunction(t, s.Stage, outType)
+	}
+
+	// G. Domain batchers:
+	for _, s := range findStagesByType[pip.Stage[DirtyDomain, domainBatch]](t, stages) {
+		pip.TestOnlyPurposeSetOutputFunction(t, s, outType)
+	}
+
+	// H. Domain csv creators:
+	for _, s := range findStagesByType[pip.Stage[domainBatch, domainsCsvFilenames]](t, stages) {
+		pip.TestOnlyPurposeSetOutputFunction(t, s, outType)
+	}
+
+	// I. Domain csv inserters:
+	for _, s := range findStagesByType[pip.Stage[domainsCsvFilenames, domainsCsvFilenames]](t, stages) {
+		pip.TestOnlyPurposeSetOutputFunction(t, s, outType)
+	}
+
+	// J. Domain csv removers, sinks:
+	for _, s := range findStagesByType[pip.Sink[domainsCsvFilenames]](t, stages) {
+		pip.TestOnlyPurposeSetOutputFunction(t, s.Stage, outType)
 	}
 
 	return manager
+}
+
+func findStagesByType[T any, PT interface{ *T }](t tests.T, stages []pip.StageLike) []PT {
+	found := make([]PT, 0)
+	for _, s := range stages {
+		if s, ok := s.(PT); ok {
+			found = append(found, s)
+		}
+	}
+	require.Greaterf(t, len(found), 0, "the type '%T' was not found", *new(T))
+	return found
 }

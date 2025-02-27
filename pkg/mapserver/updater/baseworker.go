@@ -1,13 +1,13 @@
 package updater
 
-type baseWorker struct {
-	Manager *Manager
-}
+import "github.com/netsec-ethz/fpki/pkg/util/noallocs"
 
-func newBaseWorker(m *Manager) *baseWorker {
-	return &baseWorker{
-		Manager: m,
-	}
+func createFilepathRingCache() noallocs.RingCache[[]byte] {
+	return *noallocs.NewRingCache[[]byte](FilepathCacheSize, noallocs.WithPerNewElement(
+		func(t *[]byte) {
+			*t = make([]byte, FilepathLen)
+		}),
+	)
 }
 
 const ringCacheN = 2

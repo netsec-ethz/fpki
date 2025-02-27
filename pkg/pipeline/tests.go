@@ -8,6 +8,7 @@ const (
 	OutputSequential DebugPurposesOnlyOutputType = iota
 	OutputSequentialCyclesAllowed
 	OutputConcurrent
+	InputSequential
 )
 
 func TestOnlyPurposeSetOutputFunction[IN, OUT any](
@@ -26,6 +27,8 @@ func TestOnlyPurposeSetOutputFunction[IN, OUT any](
 		WithCyclesAllowedSequentialOutputs[IN, OUT]().ApplyToStage(s)
 	case OutputConcurrent:
 		WithConcurrentOutputs[IN, OUT]().ApplyToStage(s)
+	case InputSequential:
+		WithSequentialInputs[IN, OUT]().ApplyToStage(s)
 	default:
 		panic("DEBUG ONLY FUNCTION DebugOnlyPurposeSetOutputFunction BAD type")
 	}

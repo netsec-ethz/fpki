@@ -54,6 +54,11 @@ func NewMapUpdater(
 		return nil, fmt.Errorf("NewMapUpdater | db.Connect | %w", err)
 	}
 
+	_, err = dbConn.DB().Exec("ALTER INSTANCE DISABLE INNODB REDO_LOG;")
+	if err != nil {
+		return nil, err
+	}
+
 	fetchers := make([]logfetcher.Fetcher, len(urls))
 	alreadyURLs := make(map[string]struct{}, len(urls))
 	for i, url := range urls {
