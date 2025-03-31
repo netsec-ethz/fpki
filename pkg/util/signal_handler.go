@@ -8,11 +8,11 @@ import (
 	"time"
 )
 
-// SetSignalHandler builds a context that gets cancelled in case of receiving one of the
+// ContextWithCancelOnSignal builds a context that gets cancelled in case of receiving one of the
 // signals passed as arguments.
 // Additionally there is a panic after `waitTime` unless we cleanly exit the process, to avoid
 // leaving the process dangling forever.
-func SetSignalHandler(
+func ContextWithCancelOnSignal(
 	ctx context.Context,
 	waitTime time.Duration,
 	signals ...os.Signal,
