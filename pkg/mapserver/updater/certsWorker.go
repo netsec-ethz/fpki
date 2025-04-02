@@ -9,15 +9,6 @@ import (
 	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
 )
 
-const (
-	IdBase64Len       = 44          // 32 bytes = (n + 2) / 3 * 4
-	DomainNameLen     = 256         // 256 characters
-	ExpTimeBase64Len  = 50          // expiration time
-	PayloadBase64Len  = 1024 * 1024 // 1MB payload
-	FilepathLen       = 2048        // 2K for file paths
-	FilepathCacheSize = 8           // 8 filepaths inflight (toward next stages)
-)
-
 // The certificate workers stages receive Certificate as input, and:
 // - Batches the certificates in a slice to be inserted in the DB.
 // - For each certificate, it extracts domains and output them to the next stage.
