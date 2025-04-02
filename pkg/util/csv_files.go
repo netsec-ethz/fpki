@@ -2,9 +2,43 @@ package util
 
 import (
 	"compress/gzip"
+	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"regexp"
+	"strconv"
 )
+
+// gzCsvFilename matches with the name of the gz files is e.g. "0-100005.gz".
+var gzCsvFilename = regexp.MustCompile(`^(\d+)-(\d+).gz$`)
+
+func EstimateCertCount(filename string) (uint, error) {
+	filename = filepath.Base(filename)
+	errBadFilename := fmt.Errorf(
+		`estimating certificate count from filename "%s": unexpected name`,
+		filename)
+	groups := gzCsvFilename.FindStringSubmatch(filename)
+	if len(groups) != 3 {
+		return 0, errBadFilename
+	}
+
+	first, err := strconv.Atoi(groups[1])
+	if err != nil {
+		return 0, errBadFilename
+	}
+
+	last, err := strconv.Atoi(groups[2])
+	if err != nil {
+		return 0, errBadFilename
+	}
+
+	if first > last {
+		return 0, fmt.Errorf("%s: first > last", errBadFilename)
+	}
+
+	return uint(last-first) + 1, nil
+}
 
 type CsvFile interface {
 	WithFile(string) CsvFile
