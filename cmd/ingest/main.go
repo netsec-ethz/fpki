@@ -318,6 +318,7 @@ func filenameToFirstSize(name string) uint64 {
 func printStats(s *updater.Stats) {
 	readFiles := s.TotalFilesRead.Load()
 	totalFiles := s.TotalFiles.Load()
+	totalCerts := s.TotalCerts.Load()
 
 	readCerts := s.ReadCerts.Load()
 	readBytes := s.ReadBytes.Load()
@@ -325,14 +326,18 @@ func printStats(s *updater.Stats) {
 	writtenBytes := s.WrittenBytes.Load()
 
 	uncachedCerts := s.UncachedCerts.Load()
+	expiredCerts := s.ExpiredCerts.Load()
 	secondsSinceStart := float64(time.Since(s.CreateTime).Seconds())
 
-	msg := fmt.Sprintf("%d/%d Files read. %d certs read, %d written. %.0f certs/s "+
-		"(%.0f%% uncached), %.1f | %.1f Mb/s r|w                    ",
+	msg := fmt.Sprintf("%d/%d Files read. %d certs read [%.2f%%], %d written. %.0f certs/s "+
+		"(%.0f%% uncached, %.0f%% expired), %.1f | %.1f Mb/s r|w                    ",
 		readFiles, totalFiles,
-		readCerts, writtenCerts,
+		readCerts,
+		float64(readCerts)*100./float64(totalCerts),
+		writtenCerts,
 		float64(readCerts)/secondsSinceStart,
 		float64(uncachedCerts)*100./float64(readCerts),
+		float64(expiredCerts)*100./float64(readCerts),
 		float64(readBytes)/1024./1024./secondsSinceStart,
 		float64(writtenBytes)/1024./1024./secondsSinceStart,
 	)

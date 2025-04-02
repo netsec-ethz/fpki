@@ -67,8 +67,13 @@ func (w *lineToChainWorker) parseLine(p *Processor, line *line) (*certChain, err
 	if err != nil {
 		return nil, err
 	}
+
+	// Regardless of whether we skip it or not, we processed one more cert.
+	p.Manager.Stats.ReadCerts.Add(1)
+
 	if w.now.After(time.Unix(n, 0)) {
 		// Skip this certificate.
+		p.Manager.Stats.ExpiredCerts.Add(1)
 		return nil, nil
 	}
 
@@ -78,10 +83,8 @@ func (w *lineToChainWorker) parseLine(p *Processor, line *line) (*certChain, err
 		return nil, err
 	}
 
-	// Update statistics.
+	// Update bytes read.
 	p.Manager.Stats.ReadBytes.Add(int64(len(rawBytes)))
-	p.Manager.Stats.ReadCerts.Add(1)
-	p.Manager.Stats.UncachedCerts.Add(1)
 
 	// Get the leaf certificate ID.
 	certID := common.SHA256Hash32Bytes(rawBytes)
@@ -89,6 +92,9 @@ func (w *lineToChainWorker) parseLine(p *Processor, line *line) (*certChain, err
 		// For some reason this leaf certificate has been ingested already. Skip.
 		return nil, nil
 	}
+
+	p.Manager.Stats.UncachedCerts.Add(1)
+
 	cert, err := ctx509.ParseCertificate(rawBytes)
 	if err != nil {
 		return nil, err

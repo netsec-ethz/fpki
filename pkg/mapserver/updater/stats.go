@@ -12,11 +12,14 @@ type Stats struct {
 	ReadCerts     atomic.Int64
 	ReadBytes     atomic.Int64
 	UncachedCerts atomic.Int64
+	ExpiredCerts  atomic.Int64
 	WrittenCerts  atomic.Int64
 	WrittenBytes  atomic.Int64
 
 	TotalFiles     atomic.Int64
 	TotalFilesRead atomic.Int64
+
+	TotalCerts atomic.Int64 // estimated from filenames.
 
 	updateFreq  time.Duration
 	updateFunc  func(*Stats)
