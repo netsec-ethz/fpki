@@ -82,6 +82,8 @@ func mainFunction() int {
 		"\"onlyingest\": do not coalesce or update SMT after ingesting files.\n"+
 		"\"skipingest\": only coalesce payloads of domains in the dirty table and update SMT.\n"+
 		"\"onlysmtupdate\": only update the SMT.\n")
+	debugMemProfDump := flag.String("memprofdump", "", "write a memory profile to the file "+
+		"every time SIGUSR1 is caught")
 	flag.Parse()
 
 	var (
@@ -139,6 +141,21 @@ func mainFunction() int {
 		defer func() {
 			exitIfError(f.Close())
 		}()
+	}
+
+	// Memprof dump if SIGUSR1.
+	if *debugMemProfDump != "" {
+		util.RunOnSignal(
+			ctx,
+			func(s os.Signal) {
+				f, err := os.Create(*debugMemProfDump)
+				exitIfError(err)
+				err = pprof.Lookup("heap").WriteTo(f, 0) // use "heap" or "allocs"
+				exitIfError(err)
+				exitIfError(f.Close())
+			},
+			syscall.SIGUSR1,
+		)
 	}
 
 	// Signals catching:

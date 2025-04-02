@@ -8,6 +8,27 @@ import (
 	"time"
 )
 
+// RunOnSignal runs the specified function when one of the signals is received.
+// It keeps listening for the signals and running the function until the passed context is done.
+func RunOnSignal(
+	ctx context.Context,
+	function func(os.Signal),
+	signals ...os.Signal,
+) {
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, signals...)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case sg := <-sigCh:
+				function(sg)
+			}
+		}
+	}()
+}
+
 // ContextWithCancelOnSignal builds a context that gets cancelled in case of receiving one of the
 // signals passed as arguments.
 // Additionally there is a panic after `waitTime` unless we cleanly exit the process, to avoid
