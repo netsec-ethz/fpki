@@ -2,11 +2,10 @@ package tests
 
 import (
 	"context"
-	"testing"
 	"time"
 )
 
-func TestOrTimeout(t *testing.T, option timeoutOption, fcn func(T)) {
+func TestOrTimeout(t T, option timeoutOption, fcn func(T)) {
 	t.Helper()
 	timeout := option()
 
@@ -21,7 +20,8 @@ func TestOrTimeout(t *testing.T, option timeoutOption, fcn func(T)) {
 
 	select {
 	case <-time.After(timeout):
-		t.Fatalf("Timeout!! at %s: %s", time.Now().Format(time.StampNano), t.Name())
+		t.Logf("Timeout!! at %s: %s", time.Now().Format(time.StampNano), t.Name())
+		t.FailNow()
 	case <-finished:
 	}
 }

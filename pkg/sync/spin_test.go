@@ -49,7 +49,7 @@ func TestSpinLockNoMemAllocation(t *testing.T) {
 
 	// Measure mem allocations of the lock.
 	l.Start()
-	allocs := tests.AllocsPerRun(t, func(b tests.B) {
+	allocs := tests.AllocsPerRun(func(b tests.B) {
 		l.Wait()
 	})
 	t.Logf("allocations = %d", allocs)
