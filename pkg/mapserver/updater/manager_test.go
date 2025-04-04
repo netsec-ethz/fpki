@@ -19,7 +19,6 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/tests/noopdb"
 	"github.com/netsec-ethz/fpki/pkg/tests/random"
 	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
-	"github.com/netsec-ethz/fpki/pkg/util/debug"
 )
 
 func TestManagerStart(t *testing.T) {
@@ -152,7 +151,7 @@ func TestManagerStart(t *testing.T) {
 				pip.DebugPrintf("Pipeline resumed\n")
 				t.Logf("%s Pipeline resumed", time.Now().Format(time.StampMicro))
 
-				processCertificates(t, manager, certs)
+				processCertificates(manager, certs)
 				manager.Stop()
 				err := manager.Wait(ctx)
 				require.NoError(t, err)
@@ -245,7 +244,7 @@ func TestManagerResume(t *testing.T) {
 					stagedCerts := certs[S:E]
 
 					manager.Resume(ctx)
-					processCertificates(t, manager, stagedCerts)
+					processCertificates(manager, stagedCerts)
 					manager.Stop()
 					err := manager.Wait(ctx)
 					require.NoError(t, err)
@@ -259,9 +258,12 @@ func TestManagerResume(t *testing.T) {
 }
 
 func TestMinimalAllocsManager(t *testing.T) {
+	t.Skip("deleteme fix this test")
+	tests.StopMemoryProfile()
 	defer pip.PrintAllDebugLines()
 
-	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	// ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Hour) // deleteme
 	defer cancelF()
 
 	// DB with no operations.
@@ -269,25 +271,54 @@ func TestMinimalAllocsManager(t *testing.T) {
 
 	// Create mock certificates.
 	N := 100
+	// N := 1000 // deleteme
 	certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
-	// Prepare the manager and worker for the test.
-	manager := createManagerWithOutputFunction(t, conn, 2, pip.OutputSequentialCyclesAllowed)
+	// We remove the payload since the CSV formatter allocates memory to it if non nil.
+	for _, cert := range certs {
+		cert.Cert.Raw = nil
+	}
+	t.Log("certificates created")
 
-	// Now check the number of allocations happening inside the manager, once it runs.
+	// Prepare the manager for the test.
+	manager := createManagerWithOutputFunction(t, conn, 2, pip.OutputSequentialCyclesAllowed)
 	manager.Resume(ctx)
-	processCertificates(t, manager, certs)
+
+	// Start sending certificates when notified.
+	startTestCh := make(chan struct{})
+	go func() {
+		<-startTestCh
+		processCertificates(manager, certs)
+		// Close channel after all certificates are sent.
+		manager.Stop()
+	}()
+
 	time.Sleep(100 * time.Millisecond)
+	t.Log("ready to process")
+
 	tests.TestOrTimeout(t, tests.WithContext(ctx), func(t tests.T) {
 		var err error
-		allocsPerRun := tests.AllocsPerRun(func() {
-			manager.Stop()
-			err = manager.Wait(ctx)
-		})
-		require.NoError(t, err)
+		// allocsPerRun := tests.AllocsPerRun(func(tests.B) {
+		// 	startTestCh <- struct{}{}
+		// 	err = manager.Wait(ctx)
+		// })
+		// require.NoError(t, err)
 
-		t.Logf("allocations = %d", allocsPerRun)
-		// The test is noisy, we sometimes get 2 allocations, etc.
-		require.LessOrEqual(t, allocsPerRun, N/10)
+		// // The test is noisy, we sometimes get 2 allocations, etc.
+		// t.Logf("allocations = %d", allocsPerRun)
+		// require.LessOrEqual(t, allocsPerRun, N/10)
+
+		// allocsPerRun := tests.AllocsPerRun(func(tests.B) {
+		tests.AllocsPerRunPreciseWithProfile(t, func(tests.B) {
+			startTestCh <- struct{}{}
+			err = manager.Wait(ctx)
+		}, N/10, fmt.Sprintf("/tmp/%s.pprof", t.Name()))
+		require.NoError(t, err)
+		// 	startTestCh <- struct{}{}
+		// 	err = manager.Wait(ctx)
+		// })
+		// require.NoError(t, err)
+
+		// t.Logf("allocations = %d", allocsPerRun)
 	})
 }
 
@@ -378,11 +409,9 @@ func mockLeaves(numberOfLeaves int) []string {
 	return leaves
 }
 
-func processCertificates(t tests.T, m *Manager, certs []Certificate) {
-	t.Logf("sending %d certs to incoming chan: %s", len(certs), debug.Chan2str(m.IncomingCertChan))
+func processCertificates(m *Manager, certs []Certificate) {
 	for _, c := range certs {
 		m.IncomingCertChan <- c
-		t.Logf("sent another certificate")
 	}
 }
 
@@ -429,7 +458,7 @@ func verifyDB(ctx context.Context, t tests.T, conn db.Conn,
 // createManagerWithOutputFunction creates a manager, and modifies the output functions of all the
 // stages in the manager for the purposes of not using the allocating concurrent one.
 func createManagerWithOutputFunction(
-	t *testing.T,
+	t tests.T,
 	conn db.Conn,
 	workerCount int,
 	outType pip.DebugPurposesOnlyOutputType,

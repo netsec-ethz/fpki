@@ -19,20 +19,19 @@ func TestEncodeToBase64(t *testing.T) {
 
 	// Encode a byte slice.
 	b := random.RandomBytesForTest(t, 100)
-	var got string
-	allocs := tests.AllocsPerRun(func() {
-		got = bytesToBase64WithStorage(&storage, b)
+
+	allocs := tests.AllocsPerRun(func(tests.B) {
+		bytesToBase64WithStorage(&storage, b)
 	})
-	require.Equal(t, base64.StdEncoding.EncodeToString(b), got)
-	require.Equal(t, got, string(storage))
+	require.Equal(t, base64.StdEncoding.EncodeToString(b), string(storage))
 	require.Equal(t, 0, allocs)
 
 	// Encode a different byte slice.
 	b = random.RandomBytesForTest(t, 100)
-	allocs = tests.AllocsPerRun(func() {
-		got = bytesToBase64WithStorage(&storage, b)
+	allocs = tests.AllocsPerRun(func(tests.B) {
+		bytesToBase64WithStorage(&storage, b)
 	})
-	require.Equal(t, base64.StdEncoding.EncodeToString(b), got)
+	require.Equal(t, base64.StdEncoding.EncodeToString(b), string(storage))
 	require.Equal(t, 0, allocs)
 }
 
@@ -41,12 +40,23 @@ func TestRecordsForCert(t *testing.T) {
 
 	// One cert to records.
 	c := randomCertificate(t)
-	allocs := tests.AllocsPerRun(func() {
+
+	// First check allocations.
+	// Remove payload (as it requires an allocation)
+	payload := c.Cert.Raw
+	c.Cert.Raw = nil
+	allocs := tests.AllocsPerRun(func(tests.B) {
 		recordsForCert(storage[0], c)
 	})
 	require.Equal(t, 0, allocs)
 	require.Len(t, storage, 1)
 	row := storage[0]
+
+	// Now check that the CSV encoding is correct.
+	// Restore the payload and serialize again.
+	c.Cert.Raw = payload
+	recordsForCert(storage[0], c)
+
 	require.Len(t, row, 4)
 	for i, field := range row {
 		t.Logf("field %d: %s", i, string(field))
@@ -77,6 +87,8 @@ func TestCreateCsvCerts(t *testing.T) {
 	certs := make([]Certificate, N)
 	for i := range certs {
 		certs[i] = randomCertificate(t)
+		// Remove payload, as it creates allocations.
+		certs[i].Cert.Raw = nil
 	}
 
 	storage := CreateStorage(N, 4, IdBase64Len, IdBase64Len, ExpTimeBase64Len, PayloadBase64Len)
@@ -101,7 +113,7 @@ func TestCreateCsvCerts(t *testing.T) {
 		)
 	}
 
-	allocs := tests.AllocsPerRun(func() {
+	allocs := tests.AllocsPerRun(func(tests.B) {
 		createCsvCerts(storage, certs)
 	})
 	require.Equal(t, 0, allocs)
@@ -112,7 +124,7 @@ func TestRecordsForDirty(t *testing.T) {
 
 	// One domain to domain_certs records.
 	d := randomDirtyDomain(t)
-	allocs := tests.AllocsPerRun(func() {
+	allocs := tests.AllocsPerRun(func(tests.B) {
 		recordsForDirty(storage[0], d)
 	})
 	require.Equal(t, 0, allocs)
@@ -141,7 +153,7 @@ func TestRecordsForDomains(t *testing.T) {
 
 	// One domain to domain_certs records.
 	d := randomDirtyDomain(t)
-	allocs := tests.AllocsPerRun(func() {
+	allocs := tests.AllocsPerRun(func(tests.B) {
 		recordsForDomains(storage[0], d)
 	})
 	require.Equal(t, 0, allocs)
@@ -172,7 +184,7 @@ func TestRecordsForDomainCerts(t *testing.T) {
 
 	// One domain to domain_certs records.
 	d := randomDirtyDomain(t)
-	allocs := tests.AllocsPerRun(func() {
+	allocs := tests.AllocsPerRun(func(tests.B) {
 		recordsForDomainCerts(storage[0], d)
 	})
 	require.Equal(t, 0, allocs)

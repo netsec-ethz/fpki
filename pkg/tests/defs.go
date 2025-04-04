@@ -13,9 +13,19 @@ import (
 type T interface {
 	require.TestingT
 	Helper()
+	FailNow()
 	Name() string
 	Logf(format string, args ...any)
 	Skipf(format string, args ...any)
+}
+
+type B interface {
+	StopTimer()
+}
+
+type TB interface {
+	T
+	B
 }
 
 type RuntimeTest struct {

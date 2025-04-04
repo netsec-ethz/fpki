@@ -523,6 +523,7 @@ func updateSMTfromKeyValues(
 
 	// Update the tree.
 	_, err = smtTrie.Update(ctx, keys, values)
+	// _, err = smtTrie.AtomicUpdate(ctx, keys, values)
 	if err != nil {
 		return err
 	}
@@ -554,28 +555,37 @@ func UpdateSMT(ctx context.Context, conn db.Conn) error {
 	if err != nil {
 		return fmt.Errorf("with root \"%s\", creating NewTrie: %w", hex.EncodeToString(root), err)
 	}
-	// smtTrie.CacheHeightLimit = 32
+	smtTrie.CacheHeightLimit = 32
 	fmt.Printf("smt [%s]: tree created\n", time.Now().Format(time.Stamp))
 
-	// Commented out: testing if the in-db join-with-dirty table is faster.
-
-	// // Get the dirty domains.
-	// domains, err := conn.RetrieveDirtyDomains(ctx)
-	// if err != nil {
-	// 	return err
-	// }
-	// fmt.Printf("smt [%s]: dirty domains loaded\n", time.Now().Format(time.Stamp))
-
-	// err = updateSMTfromDomains(ctx, conn, smtTrie, domains, 1_000_000)
-	// if err != nil {
-	// 	return err
-	// }
-
-	// Updating SMT directly from dirty table.
-	err = updateSMTfromDirty(ctx, conn, smtTrie, 1_000_000)
+	dirtyCount, err := conn.DirtyCount(ctx)
 	if err != nil {
 		return err
 	}
+	if dirtyCount == 0 {
+		fmt.Printf("\nsmt [%s]: no dirty domains\n", time.Now().Format(time.Stamp))
+		return nil
+	}
+
+	// deleteme re-enable updateSMTfromDirty instead of using updateSMTfromDomains.
+	// Commented out: testing if the in-db join-with-dirty table is faster.
+	// Get the dirty domains.
+	domains, err := conn.RetrieveDirtyDomains(ctx)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("smt [%s]: dirty domains loaded\n", time.Now().Format(time.Stamp))
+
+	err = updateSMTfromDomains(ctx, conn, smtTrie, domains, 1_000_000)
+	if err != nil {
+		return err
+	}
+
+	// // Updating SMT directly from dirty table.
+	// err = updateSMTfromDirty(ctx, conn, smtTrie, 1_000_000)
+	// if err != nil {
+	// 	return err
+	// }
 
 	fmt.Printf("\nsmt [%s]: SMT updated\n", time.Now().Format(time.Stamp))
 
@@ -585,6 +595,8 @@ func UpdateSMT(ctx context.Context, conn db.Conn) error {
 		if err != nil {
 			return err
 		}
+	} else {
+		panic("SMT tree root is nil")
 	}
 	fmt.Printf("smt [%s]: new root saved\n", time.Now().Format(time.Stamp))
 

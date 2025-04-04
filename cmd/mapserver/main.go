@@ -158,7 +158,7 @@ func run(updateNow bool) error {
 	ctx := context.Background()
 
 	// Set SIGTERM handler. The context we get is cancelled if one of those signals is caught.
-	ctx = util.SetSignalHandler(ctx, waitForExitBeforePanicTime, syscall.SIGTERM, syscall.SIGINT)
+	ctx = util.ContextWithCancelOnSignal(ctx, waitForExitBeforePanicTime, syscall.SIGTERM, syscall.SIGINT)
 
 	// Load configuration and run with it.
 	config, err := config.ReadConfigFromFile(flag.Arg(0))

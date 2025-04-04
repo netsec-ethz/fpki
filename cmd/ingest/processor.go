@@ -210,6 +210,12 @@ func (p *Processor) AddGzFiles(fileNames []string) {
 
 	for _, filename := range fileNames {
 		p.CsvFiles = append(p.CsvFiles, (&util.GzFile{}).WithFile(filename))
+
+		certCount, err := util.EstimateCertCount(filename)
+		if err != nil {
+			panic(err)
+		}
+		p.Manager.Stats.TotalCerts.Add(int64(certCount))
 	}
 }
 

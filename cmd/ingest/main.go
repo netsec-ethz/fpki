@@ -82,6 +82,8 @@ func mainFunction() int {
 		"\"onlyingest\": do not coalesce or update SMT after ingesting files.\n"+
 		"\"skipingest\": only coalesce payloads of domains in the dirty table and update SMT.\n"+
 		"\"onlysmtupdate\": only update the SMT.\n")
+	debugMemProfDump := flag.String("memprofdump", "", "write a memory profile to the file "+
+		"every time SIGUSR1 is caught")
 	flag.Parse()
 
 	var (
@@ -139,6 +141,21 @@ func mainFunction() int {
 		defer func() {
 			exitIfError(f.Close())
 		}()
+	}
+
+	// Memprof dump if SIGUSR1.
+	if *debugMemProfDump != "" {
+		util.RunOnSignal(
+			ctx,
+			func(s os.Signal) {
+				f, err := os.Create(*debugMemProfDump)
+				exitIfError(err)
+				err = pprof.Lookup("heap").WriteTo(f, 0) // use "heap" or "allocs"
+				exitIfError(err)
+				exitIfError(f.Close())
+			},
+			syscall.SIGUSR1,
+		)
 	}
 
 	// Signals catching:
@@ -301,6 +318,7 @@ func filenameToFirstSize(name string) uint64 {
 func printStats(s *updater.Stats) {
 	readFiles := s.TotalFilesRead.Load()
 	totalFiles := s.TotalFiles.Load()
+	totalCerts := s.TotalCerts.Load()
 
 	readCerts := s.ReadCerts.Load()
 	readBytes := s.ReadBytes.Load()
@@ -308,14 +326,18 @@ func printStats(s *updater.Stats) {
 	writtenBytes := s.WrittenBytes.Load()
 
 	uncachedCerts := s.UncachedCerts.Load()
+	expiredCerts := s.ExpiredCerts.Load()
 	secondsSinceStart := float64(time.Since(s.CreateTime).Seconds())
 
-	msg := fmt.Sprintf("%d/%d Files read. %d certs read, %d written. %.0f certs/s "+
-		"(%.0f%% uncached), %.1f | %.1f Mb/s r|w                    ",
+	msg := fmt.Sprintf("%d/%d Files read. %d certs read [%.2f%%], %d written. %.0f certs/s "+
+		"(%.0f%% uncached, %.0f%% expired), %.1f | %.1f Mb/s r|w                    ",
 		readFiles, totalFiles,
-		readCerts, writtenCerts,
+		readCerts,
+		float64(readCerts)*100./float64(totalCerts),
+		writtenCerts,
 		float64(readCerts)/secondsSinceStart,
 		float64(uncachedCerts)*100./float64(readCerts),
+		float64(expiredCerts)*100./float64(readCerts),
 		float64(readBytes)/1024./1024./secondsSinceStart,
 		float64(writtenBytes)/1024./1024./secondsSinceStart,
 	)

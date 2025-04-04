@@ -4,16 +4,21 @@ import (
 	"encoding/base64"
 	"fmt"
 	"time"
-	"unsafe"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/util/noallocs"
 )
 
 const (
-	CsvBufferSize  = 64 * 1024 * 1024 // 64MB
-	TemporaryDir   = "/mnt/data/tmp/"
-	MaxFieldLength = 1024 * 1024 // 1MB
+	CsvBufferSize = 64 * 1024 * 1024 // 64MB
+	TemporaryDir  = "/mnt/data/tmp/"
+
+	IdBase64Len       = 44   // 32 bytes = (n + 2) / 3 * 4
+	DomainNameLen     = 256  // 256 characters
+	ExpTimeBase64Len  = 50   // expiration time
+	PayloadBase64Len  = 0    // do not preallocate for payloads
+	FilepathLen       = 2048 // 2K for file paths
+	FilepathCacheSize = 8    // 8 filepaths inflight (toward next stages)
 )
 
 func CreateStorage(nRows, nCols int, fieldLengths ...int) [][][]byte {
@@ -24,6 +29,7 @@ func CreateStorage(nRows, nCols int, fieldLengths ...int) [][][]byte {
 			storage[i][j] = make([]byte, 0, fieldLengths[j])
 		}
 	}
+
 	return storage
 }
 
@@ -92,19 +98,21 @@ func CreateCsvDomainCerts(
 }
 
 func writeRecordsWithStorage[T any](
-	dst [][][]byte, // with the correct len(dst) == len(data), each len(dst[i]) == len(toRecords(data[i]))
+	rows [][][]byte, // with the correct len(dst) == len(data), each len(dst[i]) == len(toRecords(data[i]))
 	writerFunc func([]byte, string, string, [][][]byte) (string, error), // The function to write to disk.
 	filenameStorage []byte,
 	prefix string,
 	suffix string,
 	data []T,
-	toRecords func(dst [][]byte, field T),
+	toRecords func(row [][]byte, field T),
 ) (string, error) {
+
+	// Set the values.
 	for i, d := range data {
-		toRecords(dst[i], d)
+		toRecords(rows[i], d)
 	}
 
-	return writerFunc(filenameStorage, prefix, suffix, dst[:len(data)])
+	return writerFunc(filenameStorage, prefix, suffix, rows[:len(data)])
 }
 
 var (
@@ -136,7 +144,6 @@ func writeCSV(filenameStorage []byte, prefix, suffix string, storage [][][]byte)
 				return "", fmt.Errorf("writing to temporary file %s: %w", filename, err)
 			}
 			field := row[i]
-			// for _, field := range row {
 			if err = noallocs.Write(fd, field); err != nil {
 				return "", fmt.Errorf("writing to temporary file %s: %w", filename, err)
 			}
@@ -158,7 +165,8 @@ func recordsForCert(dst [][]byte, c Certificate) {
 	idToBase64WithStorage(&dst[0], c.CertID)
 	idOrNilToBase64WithStorage(&dst[1], c.ParentID)
 	timeToStringWithStorage(&dst[2], c.Cert.NotAfter)
-	bytesToBase64WithStorage(&dst[3], c.Cert.Raw)
+	// We don't want to reuse the payload storage.
+	dst[3] = []byte(base64.StdEncoding.EncodeToString(c.Cert.Raw))
 }
 
 func recordsForDirty(dst [][]byte, d DirtyDomain) {
@@ -178,29 +186,27 @@ func recordsForDomainCerts(dst [][]byte, d DirtyDomain) {
 	idToBase64WithStorage(&dst[1], d.CertID)
 }
 
-func idToBase64WithStorage(storage *[]byte, id common.SHA256Output) string {
-	return bytesToBase64WithStorage(storage, id[:])
+func idToBase64WithStorage(storage *[]byte, id common.SHA256Output) {
+	bytesToBase64WithStorage(storage, id[:])
 }
 
-func idOrNilToBase64WithStorage(storage *[]byte, idPtr *common.SHA256Output) string {
+func idOrNilToBase64WithStorage(storage *[]byte, idPtr *common.SHA256Output) {
 	if idPtr == nil {
 		*storage = (*storage)[:0]
-		return ""
+		return
 	}
-	return bytesToBase64WithStorage(storage, idPtr[:])
+	bytesToBase64WithStorage(storage, idPtr[:])
 }
 
-func bytesToBase64WithStorage(storage *[]byte, b []byte) string {
+func bytesToBase64WithStorage(storage *[]byte, b []byte) {
 	*storage = (*storage)[:0]
 	base64.StdEncoding.AppendEncode(*storage, b)
 	*storage = (*storage)[:base64.StdEncoding.EncodedLen(len(b))]
-	return unsafe.String(&((*storage)[0]), len(*storage))
 }
 
-func timeToStringWithStorage(storage *[]byte, t time.Time) string {
+func timeToStringWithStorage(storage *[]byte, t time.Time) {
 	*storage = (*storage)[:0]
 	*storage = t.AppendFormat(*storage, time.DateTime)
-	return unsafe.String(&((*storage)[0]), len(*storage))
 }
 
 func stringToStorage(storage *[]byte, s string) {
