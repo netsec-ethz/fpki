@@ -20,7 +20,7 @@ func TestEncodeToBase64(t *testing.T) {
 	// Encode a byte slice.
 	b := random.RandomBytesForTest(t, 100)
 
-	allocs := tests.AllocsPerRun(func() {
+	allocs := tests.AllocsPerRun(func(tests.B) {
 		bytesToBase64WithStorage(&storage, b)
 	})
 	require.Equal(t, base64.StdEncoding.EncodeToString(b), string(storage))
@@ -28,7 +28,7 @@ func TestEncodeToBase64(t *testing.T) {
 
 	// Encode a different byte slice.
 	b = random.RandomBytesForTest(t, 100)
-	allocs = tests.AllocsPerRun(func() {
+	allocs = tests.AllocsPerRun(func(tests.B) {
 		bytesToBase64WithStorage(&storage, b)
 	})
 	require.Equal(t, base64.StdEncoding.EncodeToString(b), string(storage))
@@ -45,7 +45,7 @@ func TestRecordsForCert(t *testing.T) {
 	// Remove payload (as it requires an allocation)
 	payload := c.Cert.Raw
 	c.Cert.Raw = nil
-	allocs := tests.AllocsPerRun(func() {
+	allocs := tests.AllocsPerRun(func(tests.B) {
 		recordsForCert(storage[0], c)
 	})
 	require.Equal(t, 0, allocs)
@@ -113,7 +113,7 @@ func TestCreateCsvCerts(t *testing.T) {
 		)
 	}
 
-	allocs := tests.AllocsPerRun(func() {
+	allocs := tests.AllocsPerRun(func(tests.B) {
 		createCsvCerts(storage, certs)
 	})
 	require.Equal(t, 0, allocs)
@@ -124,7 +124,7 @@ func TestRecordsForDirty(t *testing.T) {
 
 	// One domain to domain_certs records.
 	d := randomDirtyDomain(t)
-	allocs := tests.AllocsPerRun(func() {
+	allocs := tests.AllocsPerRun(func(tests.B) {
 		recordsForDirty(storage[0], d)
 	})
 	require.Equal(t, 0, allocs)
@@ -153,7 +153,7 @@ func TestRecordsForDomains(t *testing.T) {
 
 	// One domain to domain_certs records.
 	d := randomDirtyDomain(t)
-	allocs := tests.AllocsPerRun(func() {
+	allocs := tests.AllocsPerRun(func(tests.B) {
 		recordsForDomains(storage[0], d)
 	})
 	require.Equal(t, 0, allocs)
@@ -184,7 +184,7 @@ func TestRecordsForDomainCerts(t *testing.T) {
 
 	// One domain to domain_certs records.
 	d := randomDirtyDomain(t)
-	allocs := tests.AllocsPerRun(func() {
+	allocs := tests.AllocsPerRun(func(tests.B) {
 		recordsForDomainCerts(storage[0], d)
 	})
 	require.Equal(t, 0, allocs)

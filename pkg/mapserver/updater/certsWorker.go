@@ -185,6 +185,7 @@ func newCertCsvInserter(id int, m *Manager) *certCsvInserter {
 			// Call the db to insert.
 			filenameSlice[0] = in
 			err = m.Conn.InsertCsvIntoCerts(ctx, in)
+			_ = ctx
 			return filenameSlice, outChs, err
 		}),
 	)

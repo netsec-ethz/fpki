@@ -60,6 +60,9 @@ func StartMemoryProfile() {
 // interest.
 // A good visualization for small uncounted allocations is to run:
 // go tool pprof -alloc_objects -web filename
+//
+// Additionally, tests can be run with memory profiling, e.g.
+// go test ./pkg/mapserver/updater -run MinimalAllocsManager -memprofile=mem.pprof
 func DumpMemoryProfile(t T, fileName string) {
 	StopMemoryProfile()
 	f, err := os.Create(fileName)

@@ -196,7 +196,7 @@ func TestDomainBatcherAllocationOverhead(t *testing.T) {
 	runtime.GC()
 	time.Sleep(100 * time.Millisecond)
 
-	allocs := tests.AllocsPerRun(func() {
+	allocs := tests.AllocsPerRun(func(tests.B) {
 		// All is set up. Start processing and measure allocations.
 		sendDomainsCh <- struct{}{}
 		// Wait for completion.
