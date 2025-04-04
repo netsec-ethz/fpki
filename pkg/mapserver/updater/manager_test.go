@@ -270,6 +270,11 @@ func TestMinimalAllocsManager(t *testing.T) {
 	// Create mock certificates.
 	N := 100
 	certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
+	// We remove the payload since the CSV formatter allocates memory to it if non nil.
+	for _, cert := range certs {
+		cert.Cert.Raw = nil
+	}
+
 	// Prepare the manager and worker for the test.
 	manager := createManagerWithOutputFunction(t, conn, 2, pip.OutputSequentialCyclesAllowed)
 

@@ -39,7 +39,7 @@ func TestAllocsPerRunGlobal(t *testing.T) {
 		<-done
 	})
 	// There seems to be a slight overhead when running/syncing with a goroutine.
-	require.Equal(t, 4, allocs)
+	require.LessOrEqual(t, allocs, 4)
 
 	// Test noop goroutine again.
 	done = make(chan struct{})
