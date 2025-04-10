@@ -11,6 +11,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// AverageAllocsPerRun runs AllocsPerRun 16 times with the provided function and returns the
+// average number of allocations.
+func AverageAllocsPerRun(f func(b B)) int {
+	const N = 16
+	allocs := 0
+	for range N {
+		allocs += AllocsPerRun(f)
+	}
+	return allocs / N
+}
+
 func AllocsPerRun(f func(b B)) int {
 	// Disallow running this function concurrently.
 	modifyOsArgsMu.Lock()
@@ -28,6 +39,7 @@ func AllocsPerRun(f func(b B)) int {
 		f(b)
 	})
 	os.Args = prevOsArgs
+	flag.Parse()
 	return int(res.MemAllocs)
 }
 

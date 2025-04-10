@@ -33,7 +33,7 @@ func TestQsort(t *testing.T) {
 		name, tc := name, tc
 		t.Run(name, func(t *testing.T) {
 			var got []int
-			allocs := tests.AllocsPerRun(func() {
+			allocs := tests.AllocsPerRun(func(tests.B) {
 				got = util.Qsort(tc.slice)
 			})
 			require.True(t, sort.IntsAreSorted(got))

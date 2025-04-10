@@ -24,7 +24,7 @@ func TestCreateTempAllocs(t *testing.T) {
 	t.Logf("random part: %s", filename[len(prefix):len(filename)-len(suffix)])
 
 	// Measure after first use.
-	allocs := tests.AllocsPerRun(func() {
+	allocs := tests.AllocsPerRun(func(tests.B) {
 		filename, err = CreateTempFile(pathStorage, prefix, suffix)
 	})
 	t.Logf("created file %s", filename)
