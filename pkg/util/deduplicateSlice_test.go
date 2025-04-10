@@ -18,7 +18,7 @@ func TestDeduplicate(t *testing.T) {
 			3,
 			1,
 		}
-		allocs := tests.AllocsPerRun(func() {
+		allocs := tests.AllocsPerRun(func(tests.B) {
 			util.DeduplicateSlice(
 				util.WithSlice(a),
 				util.Wrap(&a),
@@ -54,7 +54,7 @@ func TestDeduplicate(t *testing.T) {
 			ptr(0),
 		}
 
-		allocs := tests.AllocsPerRun(func() {
+		allocs := tests.AllocsPerRun(func(tests.B) {
 			util.DeduplicateSlice(
 				util.WithSlice(a),
 				util.Wrap(&a),
@@ -82,7 +82,7 @@ func TestDeduplicate(t *testing.T) {
 			{2},
 		}
 
-		allocs := tests.AllocsPerRun(func() {
+		allocs := tests.AllocsPerRun(func(tests.B) {
 			util.DeduplicateSlice(
 				util.WithSlice(a),
 				util.Wrap(&a),
@@ -108,7 +108,7 @@ func TestDeduplicate(t *testing.T) {
 			2,
 		}
 
-		allocs := tests.AllocsPerRun(func() {
+		allocs := tests.AllocsPerRun(func(tests.B) {
 			util.DeduplicateSlice(
 				util.WithSlice(a),
 				util.Wrap(&a),
@@ -155,7 +155,7 @@ func TestDeduplicate(t *testing.T) {
 			ptr(4),
 		}
 
-		allocs := tests.AllocsPerRun(func() {
+		allocs := tests.AllocsPerRun(func(tests.B) {
 			util.DeduplicateSlice(
 				util.WithSlice(a),
 				util.Wrap(&a),
@@ -205,7 +205,7 @@ func TestDeduplicate(t *testing.T) {
 			ptr(myType{11}),
 		}
 
-		allocs := tests.AllocsPerRun(func() {
+		allocs := tests.AllocsPerRun(func(tests.B) {
 			util.DeduplicateSlice(
 				util.WithSlice(a),
 				util.Wrap(&a),
@@ -234,7 +234,7 @@ func TestDeduplicate(t *testing.T) {
 			ptr(3),
 		}
 
-		allocs := tests.AllocsPerRun(func() {
+		allocs := tests.AllocsPerRun(func(tests.B) {
 			util.DeduplicateSlice(
 				util.WithSlicePtr(a),
 				util.Wrap(&a),
@@ -268,7 +268,7 @@ func TestDeduplicate(t *testing.T) {
 			0,
 		}
 
-		allocs := tests.AllocsPerRun(func() {
+		allocs := tests.AllocsPerRun(func(tests.B) {
 			util.DeduplicateSlice(
 				util.WithSlicePtr(a),
 				util.Wrap(&a),
@@ -327,7 +327,7 @@ func TestDeduplicate(t *testing.T) {
 			ptr(myType{1}),
 		}
 
-		allocs := tests.AllocsPerRun(func() {
+		allocs := tests.AllocsPerRun(func(tests.B) {
 			util.DeduplicateSlice(
 				util.WithSlicePtr(a),
 				util.Wrap(&a),
@@ -381,7 +381,7 @@ func TestDeduplicate(t *testing.T) {
 			21, // dup
 		}
 
-		allocs := tests.AllocsPerRun(func() {
+		allocs := tests.AllocsPerRun(func(tests.B) {
 			util.DeduplicateSlice(
 				func(i int) [2]int {
 					return [2]int{
@@ -455,7 +455,7 @@ func TestDeduplicate(t *testing.T) {
 			"1,1",
 		}
 
-		allocs := tests.AllocsPerRun(func() {
+		allocs := tests.AllocsPerRun(func(tests.B) {
 			util.DeduplicateSlice(
 				func(i int) [2]int {
 					return [2]int{
@@ -486,7 +486,7 @@ func TestAllocs(t *testing.T) {
 	t.Run("maps", func(t *testing.T) {
 		a := make([]int, 1000)
 		clear(a)
-		allocs := tests.AllocsPerRun(func() {
+		allocs := tests.AllocsPerRun(func(tests.B) {
 			for i := range a {
 				a[i] = i
 			}
@@ -494,7 +494,7 @@ func TestAllocs(t *testing.T) {
 		require.Equal(t, 0, allocs)
 
 		clear(a)
-		allocs = tests.AllocsPerRun(func() {
+		allocs = tests.AllocsPerRun(func(tests.B) {
 			for i := range a {
 				a[i] = i
 			}
@@ -507,7 +507,7 @@ func TestAllocs(t *testing.T) {
 		for i := range a {
 			a[i] = i
 		}
-		allocs := tests.AllocsPerRun(func() {
+		allocs := tests.AllocsPerRun(func(tests.B) {
 			util.DeduplicateSlice(
 				util.WithSlice(a),
 				util.Wrap(&a),
@@ -525,7 +525,7 @@ func TestAllocs(t *testing.T) {
 			a[i] = i
 		}
 		storage := make(map[int]struct{}, cap)
-		allocs := tests.AllocsPerRun(func() {
+		allocs := tests.AllocsPerRun(func(tests.B) {
 			util.DeduplicateSliceWithStorage(
 				storage,
 				util.WithSlice(a),

@@ -143,7 +143,7 @@ func TestHasherAllocations(t *testing.T) {
 		h := NewHasher()
 
 		// Check allocations when we hash.
-		allocs := tests.AllocsPerRun(func() {
+		allocs := tests.AllocsPerRun(func(tests.B) {
 			for _, d := range data {
 				h.Hash(&ownStorage, d)
 			}
@@ -164,7 +164,7 @@ func TestHasherAllocations(t *testing.T) {
 		h := NewHasher()
 
 		// Check allocations when we hash.
-		allocs := tests.AllocsPerRun(func() {
+		allocs := tests.AllocsPerRun(func(tests.B) {
 			for _, d := range data {
 				h.HashCopy(d)
 			}
@@ -183,7 +183,7 @@ func TestHasherAllocations(t *testing.T) {
 
 		var ownStorage SHA256Output
 		h := NewHasher()
-		allocs := tests.AllocsPerRun(func() {
+		allocs := tests.AllocsPerRun(func(tests.B) {
 			for _, name := range names {
 				h.HashString(&ownStorage, name)
 			}
@@ -201,7 +201,7 @@ func TestHasherAllocations(t *testing.T) {
 		}
 
 		h := NewHasher()
-		allocs := tests.AllocsPerRun(func() {
+		allocs := tests.AllocsPerRun(func(tests.B) {
 			for _, name := range names {
 				h.HashStringCopy(name)
 			}
@@ -219,7 +219,7 @@ func TestHasherAllocations(t *testing.T) {
 		}
 
 		h := NewHasher()
-		allocs := tests.AllocsPerRun(func() {
+		allocs := tests.AllocsPerRun(func(tests.B) {
 			for _, d := range domains {
 				// h.HashString(&d.DomainID, d.Name)
 				d.DomainID = h.HashStringCopy(d.Name)

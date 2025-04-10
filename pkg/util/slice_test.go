@@ -13,7 +13,7 @@ func TestRemoveElemFromSlice(t *testing.T) {
 	util.RemoveElemFromSlice(&slice, 6)
 	require.ElementsMatch(t, slice, []int{0, 1, 2, 3, 4, 5})
 
-	allocs := tests.AllocsPerRun(func() {
+	allocs := tests.AllocsPerRun(func(tests.B) {
 		util.RemoveElemFromSlice(&slice, 2)
 	})
 	require.ElementsMatch(t, slice, []int{0, 1, 3, 4, 5})
@@ -81,7 +81,7 @@ func TestRemoveElementsFromSlice(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			// XXX: Do not run in parallel.
 
-			allocs := tests.AllocsPerRun(func() {
+			allocs := tests.AllocsPerRun(func(tests.B) {
 				util.RemoveElementsFromSlice(&tc.slice, tc.indices)
 			})
 			require.ElementsMatch(t, tc.slice, tc.expected)

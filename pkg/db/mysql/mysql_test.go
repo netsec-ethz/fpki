@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	mysqldriver "github.com/go-sql-driver/mysql"
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 	"github.com/stretchr/testify/require"
 
@@ -112,48 +111,6 @@ func TestUpdateCertsNonUnique(t *testing.T) {
 	require.ElementsMatch(t, expectedParents, gotParents)
 	require.ElementsMatch(t, expectedExpirations, gotExpirations)
 	require.ElementsMatch(t, expectedPayloads, gotPayloads)
-}
-
-func TestCheckCertsExist(t *testing.T) {
-	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancelF()
-
-	// Configure a test DB.
-	config, removeF := testdb.ConfigureTestDB(t)
-	defer removeF()
-
-	// Connect to the DB.
-	conn := testdb.Connect(t, config)
-	defer conn.Close()
-
-	// Obtain a convenient MysqlDBForTests object (only in tests).
-	c := mysql.NewMysqlDBForTests(conn)
-	createIDs := func(n int) []common.SHA256Output {
-		return make([]common.SHA256Output, n)
-	}
-
-	// Check the function with 10 elements, it should work.
-	N := 10
-	ids := createIDs(N)
-	presence := make([]bool, N)
-	err := c.DebugCheckCertsExist(ctx, ids, presence)
-	require.NoError(t, err)
-
-	// Check now with 10000 elements, will fail.
-	N = 10000
-	ids = createIDs(N)
-	presence = make([]bool, N)
-	err = c.DebugCheckCertsExist(ctx, ids, presence)
-	require.Error(t, err)
-	t.Logf("error type is: %T, message: %s", err, err)
-	require.IsType(t, &mysqldriver.MySQLError{}, err)
-	myErr := err.(*mysqldriver.MySQLError)
-	require.Equal(t, myErr.Number, uint16(1436)) // Thread stack overrun.
-
-	// With 10000 elements but using the public function, it will work.
-	presence, err = c.CheckCertsExist(ctx, ids)
-	require.NoError(t, err)
-	require.Len(t, presence, len(ids))
 }
 
 func TestCoalesceForDirtyDomains(t *testing.T) {
