@@ -11,6 +11,47 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/tests/random"
 )
 
+func TestRandomInt(t *testing.T) {
+	testCases := map[string]struct {
+		from        int
+		to          int
+		repetitions int
+	}{
+		"array_indices": {
+			from:        0,
+			to:          15,
+			repetitions: 1000,
+		},
+		"big": {
+			from:        1_000_000,
+			to:          1_000_010,
+			repetitions: 1000,
+		},
+		"1": {
+			from:        3,
+			to:          3,
+			repetitions: 1000,
+		},
+		"negative": {
+			from:        -3,
+			to:          0,
+			repetitions: 1000,
+		},
+	}
+	for name, tc := range testCases {
+		name, tc := name, tc
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			for range tc.repetitions {
+				got := random.RandomInt(t, tc.from, tc.to)
+				require.GreaterOrEqual(t, got, tc.from)
+				require.LessOrEqual(t, got, tc.to)
+			}
+		})
+	}
+}
+
 func TestRandomPolicyCertificate(t *testing.T) {
 	rand.Seed(0)
 	pc1 := random.RandomPolicyCertificate(t)
