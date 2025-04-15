@@ -71,8 +71,6 @@ func mainFunction() int {
 	memProfile := flag.String("memprofile", "", "write a memory profile to file")
 	multiInsertSize := flag.Int("multiinsert", MultiInsertSize, "number of certificates and "+
 		"domains inserted at once in the DB")
-	bundleSize := flag.Uint64("bundlesize", 0, "number of certificates after which a coalesce and "+
-		"SMT update must occur. If 0, no limit, meaning coalescing and SMT updating is done once")
 	numFiles := flag.Int("numfiles", NumFiles, "Number of parallel files being read at once")
 	numParsers := flag.Int("numparsers", NumParsers, "Number of line parsers concurrently running")
 	numChainToCerts := flag.Int("numdechainers", NumDechainers, "Number of chain unrollers")
@@ -109,11 +107,6 @@ func mainFunction() int {
 	if ingestCerts && flag.NArg() != 1 {
 		flag.Usage()
 		return 1
-	}
-
-	// Check that we are not using bundles if we are just coalescing or updating the SMT.
-	if *bundleSize != 0 && !ingestCerts {
-		exitIfError(fmt.Errorf("cannot use bundlesize if strategy is not keep or overwrite"))
 	}
 
 	// Profiling:
@@ -204,7 +197,6 @@ func mainFunction() int {
 			WithNumToChains(*numParsers),
 			WithNumToCerts(*numChainToCerts),
 			WithNumDBWriters(*numDBWriters),
-			WithBundleSize(*bundleSize),
 		)
 		exitIfError(err)
 
@@ -224,8 +216,7 @@ func mainFunction() int {
 		}
 	}
 
-	// The certificates had been ingested. If we had set a bundle size, we still need to process
-	// the last bundle. If we hadn't, we will process it all.
+	// The certificates had been ingested.
 	if !onlySmtUpdate {
 		// Coalesce the payloads of all modified domains.
 		coalescePayloadsForDirtyDomains(ctx, conn)
