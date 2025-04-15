@@ -132,6 +132,7 @@ func mainFunction() int {
 			exitIfError(err)
 		}
 	}
+	defer stopProfiles()
 
 	if *cpuProfile != "" {
 		f, err := os.Create(*cpuProfile)
@@ -193,26 +194,6 @@ func mainFunction() int {
 		gzFiles, csvFiles := listOurFiles(flag.Arg(0))
 		fmt.Printf("# gzFiles: %d, # csvFiles: %d\n", len(gzFiles), len(csvFiles))
 
-		bundleProcessing := func() {
-			// do not coalesce, or update smt.
-			fmt.Println("\nAnother bundle ingestion finished.")
-		}
-		if !onlyIngest {
-			bundleProcessing = func() {
-				// Regular operation: coalesce and update SMT.
-				// Called for intermediate bundles. Need to coalesce, update SMT and clean dirty.
-
-				ctx, span := tr.MT().Start(ctx, "bundle-ingested")
-
-				fmt.Println("\nAnother bundle ingestion finished.")
-				coalescePayloadsForDirtyDomains(ctx, conn)
-				updateSMT(ctx, conn)
-				cleanupDirty(ctx, conn)
-
-				span.End()
-			}
-		}
-
 		proc, err := NewProcessor(
 			ctx,
 			conn,
@@ -224,7 +205,6 @@ func mainFunction() int {
 			WithNumToCerts(*numChainToCerts),
 			WithNumDBWriters(*numDBWriters),
 			WithBundleSize(*bundleSize),
-			WithOnBundleFinished(bundleProcessing),
 		)
 		exitIfError(err)
 
@@ -239,9 +219,9 @@ func mainFunction() int {
 
 		exitIfError(proc.Wait())
 
-		stopProfiles()
-
-		return 0
+		if onlyIngest {
+			return 0
+		}
 	}
 
 	// The certificates had been ingested. If we had set a bundle size, we still need to process
@@ -260,8 +240,6 @@ func mainFunction() int {
 	// Close DB.
 	err = conn.Close()
 	exitIfError(err)
-
-	stopProfiles()
 
 	return 0
 }
