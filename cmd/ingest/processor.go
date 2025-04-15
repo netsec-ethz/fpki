@@ -3,9 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"math"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/db"
@@ -27,17 +25,14 @@ import (
 		   ...
 */
 type Processor struct {
-	Ctx               context.Context
-	CsvFiles          []util.CsvFile
-	NumFileReaders    int
-	NumToChain        int
-	NumToCerts        int
-	NumDBWriters      int
-	Pipeline          *pip.Pipeline
-	Manager           *updater.Manager
-	bundleSize        uint64
-	certsBeforeBundle atomic.Uint64
-	doingBundle       atomic.Bool
+	Ctx            context.Context
+	CsvFiles       []util.CsvFile
+	NumFileReaders int
+	NumToChain     int
+	NumToCerts     int
+	NumDBWriters   int
+	Pipeline       *pip.Pipeline
+	Manager        *updater.Manager
 }
 
 func NewProcessor(
@@ -55,10 +50,6 @@ func NewProcessor(
 		NumToChain:     1, // Default to just 1 lineToChain.
 		NumToCerts:     1, // Default to just 1 chainToCerts.
 		NumDBWriters:   1, // Default to 1 db writer.
-
-		bundleSize:        math.MaxUint64,
-		certsBeforeBundle: atomic.Uint64{},
-		doingBundle:       atomic.Bool{},
 	}
 
 	// Apply options to processor only.
@@ -74,8 +65,6 @@ func NewProcessor(
 		p.NumDBWriters,
 		conn,
 		multiInsertSize,
-		math.MaxUint64, // = infinite per default.
-		func() {},      // onBundle: defaults to noop.
 		statsUpdatePeriod,
 		statsUpdateFun,
 	)
@@ -137,16 +126,6 @@ func WithNumDBWriters(numDBWriters int) ingestOptions {
 	return processorOptions(
 		func(p *Processor) {
 			p.NumDBWriters = numDBWriters
-		})
-}
-
-func WithBundleSize(bundleSize uint64) ingestOptions {
-	return processorOptions(
-		func(p *Processor) {
-			if bundleSize == 0 {
-				bundleSize = math.MaxUint64
-			}
-			p.bundleSize = bundleSize
 		})
 }
 

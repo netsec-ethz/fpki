@@ -40,8 +40,6 @@ func NewManager(
 	workerCount int,
 	conn db.Conn,
 	multiInsertSize int,
-	bundleSize uint64,
-	onBundleFunc func(),
 	statsUpdateFreq time.Duration,
 	statsUpdateFunc func(*Stats),
 ) (*Manager, error) {
