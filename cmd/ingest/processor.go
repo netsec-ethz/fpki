@@ -36,7 +36,6 @@ type Processor struct {
 	Pipeline          *pip.Pipeline
 	Manager           *updater.Manager
 	bundleSize        uint64
-	onBundleFinished  func()
 	certsBeforeBundle atomic.Uint64
 	doingBundle       atomic.Bool
 }
@@ -58,7 +57,6 @@ func NewProcessor(
 		NumDBWriters:   1, // Default to 1 db writer.
 
 		bundleSize:        math.MaxUint64,
-		onBundleFinished:  func() {}, // Noop.
 		certsBeforeBundle: atomic.Uint64{},
 		doingBundle:       atomic.Bool{},
 	}
@@ -104,37 +102,6 @@ func NewProcessor(
 		pipFiles,
 		p.Manager.Pipeline,
 	)
-
-	// At the chainToCert stages we evaluate if need to stop. These stages are the last ones right
-	// before the sink, with NumToCerts number of them.
-	evaluateAt := make([]int, 0, p.NumToCerts)
-	for i := len(pipFiles.Stages); i > len(pipFiles.Stages)-p.NumToCerts; i-- {
-		evaluateAt = append(evaluateAt, i-2)
-	}
-
-	stallOption := pip.WithStallStages(
-		append(pipFiles.Stages, p.Manager.Pipeline.Stages...), // all stages, both pipelines.
-		// Function when stalled:
-		func() {
-			// Call the function.
-			p.onBundleFinished()
-
-			// Reset the counter.
-			p.certsBeforeBundle.Store(0)
-			// Reset the bundle running indicator.
-			p.doingBundle.Store(false)
-		},
-		// Function determining when to stall:
-		func(sl pip.StageLike) bool {
-			if p.certsBeforeBundle.Load() > p.bundleSize && p.doingBundle.CompareAndSwap(false, true) {
-				return true
-			}
-			return false
-		},
-		// Evaluate at every chainToCerts stage.
-		pipFiles.StagesAt(evaluateAt...),
-	)
-	stallOption(pipeline)
 
 	// Set the joint pipeline as the pipeline and return.
 	p.Pipeline = pipeline
@@ -183,24 +150,12 @@ func WithBundleSize(bundleSize uint64) ingestOptions {
 		})
 }
 
-func WithOnBundleFinished(fcn func()) ingestOptions {
-	return processorOptions(
-		func(p *Processor) {
-			p.onBundleFinished = fcn
-		})
-}
-
 func (p *Processor) Resume() {
 	p.Pipeline.Resume(p.Ctx)
 }
 
 func (p *Processor) Wait() error {
-	err := p.Pipeline.Wait(p.Ctx)
-	// Check if there is a bundle pending.
-	if p.certsBeforeBundle.Load() > 0 {
-		p.onBundleFinished()
-	}
-	return err
+	return p.Pipeline.Wait(p.Ctx)
 }
 
 // AddGzFiles adds a CSV .gz file to the initial stage.
