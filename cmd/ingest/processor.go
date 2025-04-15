@@ -338,7 +338,7 @@ func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 			for i := range d {
 				d[i] = pip.StageAtIndex[certChain, updater.Certificate](pipeline, 1+S+W+i)
 			}
-			e := []*pip.Stage[updater.Certificate, pip.None]{pip.SinkStage[updater.Certificate](pipeline)}
+			e := pip.StagesAsSlice(pip.SinkStage[updater.Certificate](pipeline))
 
 			pip.LinkStagesDistribute(a, b...) // A -> B
 			pip.LinkStagesCrissCross(b, c)    // Bi-> Ci

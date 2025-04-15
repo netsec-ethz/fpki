@@ -6,6 +6,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
+// WithAutoResumeAtStage enables a "target" stage to be resumed automatically.
 func WithAutoResumeAtStage(
 	targetStage int,
 	shouldResumeNow func() bool,
@@ -94,8 +95,8 @@ func WithAutoResumeAtStage(
 // Finally, when the indicated stages are stalled, the whenStalled function is called.
 // There can be several concurrent calls to the shouldStallPipeline evaluation function,
 // but only one to whenStalled.
-// Finally, the evaluation is done on the indicated stages, even before receiving data, while
-// the execution of whenStalled is done on a separate goroutine, as soon as all pertinent
+// The evaluation of shouldStallPipeline is done on the indicated stages, before receiving data,
+// while the execution of whenStalled is done on a separate goroutine, as soon as all pertinent
 // stages are out of their processing function (not waiting for output to be sent).
 func WithStallStages(
 	stallTheseStages []StageLike,
