@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/tests"
+	"github.com/netsec-ethz/fpki/pkg/tests/random"
 	"github.com/stretchr/testify/require"
 )
 
@@ -1477,6 +1478,181 @@ func TestStallStagesConcurrency(t *testing.T) {
 		require.NoError(t, err)
 	})
 	require.ElementsMatch(t, []int{101, 12, 103, 14, 101, 12, 103, 14}, gotValues)
+}
+
+// TestStallEvaluationFunction checks that both the evaluation and the execution functions are not
+// run with any other simultaneously. I.e. that the mutex contained in the WithStallStages actually
+// works as expected.
+func TestStallEvaluationFunction(t *testing.T) {
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelF()
+
+	// Simulation parameters.
+	const N = 10_000
+	const BundleSize = 100
+	const ProcessingTimeAvg = 10 * time.Microsecond
+	const ProcessingTimeStdDev = 10 * time.Microsecond
+
+	// Needed for the pipeline.
+	type Cert struct{}
+	incomingData := make([]Cert, N)
+	certCount := atomic.Uint64{}
+	processFunctionRandomDuration := func() {
+		nanos := random.RandomInt(
+			t,
+			int(ProcessingTimeAvg-ProcessingTimeStdDev),
+			int(ProcessingTimeAvg+ProcessingTimeStdDev),
+		)
+		time.Sleep(time.Duration(nanos))
+	}
+
+	// First pipeline.
+	//
+	// a ┌-> b1 -┌-> c1 -┬-> d
+	//   |-> b2  |-> c2 -|
+	//  ...     ...     ...
+	//   └-> bW -┴-> cW -┘
+	//
+	// All crisscross links, i.e. the data gets distributed to the first available next stage.
+
+	const W = 16
+	stages := make([]StageLike, 0)
+
+	// State for the processing functions.
+	processingAtA := atomic.Int32{}
+	processingAtB := atomic.Int32{}
+	processingAtC := atomic.Int32{}
+	processingAtD := atomic.Int32{}
+
+	a := NewSource(
+		"source",
+		WithSourceSlice(&incomingData, func(in Cert) (int, error) {
+			processingAtA.Add(1)
+			defer processingAtA.Add(-1)
+
+			processFunctionRandomDuration()
+
+			return 0, nil
+		}),
+	)
+	stages = append(stages, a)
+
+	b := make([]*Stage[Cert, Cert], W)
+	for i := range b {
+		b[i] = NewStage[Cert, Cert](
+			fmt.Sprintf("b%02d", i),
+			WithProcessFunction(func(in Cert) ([]Cert, []int, error) {
+				processingAtB.Add(1)
+				defer processingAtB.Add(-1)
+
+				processFunctionRandomDuration()
+				certCount.Add(1)
+
+				return []Cert{in}, []int{0}, nil
+			}),
+		)
+		stages = append(stages, b[i])
+	}
+
+	c := make([]*Stage[Cert, Cert], W)
+	for i := range c {
+		c[i] = NewStage[Cert, Cert](
+			fmt.Sprintf("c%02d", i),
+			WithProcessFunction(func(in Cert) ([]Cert, []int, error) {
+				processingAtC.Add(1)
+				defer processingAtC.Add(-1)
+
+				processFunctionRandomDuration()
+
+				return []Cert{in}, []int{0}, nil
+			}),
+		)
+		stages = append(stages, c[i])
+	}
+
+	d := NewSink[Cert](
+		"sink",
+		WithSinkFunction(func(in Cert) error {
+			processingAtD.Add(1)
+			defer processingAtD.Add(-1)
+
+			processFunctionRandomDuration()
+
+			return nil
+		}),
+	)
+	stages = append(stages, d)
+
+	pipeline, err := NewPipeline(
+		func(p *Pipeline) {
+			// Link function.
+			a := SourceAsStage(a)
+			d := StagesAsSlice(SinkAsStage(d))
+
+			LinkStagesDistribute(a, b...)
+			LinkStagesCrissCross(b, c)
+			LinkStagesCrissCross(c, d)
+		},
+		WithStages(stages...),
+	)
+	require.NoError(t, err)
+
+	// Stalling.
+	stallEvaluationInProgress := atomic.Bool{}
+	stallExecutionInProgress := atomic.Bool{}
+
+	checkNoProcessingAtTheMoment := func() {
+		check := func(counter *atomic.Int32) {
+			if c := counter.Load(); c != 0 {
+				panic(fmt.Errorf("[TEST bundle function fail] concurrent processing is %d", c))
+			}
+			time.Sleep(10 * time.Microsecond)
+		}
+
+		check(&processingAtA)
+		check(&processingAtB)
+		check(&processingAtC)
+		check(&processingAtD)
+	}
+
+	stall := WithStallStages(
+		stages,
+		func() {
+			// Runs when stalled.
+			DebugPrintf("running stall function\n")
+
+			processFunctionRandomDuration()
+			checkNoProcessingAtTheMoment()
+			processFunctionRandomDuration()
+			checkNoProcessingAtTheMoment()
+
+			t.Logf("Bundle finished at %s", time.Now().Format(time.StampMicro))
+			certCount.Store(0)
+			stallExecutionInProgress.Store(false)
+		},
+		func(sl StageLike) bool {
+			// Evaluate if should stall.
+			if stallEvaluationInProgress.Swap(true) {
+				panic("[TEST stall eval] concurrent call to evaluate function")
+			}
+			defer stallEvaluationInProgress.Store(false)
+
+			willStall := certCount.Load() > BundleSize &&
+				stallExecutionInProgress.CompareAndSwap(false, true)
+			DebugPrintf("[%s] evaluating stall-> %v\n", sl.Base().Name, willStall)
+
+			return willStall
+		},
+		stages[1+W:1+W+W], // "c" stages.
+	)
+	stall(pipeline) // Apply stall option.
+
+	tests.TestOrTimeout(t, tests.WithContext(ctx), func(t tests.T) {
+		pipeline.Resume(ctx)
+
+		err = pipeline.Wait(ctx)
+		require.NoError(t, err)
+	})
 }
 
 func checkClosed[T any](t *testing.T, ch chan T) {

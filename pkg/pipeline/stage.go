@@ -35,7 +35,7 @@ type StageBase struct {
 	StopCh                    chan None       // Indicates to this stage to stop.
 	NextErrChs                []chan error    // Next stage's error channel.
 	NextStagesAggregatedErrCh chan error      // Aggregated nexErrChs
-	onBeforeData              func()          // Callback before attempting to get dat from incoming.
+	onBeforeData              func()          // Callback before getting data from incoming.
 	onReceivedData            func()          // Callback after getting data from incoming.
 	onResume                  func()          // Callback before Resume() starts.
 	onProcessed               func()          // Callback after process.
@@ -819,6 +819,12 @@ func (s *Stage[IN, OUT]) readIncomingSequentially() chan IN {
 		close(aggregated)
 	}()
 	return aggregated
+}
+
+func StagesAsSlice[IN, OUT any](stages ...*Stage[IN, OUT]) []*Stage[IN, OUT] {
+	slice := make([]*Stage[IN, OUT], len(stages))
+	copy(slice, stages)
+	return slice
 }
 
 type None struct{}
