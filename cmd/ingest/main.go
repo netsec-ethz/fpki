@@ -80,8 +80,8 @@ func mainFunction() int {
 		"\"onlyingest\": do not coalesce or update SMT after ingesting files.\n"+
 		"\"skipingest\": only coalesce payloads of domains in the dirty table and update SMT.\n"+
 		"\"onlysmtupdate\": only update the SMT.\n")
-	debugMemProfDump := flag.String("memprofdump", "", "write a memory profile to the file "+
-		"every time SIGUSR1 is caught")
+	debugMemProfDump := flag.String("memprofdump", "/tmp/fpki-ingest-memdump.pprof",
+		"write a memory profile to the file every time SIGUSR1 is caught")
 	fileBatch := flag.Int("filebatch", 0, "process files in batches of this size. If zero, then "+
 		"all files are processed in one batch")
 	flag.Parse()
