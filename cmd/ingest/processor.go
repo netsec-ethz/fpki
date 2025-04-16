@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
@@ -39,8 +38,7 @@ func NewProcessor(
 	ctx context.Context,
 	conn db.Conn,
 	multiInsertSize int,
-	statsUpdatePeriod time.Duration,
-	statsUpdateFun func(*updater.Stats),
+	statistics *updater.Stats,
 	options ...ingestOptions,
 ) (*Processor, error) {
 	// Create the processor that will hold all the information and the pipeline.
@@ -65,8 +63,7 @@ func NewProcessor(
 		p.NumDBWriters,
 		conn,
 		multiInsertSize,
-		statsUpdatePeriod,
-		statsUpdateFun,
+		statistics,
 	)
 	if err != nil {
 		return nil, err
@@ -137,30 +134,9 @@ func (p *Processor) Wait() error {
 	return p.Pipeline.Wait(p.Ctx)
 }
 
-// AddGzFiles adds a CSV .gz file to the initial stage.
-// It blocks until it is accepted.
-func (p *Processor) AddGzFiles(fileNames []string) {
-	p.Manager.Stats.TotalFiles.Add(int64(len(fileNames)))
-
-	for _, filename := range fileNames {
-		p.CsvFiles = append(p.CsvFiles, (&util.GzFile{}).WithFile(filename))
-
-		certCount, err := util.EstimateCertCount(filename)
-		if err != nil {
-			panic(err)
-		}
-		p.Manager.Stats.TotalCerts.Add(int64(certCount))
-	}
-}
-
-// AddCsvFiles adds a .csv file to the initial stage.
-// It blocks until it is accepted.
-func (p *Processor) AddCsvFiles(fileNames []string) {
-	p.Manager.Stats.TotalFiles.Add(int64(len(fileNames)))
-
-	for _, filename := range fileNames {
-		p.CsvFiles = append(p.CsvFiles, (&util.UncompressedFile{}).WithFile(filename))
-	}
+// AddCsvFiles adds the files to the processor to be read when Resume is called.
+func (p *Processor) AddCsvFiles(files []util.CsvFile) {
+	p.CsvFiles = append(p.CsvFiles, files...)
 }
 
 // createFilesToCertsPipeline creates a pipeline that processes CSV and GZ files into Certificates.

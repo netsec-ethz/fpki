@@ -16,7 +16,7 @@ func TestEstimateNumCertsFromGzCsvFilename(t *testing.T) {
 			count:    100006,
 		},
 		{
-			filename: "400024-500029.gz",
+			filename: "400024-500029.csv",
 			count:    100006,
 		},
 		{
