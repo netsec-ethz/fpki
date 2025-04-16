@@ -2,7 +2,6 @@ package updater
 
 import (
 	"context"
-	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/cache"
 	"github.com/netsec-ethz/fpki/pkg/common"
@@ -40,8 +39,7 @@ func NewManager(
 	workerCount int,
 	conn db.Conn,
 	multiInsertSize int,
-	statsUpdateFreq time.Duration,
-	statsUpdateFunc func(*Stats),
+	statistics *Stats,
 ) (*Manager, error) {
 	// Compute how many bits we need to cover N partitions (i.e. log2(N).
 	nBits := int(util.Log2(uint(workerCount)))
@@ -54,7 +52,7 @@ func NewManager(
 	m := &Manager{
 		Conn:             conn,
 		MultiInsertSize:  multiInsertSize,
-		Stats:            NewStatistics(statsUpdateFreq, statsUpdateFunc),
+		Stats:            statistics,
 		ShardFuncCert:    selectPartition,
 		ShardFuncDomain:  selectPartition,
 		IncomingCertChan: make(chan Certificate),

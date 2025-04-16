@@ -8,10 +8,11 @@ import (
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 )
 
 // gzCsvFilename matches with the name of the gz files is e.g. "0-100005.gz".
-var gzCsvFilename = regexp.MustCompile(`^(\d+)-(\d+).gz$`)
+var gzCsvFilename = regexp.MustCompile(`^(\d+)-(\d+).(?:gz|csv)$`)
 
 func EstimateCertCount(filename string) (uint, error) {
 	filename = filepath.Base(filename)
@@ -46,6 +47,19 @@ type CsvFile interface {
 	String() string
 	Open() (io.Reader, error)
 	Close() error
+}
+
+func LoadCsvFile(fileName string) (CsvFile, error) {
+	var f CsvFile
+	switch strings.ToLower(filepath.Ext(fileName)) {
+	case ".gz":
+		f = &GzFile{}
+	case ".csv":
+		f = &UncompressedFile{}
+	default:
+		return nil, fmt.Errorf("unknown CSV file type for %s", fileName)
+	}
+	return f.WithFile(fileName), nil
 }
 
 type baseFile struct {

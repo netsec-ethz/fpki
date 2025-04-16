@@ -75,32 +75,58 @@ func mainFunction() int {
 	numParsers := flag.Int("numparsers", NumParsers, "Number of line parsers concurrently running")
 	numChainToCerts := flag.Int("numdechainers", NumDechainers, "Number of chain unrollers")
 	numDBWriters := flag.Int("numdbworkers", NumDBWriters, "Number of concurrent DB writers")
-	certUpdateStrategy := flag.String("strategy", "", "strategy to update certificates\n"+
+	strategy := flag.String("strategy", "", "strategy to update certificates\n"+
 		"\"\": full work. I.e. ingest files, coalesce, and update SMT.\n"+
 		"\"onlyingest\": do not coalesce or update SMT after ingesting files.\n"+
 		"\"skipingest\": only coalesce payloads of domains in the dirty table and update SMT.\n"+
 		"\"onlysmtupdate\": only update the SMT.\n")
 	debugMemProfDump := flag.String("memprofdump", "", "write a memory profile to the file "+
 		"every time SIGUSR1 is caught")
+	fileBatch := flag.Int("filebatch", 0, "process files in batches of this size. If zero, then "+
+		"all files are processed in one batch")
 	flag.Parse()
 
-	var (
-		ingestCerts   bool
-		onlyIngest    bool
-		onlySmtUpdate bool
+	// Connect to DB via local socket, should be faster.
+	config := db.NewConfig(
+		mysql.WithDefaults(),
+		mysql.WithEnvironment(),
+		mysql.WithLocalSocket("/var/run/mysqld/mysqld.sock"),
 	)
-	switch *certUpdateStrategy {
+	conn, err := mysql.Connect(config)
+	exitIfError(err)
+
+	coalesceFun := func() {}
+	smtUpdateFun := func() {}
+
+	var (
+		ingestCerts bool
+	)
+
+	switch *strategy {
 	case "onlyingest":
-		onlyIngest = true
-		fallthrough // also ingest certs
+		ingestCerts = true // But do not fallthrough to also coalesce and update SMT.
+
 	case "":
 		ingestCerts = true
+		fallthrough
 	case "skipingest":
-		// ingestCerts is already false
+		coalesceFun = func() {
+			ctx, span := tr.MT().Start(ctx, "coalesce")
+			defer span.End()
+
+			coalescePayloadsForDirtyDomains(ctx, conn)
+		}
+		fallthrough
 	case "onlysmtupdate":
-		onlySmtUpdate = true
+		smtUpdateFun = func() {
+			ctx, span := tr.MT().Start(ctx, "smt-update")
+			defer span.End()
+
+			updateSMT(ctx, conn)
+			cleanupDirty(ctx, conn)
+		}
 	default:
-		panic(fmt.Errorf("bad update strategy: %v", *certUpdateStrategy))
+		exitIfError(fmt.Errorf("bad update strategy: %v", *strategy))
 	}
 
 	// If we will ingest certificates, we need a path.
@@ -157,84 +183,96 @@ func mainFunction() int {
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		sg := <-signals
-		fmt.Fprintf(os.Stderr, "signal caught %s\n", sg.String())
+		fmt.Fprintf(os.Stderr, "\nsignal caught %s\n", sg.String())
 		stopProfiles()
 		os.Exit(1)
 	}()
 
-	// Connect to DB via local socket, should be faster.
-	config := db.NewConfig(
-		mysql.WithDefaults(),
-		mysql.WithEnvironment(),
-		mysql.WithLocalSocket("/var/run/mysqld/mysqld.sock"),
-	)
-	conn, err := mysql.Connect(config)
-	exitIfError(err)
-
-	// Load root if any:
-	root, err := conn.LoadRoot(ctx)
-	exitIfError(err)
-	if root == nil {
-		fmt.Print("SMT root node is empty. DB should be empty, but not checking.\n\n")
-		// TODO(juagargi) check that DB is empty if root is empty.
-	}
-
 	if ingestCerts {
-		ctx, span := tr.MT().Start(ctx, "file-ingestion")
-		defer span.End()
+		stats := updater.NewStatistics(2*time.Second, printStats)
 
-		// All GZ and CSV files found under the directory of the argument.
-		gzFiles, csvFiles := listOurFiles(flag.Arg(0))
-		fmt.Printf("# gzFiles: %d, # csvFiles: %d\n", len(gzFiles), len(csvFiles))
+		// Use the file batcher ingest function.
+		forEachFileBatchFun := func(files []string) {
+			ctx, span := tr.MT().Start(ctx, "file-ingestion")
+			defer span.End()
 
-		proc, err := NewProcessor(
-			ctx,
-			conn,
-			*multiInsertSize,
-			2*time.Second,
-			printStats,
-			WithNumFileReaders(*numFiles),
-			WithNumToChains(*numParsers),
-			WithNumToCerts(*numChainToCerts),
-			WithNumDBWriters(*numDBWriters),
-		)
-		exitIfError(err)
+			proc, err := NewProcessor(
+				ctx,
+				conn,
+				*multiInsertSize,
+				stats,
+				WithNumFileReaders(*numFiles),
+				WithNumToChains(*numParsers),
+				WithNumToCerts(*numChainToCerts),
+				WithNumDBWriters(*numDBWriters),
+			)
+			exitIfError(err)
 
-		// Add the files to the processor.
-		proc.AddGzFiles(gzFiles)
-		proc.AddCsvFiles(csvFiles)
+			csvFiles := make([]util.CsvFile, 0, len(files))
+			for _, filename := range files {
+				f, err := util.LoadCsvFile(filename)
+				exitIfError(err)
+				csvFiles = append(csvFiles, f)
+			}
+			proc.AddCsvFiles(csvFiles)
 
-		fmt.Printf("[%s] Starting ingesting files ...\n",
-			time.Now().Format(time.StampMilli))
-		// Update certificates and chains, and wait until finished.
-		proc.Resume()
+			fmt.Printf("[%s] Starting ingesting files ...\n",
+				time.Now().Format(time.StampMilli))
+			// Update certificates and chains, and wait until finished.
+			proc.Resume()
+			exitIfError(proc.Wait())
 
-		exitIfError(proc.Wait())
-
-		if onlyIngest {
-			return 0
+			// After ingestion.
+			coalesceFun()
+			smtUpdateFun()
 		}
+
+		ingestFilesInBatches(stats, *fileBatch, forEachFileBatchFun)
+
+	} else {
+		coalesceFun()
+		smtUpdateFun()
 	}
-
-	// The certificates had been ingested.
-	if !onlySmtUpdate {
-		// Coalesce the payloads of all modified domains.
-		coalescePayloadsForDirtyDomains(ctx, conn)
-	}
-
-	// Now update the SMT Trie with the changed domains:
-	updateSMT(ctx, conn)
-
-	// Cleanup dirty entries.
-	cleanupDirty(ctx, conn)
-
-	// Close DB.
-	err = conn.Close()
-	exitIfError(err)
-
 	return 0
 }
 
+func ingestFilesInBatches(
+	stats *updater.Stats,
+	fileBatchSize int,
+	forEachBatch func([]string),
+) {
+	// All GZ and CSV files found under the directory of the argument.
+	gzFiles, csvFiles := listOurFiles(flag.Arg(0))
+	fmt.Printf("# gzFiles: %d, # csvFiles: %d\n", len(gzFiles), len(csvFiles))
+	allFileNames := append(gzFiles, csvFiles...)
+
+	// Update the statistics.
+	stats.TotalFiles.Store(int64(len(allFileNames)))
+	stats.TotalCerts.Store(0)
+	for _, fileName := range allFileNames {
+		n, err := util.EstimateCertCount(fileName)
+		exitIfError(err)
+		stats.TotalCerts.Add(int64(n))
+	}
+
+	// Default (with size zero) is one batch for all files.
+	if fileBatchSize == 0 {
+		fileBatchSize = len(allFileNames)
+	} else {
+		fileBatchSize = min(fileBatchSize, len(allFileNames))
+	}
+	batchCount := ((len(allFileNames) - 1) / fileBatchSize) + 1
+
+	for i := 0; i < len(allFileNames); i += fileBatchSize {
+		s := i
+		e := min(i+fileBatchSize, len(allFileNames))
+
+		fmt.Printf("\nProcessing File Batch %d / %d\n", i/fileBatchSize+1, batchCount)
+		forEachBatch(allFileNames[s:e])
+	}
+}
+
+// listOurFiles returns the .gz and .csv files sorted by name.
 func listOurFiles(dir string) (gzFiles, csvFiles []string) {
 	entries, err := os.ReadDir(dir)
 	exitIfError(err)
