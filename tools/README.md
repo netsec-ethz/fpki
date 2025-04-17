@@ -31,11 +31,13 @@ sudo systemctl restart apparmor.service
 
 To allow root without password:
 ```bash
-echo "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '';
+echo "ALTER USER 'root'@'localhost' IDENTIFIED WITH caching_sha2_password BY '';
 FLUSH PRIVILEGES;" | sudo mysql
-# you should see "mysql_native_password" as plugin for root when displaying the root user:
+# you should see "caching_sha2_password" as plugin for root when displaying the root user:
 mysql -u root -e "SELECT user,authentication_string,plugin,host FROM mysql.user;"
 ```
+Previously we suggested to use the option `mysql_native_password` instead of `caching_sha2_password`,
+but since MySQL version 9 it has been deprecated and removed.
 
 
 ## System
