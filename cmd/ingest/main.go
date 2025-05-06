@@ -6,14 +6,13 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"runtime/pprof"
-	"sort"
-	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
+	args "github.com/netsec-ethz/fpki/cmd/ingest/cmdflags"
+	"github.com/netsec-ethz/fpki/cmd/ingest/csv"
+	"github.com/netsec-ethz/fpki/cmd/ingest/journal"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
@@ -22,13 +21,7 @@ import (
 )
 
 const (
-	NumFiles      = 4
-	NumParsers    = 32
-	NumDechainers = 4
-	NumDBWriters  = 32
-
-	MultiInsertSize = 10_000     // # of certificates, domains, etc inserted at once.
-	LruCacheSize    = 10_000_000 // Keep track of the 10 million most seen certificates.
+	LruCacheSize = 10_000_000 // Keep track of the 10 million most seen certificates.
 )
 
 // Times gathered at jupiter, 64 gz files, no CSV
@@ -63,28 +56,7 @@ func mainFunction() int {
 	ctx, span := tr.MT().Start(ctx, "main")
 	defer span.End()
 
-	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage:\n%s directory\n", os.Args[0])
-		flag.PrintDefaults()
-	}
-	cpuProfile := flag.String("cpuprofile", "", "write a CPU profile to file")
-	memProfile := flag.String("memprofile", "", "write a memory profile to file")
-	multiInsertSize := flag.Int("multiinsert", MultiInsertSize, "number of certificates and "+
-		"domains inserted at once in the DB")
-	numFiles := flag.Int("numfiles", NumFiles, "Number of parallel files being read at once")
-	numParsers := flag.Int("numparsers", NumParsers, "Number of line parsers concurrently running")
-	numChainToCerts := flag.Int("numdechainers", NumDechainers, "Number of chain unrollers")
-	numDBWriters := flag.Int("numdbworkers", NumDBWriters, "Number of concurrent DB writers")
-	strategy := flag.String("strategy", "", "strategy to update certificates\n"+
-		"\"\": full work. I.e. ingest files, coalesce, and update SMT.\n"+
-		"\"onlyingest\": do not coalesce or update SMT after ingesting files.\n"+
-		"\"skipingest\": only coalesce payloads of domains in the dirty table and update SMT.\n"+
-		"\"onlysmtupdate\": only update the SMT.\n")
-	debugMemProfDump := flag.String("memprofdump", "/tmp/fpki-ingest-memdump.pprof",
-		"write a memory profile to the file every time SIGUSR1 is caught")
-	fileBatch := flag.Int("filebatch", 0, "process files in batches of this size. If zero, then "+
-		"all files are processed in one batch")
-	flag.Parse()
+	args.ConfigureFlags()
 
 	// Connect to DB via local socket, should be faster.
 	config := db.NewConfig(
@@ -95,6 +67,10 @@ func mainFunction() int {
 	conn, err := mysql.Connect(config)
 	exitIfError(err)
 
+	var jrnl *journal.Journal
+	jrnl, err = journal.NewJournal(*args.JournalFile)
+	exitIfError(err)
+
 	coalesceFun := func() {}
 	smtUpdateFun := func() {}
 
@@ -102,7 +78,7 @@ func mainFunction() int {
 		ingestCerts bool
 	)
 
-	switch *strategy {
+	switch *args.Strategy {
 	case "onlyingest":
 		ingestCerts = true // But do not fallthrough to also coalesce and update SMT.
 
@@ -126,7 +102,7 @@ func mainFunction() int {
 			cleanupDirty(ctx, conn)
 		}
 	default:
-		exitIfError(fmt.Errorf("bad update strategy: %v", *strategy))
+		exitIfError(fmt.Errorf("bad update strategy: %v", *args.Strategy))
 	}
 
 	// If we will ingest certificates, we need a path.
@@ -137,15 +113,15 @@ func mainFunction() int {
 
 	// Profiling:
 	stopProfiles := func() {
-		if *cpuProfile != "" || *memProfile != "" {
+		if *args.CpuProfile != "" || *args.MemProfile != "" {
 			fmt.Fprintln(os.Stderr, "\nStopping profiling")
 		}
 
-		if *cpuProfile != "" {
+		if *args.CpuProfile != "" {
 			pprof.StopCPUProfile()
 		}
-		if *memProfile != "" {
-			f, err := os.Create(*memProfile)
+		if *args.MemProfile != "" {
+			f, err := os.Create(*args.MemProfile)
 			exitIfError(err)
 			err = pprof.WriteHeapProfile(f)
 			exitIfError(err)
@@ -153,8 +129,8 @@ func mainFunction() int {
 	}
 	defer stopProfiles()
 
-	if *cpuProfile != "" {
-		f, err := os.Create(*cpuProfile)
+	if *args.CpuProfile != "" {
+		f, err := os.Create(*args.CpuProfile)
 		exitIfError(err)
 		err = pprof.StartCPUProfile(f)
 		exitIfError(err)
@@ -164,15 +140,11 @@ func mainFunction() int {
 	}
 
 	// Memprof dump if SIGUSR1.
-	if *debugMemProfDump != "" {
+	if *args.DebugMemProfDump != "" {
 		util.RunOnSignal(
 			ctx,
-			func(s os.Signal) {
-				f, err := os.Create(*debugMemProfDump)
-				exitIfError(err)
-				err = pprof.Lookup("heap").WriteTo(f, 0) // use "heap" or "allocs"
-				exitIfError(err)
-				exitIfError(f.Close())
+			func(os.Signal) {
+				createMemDump(*args.DebugMemProfDump)
 			},
 			syscall.SIGUSR1,
 		)
@@ -185,6 +157,8 @@ func mainFunction() int {
 		sg := <-signals
 		fmt.Fprintf(os.Stderr, "\nsignal caught %s\n", sg.String())
 		stopProfiles()
+		// Memory dump file name, if any:
+		createMemDump("/tmp/fpki-ingest-crash-memdump.pprof")
 		os.Exit(1)
 	}()
 
@@ -199,12 +173,12 @@ func mainFunction() int {
 			proc, err := NewProcessor(
 				ctx,
 				conn,
-				*multiInsertSize,
+				*args.MultiInsertSize,
 				stats,
-				WithNumFileReaders(*numFiles),
-				WithNumToChains(*numParsers),
-				WithNumToCerts(*numChainToCerts),
-				WithNumDBWriters(*numDBWriters),
+				WithNumFileReaders(*args.NumFiles),
+				WithNumToChains(*args.NumParsers),
+				WithNumToCerts(*args.NumChainToCerts),
+				WithNumDBWriters(*args.NumDBWriters),
 			)
 			exitIfError(err)
 
@@ -225,10 +199,16 @@ func mainFunction() int {
 			// After ingestion.
 			coalesceFun()
 			smtUpdateFun()
+
+			// Update journal.
+			if jrnl != nil {
+				err = jrnl.AddCompletedFiles(files)
+				exitIfError(err)
+			}
 		}
 
-		ingestFilesInBatches(stats, *fileBatch, forEachFileBatchFun)
-
+		err := ingestFilesInBatches(stats, *args.FileBatch, forEachFileBatchFun)
+		exitIfError(err)
 	} else {
 		coalesceFun()
 		smtUpdateFun()
@@ -240,9 +220,12 @@ func ingestFilesInBatches(
 	stats *updater.Stats,
 	fileBatchSize int,
 	forEachBatch func([]string),
-) {
+) error {
 	// All GZ and CSV files found under the directory of the argument.
-	gzFiles, csvFiles := listOurFiles(flag.Arg(0))
+	gzFiles, csvFiles, err := csv.ListCsvFiles(flag.Arg(0))
+	if err != nil {
+		return err
+	}
 	fmt.Printf("# gzFiles: %d, # csvFiles: %d\n", len(gzFiles), len(csvFiles))
 	allFileNames := append(gzFiles, csvFiles...)
 
@@ -270,56 +253,8 @@ func ingestFilesInBatches(
 		fmt.Printf("\nProcessing File Batch %d / %d\n", i/fileBatchSize+1, batchCount)
 		forEachBatch(allFileNames[s:e])
 	}
-}
 
-// listOurFiles returns the .gz and .csv files sorted by name.
-func listOurFiles(dir string) (gzFiles, csvFiles []string) {
-	entries, err := os.ReadDir(dir)
-	exitIfError(err)
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		if e.Name() == "bundled" {
-			// Use all *.gz in this directory.
-			d := filepath.Join(dir, e.Name())
-			gzFiles, err = filepath.Glob(fmt.Sprintf("%s/*.gz", d))
-			exitIfError(err)
-			csvFiles, err = filepath.Glob(fmt.Sprintf("%s/*.csv", dir))
-			exitIfError(err)
-		} else {
-			gzs, csvs := listOurFiles(filepath.Join(dir, e.Name()))
-			gzFiles = append(gzFiles, gzs...)
-			csvFiles = append(csvFiles, csvs...)
-		}
-	}
-
-	// Sort the files according to their node number.
-	sortByBundleName(gzFiles)
-	sortByBundleName(csvFiles)
-
-	return
-}
-
-// sortByBundleName expects a slice of filenames of the form X-Y.{csv,gz}.
-// After it returns, the slice is sorted according to uint(X).
-func sortByBundleName(names []string) {
-	sort.Slice(names, func(i, j int) bool {
-		a := filenameToFirstSize(names[i])
-		b := filenameToFirstSize(names[j])
-		return a < b
-	})
-}
-
-func filenameToFirstSize(name string) uint64 {
-	name = filepath.Base(name)
-	tokens := strings.Split(name, "-")
-	if len(tokens) != 2 {
-		exitIfError(fmt.Errorf("filename doesn't follow convention: %s", name))
-	}
-	n, err := strconv.ParseUint(tokens[0], 10, 64)
-	exitIfError(err)
-	return n
+	return nil
 }
 
 func printStats(s *updater.Stats) {
@@ -357,4 +292,13 @@ func exitIfError(err error) {
 		fmt.Fprintf(os.Stderr, "%s\n", err)
 		os.Exit(1)
 	}
+}
+
+func createMemDump(filename string) {
+	f, err := os.Create(filename)
+	exitIfError(err)
+	err = pprof.Lookup("heap").WriteTo(f, 0) // use "heap" or "allocs"
+	exitIfError(err)
+	exitIfError(f.Close())
+	fmt.Fprintf(os.Stderr, "\nMemory dumped to %s\n", filename)
 }
