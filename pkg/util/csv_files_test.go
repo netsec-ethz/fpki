@@ -1,8 +1,10 @@
 package util
 
 import (
+	"sort"
 	"testing"
 
+	"github.com/netsec-ethz/fpki/pkg/tests"
 	"github.com/stretchr/testify/require"
 )
 
@@ -42,4 +44,83 @@ func TestEstimateNumCertsFromGzCsvFilename(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, tc.count, got)
 	}
+}
+
+func TestSortByBundleName(t *testing.T) {
+	testCases := map[string]struct {
+		names    []string
+		expected []string
+	}{
+		"empty": {},
+		"one": {
+			names: []string{
+				"0-100000.gz",
+			},
+			expected: []string{
+				"0-100000.gz",
+			},
+		},
+		"two": {
+			names: []string{
+				"100001-199999.csv",
+				"0-100000.gz",
+			},
+			expected: []string{
+				"0-100000.gz",
+				"100001-199999.csv",
+			},
+		},
+		"three": {
+			names: []string{
+				"200000-299999.csv",
+				"0-100000.gz",
+				"100001-199999.csv",
+			},
+			expected: []string{
+				"0-100000.gz",
+				"100001-199999.csv",
+				"200000-299999.csv",
+			},
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			err := SortByBundleName(tc.names)
+			require.NoError(t, err)
+
+			require.Equal(t, tc.expected, tc.names)
+		})
+	}
+}
+
+func safeSort(t tests.TB, names []string) {
+	sort.Slice(names, func(i, j int) bool {
+		a, err := CsvFilenameToFirstIndex(names[i])
+		require.NoError(t, err)
+
+		b, err := CsvFilenameToFirstIndex(names[j])
+		require.NoError(t, err)
+		return a < b
+	})
+
+	// sort.Slice()
+	// slices.SortFunc[string]()
+}
+
+func safeSearch(t tests.TB, names []string, name string) int {
+	// type pair struct {
+	// 	name string
+	// 	bundle int
+	// }
+	// files
+	for i, f := range names {
+		if f == name {
+			return i
+		}
+	}
+
+	return len(names)
 }

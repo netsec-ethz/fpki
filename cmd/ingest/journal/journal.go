@@ -11,6 +11,7 @@ import (
 	"strconv"
 
 	"github.com/netsec-ethz/fpki/cmd/ingest/csv"
+	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
 type Journal struct {
@@ -64,8 +65,24 @@ func NewJournal(journalFile string) (*Journal, error) {
 
 func (j *Journal) AddCompletedFiles(files []string) error {
 	j.CompletedFiles = append(j.CompletedFiles, files...)
-	sort.Strings(j.CompletedFiles)
+	if err := util.SortByBundleName(j.CompletedFiles); err != nil {
+		return err
+	}
+
 	return j.Write()
+}
+
+func (j *Journal) PendingFiles() []string {
+	files := j.Files
+	// Remove those completed ones.
+	for _, f := range j.CompletedFiles {
+		index := sort.SearchStrings(files, f)
+		if index < len(files) {
+			files = append(files[:index], files[index+1:]...)
+		}
+	}
+
+	return files
 }
 
 func (j *Journal) reset() error {
@@ -81,12 +98,16 @@ func (j *Journal) reset() error {
 		return err
 	}
 
-	// Update the files that are present under the directory.
+	// Update with all the GZ and CSV files present under the directory of the argument.
 	gzFiles, csvFiles, err := csv.ListCsvFiles(flag.Arg(0))
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
+
 	j.Files = append(gzFiles, csvFiles...)
+	if err := util.SortByBundleName(j.Files); err != nil {
+		return err
+	}
 
 	return j.Write()
 }

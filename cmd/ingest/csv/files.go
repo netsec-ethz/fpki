@@ -4,9 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
-	"strconv"
-	"strings"
+
+	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
 // ListCsvFiles returns the .gz and .csv files sorted by name.
@@ -41,41 +40,8 @@ func ListCsvFiles(dir string) (gzFiles, csvFiles []string, err error) {
 	}
 
 	// Sort the files according to their node number.
-	sortByBundleName(gzFiles)
-	sortByBundleName(csvFiles)
+	util.SortByBundleName(gzFiles)
+	util.SortByBundleName(csvFiles)
 
 	return
-}
-
-// sortByBundleName expects a slice of filenames of the form X-Y.{csv,gz}.
-// After it returns, the slice is sorted according to uint(X).
-func sortByBundleName(names []string) error {
-	var errInSorting error
-	sort.Slice(names, func(i, j int) bool {
-		a, err := filenameToFirstSize(names[i])
-		if err != nil {
-			errInSorting = err
-			return false
-		}
-		b, err := filenameToFirstSize(names[j])
-		if err != nil {
-			errInSorting = err
-			return false
-		}
-		return a < b
-	})
-	return errInSorting
-}
-
-func filenameToFirstSize(name string) (uint64, error) {
-	name = filepath.Base(name)
-	tokens := strings.Split(name, "-")
-	if len(tokens) != 2 {
-		return 0, fmt.Errorf("filename doesn't follow convention: %s", name)
-	}
-	n, err := strconv.ParseUint(tokens[0], 10, 64)
-	if err != nil {
-		return 0, err
-	}
-	return n, nil
 }

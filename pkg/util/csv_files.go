@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -15,30 +16,73 @@ import (
 var gzCsvFilename = regexp.MustCompile(`^(\d+)-(\d+).(?:gz|csv)$`)
 
 func EstimateCertCount(filename string) (uint, error) {
+	indices, err := filenameToIndices(filename)
+	if err != nil {
+		return 0, err
+	}
+
+	return indices[1] - indices[0] + 1, nil
+}
+
+func CsvFilenameToFirstIndex(filename string) (uint, error) {
+	indices, err := filenameToIndices(filename)
+	if err != nil {
+		return 0, err
+	}
+
+	return indices[0], nil
+}
+
+func filenameToIndices(filename string) ([2]uint, error) {
 	filename = filepath.Base(filename)
 	errBadFilename := fmt.Errorf(
 		`estimating certificate count from filename "%s": unexpected name`,
 		filename)
 	groups := gzCsvFilename.FindStringSubmatch(filename)
 	if len(groups) != 3 {
-		return 0, errBadFilename
+		return [2]uint{}, errBadFilename
 	}
 
 	first, err := strconv.Atoi(groups[1])
 	if err != nil {
-		return 0, errBadFilename
+		return [2]uint{}, errBadFilename
 	}
 
 	last, err := strconv.Atoi(groups[2])
 	if err != nil {
-		return 0, errBadFilename
+		return [2]uint{}, errBadFilename
 	}
 
 	if first > last {
-		return 0, fmt.Errorf("%s: first > last", errBadFilename)
+		return [2]uint{}, fmt.Errorf("%s: first > last", errBadFilename)
 	}
 
-	return uint(last-first) + 1, nil
+	return [2]uint{uint(first), uint(last)}, nil
+}
+
+// SortByBundleName expects a slice of filenames of the form X-Y.{csv,gz}.
+// After it returns, the slice is sorted according to uint(X).
+func SortByBundleName(names []string) error {
+	var errInSorting error
+	sort.Slice(names, func(i, j int) bool {
+		a, err := CsvFilenameToFirstIndex(names[i])
+
+		if err != nil {
+			errInSorting = err
+			return false
+		}
+		b, err := CsvFilenameToFirstIndex(names[j])
+		if err != nil {
+			errInSorting = err
+			return false
+		}
+		return a < b
+	})
+	return errInSorting
+}
+
+func SearchByBundleName(names []string, name string) (int, error) {
+	return 0, nil
 }
 
 type CsvFile interface {
