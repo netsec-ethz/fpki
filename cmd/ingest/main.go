@@ -11,7 +11,6 @@ import (
 	"time"
 
 	args "github.com/netsec-ethz/fpki/cmd/ingest/cmdflags"
-	"github.com/netsec-ethz/fpki/cmd/ingest/csv"
 	"github.com/netsec-ethz/fpki/cmd/ingest/journal"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
@@ -207,7 +206,7 @@ func mainFunction() int {
 			}
 		}
 
-		err := ingestFilesInBatches(stats, *args.FileBatch, forEachFileBatchFun)
+		err := ingestFilesInBatches(jrnl, stats, *args.FileBatch, forEachFileBatchFun)
 		exitIfError(err)
 	} else {
 		coalesceFun()
@@ -217,22 +216,17 @@ func mainFunction() int {
 }
 
 func ingestFilesInBatches(
+	j *journal.Journal,
 	stats *updater.Stats,
 	fileBatchSize int,
 	forEachBatch func([]string),
 ) error {
-	// All GZ and CSV files found under the directory of the argument.
-	gzFiles, csvFiles, err := csv.ListCsvFiles(flag.Arg(0))
-	if err != nil {
-		return err
-	}
-	fmt.Printf("# gzFiles: %d, # csvFiles: %d\n", len(gzFiles), len(csvFiles))
-	allFileNames := append(gzFiles, csvFiles...)
+	allFilenames := j.PendingFiles()
 
 	// Update the statistics.
-	stats.TotalFiles.Store(int64(len(allFileNames)))
+	stats.TotalFiles.Store(int64(len(allFilenames)))
 	stats.TotalCerts.Store(0)
-	for _, fileName := range allFileNames {
+	for _, fileName := range allFilenames {
 		n, err := util.EstimateCertCount(fileName)
 		exitIfError(err)
 		stats.TotalCerts.Add(int64(n))
@@ -240,18 +234,18 @@ func ingestFilesInBatches(
 
 	// Default (with size zero) is one batch for all files.
 	if fileBatchSize == 0 {
-		fileBatchSize = len(allFileNames)
+		fileBatchSize = len(allFilenames)
 	} else {
-		fileBatchSize = min(fileBatchSize, len(allFileNames))
+		fileBatchSize = min(fileBatchSize, len(allFilenames))
 	}
-	batchCount := ((len(allFileNames) - 1) / fileBatchSize) + 1
+	batchCount := ((len(allFilenames) - 1) / fileBatchSize) + 1
 
-	for i := 0; i < len(allFileNames); i += fileBatchSize {
+	for i := 0; i < len(allFilenames); i += fileBatchSize {
 		s := i
-		e := min(i+fileBatchSize, len(allFileNames))
+		e := min(i+fileBatchSize, len(allFilenames))
 
 		fmt.Printf("\nProcessing File Batch %d / %d\n", i/fileBatchSize+1, batchCount)
-		forEachBatch(allFileNames[s:e])
+		forEachBatch(allFilenames[s:e])
 	}
 
 	return nil

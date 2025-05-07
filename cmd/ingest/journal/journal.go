@@ -7,10 +7,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"sort"
 	"strconv"
 
-	"github.com/netsec-ethz/fpki/cmd/ingest/csv"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
@@ -68,18 +68,32 @@ func (j *Journal) AddCompletedFiles(files []string) error {
 	if err := util.SortByBundleName(j.CompletedFiles); err != nil {
 		return err
 	}
+	j.CompletedFiles = slices.Compact(j.CompletedFiles)
 
 	return j.Write()
 }
 
+// PendingFiles returns the set substraction Files - CompletedFiles.
+// Since both Files and CompletedFiles are sorted and contain no repeated elements,
+// it makes use of this fact.
 func (j *Journal) PendingFiles() []string {
-	files := j.Files
+	files := slices.Clone(j.Files)
 	// Remove those completed ones.
+	var i int
 	for _, f := range j.CompletedFiles {
-		index := sort.SearchStrings(files, f)
-		if index < len(files) {
-			files = append(files[:index], files[index+1:]...)
+		// The index "i" indicates the last occurence found, i.e. the min index where a element
+		// in Files could be equal to any remaining elements in CompletedFiles.
+		idx := sort.SearchStrings(files[i:], f)
+		if idx == len(files) {
+			continue
 		}
+		// One is found. We don't need to look at previous elements in files, since they can
+		// never be equal (or greater) than the next CompletedFiles elements.
+		// Remove the found item, drag the next
+		i = idx
+
+		// Remove from the return value.
+		files = slices.Delete(files, idx, idx+1)
 	}
 
 	return files
@@ -99,7 +113,7 @@ func (j *Journal) reset() error {
 	}
 
 	// Update with all the GZ and CSV files present under the directory of the argument.
-	gzFiles, csvFiles, err := csv.ListCsvFiles(flag.Arg(0))
+	gzFiles, csvFiles, err := ListCsvFiles(flag.Arg(0))
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
@@ -108,6 +122,7 @@ func (j *Journal) reset() error {
 	if err := util.SortByBundleName(j.Files); err != nil {
 		return err
 	}
+	j.Files = slices.Compact(j.Files)
 
 	return j.Write()
 }

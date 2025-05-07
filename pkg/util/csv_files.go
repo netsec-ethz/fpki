@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -63,26 +63,30 @@ func filenameToIndices(filename string) ([2]uint, error) {
 // SortByBundleName expects a slice of filenames of the form X-Y.{csv,gz}.
 // After it returns, the slice is sorted according to uint(X).
 func SortByBundleName(names []string) error {
-	var errInSorting error
-	sort.Slice(names, func(i, j int) bool {
-		a, err := CsvFilenameToFirstIndex(names[i])
-
+	type pair struct {
+		name   string
+		bundle int
+	}
+	pairs := make([]pair, len(names))
+	for i, name := range names {
+		idxs, err := filenameToIndices(name)
 		if err != nil {
-			errInSorting = err
-			return false
+			return err
 		}
-		b, err := CsvFilenameToFirstIndex(names[j])
-		if err != nil {
-			errInSorting = err
-			return false
-		}
-		return a < b
+		pairs[i].name = name
+		pairs[i].bundle = int(idxs[0])
+	}
+	// Sort by first index.
+	slices.SortFunc(pairs, func(a, b pair) int {
+		return a.bundle - b.bundle
 	})
-	return errInSorting
-}
 
-func SearchByBundleName(names []string, name string) (int, error) {
-	return 0, nil
+	// Rebuild original slice.
+	for i, pair := range pairs {
+		names[i] = pair.name
+	}
+
+	return nil
 }
 
 type CsvFile interface {

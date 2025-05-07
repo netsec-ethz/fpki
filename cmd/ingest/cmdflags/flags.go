@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"sync"
 )
 
 // Flags for the command line:
@@ -31,7 +32,9 @@ const (
 	DefMultiInsertSize = 10_000 // # of certificates, domains, etc inserted at once.
 )
 
-func ConfigureFlags() {
+var ConfigureFlags func() = sync.OnceFunc(_configureFlags)
+
+func _configureFlags() {
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage:\n%s directory\n", os.Args[0])
 		flag.PrintDefaults()

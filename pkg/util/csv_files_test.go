@@ -1,10 +1,8 @@
 package util
 
 import (
-	"sort"
 	"testing"
 
-	"github.com/netsec-ethz/fpki/pkg/tests"
 	"github.com/stretchr/testify/require"
 )
 
@@ -94,33 +92,4 @@ func TestSortByBundleName(t *testing.T) {
 			require.Equal(t, tc.expected, tc.names)
 		})
 	}
-}
-
-func safeSort(t tests.TB, names []string) {
-	sort.Slice(names, func(i, j int) bool {
-		a, err := CsvFilenameToFirstIndex(names[i])
-		require.NoError(t, err)
-
-		b, err := CsvFilenameToFirstIndex(names[j])
-		require.NoError(t, err)
-		return a < b
-	})
-
-	// sort.Slice()
-	// slices.SortFunc[string]()
-}
-
-func safeSearch(t tests.TB, names []string, name string) int {
-	// type pair struct {
-	// 	name string
-	// 	bundle int
-	// }
-	// files
-	for i, f := range names {
-		if f == name {
-			return i
-		}
-	}
-
-	return len(names)
 }
