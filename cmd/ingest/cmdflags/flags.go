@@ -30,6 +30,8 @@ const (
 	DefNumDBWriters  = 32
 
 	DefMultiInsertSize = 10_000 // # of certificates, domains, etc inserted at once.
+
+	DefJournalFile = "fpki-journal.json"
 )
 
 var ConfigureFlags func() = sync.OnceFunc(_configureFlags)
@@ -57,6 +59,7 @@ func _configureFlags() {
 		"write a memory profile to the file every time SIGUSR1 is caught")
 	FileBatch = flag.Int("filebatch", 0, "process files in batches of this size. If zero, then "+
 		"all files are processed in one batch")
-	JournalFile = flag.String("journal", "", "Journal file to keep track of progress and resume")
+	JournalFile = flag.String("journal", DefJournalFile,
+		"Journal file to keep track of progress and resume")
 	flag.Parse()
 }
