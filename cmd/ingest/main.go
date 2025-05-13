@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime"
 	"runtime/pprof"
 	"syscall"
 	"time"
@@ -243,6 +244,13 @@ func ingestFilesInBatches(
 	for i := 0; i < len(allFilenames); i += fileBatchSize {
 		s := i
 		e := min(i+fileBatchSize, len(allFilenames))
+
+		// Force garbage collection.
+		var memBefore, memAfter runtime.MemStats
+		runtime.ReadMemStats(&memBefore)
+		runtime.GC()
+		runtime.ReadMemStats(&memAfter)
+		fmt.Printf("\nGC: freed %d MB\n", (memBefore.Alloc-memAfter.Alloc)/(1024*1024))
 
 		fmt.Printf("\nProcessing File Batch %d / %d\n", i/fileBatchSize+1, batchCount)
 		forEachBatch(allFilenames[s:e])
