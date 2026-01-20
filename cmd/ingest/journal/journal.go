@@ -70,6 +70,10 @@ func (j *Journal) AddCompletedFiles(files []string) error {
 	}
 	j.CompletedFiles = slices.Compact(j.CompletedFiles)
 
+	// deleteme TODO decide if commenting out the printf below.
+	// fmt.Printf("COMPLETED FILES NOW: %s\n", strings.Join(j.CompletedFiles, ", "))
+	fmt.Printf("\nCOMPLETED FILES NOW: %d\n", len(j.CompletedFiles))
+
 	return j.Write()
 }
 
@@ -156,7 +160,7 @@ func (j *Journal) close(f *os.File) error {
 }
 
 func (j *Journal) write(f *os.File) error {
-	buf, err := json.Marshal(*j)
+	buf, err := json.MarshalIndent(*j, "", "  ")
 	if err != nil {
 		return fmt.Errorf("cannot translate journal to json: %w", err)
 	}

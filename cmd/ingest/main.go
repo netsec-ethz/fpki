@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"runtime/pprof"
+	"strings"
 	"syscall"
 	"time"
 
@@ -190,8 +192,15 @@ func mainFunction() int {
 			}
 			proc.AddCsvFiles(csvFiles)
 
-			fmt.Printf("[%s] Starting ingesting files ...\n",
-				time.Now().Format(time.StampMilli))
+			names := make([]string, len(files))
+			for i, f := range files {
+				names[i] = filepath.Base(f)
+			}
+			fmt.Printf("[%s] Starting ingesting %d files : %s\n",
+				time.Now().Format(time.StampMilli),
+				len(files),
+				strings.Join(names, ", "),
+			)
 			// Update certificates and chains, and wait until finished.
 			proc.Resume()
 			exitIfError(proc.Wait())
