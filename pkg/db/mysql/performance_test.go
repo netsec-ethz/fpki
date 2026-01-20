@@ -2,6 +2,7 @@ package mysql_test
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/base64"
@@ -12,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -148,6 +150,85 @@ func TestInsertDeadlock(t *testing.T) {
 		err = insertIntoDirty(ctx, conn, "dirty_test", sameIDs)
 		require.NoError(t, err)
 	})
+}
+
+func TestInsertPartitions(t *testing.T) {
+	testCases := []int{2, 4, 8, 16}
+	for _, numPartitions := range testCases {
+		t.Run(strconv.Itoa(numPartitions), func(t *testing.T) {
+			testInsertPartitions(t, numPartitions)
+		})
+	}
+}
+
+func testInsertPartitions(t *testing.T, numPartitions int) {
+	// Ensure numPartitions is a power of 2:
+	nbits := mysql.NumBitsForPartitionCount(numPartitions)
+	require.Equal(t, 1<<nbits, numPartitions)
+
+	BatchSize := 10
+	NCerts := numPartitions * BatchSize * 8
+	filename := "/mnt/data/tmp/test-insert-partitions.csv"
+
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelF()
+
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	conn := testdb.Connect(t, config)
+	defer conn.Close()
+
+	records := createMockRecords(ctx, t, NCerts)
+	writeCSV(t, filename, records)
+	defer func() {
+		err := os.Remove(filename)
+		require.NoError(t, err)
+	}()
+
+	// Create table.
+	exec(ctx, t, conn, "DROP TABLE IF EXISTS `insert_test`")
+	str := fmt.Sprintf(
+		"CREATE TABLE insert_test ( "+
+			"cert_id VARBINARY(32) NOT NULL,"+
+			"shard TINYINT UNSIGNED AS "+
+			"(ORD(LEFT(cert_id, 1)) >> %d ) STORED,"+
+			"parent_id VARBINARY(32) DEFAULT NULL,"+
+			"expiration DATETIME NOT NULL,"+
+			"payload LONGBLOB,"+
+			"PRIMARY KEY(shard, cert_id)"+
+			") ENGINE=InnoDB CHARSET=binary COLLATE=binary "+
+			"PARTITION BY HASH (shard) PARTITIONS %d;",
+		(8 - nbits), numPartitions)
+	exec(ctx, t, conn, str)
+
+	// Insert.
+	loadDataWithCSV(ctx, t, conn, filename)
+
+	// Now load each partition and check that their IDs indeed correspond to the shard.
+	sort.Slice(records, func(i, j int) bool {
+		idA, err := base64.StdEncoding.DecodeString(records[i][0])
+		require.NoError(t, err)
+		idB, err := base64.StdEncoding.DecodeString(records[j][0])
+		require.NoError(t, err)
+		return bytes.Compare(idA, idB) < 0
+	})
+	str = "SELECT cert_id FROM insert_test PARTITION(p%d) ORDER BY (cert_id);"
+	for i := range numPartitions {
+		str := fmt.Sprintf(str, i)
+		rows, err := conn.DB().QueryContext(ctx, str)
+		require.NoError(t, err)
+
+		for rows.Next() {
+			var buf []byte
+			err = rows.Scan(&buf)
+			require.NoError(t, err)
+			origID, err := base64.StdEncoding.DecodeString(records[0][0])
+			require.NoError(t, err)
+			require.Equal(t, origID, buf, "remaining records: %d", len(records))
+			records = records[1:]
+		}
+	}
 }
 
 // BenchmarkInsertPerformance tests the insert performance using different approaches, in articuno:
@@ -348,87 +429,73 @@ func BenchmarkInsertPerformance(b *testing.B) {
 // TestPartitionInsert/load_data/innodb/parallel/range/16 (13.46s)
 // TestPartitionInsert/load_data/innodb/parallel/range/32 (12.33s)
 // TestPartitionInsert/load_data/innodb/parallel/range/64 (12.03s)
-// TestPartitionInsert/load_data/innodb/parallel/range/sorted16 (13.46s)
-// TestPartitionInsert/load_data/innodb/parallel/range/sorted32 (12.28s)
-// TestPartitionInsert/load_data/innodb/parallel/range/sorted64 (12.20s)
+// TestPartitionInsert/load_data/innodb/parallel/range/sharded16 (13.46s)
+// TestPartitionInsert/load_data/innodb/parallel/range/sharded32 (12.28s)
+// TestPartitionInsert/load_data/innodb/parallel/range/sharded64 (12.20s)
 // TestPartitionInsert/load_data/innodb/parallel/range/inverse32 (11.67s)
 // TestPartitionInsert/load_data/innodb/parallel/range/inverse64 (12.00s)
 //
 // TestPartitionInsert/load_data/innodb/parallel/key/32 (11.64s)
 // TestPartitionInsert/load_data/innodb/parallel/key/64 (12.47s)
-// TestPartitionInsert/load_data/innodb/parallel/key/sorted32 (12.00s)
+// TestPartitionInsert/load_data/innodb/parallel/key/sharded32 (12.00s)
 // TestPartitionInsert/load_data/innodb/parallel/key/inverse32 (11.98s)
 //
 // TestPartitionInsert/load_data/innodb/parallel/linear/32 (14.00s)
 // TestPartitionInsert/load_data/innodb/parallel/linear/64 (16.70s)
-// TestPartitionInsert/load_data/innodb/parallel/linear/sorted32 (16.00s)
-// TestPartitionInsert/load_data/innodb/parallel/linear/sorted64 (14.78s)
+// TestPartitionInsert/load_data/innodb/parallel/linear/sharded32 (16.00s)
+// TestPartitionInsert/load_data/innodb/parallel/linear/sharded64 (14.78s)
 // TestPartitionInsert/load_data/innodb/parallel/linear/inverse32 (11.56s)
 // TestPartitionInsert/load_data/innodb/parallel/linear/inverse64 (14.02s)
 //
 // ------------------------  [BENCHMARK STATUS] --------------------------
-// Only for linear, two runs:
+// Only for linear-key and hash:
 //
 // goos: linux
 // goarch: amd64
 // pkg: github.com/netsec-ethz/fpki/pkg/db/mysql
 // cpu: Intel(R) Xeon(R) Gold 6242 CPU @ 2.80GHz
-// BenchmarkPartitionInsert/innodb/parallel/linear/2/load_only-32         	       1	47478200162 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/4/load_only-32         	       1	25007699646 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/8/load_only-32         	       1	14927805653 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/16/load_only-32        	       1	8559264786 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/32/load_only-32        	       1	4809242874 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/64/load_only-32        	       1	4713565653 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/sorted2/load_only-32   	       1	44825781781 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/sorted4/load_only-32   	       1	26451970662 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/sorted8/load_only-32   	       1	14734631174 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/sorted16/load_only-32  	       1	8264559184 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/sorted32/load_only-32  	       1	4873683350 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/sorted64/load_only-32  	       1	4610484153 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/inverse2/load_only-32  	       1	46984741498 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/inverse4/load_only-32  	       1	29170276264 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/inverse8/load_only-32  	       1	15069563037 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/inverse16/load_only-32 	       1	12772204752 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/inverse32/load_only-32 	       1	6973776232 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/inverse64/load_only-32 	       1	6751716890 ns/op
 //
-// BenchmarkPartitionInsert/innodb/parallel/linear/2/load_only-32         	       1	46316287235 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/4/load_only-32         	       1	26804651970 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/8/load_only-32         	       1	14177246764 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/16/load_only-32        	       1	8731915781 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/32/load_only-32        	       1	7206455873 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/64/load_only-32        	       1	5365581642 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/sorted2/load_only-32   	       1	47264175002 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/sorted4/load_only-32   	       1	27693145674 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/sorted8/load_only-32   	       1	14701929265 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/sorted16/load_only-32  	       1	9979814845 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/sorted32/load_only-32  	       1	4800589391 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/sorted64/load_only-32  	       1	4840803067 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/inverse2/load_only-32  	       1	42180543117 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/inverse4/load_only-32  	       1	25059406480 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/inverse8/load_only-32  	       1	13123920949 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/inverse16/load_only-32 	       1	7647975636 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/inverse32/load_only-32 	       1	4504448913 ns/op
-// BenchmarkPartitionInsert/innodb/parallel/linear/inverse64/load_only-32 	       1	4540372700 ns/op
+// BenchmarkPartitionInsert/innodb/parallel/linear-key/2/load_only-32              1   133675390991 ns/op
+// BenchmarkPartitionInsert/innodb/parallel/linear-key/4/load_only-32              1   115908968433 ns/op
+// BenchmarkPartitionInsert/innodb/parallel/linear-key/8/load_only-32              1   107074603536 ns/op
+// BenchmarkPartitionInsert/innodb/parallel/linear-key/16/load_only-32             1    91727657330 ns/op
+// BenchmarkPartitionInsert/innodb/parallel/linear-key/32/load_only-32             1   101370089171 ns/op
+// BenchmarkPartitionInsert/innodb/parallel/linear-key/64/load_only-32             1   122522905812 ns/op
+// BenchmarkPartitionInsert/innodb/parallel/linear-key/sharded2/load_only-32       1   154590164035 ns/op
+// BenchmarkPartitionInsert/innodb/parallel/linear-key/sharded4/load_only-32       1   133774274971 ns/op
+// BenchmarkPartitionInsert/innodb/parallel/linear-key/sharded8/load_only-32       1   121920261702 ns/op
+// BenchmarkPartitionInsert/innodb/parallel/linear-key/sharded16/load_only-32      1   120672755912 ns/op
+// BenchmarkPartitionInsert/innodb/parallel/linear-key/sharded32/load_only-32      1   119909836846 ns/op
+// BenchmarkPartitionInsert/innodb/parallel/linear-key/sharded64/load_only-32      1   125692625860 ns/op
+// BenchmarkPartitionInsert/innodb/parallel/linear-key/inverse2/load_only-32       1   150000137414 ns/op
+// BenchmarkPartitionInsert/innodb/parallel/linear-key/inverse4/load_only-32       1   128221517762 ns/op
+// BenchmarkPartitionInsert/innodb/parallel/linear-key/inverse8/load_only-32       1   122795171014 ns/op
+// BenchmarkPartitionInsert/innodb/parallel/linear-key/inverse16/load_only-32      1   116931349540 ns/op
+// BenchmarkPartitionInsert/innodb/parallel/linear-key/inverse32/load_only-32      1   114135174672 ns/op
+// BenchmarkPartitionInsert/innodb/parallel/linear-key/inverse64/load_only-32      1   108622297725 ns/op
+//
+// BenchmarkPartitionInsert/innodb/parallel/hash/8/load_only-32                   1     94588574464 ns/op
+// BenchmarkPartitionInsert/innodb/parallel/hash/16/load_only-32                  1     92634445542 ns/op
+// BenchmarkPartitionInsert/innodb/parallel/hash/32/load_only-32                  1     93245514349 ns/op
 //
 // Summary:
 // - The page size was extremely important.
 // - Reconfiguring the RAID with an appropriate chunk of 64Kb was extremely important.
 // - Inserting in parallel with InnoDB is faster than MyISAM
 // - Partitioning helps performance, up to a certain number of them.
-// - Sorting the entries, so that each thread always cares about the same range,
+// - sharding the entries, so that each thread always cares about the same range,
 // does NOT help performance; it doesn't hurt it either.
-// We can use sorting to assign IDs to different workers, to avoid
+// We can use sharding to assign IDs to different workers, to avoid
 // dead-locks for large multi-inserts.
 //
-// We decide to use 32 partitions, linear key, inverse sorted data, as we anyway will be "sorting"
+// We decide to use 32 partitions, linear key, inverse sharded data, as we anyway will be "sharding"
 // (aka dispatching) the data to avoid deadlocks.
-// The reason that the inverse sorted data is faster might be because each thread will attack
-// many partitions, while straight sorted data means each thread uses just one.
-// We could use KEY for partitions, but the data is sorted anyway.
+// The reason that the inverse sharded data is faster might be because each thread will attack
+// many partitions, while straight sharded data means each thread uses just one.
+// We could use KEY for partitions, but the data is sharded anyway.
 func BenchmarkPartitionInsert(b *testing.B) {
 	defer util.ShutdownFunction()
-	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancelF := context.WithTimeout(context.Background(), 60*time.Minute)
 	defer cancelF()
 
 	// Tracing.
@@ -461,19 +528,7 @@ func BenchmarkPartitionInsert(b *testing.B) {
 		"multiple of BatchSize, modify either of them")
 
 	// Create benchmark's mock data.
-	var records [][]string
-	{
-		_, span := tr.T("create-data").Start(ctx, "create-data")
-
-		allCertIDs := mockTestData(b, NCerts)
-		mockExp := time.Unix(42, 0)
-		mockPayload := make([]byte, 1_100) // From xenon2025h1 we have an average of 1100b/cert
-		records = recordsFromCertIDs(allCertIDs, mockExp, mockPayload)
-		require.Equal(b, NCerts, len(records))
-		b.Logf("Mock data ready in memory, %d certs", NCerts)
-
-		span.End()
-	}
+	var records [][]string = createMockRecords(ctx, b, NCerts)
 
 	CSVFilePath := "/mnt/data/tmp/insert_test_data.csv"
 
@@ -522,8 +577,8 @@ func BenchmarkPartitionInsert(b *testing.B) {
 			chunkFilePath := func(workerIndex int) string {
 				return csvChunkFileName(CSVFilePath, "", workerIndex)
 			}
-			chunkFilePathSorted := func(workerIndex int) string {
-				return csvChunkFileName(CSVFilePath, "sorted", workerIndex)
+			chunkFilePathSharded := func(workerIndex int) string {
+				return csvChunkFileName(CSVFilePath, "sharded", workerIndex)
 			}
 
 			// Function to split all the data in N CSV files.
@@ -534,10 +589,10 @@ func BenchmarkPartitionInsert(b *testing.B) {
 			}
 
 			// Function to split all the data in N CSV files, where each file contains
-			// records sorted by the result of the hasher function applied to cert_id.
-			splitFileSorted := func(t tests.T, N int, hasher func(*common.SHA256Output, int) uint) {
-				_, span := tr.T("file").Start(ctx, "split-sorted")
-				writeSortedChunkedCsv(ctx, t, records, N, hasher, chunkFilePathSorted)
+			// records sharded by the result of the hasher function applied to cert_id.
+			splitFileSharded := func(t tests.T, N int, hasher func(*common.SHA256Output, int) uint) {
+				_, span := tr.T("file").Start(ctx, "split-sharded")
+				writeShardedChunkedCsv(ctx, t, records, N, hasher, chunkFilePathSharded)
 				span.End()
 			}
 
@@ -546,15 +601,15 @@ func BenchmarkPartitionInsert(b *testing.B) {
 				splitFile(b, N)
 				runWithCsvFile(ctx, b, conn, N, createF, chunkFilePath)
 			}
-			runMsbSortedPartitionTest := func(b *testing.B, N int, createF func(tests.T, int)) {
+			runMsbShardedPartitionTest := func(b *testing.B, N int, createF func(tests.T, int)) {
 				defer tests.ExtendTimeForBenchmark(b)()
-				splitFileSorted(b, N, hasherMSB)
-				runWithCsvFile(ctx, b, conn, N, createF, chunkFilePathSorted)
+				splitFileSharded(b, N, hasherMSB)
+				runWithCsvFile(ctx, b, conn, N, createF, chunkFilePathSharded)
 			}
-			runLsbSortedPartitionTest := func(b *testing.B, N int, createF func(tests.T, int)) {
+			runLsbShardedPartitionTest := func(b *testing.B, N int, createF func(tests.T, int)) {
 				defer tests.ExtendTimeForBenchmark(b)()
-				splitFileSorted(b, N, hasherLSB)
-				runWithCsvFile(ctx, b, conn, N, createF, chunkFilePathSorted)
+				splitFileSharded(b, N, hasherLSB)
+				runWithCsvFile(ctx, b, conn, N, createF, chunkFilePathSharded)
 			}
 
 			b.Run("load_0_partitions", func(b *testing.B) {
@@ -611,30 +666,66 @@ func BenchmarkPartitionInsert(b *testing.B) {
 				b.Run("64", func(b *testing.B) {
 					runPartitionTest(b, 64, createTable)
 				})
-				// Sorted data tests.
-				b.Run("sorted2", func(b *testing.B) {
-					runMsbSortedPartitionTest(b, 2, createTable)
+				// Sharded data tests.
+				b.Run("sharded2", func(b *testing.B) {
+					runMsbShardedPartitionTest(b, 2, createTable)
 				})
-				b.Run("sorted4", func(b *testing.B) {
-					runMsbSortedPartitionTest(b, 4, createTable)
+				b.Run("sharded4", func(b *testing.B) {
+					runMsbShardedPartitionTest(b, 4, createTable)
 				})
-				b.Run("sorted8", func(b *testing.B) {
-					runMsbSortedPartitionTest(b, 8, createTable)
+				b.Run("sharded8", func(b *testing.B) {
+					runMsbShardedPartitionTest(b, 8, createTable)
 				})
-				b.Run("sorted16", func(b *testing.B) {
-					runMsbSortedPartitionTest(b, 16, createTable)
+				b.Run("sharded16", func(b *testing.B) {
+					runMsbShardedPartitionTest(b, 16, createTable)
 				})
-				b.Run("sorted32", func(b *testing.B) {
-					runMsbSortedPartitionTest(b, 32, createTable)
+				b.Run("sharded32", func(b *testing.B) {
+					runMsbShardedPartitionTest(b, 32, createTable)
 				})
-				b.Run("sorted64", func(b *testing.B) {
-					runMsbSortedPartitionTest(b, 64, createTable)
+				b.Run("sharded64", func(b *testing.B) {
+					runMsbShardedPartitionTest(b, 64, createTable)
 				})
 				b.Run("inverse32", func(b *testing.B) {
-					runLsbSortedPartitionTest(b, 32, createTable)
+					runLsbShardedPartitionTest(b, 32, createTable)
 				})
 				b.Run("inverse64", func(b *testing.B) {
-					runLsbSortedPartitionTest(b, 64, createTable)
+					runLsbShardedPartitionTest(b, 64, createTable)
+				})
+			})
+
+			// the "hash" benchmark uses a field "shard" that stores the shard of each record.
+			// This allows computation of the hash function also in our logic, instead of relying
+			// solely on the hash used by the DBE.
+			// By knowing the hash in our logic, we can shard the records that will land in
+			// partition X, so that we also shard our compute the same way, avoiding touching
+			// several DB shards from one compute shard.
+			b.Run("hash", func(b *testing.B) {
+				createTable := func(t tests.T, numPartitions int) {
+					nbits := mysql.NumBitsForPartitionCount(numPartitions)
+					str := fmt.Sprintf(
+						"CREATE TABLE insert_test ( "+
+							"cert_id VARBINARY(32) NOT NULL,"+
+							"shard TINYINT UNSIGNED AS "+
+							"( ORD(LEFT(cert_id, 1)) >> %d ) STORED,"+
+							"parent_id VARBINARY(32) DEFAULT NULL,"+
+							"expiration DATETIME NOT NULL,"+
+							"payload LONGBLOB,"+
+							"PRIMARY KEY(shard, cert_id)"+
+							") ENGINE=InnoDB CHARSET=binary COLLATE=binary "+
+							"PARTITION BY HASH (shard) PARTITIONS %d;",
+						(8 - nbits), numPartitions)
+					dropTable(t)
+					exec(t, str)
+				}
+
+				b.Run("8", func(b *testing.B) {
+					runMsbShardedPartitionTest(b, 8, createTable)
+				})
+				b.Run("16", func(b *testing.B) {
+					runMsbShardedPartitionTest(b, 8, createTable)
+				})
+				b.Run("32", func(b *testing.B) {
+					runMsbShardedPartitionTest(b, 8, createTable)
 				})
 			})
 
@@ -666,15 +757,15 @@ func BenchmarkPartitionInsert(b *testing.B) {
 					runPartitionTest(b, 64, createTable)
 				})
 
-				b.Run("sorted32", func(b *testing.B) {
-					runLsbSortedPartitionTest(b, 32, createTable)
+				b.Run("sharded32", func(b *testing.B) {
+					runLsbShardedPartitionTest(b, 32, createTable)
 				})
 				b.Run("inverse32", func(b *testing.B) {
-					runMsbSortedPartitionTest(b, 32, createTable)
+					runMsbShardedPartitionTest(b, 32, createTable)
 				})
 			})
 
-			b.Run("linear", func(b *testing.B) {
+			b.Run("linear-key", func(b *testing.B) {
 				// Creates a table partitioned by key, linearly. The LSBs are used.
 				createTable := func(t tests.T, numPartitions int) {
 					str := fmt.Sprintf(
@@ -710,43 +801,43 @@ func BenchmarkPartitionInsert(b *testing.B) {
 				b.Run("64", func(b *testing.B) {
 					runPartitionTest(b, 64, createTable)
 				})
-				// Sorted data tests.
-				b.Run("sorted2", func(b *testing.B) {
-					runLsbSortedPartitionTest(b, 2, createTable)
+				// sharded data tests.
+				b.Run("sharded2", func(b *testing.B) {
+					runLsbShardedPartitionTest(b, 2, createTable)
 				})
-				b.Run("sorted4", func(b *testing.B) {
-					runLsbSortedPartitionTest(b, 4, createTable)
+				b.Run("sharded4", func(b *testing.B) {
+					runLsbShardedPartitionTest(b, 4, createTable)
 				})
-				b.Run("sorted8", func(b *testing.B) {
-					runLsbSortedPartitionTest(b, 8, createTable)
+				b.Run("sharded8", func(b *testing.B) {
+					runLsbShardedPartitionTest(b, 8, createTable)
 				})
-				b.Run("sorted16", func(b *testing.B) {
-					runLsbSortedPartitionTest(b, 16, createTable)
+				b.Run("sharded16", func(b *testing.B) {
+					runLsbShardedPartitionTest(b, 16, createTable)
 				})
-				b.Run("sorted32", func(b *testing.B) {
-					runLsbSortedPartitionTest(b, 32, createTable)
+				b.Run("sharded32", func(b *testing.B) {
+					runLsbShardedPartitionTest(b, 32, createTable)
 				})
-				b.Run("sorted64", func(b *testing.B) {
-					runLsbSortedPartitionTest(b, 64, createTable)
+				b.Run("sharded64", func(b *testing.B) {
+					runLsbShardedPartitionTest(b, 64, createTable)
 				})
 				// Inverse data tests.
 				b.Run("inverse2", func(b *testing.B) {
-					runMsbSortedPartitionTest(b, 2, createTable)
+					runMsbShardedPartitionTest(b, 2, createTable)
 				})
 				b.Run("inverse4", func(b *testing.B) {
-					runMsbSortedPartitionTest(b, 4, createTable)
+					runMsbShardedPartitionTest(b, 4, createTable)
 				})
 				b.Run("inverse8", func(b *testing.B) {
-					runMsbSortedPartitionTest(b, 8, createTable)
+					runMsbShardedPartitionTest(b, 8, createTable)
 				})
 				b.Run("inverse16", func(b *testing.B) {
-					runMsbSortedPartitionTest(b, 16, createTable)
+					runMsbShardedPartitionTest(b, 16, createTable)
 				})
 				b.Run("inverse32", func(b *testing.B) {
-					runMsbSortedPartitionTest(b, 32, createTable)
+					runMsbShardedPartitionTest(b, 32, createTable)
 				})
 				b.Run("inverse64", func(b *testing.B) {
-					runMsbSortedPartitionTest(b, 64, createTable)
+					runMsbShardedPartitionTest(b, 64, createTable)
 				})
 			})
 		})
@@ -755,46 +846,46 @@ func BenchmarkPartitionInsert(b *testing.B) {
 
 // TestReadPerformance checks the performance that db.RetrieveCertificatePayloads will experiment.
 // We try both MyISAM and InnoDB tables, all with queries in parallel.
-
+//
 // Results at articuno:
-
+//
 // TestReadPerformance/myisam/retrieve_only/8 (2.52s)
 // TestReadPerformance/myisam/retrieve_only32 (1.22s)
 // TestReadPerformance/myisam/retrieve_only/64 (1.17s)
 // TestReadPerformance/myisam/retrieve_only/128 (1.11s)
 // TestReadPerformance/myisam/retrieve_only/256 (1.03s)
 // TestReadPerformance/myisam/retrieve_only/512 (0.82s)
-
+//
 // TestReadPerformance/innodb/no_partitions/retrieve_only/8 (2.19s)
 // TestReadPerformance/innodb/no_partitions/retrieve_only32 (0.90s)
 // TestReadPerformance/innodb/no_partitions/retrieve_only/64 (0.85s)
 // TestReadPerformance/innodb/no_partitions/retrieve_only/128 (0.84s)
 // TestReadPerformance/innodb/no_partitions/retrieve_only/256 (0.78s)
 // TestReadPerformance/innodb/no_partitions/retrieve_only/512 (0.70s)
-
+//
 // The partitions tests retrieve 25_000_000 certificates.
-
+//
 // TestReadPerformance/innodb/partitioned/32_partitions_linear/retrieve_only/8 (15.80s)		1582278 certs/s
 // TestReadPerformance/innodb/partitioned/32_partitions_linear/retrieve_only32 (5.89s)		4244482 certs/s
 // TestReadPerformance/innodb/partitioned/32_partitions_linear/retrieve_only/64 (5.57s)		4488330 certs/s
 // TestReadPerformance/innodb/partitioned/32_partitions_linear/retrieve_only/128 (4.81s)	5197505 certs/s
 // TestReadPerformance/innodb/partitioned/32_partitions_linear/retrieve_only/256 (4.62s)	5411255 certs/s
 // TestReadPerformance/innodb/partitioned/32_partitions_linear/retrieve_only/512 (4.81s)	5197505 certs/s
-
+//
 // TestReadPerformance/innodb/partitioned/64_partitions_linear/retrieve_only/8 (15.14s)		1651255 certs/s
 // TestReadPerformance/innodb/partitioned/64_partitions_linear/retrieve_only32 (5.45s)		4587156 certs/s
 // TestReadPerformance/innodb/partitioned/64_partitions_linear/retrieve_only/64 (4.91s)		5091650 certs/s
 // TestReadPerformance/innodb/partitioned/64_partitions_linear/retrieve_only/128 (4.70s)	5319149 certs/s
 // TestReadPerformance/innodb/partitioned/64_partitions_linear/retrieve_only/256 (4.58s)	5458515 certs/s
 // TestReadPerformance/innodb/partitioned/64_partitions_linear/retrieve_only/512 (4.67s)	5353319 certs/s
-
+//
 // TestReadPerformance/innodb/partitioned/32_partitions_key/retrieve_only/8 (14.53s)		1720578 certs/s
 // TestReadPerformance/innodb/partitioned/32_partitions_key/retrieve_only32 (5.56s)			4496403 certs/s
 // TestReadPerformance/innodb/partitioned/32_partitions_key/retrieve_only/64 (5.01s)		4990020 certs/s
 // TestReadPerformance/innodb/partitioned/32_partitions_key/retrieve_only/128 (4.64s)		5387931 certs/s
 // TestReadPerformance/innodb/partitioned/32_partitions_key/retrieve_only/256 (4.53s)		5518764 certs/s
 // TestReadPerformance/innodb/partitioned/32_partitions_key/retrieve_only/512 (4.58s)		5458515 certs/s
-
+//
 // BenchmarkReadPerformance/innodb/partitioned/64_partitions_key/retrieve_only/8 (14.80s)		1689189 certs/s
 // BenchmarkReadPerformance/innodb/partitioned/64_partitions_key/retrieve_only32 (5.57s)		4488330 certs/s
 // BenchmarkReadPerformance/innodb/partitioned/64_partitions_key/retrieve_only/64 (5.15s)		4854369 certs/s
@@ -1047,70 +1138,72 @@ func BenchmarkReadPerformance(b *testing.B) {
 	})
 }
 
-// BenchmarkCreateTableInnoDB measures 126346740 ns/op (0.12s) [mysql-community-server 8.4.2]
-func BenchmarkCreateTableInnoDB(b *testing.B) {
-	b.SetParallelism(1)
-	createFunc := func() {
-		db, err := sql.Open("mysql", "root@unix(/var/run/mysqld/mysqld.sock)/")
-		require.NoError(b, err)
+func BenchmarkCreateTable(b *testing.B) {
+	// measures 126346740 ns/op (0.12s) [mysql-community-server 8.4.2]
+	b.Run("innodb", func(b *testing.B) {
+		b.SetParallelism(1)
+		createFunc := func() {
+			db, err := sql.Open("mysql", "root@unix(/var/run/mysqld/mysqld.sock)/")
+			require.NoError(b, err)
 
-		strs := []string{
-			"DROP DATABASE IF EXISTS testdb",
-			"CREATE DATABASE testdb",
-			"CREATE TABLE testdb.domains (\n" +
-				"  domain_id VARBINARY(32) NOT NULL,\n" +
-				"  domain_name VARCHAR(300) COLLATE ascii_bin DEFAULT NULL,\n" +
-				"\n" +
-				"  PRIMARY KEY (domain_id),\n" +
-				"  INDEX domain_name (domain_name)\n" +
-				") ENGINE=InnoDB CHARSET=binary COLLATE=binary\n" +
-				"PARTITION BY LINEAR KEY (domain_id) PARTITIONS 32",
-		}
-		for _, str := range strs {
-			_, err = db.Exec(str)
+			strs := []string{
+				"DROP DATABASE IF EXISTS testdb",
+				"CREATE DATABASE testdb",
+				"CREATE TABLE testdb.domains (\n" +
+					"  domain_id VARBINARY(32) NOT NULL,\n" +
+					"  domain_name VARCHAR(300) COLLATE ascii_bin DEFAULT NULL,\n" +
+					"\n" +
+					"  PRIMARY KEY (domain_id),\n" +
+					"  INDEX domain_name (domain_name)\n" +
+					") ENGINE=InnoDB CHARSET=binary COLLATE=binary\n" +
+					"PARTITION BY LINEAR KEY (domain_id) PARTITIONS 32",
+			}
+			for _, str := range strs {
+				_, err = db.Exec(str)
+				require.NoError(b, err)
+			}
+
+			err = db.Close()
 			require.NoError(b, err)
 		}
 
-		err = db.Close()
-		require.NoError(b, err)
-	}
-
-	for i := 0; i < b.N; i++ {
-		createFunc()
-	}
-}
-
-// BenchmarkCreateTableMyIsam measures 2130136 ns/op (0.002s) [mysql-community-server 8.4.2]
-func BenchmarkCreateTableMyIsam(b *testing.B) {
-	b.SetParallelism(1)
-	createFunc := func() {
-		db, err := sql.Open("mysql", "root@unix(/var/run/mysqld/mysqld.sock)/")
-		require.NoError(b, err)
-
-		strs := []string{
-			"DROP DATABASE IF EXISTS testdb",
-			"CREATE DATABASE testdb",
-			"CREATE TABLE testdb.domains (\n" +
-				"domain_id VARBINARY(32) NOT NULL,\n" +
-				"domain_name VARCHAR(300) COLLATE ascii_bin DEFAULT NULL,\n" +
-				"\n" +
-				"PRIMARY KEY (domain_id),\n" +
-				"INDEX domain_id (domain_id),\n" +
-				"INDEX domain_name (domain_name)\n" +
-				") ENGINE=MyISAM CHARSET=binary COLLATE=binary;",
+		for i := 0; i < b.N; i++ {
+			createFunc()
 		}
-		for _, str := range strs {
-			_, err = db.Exec(str)
+	})
+
+	// measures 2130136 ns/op (0.002s) [mysql-community-server 8.4.2]
+	b.Run("myisam", func(b *testing.B) {
+		b.SetParallelism(1)
+		createFunc := func() {
+			db, err := sql.Open("mysql", "root@unix(/var/run/mysqld/mysqld.sock)/")
+			require.NoError(b, err)
+
+			strs := []string{
+				"DROP DATABASE IF EXISTS testdb",
+				"CREATE DATABASE testdb",
+				"CREATE TABLE testdb.domains (\n" +
+					"domain_id VARBINARY(32) NOT NULL,\n" +
+					"domain_name VARCHAR(300) COLLATE ascii_bin DEFAULT NULL,\n" +
+					"\n" +
+					"PRIMARY KEY (domain_id),\n" +
+					"INDEX domain_id (domain_id),\n" +
+					"INDEX domain_name (domain_name)\n" +
+					") ENGINE=MyISAM CHARSET=binary COLLATE=binary;",
+			}
+			for _, str := range strs {
+				_, err = db.Exec(str)
+				require.NoError(b, err)
+			}
+
+			err = db.Close()
 			require.NoError(b, err)
 		}
 
-		err = db.Close()
-		require.NoError(b, err)
-	}
-
-	for i := 0; i < b.N; i++ {
-		createFunc()
-	}
+		for i := 0; i < b.N; i++ {
+			createFunc()
+		}
+	})
 }
 
 func exec(ctx context.Context, t tests.T, conn db.Conn, query string, args ...any) {
@@ -1210,7 +1303,7 @@ func retrieveCertificatePayloads(
 		idArray := (*common.SHA256Output)(id)
 		m[*idArray] = payload
 	}
-	// Sort them in the same order as the IDs.
+	// Shard them in the same order as the IDs.
 	payloads := make([][]byte, len(IDs))
 	for i, id := range IDs {
 		payloads[i] = m[id]
@@ -1299,66 +1392,64 @@ func writeChunkedCsv(
 }
 
 // Function to split all the data in N CSV files, where each file contains
-// records sorted by the result of the hasher function applied to cert_id.
-func writeSortedChunkedCsv(
+// records sharded by the result of the hasher function applied to cert_id.
+// It returns the file names created.
+func writeShardedChunkedCsv(
 	ctx context.Context,
 	t tests.T,
 	records [][]string,
-	N int,
+	numShards int,
 	hasher func(*common.SHA256Output, int) uint, //  hash function that determines the partition
 	fName func(int) string, //         filename function
-) {
-	ctx, span := tr.T("file").Start(ctx, "write-sorted-chunked-csv")
+) []string {
+	ctx, span := tr.T("file").Start(ctx, "write-sharded-chunked-csv")
 	defer span.End()
 
 	// Require N to be positive.
-	require.Greater(t, N, 0)
+	require.Greater(t, numShards, 0)
 
-	_, spanSort := tr.T("file").Start(ctx, "sort-records")
+	_, spanShard := tr.T("file").Start(ctx, "shard-records")
 
-	// Compute how many bits we need to cover N partitions (i.e. ceil(log2(N-1)),
-	// doable by computing the bit length of N-1 even if not a power of 2.
-	// deleteme use db function
-	nBits := 0
-	for n := N - 1; n > 0; n >>= 1 {
-		nBits++
-	}
+	// Compute how many bits we need to cover the shards:
+	nBits := mysql.NumBitsForPartitionCount(numShards)
+	t.Logf("deleteme nbits = %d", nBits)
 
 	// Parse the cert ID and store everything as it was in a new type.
-	type Parsed struct {
-		part   uint
-		fields []string
+	type Shard struct {
+		shardIdx uint
+		fields   []string
 	}
 	// parsed has the same size as records.
-	parsed := make([]Parsed, len(records))
+	parsed := make([]Shard, len(records))
 	for i, r := range records {
 		// First column is cert_id, in base64.
 		id, err := base64.StdEncoding.DecodeString(r[0])
 		require.NoError(t, err)
 
-		parsed[i].part = hasher((*common.SHA256Output)(id), nBits)
+		parsed[i].shardIdx = hasher((*common.SHA256Output)(id), nBits)
 		parsed[i].fields = r
 	}
-	// Sort them according to cert_id.
+	// shard them according to cert_id.
 	sort.Slice(parsed, func(i, j int) bool {
-		return parsed[i].part < parsed[j].part
+		return parsed[i].shardIdx < parsed[j].shardIdx
 	})
-	spanSort.End()
+	spanShard.End()
 
-	// Split in N chunks. Each chunk takes all records from last index
-	// until 256*w/N , 1<=w<=N .
+	// Split in NumShards shards. Each chunk takes all records from last index
+	// until the shard index changes.
+	filenames := make([]string, numShards)
 	wg := sync.WaitGroup{}
-	wg.Add(N)
-	for w := 0; w < N; w++ {
-		chunk := make([][]string, 0, len(parsed)) // allocate here, reuse in the loop
+	wg.Add(numShards)
+	for w := 0; w < numShards; w++ {
+		chunk := make([][]string, 0)
 
 		// This worker takes all values corresponding to partition number `w`.
 		_, spanFind := tr.T("file").Start(ctx, "find-elems-to-partition")
 		for i := 0; i < len(parsed); i++ {
 			r := parsed[i]
 
-			// Find out if this worker should take the record or not.
-			if r.part == uint(w) {
+			// Take if the shard index is the same:
+			if r.shardIdx == uint(w) {
 				chunk = append(chunk, r.fields)
 			} else {
 				// Jump to the next worker.
@@ -1368,19 +1459,20 @@ func writeSortedChunkedCsv(
 		}
 		spanFind.End()
 
-		w := w
-		go func() {
+		go func(shardIdx int, shard [][]string) {
 			defer wg.Done()
 			_, span := tr.T("file").Start(ctx, "write-partition")
 			defer span.End()
-			tr.SetAttrInt(span, "worker-number", w)
+			tr.SetAttrInt(span, "worker-number", shardIdx)
 
 			// We are done with this worker.
-			writeCSV(t, fName(w), chunk)
-			t.Logf("[%2d] wrote %d records\n", w, len(chunk))
-		}()
+			filenames[shardIdx] = fName(shardIdx)
+			writeCSV(t, filenames[shardIdx], shard)
+			t.Logf("[%2d] wrote %d records\n", shardIdx, len(shard))
+		}(w, chunk)
 	}
 	wg.Wait()
+	return filenames
 }
 
 func recordsFromCertIDs(
@@ -1428,10 +1520,10 @@ func sliceSplitter[T any](collection []T, NChunks int) [][]T {
 }
 
 // csvChunkFileName returns the name for a CSV file for a chunk given the worker index.
-// The parameter qualifier is used to distinguish e.g. sorted files from others. It is appended
+// The parameter qualifier is used to distinguish e.g. sharded files from others. It is appended
 // to the base file name before the worker index and extension.
 // An example of an execution:
-// csvChunkFileName("/tmp/insert_test_data.csv", "sorted", 3) = "/tmp/insert_test_data-sorted.3.csv"
+// csvChunkFileName("/tmp/insert_test_data.csv", "sharded", 3) = "/tmp/insert_test_data-sharded.3.csv"
 func csvChunkFileName(CSVFilePath, qualifier string, workerIndex int) string {
 	if qualifier != "" {
 		qualifier = "-" + qualifier
@@ -1463,6 +1555,43 @@ func hasherMSB(id *common.SHA256Output, nBits int) uint {
 // hasherLSB returns the least significant `nBits` of `id` as an int.
 func hasherLSB(id *common.SHA256Output, nBits int) uint {
 	return mysql.PartitionByIdLSB(id, nBits)
+}
+
+func createMockRecords(
+	ctx context.Context,
+	t tests.T,
+	NCerts int,
+) [][]string {
+	_, span := tr.T("create-data").Start(ctx, "create-data")
+
+	allCertIDs := mockTestData(t, NCerts)
+	mockExp := time.Unix(42, 0)
+	mockPayload := make([]byte, 1_100) // From xenon2025h1 we have an average of 1100b/cert
+	records := recordsFromCertIDs(allCertIDs, mockExp, mockPayload)
+	require.Equal(t, NCerts, len(records))
+	t.Logf("Mock data ready in memory, %d certs", NCerts)
+
+	span.End()
+
+	return records
+}
+
+// createMockDataInCsvFiles creates N mock certificates in numPartition files, partitioning
+// each one of the records to its shard using the provided shard function.
+// It returns the name of the created CSV files.
+func createMockDataInCsvFiles(
+	ctx context.Context,
+	t tests.T,
+	numPartitions int,
+	fileNamePrefix string,
+	NCerts int,
+	shardFcn func(*common.SHA256Output, int) uint,
+) []string {
+	records := createMockRecords(ctx, t, NCerts)
+	fileNameFcn := func(index int) string {
+		return fmt.Sprintf("%s-%2d.csv", fileNamePrefix, index)
+	}
+	return writeShardedChunkedCsv(ctx, t, records, numPartitions, shardFcn, fileNameFcn)
 }
 
 func runWithCsvFile(
