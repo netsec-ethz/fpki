@@ -37,14 +37,12 @@ func TestCertReader(t *testing.T) {
 
 	N = 20
 	certs = make([]ctx509.Certificate, N)
-	r = NewCertReader(z)
 	n, err = r.Read(certs)
 	require.NoError(t, err)
 	require.Equal(t, N, n)
 
 	N = 5
 	certs = make([]ctx509.Certificate, N)
-	r = NewCertReader(z)
 	n, err = r.Read(certs)
 	require.NoError(t, err)
 	require.Equal(t, N, n)
