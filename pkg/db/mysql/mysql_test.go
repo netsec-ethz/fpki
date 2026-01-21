@@ -23,6 +23,45 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
+func TestPartitionByIdMSB(t *testing.T) {
+	const PartitionCount = 32
+	testCases := []struct {
+		id    string
+		shard uint
+	}{
+		{
+			id:    "0001f9c4aeec34810c29812ec00ed11355a6a6fac724f176d525d652c1924ffc",
+			shard: 0x00,
+		},
+		{
+			id:    "80df8dea92d49bcefe7c43116b5d495a842a2a9d0efade5f5b5f72d9ac2cfb07",
+			shard: 0x10,
+		},
+		{
+			id:    "d00033bab72e68e9ef0ca097187df5080f3c1e0f953d26f7d3aa499d9cb3490d",
+			shard: 0x1a,
+		},
+		{
+			id:    "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+			shard: 0x1f,
+		},
+		{
+			id:    "ec1ed9c0a2ccff71ff45eea2c77c05b6c200cd5897b1d39ae20a67c9e3e06fb0",
+			shard: 0x1d,
+		},
+	}
+
+	nBits := mysql.NumBitsForPartitionCount(PartitionCount)
+	for _, tc := range testCases {
+		id, err := hex.DecodeString(tc.id)
+		require.NoError(t, err)
+		idd := (*common.SHA256Output)(id)
+		got := mysql.PartitionByIdMSB(idd, nBits)
+		require.Equal(t, tc.shard, got)
+	}
+
+}
+
 // TestUpdateCerts checks that the UpdateCerts function in DB works as expected.
 func TestUpdateCerts(t *testing.T) {
 	// Because we are using "random" bytes deterministically here, set a fixed seed.
