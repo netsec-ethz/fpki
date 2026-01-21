@@ -153,7 +153,7 @@ func TestInsertDeadlock(t *testing.T) {
 }
 
 func TestInsertPartitions(t *testing.T) {
-	testCases := []int{2, 4, 8, 16}
+	testCases := []int{2, 4, 8, 16, 32}
 	for _, numPartitions := range testCases {
 		t.Run(strconv.Itoa(numPartitions), func(t *testing.T) {
 			testInsertPartitions(t, numPartitions)
@@ -165,6 +165,7 @@ func testInsertPartitions(t *testing.T, numPartitions int) {
 	// Ensure numPartitions is a power of 2:
 	nbits := mysql.NumBitsForPartitionCount(numPartitions)
 	require.Equal(t, 1<<nbits, numPartitions)
+	t.Logf("Using %d bits for %d partitions", nbits, numPartitions)
 
 	BatchSize := 10
 	NCerts := numPartitions * BatchSize * 8
