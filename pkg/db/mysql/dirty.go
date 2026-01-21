@@ -6,8 +6,10 @@ import (
 	"encoding/base64"
 	"fmt"
 	"os"
+	"sync"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
+	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
 func (c *mysqlDB) DirtyCount(ctx context.Context) (uint64, error) {
@@ -128,13 +130,24 @@ func (c *mysqlDB) CleanupDirty(ctx context.Context) error {
 }
 
 func (c *mysqlDB) RecomputeDirtyDomainsCertAndPolicyIDs(ctx context.Context) error {
+	// Call the coalescing stored procedure with the partition number.
+	errs := make([]error, NumPartitions)
+	wg := sync.WaitGroup{}
+	wg.Add(NumPartitions)
+	for i := range NumPartitions {
+		go func(partition int) {
+			defer wg.Done()
+			str := "CALL calc_dirty_domains(?)"
+			_, errs[i] = c.db.ExecContext(ctx, str, i)
+		}(i)
+	}
+	wg.Wait()
 
-	// Call the coalescing stored procedure without parameters.
-	str := "CALL calc_dirty_domains()"
-	_, err := c.db.ExecContext(ctx, str)
+	err := util.ErrorsCoalesce(errs...)
 	if err != nil {
 		return fmt.Errorf("coalescing for domains: %w", err)
 	}
+
 	return nil
 }
 

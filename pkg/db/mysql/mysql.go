@@ -17,11 +17,28 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
-const batchSize = 1000 // deleteme remove this constant
+const (
+	batchSize = 1000 // deleteme remove this constant
 
-const NumDBWorkers = 32 // deleteme why is it here?
+	NumDBWorkers  = 32 // deleteme why is it here?
+	NumPartitions = NumDBWorkers
+	// Note on partitions:
+	// The goal of using partitions in our code is to limit the number of distinct processes or
+	// threads writing data simultaneously resulting in contention. When using partitions,
+	// different threads can write to one table, but each thread to only one partition.
+	// So a given ID will always land to the same thread.
+	// This has two benefits:
+	// 1. Deadlocks cannot occur, as the same row is present only in one thread.
+	// 2. Efficiency improves, as the same thread always writes to the same file (partition); this
+	// 	means that several threads can safely and concurrently write to the DB without locks.
+)
 
 // PartitionByIdMSB returns the most significant `nBits` of `id` as an int.
+// E.g. for 4 bits (16 partitions),
+// 0x00..0x0F == 0000_0000..0000_1111 -> all go to shard "0"
+// 0x10..0x1F == 0001_0000..0001_1111 -> all go to shard "1"
+// ...
+// 0xF0..0xFF == 1111_0000..1111_1111 -> all go to shard "31"
 func PartitionByIdMSB(id *common.SHA256Output, nBits int) uint {
 	return uint(id[0] >> (8 - byte(nBits)))
 }
@@ -29,6 +46,16 @@ func PartitionByIdMSB(id *common.SHA256Output, nBits int) uint {
 // PartitionByIdLSB returns the least significant `nBits` of `id` as an int.
 func PartitionByIdLSB(id *common.SHA256Output, nBits int) uint {
 	return uint(id[31] >> (8 - byte(nBits)))
+}
+
+// NumBitsForPartitionCount returns the number of bits necessary to cover numPartitions
+// (i.e. ceil(log2(N-1)), doable by computing the bit length of N-1 even if not a power of 2.
+func NumBitsForPartitionCount(numPartitions int) int {
+	nBits := 0
+	for n := numPartitions - 1; n > 0; n >>= 1 {
+		nBits++
+	}
+	return nBits
 }
 
 type mysqlDB struct {

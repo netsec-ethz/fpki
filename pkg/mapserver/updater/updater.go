@@ -627,6 +627,10 @@ func insertCerts(
 		return nil
 	}
 
+	// deleteme:
+	// Disable redo-logs with:
+	// ALTER INSTANCE DISABLE INNODB REDO_LOG
+
 	// Send hash, parent hash, expiration and payload to the certs table.
 	if err := conn.UpdateCerts(ctx, ids, parentIDs, expirations, payloads); err != nil {
 		return fmt.Errorf("inserting certificates: %w", err)
