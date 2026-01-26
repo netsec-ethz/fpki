@@ -2,8 +2,6 @@ package updater
 
 import (
 	"context"
-	"encoding/hex"
-	"fmt"
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/cache"
@@ -51,8 +49,6 @@ func NewManager(
 	nBits := int(util.Log2(uint(workerCount)))
 
 	selectPartition := func(id *common.SHA256Output) uint {
-		fmt.Printf("[deleteme,manager] shard(%s, %d) = %d\n",
-			hex.EncodeToString((*id)[:]), nBits, mysql.PartitionByIdMSB(id, nBits))
 		return mysql.PartitionByIdMSB(id, nBits)
 	}
 

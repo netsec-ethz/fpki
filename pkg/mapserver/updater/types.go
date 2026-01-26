@@ -27,11 +27,10 @@ func (c CertWithChainData) String() string {
 // Certificate contains all the data of just ONE certificate, without the parents.
 // It results from a call to util.UnfoldCert .
 type Certificate struct {
-	CertID        common.SHA256Output
-	Cert          ctx509.Certificate
-	ParentID      *common.SHA256Output
-	Names         []string
-	DeletemeShard uint // deleteme indicates the shard index
+	CertID   common.SHA256Output
+	Cert     ctx509.Certificate
+	ParentID *common.SHA256Output
+	Names    []string
 }
 
 func (c Certificate) String() string {

@@ -1,7 +1,6 @@
 package updater
 
 import (
-	"encoding/hex"
 	"fmt"
 	"os"
 
@@ -52,13 +51,6 @@ func newCertBatcher(
 	w.Stage = pip.NewStage[Certificate, CertBatch](
 		fmt.Sprintf("cert_batcher_%02d", id),
 		pip.WithProcessFunction(func(in Certificate) ([]CertBatch, []int, error) {
-			// deleteme
-			shard := m.ShardFuncCert((*common.SHA256Output)(&in.CertID))
-			if int(shard) != id {
-				panic(fmt.Errorf("B: the computed shard %d is different than the expected %d for %s",
-					shard, id, hex.EncodeToString(in.CertID[:])))
-			}
-			// end of deleteme
 			w.certs.addElem(in)
 			if w.certs.currLength() == m.MultiInsertSize {
 				_, span := w.Tracer.Start(w.Ctx, "sending-batch")
@@ -109,16 +101,6 @@ func newDomainExtractor(
 		fmt.Sprintf("domain_extractor_%02d", id),
 		pip.WithMultiOutputChannels[Certificate, DirtyDomain](workerCount),
 		pip.WithProcessFunction(func(in Certificate) ([]DirtyDomain, []int, error) {
-			// deleteme
-			wtf := in.CertID[:]
-			shard := m.ShardFuncCert((*common.SHA256Output)(&in.CertID))
-			if int(shard) != id {
-				panic(fmt.Errorf("C: the computed shard %d is different than the expected "+
-					"%d for %s; cert shard = %d {wtf: %s}",
-					shard, id, hex.EncodeToString(in.CertID[:]), in.DeletemeShard, hex.EncodeToString(wtf)))
-				return nil, nil, nil
-			}
-			// end of deleteme
 			outChannels = outChannels[:0] // reuse index slice.
 			w.domains.rotate()
 			for _, name := range in.Names {

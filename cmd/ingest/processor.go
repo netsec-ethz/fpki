@@ -2,16 +2,13 @@ package main
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"math"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
-	"github.com/netsec-ethz/fpki/pkg/db/mysql"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
 	"github.com/netsec-ethz/fpki/pkg/util"
@@ -141,6 +138,7 @@ func NewProcessor(
 
 	// Set the joint pipeline as the pipeline and return.
 	p.Pipeline = pipeline
+
 	return p, nil
 }
 
@@ -480,6 +478,9 @@ func (p *Processor) getNewLinkFunction(
 		// Link toCerts' out channels to the new channels.
 		// Restore the default behavior of closing the output channel (ignore crisscross).
 		for i := range toCerts {
+			i := i // capture here to use in the lambda for WithCloseOutChannelFunc.
+			pip.DebugPrintf("Replacing %s with new out channel %s\n",
+				debug.Chan2str(toCerts[i].OutgoingChs[0]), debug.Chan2str(chans[i]))
 			toCerts[i].OutgoingChs[0] = chans[i]
 			opt := pip.WithCloseOutChannelFunc[certChain, updater.Certificate](func(index int) {
 				close(toCerts[i].OutgoingChs[index])
@@ -494,25 +495,27 @@ func (p *Processor) getNewLinkFunction(
 		wg := sync.WaitGroup{}
 		wg.Add(len(chans))
 		for i, ch := range chans {
-			go func(ch chan updater.Certificate) {
+			go func(i int, ch chan updater.Certificate) {
 				defer wg.Done() // Signal that another output channel has been closed.
 				// For each Certificate that the first pipeline outputs.
-				pip.DebugPrintf("[processor_%02d] listening on data channel %s\n",
-					i, debug.Chan2str(ch))
+				pip.DebugPrintf("[processor_%02d (on behalf of toCerts_%02d)] listening on data "+
+					"channel %s\n",
+					i, i, debug.Chan2str(ch))
 				for in := range ch {
-					pip.DebugPrintf("[processor_%02d] got value on channel %s\n",
-						i, debug.Chan2str(ch))
+					pip.DebugPrintf("[processor_%02d (on behalf of toCerts_%02d)] got value on "+
+						"channel %s\n",
+						i, i, debug.Chan2str(ch))
 					// Get the indices of the correct cert batcher and domain extractor to send it.
 					chs, err := sourceFunc(in)
 					_ = err // ignore error
 
-					// deleteme: explicitly set the shard number for debug purposes
-					nBits := mysql.NumBitsForPartitionCount(p.NumDBWriters)
-					in.DeletemeShard = mysql.PartitionByIdMSB((*common.SHA256Output)(&in.CertID), nBits)
-					fmt.Printf("[%02d] deleteme ID: %s, computed SHARD = %d sending to [%d] and [%d]\n",
-						i, hex.EncodeToString(in.CertID[:]), in.DeletemeShard, chs[0], chs[1])
-
 					// Send both in parallel.
+					pip.DebugPrintf("[processor_%02d (on behalf of toCerts_%02d)] sending to "+
+						"channels indices %s and %s (%s and %s)\n",
+						i, i,
+						chs[0], chs[1],
+						debug.Chan2str(source.OutgoingChs[chs[0]]),
+						debug.Chan2str(source.OutgoingChs[chs[1]]))
 					util.SendToAllChannels(
 						[]chan updater.Certificate{
 							source.OutgoingChs[chs[0]],
@@ -521,7 +524,7 @@ func (p *Processor) getNewLinkFunction(
 						in)
 				} // for each Certificate.
 				pip.DebugPrintf("[processor] incoming channel %s is closed\n", debug.Chan2str(ch))
-			}(ch)
+			}(i, ch)
 		} // for each output channel.
 
 		// Once all output channels have been closed, close all incoming channels of p2.
