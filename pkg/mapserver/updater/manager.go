@@ -84,15 +84,15 @@ func (m *Manager) Wait(ctx context.Context) error {
 }
 
 func (m *Manager) createCertificateSource(workerCount int) *pip.Source[Certificate] {
-	outChannels := make([]int, 2)
 	return pip.NewSource[Certificate](
 		"incoming_certs",
 		pip.WithMultiOutputChannels[pip.None, Certificate](2*workerCount),
 		pip.WithSourceChannel(&m.IncomingCertChan, func(in Certificate) ([]int, error) {
 			i := int(m.ShardFuncCert(&in.CertID))
-			outChannels[0] = i               // To batcher i
-			outChannels[1] = i + workerCount // To domain extractor i
-			return outChannels, nil
+			return []int{
+				i,               // To batcher i
+				i + workerCount, // To domain extractor i
+			}, nil
 		}),
 	)
 }
