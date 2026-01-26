@@ -21,20 +21,6 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
 )
 
-// XXX
-//
-// warning: CSVs seem to contain IDs for different partitions.
-// E.g. for partition p16 (the 16th partition) we have a CSV with these IDs:
-//
-// d00033bab72e68e9ef0ca097187df5080f3c1e0f953d26f7d3aa499d9cb3490d
-// ...
-// d7ffdaad03847ec34756cd5e69834b64ed20533e830f1155b1a4b9a04c8d14ec
-// 0001f9c4aeec34810c29812ec00ed11355a6a6fac724f176d525d652c1924ffc
-// 80df8dea92d49bcefe7c43116b5d495a842a2a9d0efade5f5b5f72d9ac2cfb07
-//
-// Not in this order, but random.
-// How did the two last IDs end up here?
-
 func TestManagerStart(t *testing.T) {
 	defer pip.PrintAllDebugLines()
 

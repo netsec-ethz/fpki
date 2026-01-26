@@ -138,7 +138,6 @@ func NewProcessor(
 
 	// Set the joint pipeline as the pipeline and return.
 	p.Pipeline = pipeline
-
 	return p, nil
 }
 
@@ -147,8 +146,8 @@ type processorOptions func(*Processor)
 type managerOptions func(*updater.Manager)
 
 func WithNumFileReaders(numFileReaders int) ingestOptions {
-	return fileProcessorOptions(
-		func(p *FileProcessor) {
+	return processorOptions(
+		func(p *Processor) {
 			p.NumFileReaders = numFileReaders
 		})
 }

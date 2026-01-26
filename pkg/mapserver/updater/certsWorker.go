@@ -78,7 +78,6 @@ type domainExtractor struct {
 	hasher        common.Hasher
 	domains       ringCache[DirtyDomain] // Keep a copy until the next stage has finished.
 	domainIdCache cache.Cache            // Keep track of the already seen domains.
-	id            int
 }
 
 func newDomainExtractor(
@@ -93,7 +92,6 @@ func newDomainExtractor(
 		hasher:        *common.NewHasher(),
 		domainIdCache: domainIdCache,
 		domains:       newRingCache[DirtyDomain](10), // Preallocate 10 domains per cert.
-		id:            id,
 	}
 	outChannels := make([]int, 0, 10)
 
@@ -203,8 +201,6 @@ func newCertCsvRemover(id int) *certCsvRemover {
 		Sink: pip.NewSink[string](
 			fmt.Sprintf("cert_csv_remover_%02d", id),
 			pip.WithSinkFunction(func(in string) error {
-				// deleteme
-				return nil
 				return os.Remove(in)
 			}),
 		),
