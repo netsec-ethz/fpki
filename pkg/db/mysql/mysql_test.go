@@ -49,9 +49,14 @@ func TestPartitionByIdMSB(t *testing.T) {
 			id:    "ec1ed9c0a2ccff71ff45eea2c77c05b6c200cd5897b1d39ae20a67c9e3e06fb0",
 			shard: 0x1d,
 		},
+		{
+			id:    "86d8219c7e2b6009e37eb14356268489b81379e076e8f372e3dde8c162a34134",
+			shard: 0x10,
+		},
 	}
 
 	nBits := mysql.NumBitsForPartitionCount(PartitionCount)
+	t.Logf("Partition Count = %d, nBits = %d", PartitionCount, nBits)
 	for _, tc := range testCases {
 		id, err := hex.DecodeString(tc.id)
 		require.NoError(t, err)
