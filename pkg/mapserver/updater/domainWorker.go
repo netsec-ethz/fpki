@@ -1,9 +1,11 @@
 package updater
 
 import (
+	"encoding/hex"
 	"fmt"
 	"os"
 
+	"github.com/netsec-ethz/fpki/pkg/common"
 	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
@@ -45,6 +47,14 @@ func newDomainBatcher(
 		// specific channel.
 		pip.WithMultiInputChannels[DirtyDomain, domainBatch](workerCount),
 		pip.WithProcessFunction(func(in DirtyDomain) ([]domainBatch, []int, error) {
+			// deleteme
+			shard := m.ShardFuncCert((*common.SHA256Output)(&in.DomainID))
+			if int(shard) != id {
+				panic(fmt.Errorf("G: the computed shard %d is different than the expected %d for %s",
+					shard, id, hex.EncodeToString(in.DomainID[:])))
+			}
+			// end of deleteme
+
 			w.domains.addElem(in)
 			if w.domains.currLength() == m.MultiInsertSize {
 				_, span := w.Tracer.Start(w.Ctx, "batch-created")

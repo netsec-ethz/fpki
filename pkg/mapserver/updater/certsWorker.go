@@ -1,6 +1,7 @@
 package updater
 
 import (
+	"encoding/hex"
 	"fmt"
 	"os"
 
@@ -51,6 +52,13 @@ func newCertBatcher(
 	w.Stage = pip.NewStage[Certificate, CertBatch](
 		fmt.Sprintf("cert_batcher_%02d", id),
 		pip.WithProcessFunction(func(in Certificate) ([]CertBatch, []int, error) {
+			// deleteme
+			shard := m.ShardFuncCert((*common.SHA256Output)(&in.CertID))
+			if int(shard) != id {
+				panic(fmt.Errorf("B: the computed shard %d is different than the expected %d for %s",
+					shard, id, hex.EncodeToString(in.CertID[:])))
+			}
+			// end of deleteme
 			w.certs.addElem(in)
 			if w.certs.currLength() == m.MultiInsertSize {
 				_, span := w.Tracer.Start(w.Ctx, "sending-batch")
@@ -78,6 +86,7 @@ type domainExtractor struct {
 	hasher        common.Hasher
 	domains       ringCache[DirtyDomain] // Keep a copy until the next stage has finished.
 	domainIdCache cache.Cache            // Keep track of the already seen domains.
+	id            int
 }
 
 func newDomainExtractor(
@@ -92,6 +101,7 @@ func newDomainExtractor(
 		hasher:        *common.NewHasher(),
 		domainIdCache: domainIdCache,
 		domains:       newRingCache[DirtyDomain](10), // Preallocate 10 domains per cert.
+		id:            id,
 	}
 	outChannels := make([]int, 0, 10)
 
@@ -99,6 +109,16 @@ func newDomainExtractor(
 		fmt.Sprintf("domain_extractor_%02d", id),
 		pip.WithMultiOutputChannels[Certificate, DirtyDomain](workerCount),
 		pip.WithProcessFunction(func(in Certificate) ([]DirtyDomain, []int, error) {
+			// deleteme
+			wtf := in.CertID[:]
+			shard := m.ShardFuncCert((*common.SHA256Output)(&in.CertID))
+			if int(shard) != id {
+				panic(fmt.Errorf("C: the computed shard %d is different than the expected "+
+					"%d for %s; cert shard = %d {wtf: %s}",
+					shard, id, hex.EncodeToString(in.CertID[:]), in.DeletemeShard, hex.EncodeToString(wtf)))
+				return nil, nil, nil
+			}
+			// end of deleteme
 			outChannels = outChannels[:0] // reuse index slice.
 			w.domains.rotate()
 			for _, name := range in.Names {
@@ -201,6 +221,8 @@ func newCertCsvRemover(id int) *certCsvRemover {
 		Sink: pip.NewSink[string](
 			fmt.Sprintf("cert_csv_remover_%02d", id),
 			pip.WithSinkFunction(func(in string) error {
+				// deleteme
+				return nil
 				return os.Remove(in)
 			}),
 		),
