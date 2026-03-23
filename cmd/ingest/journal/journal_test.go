@@ -1,16 +1,17 @@
 package journal
 
 import (
-	"flag"
+	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 
-	"github.com/netsec-ethz/fpki/cmd/ingest/cmdflags"
 	"github.com/stretchr/testify/require"
 )
 
+// Contains 3 empty files, with proper names. See below for their names.
 const csvPath = "testdata/"
 
 var csvFiles = [...]string{
@@ -19,99 +20,156 @@ var csvFiles = [...]string{
 	"testdata/bundled/200000-299999.gz",
 }
 
+// TestSanityOfThisTest verifies that the content of the testdata/bundled directory is as expected.
+func TestSanityOfThisTest(t *testing.T) {
+	gotGz, gotCSV, err := ListCsvFiles(csvPath)
+	require.NoError(t, err)
+
+	require.Equal(t, csvFiles[:], gotGz)
+	require.Empty(t, gotCSV)
+
+	for _, filename := range csvFiles {
+		require.FileExists(t, filename)
+	}
+}
+
 func TestNewJournal(t *testing.T) {
-	journalFile := fmt.Sprintf("testdata/journal-%s.json", t.Name())
-	os.Remove(journalFile)       // ensure there is no file with this name
-	defer os.Remove(journalFile) // remove it if we create it
+	journalFile := filepath.Join(t.TempDir(), fmt.Sprintf("%s.json", t.Name()))
 
-	// Configure the CLI flags as the command does.
-	cmdflags.ConfigureFlags()
-
-	j, err := NewJournal(journalFile)
+	j, err := NewJournal(journalFile, testJobConfig(t), "")
 	require.NoError(t, err)
-	require.Equal(t, journalFile, j.JournalFile)
-	// Check we created the journal file.
-	require.FileExists(t, journalFile)
-
-	// Check journal.
-	require.Empty(t, j.CompletedFiles)
-	require.Empty(t, j.Files)
-
-	// Open journal again.
-	j, err = NewJournal(journalFile)
-	require.NoError(t, err)
-	// Check everything again.
 	require.Equal(t, journalFile, j.JournalFile)
 	require.FileExists(t, journalFile)
 	require.Empty(t, j.CompletedFiles)
 	require.Empty(t, j.Files)
 
-	// Now create the journal again, but mock two CSV files to be processed.
-	err = os.Remove(journalFile)                    // Remove journal
-	require.NoError(t, err)                         //
-	err = flag.CommandLine.Parse([]string{csvPath}) // mock CSV path
-	require.NoError(t, err)                         //
-	require.Equal(t, csvPath, flag.Arg(0))          // Assert that indeed the path is there
-	j, err = NewJournal(journalFile)                // Create new journal with a mock CSV path
-	require.NoError(t, err)                         //
-	require.Equal(t, len(csvFiles), len(j.Files))   // We should have the two existing CSV files
-	require.Equal(t, 0, len(j.CompletedFiles))      // But no completed jobs
+	// Recreate.
+	j, err = NewJournal(journalFile, testJobConfig(t), "")
+	require.NoError(t, err)
+	require.Equal(t, journalFile, j.JournalFile)
+	require.FileExists(t, journalFile)
+	require.Empty(t, j.CompletedFiles)
+	require.Empty(t, j.Files)
 
-	// Add a new CSV as processed.
+	// Recreate, with existing non-processed files.
+	journalFile = filepath.Join(t.TempDir(), "with-files.json")
+	j, err = NewJournal(journalFile, testJobConfig(t), csvPath)
+	require.NoError(t, err)
+	require.Len(t, j.Files, len(csvFiles))
+	require.Empty(t, j.CompletedFiles)
+
+	// Add one file as completed.
 	err = j.AddCompletedFiles(csvFiles[:1])
 	require.NoError(t, err)
-	// Open journal and check that we have one CSV processed already.
-	j, err = NewJournal(journalFile)
+	// Check that the completed file is there.
+	j, err = NewJournal(journalFile, testJobConfig(t), csvPath)
 	require.NoError(t, err)
-	require.Equal(t, len(csvFiles), len(j.Files))
-	require.Equal(t, 1, len(j.CompletedFiles))
+	require.Len(t, j.Files, len(csvFiles))
+	require.Len(t, j.CompletedFiles, 1)
 	require.Equal(t, csvFiles[0], j.CompletedFiles[0])
 }
 
+// TestAddCompletedFiles checks that AddCompletedFiles correctly adds the file names,
+// and that the list is kept sorted and without duplicates.
 func TestAddCompletedFiles(t *testing.T) {
 	expected := slices.Clone(csvFiles[:])
-	journalFile := fmt.Sprintf("testdata/journal-%s.json", t.Name())
-	os.Remove(journalFile)       // ensure there is no file with this name
-	defer os.Remove(journalFile) // remove it if we create it
+	journalFile := filepath.Join(t.TempDir(), fmt.Sprintf("%s.json", t.Name()))
 
-	// Configure the CLI flags as the command does.
-	cmdflags.ConfigureFlags()
-
-	err := flag.CommandLine.Parse([]string{csvPath}) // mock CSV path
-	require.NoError(t, err)                          //
-	require.Equal(t, csvPath, flag.Arg(0))           // Assert that indeed the path is there
-
-	j, err := NewJournal(journalFile)
+	j, err := NewJournal(journalFile, testJobConfig(t), csvPath)
 	require.NoError(t, err)
 
 	got := j.PendingFiles()
-	require.Len(t, got, len(expected)) // none completed
+	require.Len(t, got, len(expected))
 	require.Equal(t, j.Files, got)
 
-	// Add one completed file, the first one.
+	// Add the first file 0-99999.
 	err = j.AddCompletedFiles(expected[0:1])
 	require.NoError(t, err)
-
 	got = j.PendingFiles()
 	expected = slices.Delete(expected, 0, 1)
-	// expected is now [ 100000- ,200000- ]
-	require.Len(t, got, len(expected)) // one  completed
 	require.Equal(t, expected, got)
 
-	// Complete another one, this time the last file.
+	// Add the last file 200000-299999.
 	err = j.AddCompletedFiles(expected[len(expected)-1:])
 	require.NoError(t, err)
-
 	got = j.PendingFiles()
-	expected = slices.Delete(expected, len(expected)-1, len(expected))
-	// expected is now [ 100000- ]
-	require.Len(t, got, len(expected)) // two  completed
+	expected = slices.Delete(expected, len(expected)-1, len(expected)) // remove last.
 	require.Equal(t, expected, got)
-
-	require.Equal(t, csvFiles[1], got[0])
 	require.Len(t, got, 1)
+	// Check that indeed the pending file is the second from csvFiles 100000-199999.
+	require.Equal(t, csvFiles[1], got[0])
 }
 
 func TestPendingFiles(t *testing.T) {
+	journalFile := filepath.Join(t.TempDir(), fmt.Sprintf("%s.json", t.Name()))
 
+	j, err := NewJournal(journalFile, testJobConfig(t), csvPath)
+	require.NoError(t, err)
+
+	err = j.AddCompletedFiles([]string{csvFiles[0], csvFiles[2]})
+	require.NoError(t, err)
+
+	require.Equal(t, []string{csvFiles[1]}, j.PendingFiles())
+}
+
+func TestNewJournalInvalidJSON(t *testing.T) {
+	journalFile := filepath.Join(t.TempDir(), "invalid.json")
+	err := os.WriteFile(journalFile, []byte("{"), 0o644)
+	require.NoError(t, err)
+
+	_, err = NewJournal(journalFile, testJobConfig(t), csvPath)
+	require.Error(t, err)
+}
+
+// TestNewJournalNormalizesFilesOnRead checks that reading a json journal actually normalizes
+// the content of Files and CompletedFiles to sorted and not duplicated.
+func TestNewJournalNormalizesFilesOnRead(t *testing.T) {
+	journalFile := filepath.Join(t.TempDir(), "journal.json")
+	raw := Journal{
+		Files: []string{
+			csvFiles[2],
+			csvFiles[0],
+			csvFiles[1],
+			csvFiles[0],
+		},
+		CompletedFiles: []string{
+			csvFiles[2],
+			csvFiles[0],
+			csvFiles[2],
+		},
+	}
+	buf, err := json.Marshal(raw)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(journalFile, buf, 0o644))
+
+	j, err := NewJournal(journalFile, testJobConfig(t), csvPath)
+	require.NoError(t, err)
+
+	require.Equal(t, []string{csvFiles[0], csvFiles[1], csvFiles[2]}, j.Files)
+	require.Equal(t, []string{csvFiles[0], csvFiles[2]}, j.CompletedFiles)
+	require.Equal(t, []string{csvFiles[1]}, j.PendingFiles())
+}
+
+func TestNewJournalFailsWhenReadNeedsInvalidFilenameNormalization(t *testing.T) {
+	journalFile := filepath.Join(t.TempDir(), "journal.json")
+	raw := Journal{
+		Files: []string{
+			"invalid-file-name",
+			csvFiles[0],
+		},
+	}
+	buf, err := json.Marshal(raw)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(journalFile, buf, 0o644))
+
+	_, err = NewJournal(journalFile, testJobConfig(t), csvPath)
+	require.Error(t, err)
+}
+
+// testJobConfig returns a JobConfiguration with "onlyingest" and batch size of 2.
+func testJobConfig(t *testing.T) JobConfiguration {
+	t.Helper()
+	cfg, err := NewJobConfiguration("onlyingest", 2)
+	require.NoError(t, err)
+	return cfg
 }

@@ -155,7 +155,7 @@ func BenchmarkCertSink(b *testing.B) {
 }
 
 func getManager(t tests.T) *updater.Manager {
-	m, err := updater.NewManager(1, nil, 10_000, time.Hour, nil)
+	m, err := updater.NewManager(1, nil, 10_000, updater.NewStatistics(time.Hour, nil))
 	require.NoError(t, err)
 	return m
 }

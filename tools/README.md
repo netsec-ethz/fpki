@@ -29,6 +29,8 @@ echo "# Site-specific additions and overrides for usr.sbin.mysqld.
 sudo systemctl restart apparmor.service
 ```
 
+If the data directory under `/var/lib/mysql/` needs to be initialized, run `mysqld --initialize-insecure`.
+
 To allow root without password:
 ```bash
 echo "ALTER USER 'root'@'localhost' IDENTIFIED WITH caching_sha2_password BY '';

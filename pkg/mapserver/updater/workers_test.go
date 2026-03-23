@@ -2,7 +2,6 @@ package updater
 
 import (
 	"context"
-	"math"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -35,7 +34,7 @@ func TestDomainBatcherNotBlocking(t *testing.T) {
 	t.Logf("# domains: %d", len(domains))
 
 	const batchSize = 2
-	manager, err := NewManager(1, conn, batchSize, math.MaxUint64, nil, time.Hour, nil)
+	manager, err := NewManager(1, conn, batchSize, NewStatistics(time.Hour, nil))
 	require.NoError(t, err)
 
 	// Create a domain batcher stage.
@@ -150,7 +149,7 @@ func TestDomainBatcherAllocationOverhead(t *testing.T) {
 	certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
 	domains := extractDomains(certs)
 
-	manager, err := NewManager(1, conn, 10, math.MaxUint64, nil, time.Hour, nil)
+	manager, err := NewManager(1, conn, 10, NewStatistics(time.Hour, nil))
 	require.NoError(t, err)
 
 	// Create a domain batcher stage.

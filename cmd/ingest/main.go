@@ -6,10 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"path/filepath"
-	"runtime"
 	"runtime/pprof"
-	"strings"
 	"syscall"
 	"time"
 
@@ -47,10 +44,13 @@ const (
 // debugging:
 // time go run -tags=trace ./cmd/ingest/ -numfiles 1  -numparsers 4 -numdechainers 2 -numdbworkers 4 -strategy onlyingest ./testdata2/
 func main() {
-	os.Exit(mainFunction())
+	if err := mainFunction(); err != nil {
+		fmt.Fprintf(os.Stderr, "%s\n", err)
+		os.Exit(1)
+	}
 }
 
-func mainFunction() int {
+func mainFunction() error {
 	ctx := context.Background()
 	defer util.ShutdownFunction()
 
@@ -59,6 +59,11 @@ func mainFunction() int {
 	defer span.End()
 
 	args.ConfigureFlags()
+	cfg := configFromFlags()
+	if err := cfg.validate(); err != nil {
+		flag.Usage()
+		return err
+	}
 
 	// Connect to DB via local socket, should be faster.
 	config := db.NewConfig(
@@ -67,86 +72,63 @@ func mainFunction() int {
 		mysql.WithLocalSocket("/var/run/mysqld/mysqld.sock"),
 	)
 	conn, err := mysql.Connect(config)
-	exitIfError(err)
-
-	var jrnl *journal.Journal
-	jrnl, err = journal.NewJournal(*args.JournalFile)
-	exitIfError(err)
-
-	coalesceFun := func() {}
-	smtUpdateFun := func() {}
-
-	var (
-		ingestCerts bool
-	)
-
-	switch *args.Strategy {
-	case "onlyingest":
-		ingestCerts = true // But do not fallthrough to also coalesce and update SMT.
-
-	case "":
-		ingestCerts = true
-		fallthrough
-	case "skipingest":
-		coalesceFun = func() {
-			ctx, span := tr.MT().Start(ctx, "coalesce")
-			defer span.End()
-
-			coalescePayloadsForDirtyDomains(ctx, conn)
-		}
-		fallthrough
-	case "onlysmtupdate":
-		smtUpdateFun = func() {
-			ctx, span := tr.MT().Start(ctx, "smt-update")
-			defer span.End()
-
-			updateSMT(ctx, conn)
-			cleanupDirty(ctx, conn)
-		}
-	default:
-		exitIfError(fmt.Errorf("bad update strategy: %v", *args.Strategy))
+	if err != nil {
+		return err
 	}
-
-	// If we will ingest certificates, we need a path.
-	if ingestCerts && flag.NArg() != 1 {
-		flag.Usage()
-		return 1
-	}
+	defer conn.Close()
 
 	// Profiling:
-	stopProfiles := func() {
-		if *args.CpuProfile != "" || *args.MemProfile != "" {
+	stopProfiles := func() error {
+		if cfg.CpuProfile != "" || cfg.MemProfile != "" {
 			fmt.Fprintln(os.Stderr, "\nStopping profiling")
 		}
 
-		if *args.CpuProfile != "" {
+		if cfg.CpuProfile != "" {
 			pprof.StopCPUProfile()
 		}
-		if *args.MemProfile != "" {
-			f, err := os.Create(*args.MemProfile)
-			exitIfError(err)
-			err = pprof.WriteHeapProfile(f)
-			exitIfError(err)
+		if cfg.MemProfile != "" {
+			f, err := os.Create(cfg.MemProfile)
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+			if err := pprof.WriteHeapProfile(f); err != nil {
+				return err
+			}
 		}
+		return nil
 	}
-	defer stopProfiles()
+	defer func() {
+		if err := stopProfiles(); err != nil {
+			fmt.Fprintf(os.Stderr, "%s\n", err)
+		}
+	}()
 
-	if *args.CpuProfile != "" {
-		f, err := os.Create(*args.CpuProfile)
-		exitIfError(err)
+	if cfg.CpuProfile != "" {
+		f, err := os.Create(cfg.CpuProfile)
+		if err != nil {
+			return err
+		}
 		err = pprof.StartCPUProfile(f)
-		exitIfError(err)
+		if err != nil {
+			f.Close()
+			return err
+		}
 		defer func() {
-			exitIfError(f.Close())
+			if err := f.Close(); err != nil {
+				fmt.Fprintf(os.Stderr, "%s\n", err)
+			}
 		}()
 	}
 
 	// Memprof dump if SIGUSR1.
-	if *args.DebugMemProfDump != "" {
+	if cfg.DebugMemProfDump != "" {
 		util.RunOnSignal(
 			ctx,
 			func(os.Signal) {
-				createMemDump(*args.DebugMemProfDump)
+				if err := createMemDump(cfg.DebugMemProfDump); err != nil {
+					fmt.Fprintf(os.Stderr, "%s\n", err)
+				}
 			},
 			syscall.SIGUSR1,
 		)
@@ -158,114 +140,69 @@ func mainFunction() int {
 	go func() {
 		sg := <-signals
 		fmt.Fprintf(os.Stderr, "\nsignal caught %s\n", sg.String())
-		stopProfiles()
+		if err := stopProfiles(); err != nil {
+			fmt.Fprintf(os.Stderr, "%s\n", err)
+		}
 		// Memory dump file name, if any:
-		createMemDump("/tmp/fpki-ingest-crash-memdump.pprof")
+		if err := createMemDump("/tmp/fpki-ingest-crash-memdump.pprof"); err != nil {
+			fmt.Fprintf(os.Stderr, "%s\n", err)
+		}
 		os.Exit(1)
 	}()
 
-	if ingestCerts {
-		stats := updater.NewStatistics(2*time.Second, printStats)
-
-		// Use the file batcher ingest function.
-		forEachFileBatchFun := func(files []string) {
+	return runIngest(cfg, RunDependencies{
+		NewJournal: func(cfg RunConfig, jobCfg journal.JobConfiguration) (JournalStore, error) {
+			return journal.NewJournal(cfg.JournalFile, jobCfg, cfg.Directory)
+		},
+		NewStatistics: func() *updater.Stats {
+			return updater.NewStatistics(2*time.Second, printStats)
+		},
+		BeforeBatch: gcBeforeBatch,
+		RunBatch: func(stats *updater.Stats, files []string) error {
 			ctx, span := tr.MT().Start(ctx, "file-ingestion")
 			defer span.End()
 
 			proc, err := NewProcessor(
 				ctx,
 				conn,
-				*args.MultiInsertSize,
+				cfg.MultiInsertSize,
 				stats,
-				WithNumFileReaders(*args.NumFiles),
-				WithNumToChains(*args.NumParsers),
-				WithNumToCerts(*args.NumChainToCerts),
-				WithNumDBWriters(*args.NumDBWriters),
+				WithNumFileReaders(cfg.NumFiles),
+				WithNumToChains(cfg.NumParsers),
+				WithNumToCerts(cfg.NumChainToCerts),
+				WithNumDBWriters(cfg.NumDBWriters),
 			)
-			exitIfError(err)
+			if err != nil {
+				return err
+			}
 
 			csvFiles := make([]util.CsvFile, 0, len(files))
 			for _, filename := range files {
 				f, err := util.LoadCsvFile(filename)
-				exitIfError(err)
+				if err != nil {
+					return err
+				}
 				csvFiles = append(csvFiles, f)
 			}
 			proc.AddCsvFiles(csvFiles)
-
-			names := make([]string, len(files))
-			for i, f := range files {
-				names[i] = filepath.Base(f)
-			}
-			fmt.Printf("[%s] Starting ingesting %d files : %s\n",
-				time.Now().Format(time.StampMilli),
-				len(files),
-				strings.Join(names, ", "),
-			)
-			// Update certificates and chains, and wait until finished.
+			logBatchStart(files)
 			proc.Resume()
-			exitIfError(proc.Wait())
-
-			// After ingestion.
-			coalesceFun()
-			smtUpdateFun()
-
-			// Update journal.
-			if jrnl != nil {
-				err = jrnl.AddCompletedFiles(files)
-				exitIfError(err)
+			return proc.Wait()
+		},
+		Coalesce: func() error {
+			ctx, span := tr.MT().Start(ctx, "coalesce")
+			defer span.End()
+			return coalescePayloadsForDirtyDomains(ctx, conn)
+		},
+		UpdateSMT: func() error {
+			ctx, span := tr.MT().Start(ctx, "smt-update")
+			defer span.End()
+			if err := updateSMT(ctx, conn); err != nil {
+				return err
 			}
-		}
-
-		err := ingestFilesInBatches(jrnl, stats, *args.FileBatch, forEachFileBatchFun)
-		exitIfError(err)
-	} else {
-		coalesceFun()
-		smtUpdateFun()
-	}
-	return 0
-}
-
-func ingestFilesInBatches(
-	j *journal.Journal,
-	stats *updater.Stats,
-	fileBatchSize int,
-	forEachBatch func([]string),
-) error {
-	allFilenames := j.PendingFiles()
-
-	// Update the statistics.
-	stats.TotalFiles.Store(int64(len(allFilenames)))
-	stats.TotalCerts.Store(0)
-	for _, fileName := range allFilenames {
-		n, err := util.EstimateCertCount(fileName)
-		exitIfError(err)
-		stats.TotalCerts.Add(int64(n))
-	}
-
-	// Default (with size zero) is one batch for all files.
-	if fileBatchSize == 0 {
-		fileBatchSize = len(allFilenames)
-	} else {
-		fileBatchSize = min(fileBatchSize, len(allFilenames))
-	}
-	batchCount := ((len(allFilenames) - 1) / fileBatchSize) + 1
-
-	for i := 0; i < len(allFilenames); i += fileBatchSize {
-		s := i
-		e := min(i+fileBatchSize, len(allFilenames))
-
-		// Force garbage collection.
-		var memBefore, memAfter runtime.MemStats
-		runtime.ReadMemStats(&memBefore)
-		runtime.GC()
-		runtime.ReadMemStats(&memAfter)
-		fmt.Printf("\nGC: freed %d MB\n", (memBefore.Alloc-memAfter.Alloc)/(1024*1024))
-
-		fmt.Printf("\nProcessing File Batch %d / %d\n", i/fileBatchSize+1, batchCount)
-		forEachBatch(allFilenames[s:e])
-	}
-
-	return nil
+			return cleanupDirty(ctx, conn)
+		},
+	})
 }
 
 func printStats(s *updater.Stats) {
@@ -298,18 +235,33 @@ func printStats(s *updater.Stats) {
 	fmt.Fprintf(os.Stderr, "%s\r", msg)
 }
 
-func exitIfError(err error) {
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s\n", err)
-		os.Exit(1)
+func configFromFlags() RunConfig {
+	return RunConfig{
+		Directory:        flag.Arg(0),
+		Strategy:         *args.Strategy,
+		JournalFile:      *args.JournalFile,
+		FileBatch:        *args.FileBatch,
+		MultiInsertSize:  *args.MultiInsertSize,
+		NumFiles:         *args.NumFiles,
+		NumParsers:       *args.NumParsers,
+		NumChainToCerts:  *args.NumChainToCerts,
+		NumDBWriters:     *args.NumDBWriters,
+		CpuProfile:       *args.CpuProfile,
+		MemProfile:       *args.MemProfile,
+		DebugMemProfDump: *args.DebugMemProfDump,
 	}
 }
 
-func createMemDump(filename string) {
+func createMemDump(filename string) error {
 	f, err := os.Create(filename)
-	exitIfError(err)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
 	err = pprof.Lookup("heap").WriteTo(f, 0) // use "heap" or "allocs"
-	exitIfError(err)
-	exitIfError(f.Close())
+	if err != nil {
+		return err
+	}
 	fmt.Fprintf(os.Stderr, "\nMemory dumped to %s\n", filename)
+	return nil
 }
