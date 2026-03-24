@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -31,6 +32,17 @@ func TestSanityOfThisTest(t *testing.T) {
 	for _, filename := range csvFiles {
 		require.FileExists(t, filename)
 	}
+}
+
+func TestPerformanceListCsvFiles(t *testing.T) {
+	t0 := time.Now()
+	ingestDir, err := os.Getwd()
+	require.NoError(t, err)
+	t.Logf("Listing files in directory %s", ingestDir)
+	gzFiles, csvFiles, err := ListCsvFiles(ingestDir)
+	require.NoError(t, err)
+	dur := time.Since(t0)
+	t.Logf("Found %d GZ and %d CSV files in %s", len(gzFiles), len(csvFiles), dur)
 }
 
 func TestNewJournal(t *testing.T) {
