@@ -10,7 +10,7 @@ import (
 	tr "github.com/netsec-ethz/fpki/pkg/tracing"
 )
 
-func coalescePayloadsForDirtyDomains(ctx context.Context, conn db.Conn) {
+func coalescePayloadsForDirtyDomains(ctx context.Context, conn db.Conn) error {
 	ctx, span := tr.T("db").Start(ctx, "coalescing")
 	defer span.End()
 
@@ -18,26 +18,35 @@ func coalescePayloadsForDirtyDomains(ctx context.Context, conn db.Conn) {
 		time.Now().Format(time.StampMilli))
 	// Use NumDBWriters.
 	err := updater.CoalescePayloadsForDirtyDomains(ctx, conn)
-	exitIfError(err)
+	if err != nil {
+		return err
+	}
 
 	fmt.Printf("\n[%s] Done coalescing.\n", time.Now().Format(time.StampMilli))
+	return nil
 }
 
-func updateSMT(ctx context.Context, conn db.Conn) {
+func updateSMT(ctx context.Context, conn db.Conn) error {
 	ctx, span := tr.T("db").Start(ctx, "updating-smt")
 	defer span.End()
 
 	fmt.Println("\nStarting SMT update ...")
 	err := updater.UpdateSMT(ctx, conn)
-	exitIfError(err)
+	if err != nil {
+		return err
+	}
 
 	fmt.Println("\nDone SMT update.")
+	return nil
 }
 
-func cleanupDirty(ctx context.Context, conn db.Conn) {
+func cleanupDirty(ctx context.Context, conn db.Conn) error {
 	ctx, span := tr.T("db").Start(ctx, "cleaning-dirty")
 	defer span.End()
 
 	err := conn.CleanupDirty(ctx)
-	exitIfError(err)
+	if err != nil {
+		return err
+	}
+	return nil
 }

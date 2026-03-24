@@ -7,37 +7,86 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
+	"strings"
 )
 
 // gzCsvFilename matches with the name of the gz files is e.g. "0-100005.gz".
-var gzCsvFilename = regexp.MustCompile(`^(\d+)-(\d+).gz$`)
+var gzCsvFilename = regexp.MustCompile(`^(\d+)-(\d+).(?:gz|csv)$`)
 
 func EstimateCertCount(filename string) (uint, error) {
+	indices, err := filenameToIndices(filename)
+	if err != nil {
+		return 0, err
+	}
+
+	return indices[1] - indices[0] + 1, nil
+}
+
+func CsvFilenameToFirstIndex(filename string) (uint, error) {
+	indices, err := filenameToIndices(filename)
+	if err != nil {
+		return 0, err
+	}
+
+	return indices[0], nil
+}
+
+func filenameToIndices(filename string) ([2]uint, error) {
 	filename = filepath.Base(filename)
 	errBadFilename := fmt.Errorf(
 		`estimating certificate count from filename "%s": unexpected name`,
 		filename)
 	groups := gzCsvFilename.FindStringSubmatch(filename)
 	if len(groups) != 3 {
-		return 0, errBadFilename
+		return [2]uint{}, errBadFilename
 	}
 
 	first, err := strconv.Atoi(groups[1])
 	if err != nil {
-		return 0, errBadFilename
+		return [2]uint{}, errBadFilename
 	}
 
 	last, err := strconv.Atoi(groups[2])
 	if err != nil {
-		return 0, errBadFilename
+		return [2]uint{}, errBadFilename
 	}
 
 	if first > last {
-		return 0, fmt.Errorf("%s: first > last", errBadFilename)
+		return [2]uint{}, fmt.Errorf("%s: first > last", errBadFilename)
 	}
 
-	return uint(last-first) + 1, nil
+	return [2]uint{uint(first), uint(last)}, nil
+}
+
+// SortByBundleName expects a slice of filenames of the form X-Y.{csv,gz}.
+// After it returns, the slice is sorted according to uint(X).
+func SortByBundleName(names []string) error {
+	type pair struct {
+		name   string
+		bundle int
+	}
+	pairs := make([]pair, len(names))
+	for i, name := range names {
+		idxs, err := filenameToIndices(name)
+		if err != nil {
+			return err
+		}
+		pairs[i].name = name
+		pairs[i].bundle = int(idxs[0])
+	}
+	// Sort by first index.
+	slices.SortFunc(pairs, func(a, b pair) int {
+		return a.bundle - b.bundle
+	})
+
+	// Rebuild original slice.
+	for i, pair := range pairs {
+		names[i] = pair.name
+	}
+
+	return nil
 }
 
 type CsvFile interface {
@@ -46,6 +95,19 @@ type CsvFile interface {
 	String() string
 	Open() (io.Reader, error)
 	Close() error
+}
+
+func LoadCsvFile(fileName string) (CsvFile, error) {
+	var f CsvFile
+	switch strings.ToLower(filepath.Ext(fileName)) {
+	case ".gz":
+		f = &GzFile{}
+	case ".csv":
+		f = &UncompressedFile{}
+	default:
+		return nil, fmt.Errorf("unknown CSV file type for %s", fileName)
+	}
+	return f.WithFile(fileName), nil
 }
 
 type baseFile struct {

@@ -3,10 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"math"
 	"sync"
-	"sync/atomic"
-	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
@@ -27,26 +24,21 @@ import (
 		   ...
 */
 type Processor struct {
-	Ctx               context.Context
-	CsvFiles          []util.CsvFile
-	NumFileReaders    int
-	NumToChain        int
-	NumToCerts        int
-	NumDBWriters      int
-	Pipeline          *pip.Pipeline
-	Manager           *updater.Manager
-	bundleSize        uint64
-	onBundleFinished  func()
-	certsBeforeBundle atomic.Uint64
-	doingBundle       atomic.Bool
+	Ctx            context.Context
+	CsvFiles       []util.CsvFile
+	NumFileReaders int
+	NumToChain     int
+	NumToCerts     int
+	NumDBWriters   int
+	Pipeline       *pip.Pipeline
+	Manager        *updater.Manager
 }
 
 func NewProcessor(
 	ctx context.Context,
 	conn db.Conn,
 	multiInsertSize int,
-	statsUpdatePeriod time.Duration,
-	statsUpdateFun func(*updater.Stats),
+	statistics *updater.Stats,
 	options ...ingestOptions,
 ) (*Processor, error) {
 	// Create the processor that will hold all the information and the pipeline.
@@ -56,11 +48,6 @@ func NewProcessor(
 		NumToChain:     1, // Default to just 1 lineToChain.
 		NumToCerts:     1, // Default to just 1 chainToCerts.
 		NumDBWriters:   1, // Default to 1 db writer.
-
-		bundleSize:        math.MaxUint64,
-		onBundleFinished:  func() {}, // Noop.
-		certsBeforeBundle: atomic.Uint64{},
-		doingBundle:       atomic.Bool{},
 	}
 
 	// Apply options to processor only.
@@ -76,10 +63,7 @@ func NewProcessor(
 		p.NumDBWriters,
 		conn,
 		multiInsertSize,
-		math.MaxUint64, // = infinite per default.
-		func() {},      // onBundle: defaults to noop.
-		statsUpdatePeriod,
-		statsUpdateFun,
+		statistics,
 	)
 	if err != nil {
 		return nil, err
@@ -104,37 +88,6 @@ func NewProcessor(
 		pipFiles,
 		p.Manager.Pipeline,
 	)
-
-	// At the chainToCert stages we evaluate if need to stop. These stages are the last ones right
-	// before the sink, with NumToCerts number of them.
-	evaluateAt := make([]int, 0, p.NumToCerts)
-	for i := len(pipFiles.Stages); i > len(pipFiles.Stages)-p.NumToCerts; i-- {
-		evaluateAt = append(evaluateAt, i-2)
-	}
-
-	stallOption := pip.WithStallStages(
-		append(pipFiles.Stages, p.Manager.Pipeline.Stages...), // all stages, both pipelines.
-		// Function when stalled:
-		func() {
-			// Call the function.
-			p.onBundleFinished()
-
-			// Reset the counter.
-			p.certsBeforeBundle.Store(0)
-			// Reset the bundle running indicator.
-			p.doingBundle.Store(false)
-		},
-		// Function determining when to stall:
-		func(sl pip.StageLike) bool {
-			if p.certsBeforeBundle.Load() > p.bundleSize && p.doingBundle.CompareAndSwap(false, true) {
-				return true
-			}
-			return false
-		},
-		// Evaluate at every chainToCerts stage.
-		pipFiles.StagesAt(evaluateAt...),
-	)
-	stallOption(pipeline)
 
 	// Set the joint pipeline as the pipeline and return.
 	p.Pipeline = pipeline
@@ -173,60 +126,17 @@ func WithNumDBWriters(numDBWriters int) ingestOptions {
 		})
 }
 
-func WithBundleSize(bundleSize uint64) ingestOptions {
-	return processorOptions(
-		func(p *Processor) {
-			if bundleSize == 0 {
-				bundleSize = math.MaxUint64
-			}
-			p.bundleSize = bundleSize
-		})
-}
-
-func WithOnBundleFinished(fcn func()) ingestOptions {
-	return processorOptions(
-		func(p *Processor) {
-			p.onBundleFinished = fcn
-		})
-}
-
 func (p *Processor) Resume() {
 	p.Pipeline.Resume(p.Ctx)
 }
 
 func (p *Processor) Wait() error {
-	err := p.Pipeline.Wait(p.Ctx)
-	// Check if there is a bundle pending.
-	if p.certsBeforeBundle.Load() > 0 {
-		p.onBundleFinished()
-	}
-	return err
+	return p.Pipeline.Wait(p.Ctx)
 }
 
-// AddGzFiles adds a CSV .gz file to the initial stage.
-// It blocks until it is accepted.
-func (p *Processor) AddGzFiles(fileNames []string) {
-	p.Manager.Stats.TotalFiles.Add(int64(len(fileNames)))
-
-	for _, filename := range fileNames {
-		p.CsvFiles = append(p.CsvFiles, (&util.GzFile{}).WithFile(filename))
-
-		certCount, err := util.EstimateCertCount(filename)
-		if err != nil {
-			panic(err)
-		}
-		p.Manager.Stats.TotalCerts.Add(int64(certCount))
-	}
-}
-
-// AddCsvFiles adds a .csv file to the initial stage.
-// It blocks until it is accepted.
-func (p *Processor) AddCsvFiles(fileNames []string) {
-	p.Manager.Stats.TotalFiles.Add(int64(len(fileNames)))
-
-	for _, filename := range fileNames {
-		p.CsvFiles = append(p.CsvFiles, (&util.UncompressedFile{}).WithFile(filename))
-	}
+// AddCsvFiles adds the files to the processor to be read when Resume is called.
+func (p *Processor) AddCsvFiles(files []util.CsvFile) {
+	p.CsvFiles = append(p.CsvFiles, files...)
 }
 
 // createFilesToCertsPipeline creates a pipeline that processes CSV and GZ files into Certificates.
@@ -338,7 +248,7 @@ func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 			for i := range d {
 				d[i] = pip.StageAtIndex[certChain, updater.Certificate](pipeline, 1+S+W+i)
 			}
-			e := []*pip.Stage[updater.Certificate, pip.None]{pip.SinkStage[updater.Certificate](pipeline)}
+			e := pip.StagesAsSlice(pip.SinkStage[updater.Certificate](pipeline))
 
 			pip.LinkStagesDistribute(a, b...) // A -> B
 			pip.LinkStagesCrissCross(b, c)    // Bi-> Ci

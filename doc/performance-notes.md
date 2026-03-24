@@ -85,6 +85,29 @@ Current USB size:
 1.8T	https:__ct.googleapis.com_logs_eu1_xenon2024
 ```
 
+#### USB performance
+The raw reading speed of the USB disk is measured at 201MB/s by `dd`:
+
+```shell
+$ dd if=/dev/random of=test-data.dat bs=1024 count=10M # 10Gb of data
+10485760+0 records in
+10485760+0 records out
+10737418240 bytes (11 GB, 10 GiB) copied, 42.8253 s, 251 MB/s
+
+# Drop caches
+$ time { echo 3 | sudo tee /proc/sys/vm/drop_caches; }
+3
+
+real	0m27.080s
+user	0m0.009s
+sys	0m0.016s
+
+$ sudo dd if=test-data.dat of=/dev/null bs=1024
+10485760+0 records in
+10485760+0 records out
+10737418240 bytes (11 GB, 10 GiB) copied, 53.4006 s, 201 MB/s
+```
+
 #### RAID0 performance
 Clean cache, dentries and inodes:
 ```

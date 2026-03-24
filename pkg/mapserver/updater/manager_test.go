@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"math"
 	"strings"
 	"testing"
 	"time"
@@ -130,10 +129,7 @@ func TestManagerStart(t *testing.T) {
 				tc.NWorkers,
 				conn,
 				tc.MultiInsertSize,
-				math.MaxUint64,
-				nil,
-				time.Hour,
-				nil,
+				NewStatistics(time.Hour, nil),
 			)
 			require.NoError(t, err)
 
@@ -215,10 +211,7 @@ func TestManagerResume(t *testing.T) {
 				tc.NWorkers,
 				conn,
 				tc.MultiInsertSize,
-				math.MaxUint64,
-				nil,
-				time.Hour,
-				nil,
+				NewStatistics(time.Hour, nil),
 			)
 			require.NoError(t, err)
 
@@ -464,7 +457,7 @@ func createManagerWithOutputFunction(
 	outType pip.DebugPurposesOnlyOutputType,
 ) *Manager {
 
-	manager, err := NewManager(workerCount, conn, 10, math.MaxUint64, nil, time.Hour, nil)
+	manager, err := NewManager(workerCount, conn, 10, NewStatistics(time.Hour, nil))
 	require.NoError(t, err)
 
 	stages := manager.Pipeline.Stages

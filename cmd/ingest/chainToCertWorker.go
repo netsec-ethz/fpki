@@ -28,9 +28,6 @@ func NewChainToCertWorker(numWorker int, p *Processor) *chainToCertWorker {
 			// Recreate channel indices, all to zero.
 			util.ResizeSlice(&w.channelsCache, len(certs), 0)
 
-			// Increment the count of certs.
-			p.certsBeforeBundle.Add(uint64(len(certs)))
-
 			return certs, w.channelsCache, nil
 		}),
 	)

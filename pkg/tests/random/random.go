@@ -39,6 +39,11 @@ func NewRandReader() io.Reader {
 	return randReader{}
 }
 
+// RandomInt returns a random integer in the interval [from,to], both included.
+func RandomInt(t tests.T, from, to int) int {
+	return rand.Intn(to-from+1) + from
+}
+
 func RandomBytesForTest(t tests.T, size int) []byte {
 	buff := make([]byte, size)
 	n, err := rand.Read(buff)

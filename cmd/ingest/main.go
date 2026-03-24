@@ -6,14 +6,12 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"runtime/pprof"
-	"sort"
-	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
+	args "github.com/netsec-ethz/fpki/cmd/ingest/cmdflags"
+	"github.com/netsec-ethz/fpki/cmd/ingest/journal"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
@@ -22,13 +20,7 @@ import (
 )
 
 const (
-	NumFiles      = 4
-	NumParsers    = 32
-	NumDechainers = 4
-	NumDBWriters  = 32
-
-	MultiInsertSize = 10_000     // # of certificates, domains, etc inserted at once.
-	LruCacheSize    = 10_000_000 // Keep track of the 10 million most seen certificates.
+	LruCacheSize = 10_000_000 // Keep track of the 10 million most seen certificates.
 )
 
 // Times gathered at jupiter, 64 gz files, no CSV
@@ -52,10 +44,13 @@ const (
 // debugging:
 // time go run -tags=trace ./cmd/ingest/ -numfiles 1  -numparsers 4 -numdechainers 2 -numdbworkers 4 -strategy onlyingest ./testdata2/
 func main() {
-	os.Exit(mainFunction())
+	if err := mainFunction(); err != nil {
+		fmt.Fprintf(os.Stderr, "%s\n", err)
+		os.Exit(1)
+	}
 }
 
-func mainFunction() int {
+func mainFunction() error {
 	ctx := context.Background()
 	defer util.ShutdownFunction()
 
@@ -63,96 +58,77 @@ func mainFunction() int {
 	ctx, span := tr.MT().Start(ctx, "main")
 	defer span.End()
 
-	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage:\n%s directory\n", os.Args[0])
-		flag.PrintDefaults()
-	}
-	cpuProfile := flag.String("cpuprofile", "", "write a CPU profile to file")
-	memProfile := flag.String("memprofile", "", "write a memory profile to file")
-	multiInsertSize := flag.Int("multiinsert", MultiInsertSize, "number of certificates and "+
-		"domains inserted at once in the DB")
-	bundleSize := flag.Uint64("bundlesize", 0, "number of certificates after which a coalesce and "+
-		"SMT update must occur. If 0, no limit, meaning coalescing and SMT updating is done once")
-	numFiles := flag.Int("numfiles", NumFiles, "Number of parallel files being read at once")
-	numParsers := flag.Int("numparsers", NumParsers, "Number of line parsers concurrently running")
-	numChainToCerts := flag.Int("numdechainers", NumDechainers, "Number of chain unrollers")
-	numDBWriters := flag.Int("numdbworkers", NumDBWriters, "Number of concurrent DB writers")
-	certUpdateStrategy := flag.String("strategy", "", "strategy to update certificates\n"+
-		"\"\": full work. I.e. ingest files, coalesce, and update SMT.\n"+
-		"\"onlyingest\": do not coalesce or update SMT after ingesting files.\n"+
-		"\"skipingest\": only coalesce payloads of domains in the dirty table and update SMT.\n"+
-		"\"onlysmtupdate\": only update the SMT.\n")
-	debugMemProfDump := flag.String("memprofdump", "", "write a memory profile to the file "+
-		"every time SIGUSR1 is caught")
-	flag.Parse()
-
-	var (
-		ingestCerts   bool
-		onlyIngest    bool
-		onlySmtUpdate bool
-	)
-	switch *certUpdateStrategy {
-	case "onlyingest":
-		onlyIngest = true
-		fallthrough // also ingest certs
-	case "":
-		ingestCerts = true
-	case "skipingest":
-		// ingestCerts is already false
-	case "onlysmtupdate":
-		onlySmtUpdate = true
-	default:
-		panic(fmt.Errorf("bad update strategy: %v", *certUpdateStrategy))
-	}
-
-	// If we will ingest certificates, we need a path.
-	if ingestCerts && flag.NArg() != 1 {
+	args.ConfigureFlags()
+	cfg := configFromFlags()
+	if err := cfg.validate(); err != nil {
 		flag.Usage()
-		return 1
+		return err
 	}
 
-	// Check that we are not using bundles if we are just coalescing or updating the SMT.
-	if *bundleSize != 0 && !ingestCerts {
-		exitIfError(fmt.Errorf("cannot use bundlesize if strategy is not keep or overwrite"))
+	// Connect to DB via local socket, should be faster.
+	config := db.NewConfig(
+		mysql.WithDefaults(),
+		mysql.WithEnvironment(),
+		mysql.WithLocalSocket("/var/run/mysqld/mysqld.sock"),
+	)
+	conn, err := mysql.Connect(config)
+	if err != nil {
+		return err
 	}
+	defer conn.Close()
 
 	// Profiling:
-	stopProfiles := func() {
-		if *cpuProfile != "" || *memProfile != "" {
+	stopProfiles := func() error {
+		if cfg.CpuProfile != "" || cfg.MemProfile != "" {
 			fmt.Fprintln(os.Stderr, "\nStopping profiling")
 		}
 
-		if *cpuProfile != "" {
+		if cfg.CpuProfile != "" {
 			pprof.StopCPUProfile()
 		}
-		if *memProfile != "" {
-			f, err := os.Create(*memProfile)
-			exitIfError(err)
-			err = pprof.WriteHeapProfile(f)
-			exitIfError(err)
+		if cfg.MemProfile != "" {
+			f, err := os.Create(cfg.MemProfile)
+			if err != nil {
+				return err
+			}
+			defer f.Close()
+			if err := pprof.WriteHeapProfile(f); err != nil {
+				return err
+			}
 		}
+		return nil
 	}
+	defer func() {
+		if err := stopProfiles(); err != nil {
+			fmt.Fprintf(os.Stderr, "%s\n", err)
+		}
+	}()
 
-	if *cpuProfile != "" {
-		f, err := os.Create(*cpuProfile)
-		exitIfError(err)
+	if cfg.CpuProfile != "" {
+		f, err := os.Create(cfg.CpuProfile)
+		if err != nil {
+			return err
+		}
 		err = pprof.StartCPUProfile(f)
-		exitIfError(err)
+		if err != nil {
+			f.Close()
+			return err
+		}
 		defer func() {
-			exitIfError(f.Close())
+			if err := f.Close(); err != nil {
+				fmt.Fprintf(os.Stderr, "%s\n", err)
+			}
 		}()
 	}
 
 	// Memprof dump if SIGUSR1.
-	if *debugMemProfDump != "" {
+	if cfg.DebugMemProfDump != "" {
 		util.RunOnSignal(
 			ctx,
-			func(s os.Signal) {
-				f, err := os.Create(*debugMemProfDump)
-				exitIfError(err)
-				err = pprof.Lookup("heap").WriteTo(f, 0) // use "heap" or "allocs"
-				exitIfError(err)
-				exitIfError(f.Close())
+			func(os.Signal) {
+				if err := createMemDump(cfg.DebugMemProfDump); err != nil {
+					fmt.Fprintf(os.Stderr, "%s\n", err)
+				}
 			},
 			syscall.SIGUSR1,
 		)
@@ -163,156 +139,70 @@ func mainFunction() int {
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		sg := <-signals
-		fmt.Fprintf(os.Stderr, "signal caught %s\n", sg.String())
-		stopProfiles()
+		fmt.Fprintf(os.Stderr, "\nsignal caught %s\n", sg.String())
+		if err := stopProfiles(); err != nil {
+			fmt.Fprintf(os.Stderr, "%s\n", err)
+		}
+		// Memory dump file name, if any:
+		if err := createMemDump("/tmp/fpki-ingest-crash-memdump.pprof"); err != nil {
+			fmt.Fprintf(os.Stderr, "%s\n", err)
+		}
 		os.Exit(1)
 	}()
 
-	// Connect to DB via local socket, should be faster.
-	config := db.NewConfig(
-		mysql.WithDefaults(),
-		mysql.WithEnvironment(),
-		mysql.WithLocalSocket("/var/run/mysqld/mysqld.sock"),
-	)
-	conn, err := mysql.Connect(config)
-	exitIfError(err)
+	return runIngest(cfg, RunDependencies{
+		NewJournal: func(cfg RunConfig, jobCfg journal.JobConfiguration) (JournalStore, error) {
+			return journal.NewJournal(cfg.JournalFile, jobCfg, cfg.Directory)
+		},
+		NewStatistics: func() *updater.Stats {
+			return updater.NewStatistics(2*time.Second, printStats)
+		},
+		BeforeBatch: gcBeforeBatch,
+		RunBatch: func(stats *updater.Stats, files []string) error {
+			ctx, span := tr.MT().Start(ctx, "file-ingestion")
+			defer span.End()
 
-	// Load root if any:
-	root, err := conn.LoadRoot(ctx)
-	exitIfError(err)
-	if root == nil {
-		fmt.Print("SMT root node is empty. DB should be empty, but not checking.\n\n")
-		// TODO(juagargi) check that DB is empty if root is empty.
-	}
-
-	if ingestCerts {
-		ctx, span := tr.MT().Start(ctx, "file-ingestion")
-		defer span.End()
-
-		// All GZ and CSV files found under the directory of the argument.
-		gzFiles, csvFiles := listOurFiles(flag.Arg(0))
-		fmt.Printf("# gzFiles: %d, # csvFiles: %d\n", len(gzFiles), len(csvFiles))
-
-		bundleProcessing := func() {
-			// do not coalesce, or update smt.
-			fmt.Println("\nAnother bundle ingestion finished.")
-		}
-		if !onlyIngest {
-			bundleProcessing = func() {
-				// Regular operation: coalesce and update SMT.
-				// Called for intermediate bundles. Need to coalesce, update SMT and clean dirty.
-
-				ctx, span := tr.MT().Start(ctx, "bundle-ingested")
-
-				fmt.Println("\nAnother bundle ingestion finished.")
-				coalescePayloadsForDirtyDomains(ctx, conn)
-				updateSMT(ctx, conn)
-				cleanupDirty(ctx, conn)
-
-				span.End()
+			proc, err := NewProcessor(
+				ctx,
+				conn,
+				cfg.MultiInsertSize,
+				stats,
+				WithNumFileReaders(cfg.NumFiles),
+				WithNumToChains(cfg.NumParsers),
+				WithNumToCerts(cfg.NumChainToCerts),
+				WithNumDBWriters(cfg.NumDBWriters),
+			)
+			if err != nil {
+				return err
 			}
-		}
 
-		proc, err := NewProcessor(
-			ctx,
-			conn,
-			*multiInsertSize,
-			2*time.Second,
-			printStats,
-			WithNumFileReaders(*numFiles),
-			WithNumToChains(*numParsers),
-			WithNumToCerts(*numChainToCerts),
-			WithNumDBWriters(*numDBWriters),
-			WithBundleSize(*bundleSize),
-			WithOnBundleFinished(bundleProcessing),
-		)
-		exitIfError(err)
-
-		// Add the files to the processor.
-		proc.AddGzFiles(gzFiles)
-		proc.AddCsvFiles(csvFiles)
-
-		fmt.Printf("[%s] Starting ingesting files ...\n",
-			time.Now().Format(time.StampMilli))
-		// Update certificates and chains, and wait until finished.
-		proc.Resume()
-
-		exitIfError(proc.Wait())
-
-		stopProfiles()
-
-		return 0
-	}
-
-	// The certificates had been ingested. If we had set a bundle size, we still need to process
-	// the last bundle. If we hadn't, we will process it all.
-	if !onlySmtUpdate {
-		// Coalesce the payloads of all modified domains.
-		coalescePayloadsForDirtyDomains(ctx, conn)
-	}
-
-	// Now update the SMT Trie with the changed domains:
-	updateSMT(ctx, conn)
-
-	// Cleanup dirty entries.
-	cleanupDirty(ctx, conn)
-
-	// Close DB.
-	err = conn.Close()
-	exitIfError(err)
-
-	stopProfiles()
-
-	return 0
-}
-
-func listOurFiles(dir string) (gzFiles, csvFiles []string) {
-	entries, err := os.ReadDir(dir)
-	exitIfError(err)
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		if e.Name() == "bundled" {
-			// Use all *.gz in this directory.
-			d := filepath.Join(dir, e.Name())
-			gzFiles, err = filepath.Glob(fmt.Sprintf("%s/*.gz", d))
-			exitIfError(err)
-			csvFiles, err = filepath.Glob(fmt.Sprintf("%s/*.csv", dir))
-			exitIfError(err)
-		} else {
-			gzs, csvs := listOurFiles(filepath.Join(dir, e.Name()))
-			gzFiles = append(gzFiles, gzs...)
-			csvFiles = append(csvFiles, csvs...)
-		}
-	}
-
-	// Sort the files according to their node number.
-	sortByBundleName(gzFiles)
-	sortByBundleName(csvFiles)
-
-	return
-}
-
-// sortByBundleName expects a slice of filenames of the form X-Y.{csv,gz}.
-// After it returns, the slice is sorted according to uint(X).
-func sortByBundleName(names []string) {
-	sort.Slice(names, func(i, j int) bool {
-		a := filenameToFirstSize(names[i])
-		b := filenameToFirstSize(names[j])
-		return a < b
+			csvFiles := make([]util.CsvFile, 0, len(files))
+			for _, filename := range files {
+				f, err := util.LoadCsvFile(filename)
+				if err != nil {
+					return err
+				}
+				csvFiles = append(csvFiles, f)
+			}
+			proc.AddCsvFiles(csvFiles)
+			logBatchStart(files)
+			proc.Resume()
+			return proc.Wait()
+		},
+		Coalesce: func() error {
+			ctx, span := tr.MT().Start(ctx, "coalesce")
+			defer span.End()
+			return coalescePayloadsForDirtyDomains(ctx, conn)
+		},
+		UpdateSMT: func() error {
+			ctx, span := tr.MT().Start(ctx, "smt-update")
+			defer span.End()
+			if err := updateSMT(ctx, conn); err != nil {
+				return err
+			}
+			return cleanupDirty(ctx, conn)
+		},
 	})
-}
-
-func filenameToFirstSize(name string) uint64 {
-	name = filepath.Base(name)
-	tokens := strings.Split(name, "-")
-	if len(tokens) != 2 {
-		exitIfError(fmt.Errorf("filename doesn't follow convention: %s", name))
-	}
-	n, err := strconv.ParseUint(tokens[0], 10, 64)
-	exitIfError(err)
-	return n
 }
 
 func printStats(s *updater.Stats) {
@@ -345,9 +235,33 @@ func printStats(s *updater.Stats) {
 	fmt.Fprintf(os.Stderr, "%s\r", msg)
 }
 
-func exitIfError(err error) {
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%s\n", err)
-		os.Exit(1)
+func configFromFlags() RunConfig {
+	return RunConfig{
+		Directory:        flag.Arg(0),
+		Strategy:         *args.Strategy,
+		JournalFile:      *args.JournalFile,
+		FileBatch:        *args.FileBatch,
+		MultiInsertSize:  *args.MultiInsertSize,
+		NumFiles:         *args.NumFiles,
+		NumParsers:       *args.NumParsers,
+		NumChainToCerts:  *args.NumChainToCerts,
+		NumDBWriters:     *args.NumDBWriters,
+		CpuProfile:       *args.CpuProfile,
+		MemProfile:       *args.MemProfile,
+		DebugMemProfDump: *args.DebugMemProfDump,
 	}
+}
+
+func createMemDump(filename string) error {
+	f, err := os.Create(filename)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	err = pprof.Lookup("heap").WriteTo(f, 0) // use "heap" or "allocs"
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "\nMemory dumped to %s\n", filename)
+	return nil
 }
