@@ -160,7 +160,7 @@ func (j *Journal) reset(cfg JobConfiguration, ingestDir string) error {
 	// Update with all the GZ and CSV files present under the directory of the argument.
 	if ingestDir != "" {
 		gzFiles, csvFiles, err := ListCsvFiles(ingestDir)
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err != nil {
 			return err
 		}
 

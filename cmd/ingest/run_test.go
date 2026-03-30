@@ -102,6 +102,22 @@ func TestRunIngestInvalidJournalFileReturnsError(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestRunIngestMissingDirectoryReturnsError(t *testing.T) {
+	cfg := newTestRunConfig(
+		filepath.Join(t.TempDir(), "does-not-exist"),
+		filepath.Join(t.TempDir(), "journal.json"),
+		1,
+		"onlyingest",
+	)
+
+	var runOrder [][]string
+	var coalesceCount, updateCount int
+	err := runIngest(cfg, newTestDeps(t, &runOrder, &coalesceCount, &updateCount, 0))
+	require.Error(t, err)
+	require.ErrorIs(t, err, os.ErrNotExist)
+	require.Empty(t, runOrder)
+}
+
 func TestRunIngestStrategyMatrix(t *testing.T) {
 	testCases := map[string]struct {
 		strategy      string
