@@ -144,20 +144,25 @@ func (f *GzFile) Open() (io.Reader, error) {
 	var err error
 	f.reader, err = os.Open(f.FileName)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("opening %s: %w", f.FileName, err)
 	}
 	f.gzReader, err = gzip.NewReader(f.reader)
 	if err != nil {
-		return nil, err
+		_ = f.reader.Close()
+		return nil, fmt.Errorf("opening gzip reader for %s: %w", f.FileName, err)
 	}
 	return f.gzReader, nil
 }
 
 func (f *GzFile) Close() error {
 	if err := f.gzReader.Close(); err != nil {
-		return err
+		_ = f.reader.Close()
+		return fmt.Errorf("closing gzip reader for %s: %w", f.FileName, err)
 	}
-	return f.reader.Close()
+	if err := f.reader.Close(); err != nil {
+		return fmt.Errorf("closing %s: %w", f.FileName, err)
+	}
+	return nil
 }
 
 // TODO: rename
@@ -176,7 +181,7 @@ func (f *UncompressedFile) Open() (io.Reader, error) {
 	var err error
 	f.reader, err = os.Open(f.FileName)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("opening %s: %w", f.FileName, err)
 	}
 	return f.reader, nil
 }

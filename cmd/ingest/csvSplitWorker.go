@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
 
@@ -25,14 +26,14 @@ func (l line) String() string {
 // memory when requested. This requires a change in pkg/pipeline.
 type csvSplitWorker struct {
 	*pip.Stage[util.CsvFile, line]
-	lines   chan line
-	lastErr error
+	lines chan line  // Created once per file.
+	done  chan error // Created once per file.
 }
 
 func NewCsvSplitWorker(p *Processor) *csvSplitWorker {
 	w := &csvSplitWorker{
-		lines:   make(chan line, 1024), // Cache 1K lines.
-		lastErr: nil,
+		// lines: make(chan line, 1024), // Cache 1K lines.
+		// done:  make(chan error, 1),
 	}
 
 	lastOut := make([]line, 1)
@@ -55,8 +56,11 @@ func NewCsvSplitWorker(p *Processor) *csvSplitWorker {
 			if !stillLinesToSend {
 				*outs = (*outs)[:0]
 				*outChs = (*outChs)[:0]
-				p.Manager.Stats.TotalFilesRead.Add(1)
-				return nil
+				err := <-w.done
+				if err == nil {
+					p.Manager.Stats.TotalFilesRead.Add(1)
+				}
+				return err
 			}
 			return pip.StreamOutput
 		}),
@@ -74,12 +78,14 @@ func (w *csvSplitWorker) startReadingLines(f util.CsvFile) error {
 	r.FieldsPerRecord = -1 // don't check number of fields
 	var records []string
 	w.lines = make(chan line, cap(w.lines))
+	w.done = make(chan error, 1)
 	go func() {
+		var finalErr error
 		for lineNo := 1; ; lineNo++ {
 			records, err = r.Read()
 			if err != nil {
-				if err != io.EOF {
-					w.lastErr = err
+				if !errors.Is(err, io.EOF) {
+					finalErr = fmt.Errorf("reading %s: %w", f.Filename(), err)
 				}
 				break
 			}
@@ -89,7 +95,15 @@ func (w *csvSplitWorker) startReadingLines(f util.CsvFile) error {
 			}
 		}
 		close(w.lines)
-		f.Close()
+		if err := f.Close(); err != nil {
+			if finalErr != nil {
+				finalErr = errors.Join(finalErr, err)
+			} else {
+				finalErr = err
+			}
+		}
+		w.done <- finalErr
+		close(w.done)
 	}()
 
 	return nil
