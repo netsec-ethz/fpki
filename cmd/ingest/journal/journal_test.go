@@ -3,9 +3,11 @@ package journal
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -53,7 +55,7 @@ func TestNewJournal(t *testing.T) {
 	require.Equal(t, journalFile, j.JournalFile)
 	require.FileExists(t, journalFile)
 	require.Empty(t, j.CompletedFiles)
-	require.Empty(t, j.Files)
+	requireJSONDoesNotContainFiles(t, journalFile)
 
 	// Recreate.
 	j, err = NewJournal(journalFile, testJobConfig(t), "")
@@ -61,14 +63,17 @@ func TestNewJournal(t *testing.T) {
 	require.Equal(t, journalFile, j.JournalFile)
 	require.FileExists(t, journalFile)
 	require.Empty(t, j.CompletedFiles)
-	require.Empty(t, j.Files)
+	requireJSONDoesNotContainFiles(t, journalFile)
 
 	// Recreate, with existing non-processed files.
 	journalFile = filepath.Join(t.TempDir(), "with-files.json")
 	j, err = NewJournal(journalFile, testJobConfig(t), csvPath)
 	require.NoError(t, err)
-	require.Len(t, j.Files, len(csvFiles))
+	got, err := j.PendingFiles()
+	require.NoError(t, err)
+	require.Len(t, got, len(csvFiles))
 	require.Empty(t, j.CompletedFiles)
+	requireJSONDoesNotContainFiles(t, journalFile)
 
 	// Add one file as completed.
 	err = j.AddCompletedFiles(csvFiles[:1])
@@ -76,9 +81,9 @@ func TestNewJournal(t *testing.T) {
 	// Check that the completed file is there.
 	j, err = NewJournal(journalFile, testJobConfig(t), csvPath)
 	require.NoError(t, err)
-	require.Len(t, j.Files, len(csvFiles))
 	require.Len(t, j.CompletedFiles, 1)
 	require.Equal(t, csvFiles[0], j.CompletedFiles[0])
+	requireJSONDoesNotContainFiles(t, journalFile)
 }
 
 // TestAddCompletedFiles checks that AddCompletedFiles correctly adds the file names,
@@ -90,21 +95,24 @@ func TestAddCompletedFiles(t *testing.T) {
 	j, err := NewJournal(journalFile, testJobConfig(t), csvPath)
 	require.NoError(t, err)
 
-	got := j.PendingFiles()
+	got, err := j.PendingFiles()
+	require.NoError(t, err)
 	require.Len(t, got, len(expected))
-	require.Equal(t, j.Files, got)
+	require.Equal(t, expected, got)
 
 	// Add the first file 0-99999.
 	err = j.AddCompletedFiles(expected[0:1])
 	require.NoError(t, err)
-	got = j.PendingFiles()
+	got, err = j.PendingFiles()
+	require.NoError(t, err)
 	expected = slices.Delete(expected, 0, 1)
 	require.Equal(t, expected, got)
 
 	// Add the last file 200000-299999.
 	err = j.AddCompletedFiles(expected[len(expected)-1:])
 	require.NoError(t, err)
-	got = j.PendingFiles()
+	got, err = j.PendingFiles()
+	require.NoError(t, err)
 	expected = slices.Delete(expected, len(expected)-1, len(expected)) // remove last.
 	require.Equal(t, expected, got)
 	require.Len(t, got, 1)
@@ -121,7 +129,9 @@ func TestPendingFiles(t *testing.T) {
 	err = j.AddCompletedFiles([]string{csvFiles[0], csvFiles[2]})
 	require.NoError(t, err)
 
-	require.Equal(t, []string{csvFiles[1]}, j.PendingFiles())
+	got, err := j.PendingFiles()
+	require.NoError(t, err)
+	require.Equal(t, []string{csvFiles[1]}, got)
 }
 
 func TestNewJournalInvalidJSON(t *testing.T) {
@@ -133,17 +143,11 @@ func TestNewJournalInvalidJSON(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TestNewJournalNormalizesFilesOnRead checks that reading a json journal actually normalizes
-// the content of Files and CompletedFiles to sorted and not duplicated.
-func TestNewJournalNormalizesFilesOnRead(t *testing.T) {
+// TestNewJournalNormalizesCompletedFilesOnRead checks that reading a json journal actually
+// normalizes the content of CompletedFiles to sorted and not duplicated.
+func TestNewJournalNormalizesCompletedFilesOnRead(t *testing.T) {
 	journalFile := filepath.Join(t.TempDir(), "journal.json")
 	raw := Journal{
-		Files: []string{
-			csvFiles[2],
-			csvFiles[0],
-			csvFiles[1],
-			csvFiles[0],
-		},
 		CompletedFiles: []string{
 			csvFiles[2],
 			csvFiles[0],
@@ -157,25 +161,84 @@ func TestNewJournalNormalizesFilesOnRead(t *testing.T) {
 	j, err := NewJournal(journalFile, testJobConfig(t), csvPath)
 	require.NoError(t, err)
 
-	require.Equal(t, []string{csvFiles[0], csvFiles[1], csvFiles[2]}, j.Files)
 	require.Equal(t, []string{csvFiles[0], csvFiles[2]}, j.CompletedFiles)
-	require.Equal(t, []string{csvFiles[1]}, j.PendingFiles())
+	got, err := j.PendingFiles()
+	require.NoError(t, err)
+	require.Equal(t, []string{csvFiles[1]}, got)
 }
 
-func TestNewJournalFailsWhenReadNeedsInvalidFilenameNormalization(t *testing.T) {
-	journalFile := filepath.Join(t.TempDir(), "journal.json")
-	raw := Journal{
-		Files: []string{
-			"invalid-file-name",
-			csvFiles[0],
-		},
-	}
-	buf, err := json.Marshal(raw)
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(journalFile, buf, 0o644))
+func TestPendingFilesUsesFreshDirectoryListing(t *testing.T) {
+	root := t.TempDir()
+	bundledDir := filepath.Join(root, "bundled")
+	require.NoError(t, os.MkdirAll(bundledDir, 0o755))
 
-	_, err = NewJournal(journalFile, testJobConfig(t), csvPath)
-	require.Error(t, err)
+	firstFile := filepath.Join(bundledDir, "0-9.gz")
+	require.NoError(t, os.WriteFile(firstFile, nil, 0o644))
+
+	journalFile := filepath.Join(t.TempDir(), "journal.json")
+	j, err := NewJournal(journalFile, testJobConfig(t), root)
+	require.NoError(t, err)
+
+	got, err := j.PendingFiles()
+	require.NoError(t, err)
+	require.Equal(t, []string{firstFile}, got)
+
+	secondFile := filepath.Join(bundledDir, "10-19.gz")
+	require.NoError(t, os.WriteFile(secondFile, nil, 0o644))
+
+	got, err = j.PendingFiles()
+	require.NoError(t, err)
+	require.Equal(t, []string{firstFile, secondFile}, got)
+}
+
+func TestPendingFilesLogsDirectoryListing(t *testing.T) {
+	journalFile := filepath.Join(t.TempDir(), "journal.json")
+	j, err := NewJournal(journalFile, testJobConfig(t), csvPath)
+	require.NoError(t, err)
+
+	output := captureStdout(t, func() {
+		_, err := j.PendingFiles()
+		require.NoError(t, err)
+	})
+
+	require.Contains(t, output, "Start listing directory")
+	require.Contains(t, output, "Finished")
+	require.Contains(t, output, "in ")
+	require.Len(t, strings.Split(strings.TrimSpace(output), "\n"), 1)
+}
+
+func requireJSONDoesNotContainFiles(t *testing.T, journalFile string) {
+	t.Helper()
+	buf, err := os.ReadFile(journalFile)
+	require.NoError(t, err)
+	require.NotContains(t, string(buf), "\"Files\"")
+}
+
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+
+	oldStdout := os.Stdout
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	os.Stdout = w
+
+	done := make(chan string, 1)
+	go func() {
+		buf, err := io.ReadAll(r)
+		if err != nil {
+			done <- ""
+			return
+		}
+		done <- string(buf)
+	}()
+
+	fn()
+
+	require.NoError(t, w.Close())
+	os.Stdout = oldStdout
+	output := <-done
+	require.NoError(t, r.Close())
+	return output
 }
 
 // testJobConfig returns a JobConfiguration with "onlyingest" and batch size of 2.

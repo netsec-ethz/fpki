@@ -27,7 +27,9 @@ func TestRunIngestFreshJournalPersistsProgress(t *testing.T) {
 
 	j := loadJournalForTest(t, cfg)
 	require.Equal(t, files, j.CompletedFiles)
-	require.Empty(t, j.PendingFiles())
+	pending, err := j.PendingFiles()
+	require.NoError(t, err)
+	require.Empty(t, pending)
 }
 
 func TestRunIngestResumesFromExistingJournal(t *testing.T) {
@@ -87,7 +89,9 @@ func TestRunIngestFailedBatchDoesNotAdvanceJournal(t *testing.T) {
 
 	j := loadJournalForTest(t, cfg)
 	require.Equal(t, []string{files[0]}, j.CompletedFiles)
-	require.Equal(t, files[1:], j.PendingFiles())
+	pending, err := j.PendingFiles()
+	require.NoError(t, err)
+	require.Equal(t, files[1:], pending)
 }
 
 func TestRunIngestInvalidJournalFileReturnsError(t *testing.T) {

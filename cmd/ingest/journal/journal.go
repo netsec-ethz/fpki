@@ -7,18 +7,19 @@ import (
 	"io"
 	"os"
 	"slices"
+	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
 type Journal struct {
 	JournalFile string     `json:"-"` // Exclude from JSON.
+	IngestDir   string     `json:"-"` // Only used to refresh file listings.
 	Cwds        []string   //`json:"Cwds"`
 	Cmds        [][]string //`json:"Cmds"`
 
 	JobConfiguration JobConfiguration //`json:"Configuration"`
-	Files            []string
-	CompletedFiles   []string // Deduplicated, sorted list.
+	CompletedFiles   []string         // Deduplicated, sorted list.
 }
 
 type JobConfiguration struct {
@@ -56,6 +57,7 @@ func NewJobConfiguration(strategy string, fileBatch int) (JobConfiguration, erro
 func NewJournal(journalFile string, cfg JobConfiguration, ingestDir string) (*Journal, error) {
 	j := &Journal{
 		JournalFile: journalFile,
+		IngestDir:   ingestDir,
 	}
 
 	// Check if file exists.
@@ -93,11 +95,13 @@ func (j *Journal) AddCompletedFiles(files []string) error {
 	return j.Write()
 }
 
-// PendingFiles returns the set substraction Files - CompletedFiles.
-// Since both Files and CompletedFiles are sorted and contain no repeated elements,
-// it makes use of this fact.
-func (j *Journal) PendingFiles() []string {
-	files := j.Files
+// PendingFiles returns the set subtraction LiveDirectoryListing - CompletedFiles.
+// Since both lists are sorted and contain no repeated elements, it makes use of this fact.
+func (j *Journal) PendingFiles() ([]string, error) {
+	files, err := j.listFiles()
+	if err != nil {
+		return nil, err
+	}
 	completed := j.CompletedFiles
 
 	pending := make([]string, 0, len(files))
@@ -120,33 +124,8 @@ func (j *Journal) PendingFiles() []string {
 	}
 
 	pending = append(pending, files[i:]...)
-	return pending
+	return pending, nil
 }
-
-// func (j *Journal) PendingFiles() []string {
-// 	files := slices.Clone(j.Files)
-// 	// Remove those completed ones.
-// 	var i int
-// 	for _, f := range j.CompletedFiles {
-// 		// The index "i" indicates the last occurrence found, i.e. the min index where a element
-// 		// in Files could be equal to any remaining elements in CompletedFiles.
-// 		idx := sort.SearchStrings(files[i:], f)
-// 		if idx == len(files[i:]) {
-// 			// This completed file was not found in the set of total files (weird but okay).
-// 			continue
-// 		}
-// 		idx += i
-// 		// One is found. We don't need to look at previous elements in files, since they can
-// 		// never be equal (or greater) than the next CompletedFiles elements.
-// 		// Remove the found item, drag the next
-// 		i = idx
-
-// 		// Remove from the return value.
-// 		files = slices.Delete(files, idx, idx+1)
-// 	}
-
-// 	return files
-// }
 
 func (j *Journal) reset(cfg JobConfiguration, ingestDir string) error {
 	// Update first to get the current CWD and os.Args.
@@ -156,22 +135,33 @@ func (j *Journal) reset(cfg JobConfiguration, ingestDir string) error {
 	}
 
 	j.JobConfiguration = cfg
-
-	// Update with all the GZ and CSV files present under the directory of the argument.
-	if ingestDir != "" {
-		gzFiles, csvFiles, err := ListCsvFiles(ingestDir)
-		if err != nil {
-			return err
-		}
-
-		j.Files = append(gzFiles, csvFiles...)
-		if err := util.SortByBundleName(j.Files); err != nil {
-			return err
-		}
-		j.Files = slices.Compact(j.Files)
-	}
+	j.IngestDir = ingestDir
 
 	return j.Write()
+}
+
+func (j *Journal) listFiles() ([]string, error) {
+	if j.IngestDir == "" {
+		return nil, nil
+	}
+
+	start := time.Now()
+	fmt.Printf("Start listing directory")
+	defer func() {
+		fmt.Printf(" Finished in %s\n", time.Since(start).Round(time.Millisecond))
+	}()
+
+	gzFiles, csvFiles, err := ListCsvFiles(j.IngestDir)
+	if err != nil {
+		return nil, err
+	}
+
+	files := append(gzFiles, csvFiles...)
+	if err := util.SortByBundleName(files); err != nil {
+		return nil, err
+	}
+	files = slices.Compact(files)
+	return files, nil
 }
 
 func (j *Journal) updateCwdOsArgs() error {
@@ -223,11 +213,6 @@ func (j *Journal) writeAndClose(f *os.File) error {
 }
 
 func (j *Journal) normalize() error {
-	if err := util.SortByBundleName(j.Files); err != nil {
-		return err
-	}
-	j.Files = slices.Compact(j.Files)
-
 	if err := util.SortByBundleName(j.CompletedFiles); err != nil {
 		return err
 	}

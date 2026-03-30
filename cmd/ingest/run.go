@@ -29,7 +29,7 @@ type RunConfig struct {
 }
 
 type JournalStore interface {
-	PendingFiles() []string
+	PendingFiles() ([]string, error)
 	AddCompletedFiles([]string) error
 }
 
@@ -148,7 +148,10 @@ func ingestFilesInBatches(
 		estimateCertCount = util.EstimateCertCount
 	}
 
-	allFilenames := j.PendingFiles()
+	allFilenames, err := j.PendingFiles()
+	if err != nil {
+		return err
+	}
 
 	if stats != nil {
 		stats.TotalFiles.Store(int64(len(allFilenames)))
