@@ -22,6 +22,7 @@ type RunConfig struct {
 	NumParsers       int
 	NumChainToCerts  int
 	NumDBWriters     int
+	SkipMissingFiles bool
 	CpuProfile       string
 	MemProfile       string
 	DebugMemProfDump string

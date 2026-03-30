@@ -20,6 +20,7 @@ var (
 	DebugMemProfDump *string
 	FileBatch        *int
 	JournalFile      *string
+	SkipMissingFiles *bool
 )
 
 // Default values for the command line flags:
@@ -61,5 +62,7 @@ func _configureFlags() {
 		"all files are processed in one batch")
 	JournalFile = flag.String("journal", DefJournalFile,
 		"Journal file to keep track of progress and resume")
+	SkipMissingFiles = flag.Bool("skipmissingfiles", false,
+		"report missing input files and continue instead of failing the batch")
 	flag.Parse()
 }

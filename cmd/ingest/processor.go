@@ -30,6 +30,7 @@ type Processor struct {
 	NumToChain     int
 	NumToCerts     int
 	NumDBWriters   int
+	SkipMissing    bool
 	Pipeline       *pip.Pipeline
 	Manager        *updater.Manager
 }
@@ -123,6 +124,13 @@ func WithNumDBWriters(numDBWriters int) ingestOptions {
 	return processorOptions(
 		func(p *Processor) {
 			p.NumDBWriters = numDBWriters
+		})
+}
+
+func WithSkipMissingFiles(skipMissing bool) ingestOptions {
+	return processorOptions(
+		func(p *Processor) {
+			p.SkipMissing = skipMissing
 		})
 }
 

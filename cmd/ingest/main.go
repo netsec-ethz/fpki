@@ -139,7 +139,7 @@ func mainFunction() error {
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		sg := <-signals
-		fmt.Fprintf(os.Stderr, "\nsignal caught %s\n", sg.String())
+		fmt.Fprintf(os.Stderr, "\nsignal caught: '%s'\n", sg.String())
 		if err := stopProfiles(); err != nil {
 			fmt.Fprintf(os.Stderr, "%s\n", err)
 		}
@@ -171,6 +171,7 @@ func mainFunction() error {
 				WithNumToChains(cfg.NumParsers),
 				WithNumToCerts(cfg.NumChainToCerts),
 				WithNumDBWriters(cfg.NumDBWriters),
+				WithSkipMissingFiles(cfg.SkipMissingFiles),
 			)
 			if err != nil {
 				return err
@@ -246,6 +247,7 @@ func configFromFlags() RunConfig {
 		NumParsers:       *args.NumParsers,
 		NumChainToCerts:  *args.NumChainToCerts,
 		NumDBWriters:     *args.NumDBWriters,
+		SkipMissingFiles: *args.SkipMissingFiles,
 		CpuProfile:       *args.CpuProfile,
 		MemProfile:       *args.MemProfile,
 		DebugMemProfDump: *args.DebugMemProfDump,

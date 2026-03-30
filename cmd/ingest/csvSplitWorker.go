@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
+	"os"
 
 	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
 	"github.com/netsec-ethz/fpki/pkg/util"
@@ -25,14 +27,14 @@ func (l line) String() string {
 // memory when requested. This requires a change in pkg/pipeline.
 type csvSplitWorker struct {
 	*pip.Stage[util.CsvFile, line]
-	lines   chan line
-	lastErr error
+	lines            chan line  // Created once per file.
+	done             chan error // Created once per file.
+	skipMissingFiles bool
 }
 
 func NewCsvSplitWorker(p *Processor) *csvSplitWorker {
 	w := &csvSplitWorker{
-		lines:   make(chan line, 1024), // Cache 1K lines.
-		lastErr: nil,
+		skipMissingFiles: p.SkipMissing,
 	}
 
 	lastOut := make([]line, 1)
@@ -55,8 +57,11 @@ func NewCsvSplitWorker(p *Processor) *csvSplitWorker {
 			if !stillLinesToSend {
 				*outs = (*outs)[:0]
 				*outChs = (*outChs)[:0]
-				p.Manager.Stats.TotalFilesRead.Add(1)
-				return nil
+				err := <-w.done
+				if err == nil {
+					p.Manager.Stats.TotalFilesRead.Add(1)
+				}
+				return err
 			}
 			return pip.StreamOutput
 		}),
@@ -67,6 +72,16 @@ func NewCsvSplitWorker(p *Processor) *csvSplitWorker {
 func (w *csvSplitWorker) startReadingLines(f util.CsvFile) error {
 	fileReader, err := f.Open()
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) && w.skipMissingFiles {
+			fmt.Fprintf(os.Stderr, "missing file, skipping: %s\n", f.Filename())
+			// Open/close lines and done channels to signal we started, and we are done.
+			w.lines = make(chan line)
+			close(w.lines)
+			w.done = make(chan error, 1)
+			w.done <- nil
+			close(w.done)
+			return nil
+		}
 		return err
 	}
 
@@ -74,12 +89,14 @@ func (w *csvSplitWorker) startReadingLines(f util.CsvFile) error {
 	r.FieldsPerRecord = -1 // don't check number of fields
 	var records []string
 	w.lines = make(chan line, cap(w.lines))
+	w.done = make(chan error, 1)
 	go func() {
+		var finalErr error
 		for lineNo := 1; ; lineNo++ {
 			records, err = r.Read()
 			if err != nil {
-				if err != io.EOF {
-					w.lastErr = err
+				if !errors.Is(err, io.EOF) {
+					finalErr = fmt.Errorf("reading %s: %w", f.Filename(), err)
 				}
 				break
 			}
@@ -89,7 +106,15 @@ func (w *csvSplitWorker) startReadingLines(f util.CsvFile) error {
 			}
 		}
 		close(w.lines)
-		f.Close()
+		if err := f.Close(); err != nil {
+			if finalErr != nil {
+				finalErr = errors.Join(finalErr, err)
+			} else {
+				finalErr = err
+			}
+		}
+		w.done <- finalErr
+		close(w.done)
 	}()
 
 	return nil
