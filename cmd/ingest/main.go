@@ -171,6 +171,7 @@ func mainFunction() error {
 				WithNumToChains(cfg.NumParsers),
 				WithNumToCerts(cfg.NumChainToCerts),
 				WithNumDBWriters(cfg.NumDBWriters),
+				WithSkipMissingFiles(cfg.SkipMissingFiles),
 			)
 			if err != nil {
 				return err
@@ -246,6 +247,7 @@ func configFromFlags() RunConfig {
 		NumParsers:       *args.NumParsers,
 		NumChainToCerts:  *args.NumChainToCerts,
 		NumDBWriters:     *args.NumDBWriters,
+		SkipMissingFiles: *args.SkipMissingFiles,
 		CpuProfile:       *args.CpuProfile,
 		MemProfile:       *args.MemProfile,
 		DebugMemProfDump: *args.DebugMemProfDump,

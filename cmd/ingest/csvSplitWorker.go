@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 
 	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
 	"github.com/netsec-ethz/fpki/pkg/util"
@@ -26,14 +27,14 @@ func (l line) String() string {
 // memory when requested. This requires a change in pkg/pipeline.
 type csvSplitWorker struct {
 	*pip.Stage[util.CsvFile, line]
-	lines chan line  // Created once per file.
-	done  chan error // Created once per file.
+	lines            chan line  // Created once per file.
+	done             chan error // Created once per file.
+	skipMissingFiles bool
 }
 
 func NewCsvSplitWorker(p *Processor) *csvSplitWorker {
 	w := &csvSplitWorker{
-		// lines: make(chan line, 1024), // Cache 1K lines.
-		// done:  make(chan error, 1),
+		skipMissingFiles: p.SkipMissing,
 	}
 
 	lastOut := make([]line, 1)
@@ -71,6 +72,16 @@ func NewCsvSplitWorker(p *Processor) *csvSplitWorker {
 func (w *csvSplitWorker) startReadingLines(f util.CsvFile) error {
 	fileReader, err := f.Open()
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) && w.skipMissingFiles {
+			fmt.Fprintf(os.Stderr, "missing file, skipping: %s\n", f.Filename())
+			// Open/close lines and done channels to signal we started, and we are done.
+			w.lines = make(chan line)
+			close(w.lines)
+			w.done = make(chan error, 1)
+			w.done <- nil
+			close(w.done)
+			return nil
+		}
 		return err
 	}
 
