@@ -139,7 +139,7 @@ func mainFunction() error {
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		sg := <-signals
-		fmt.Fprintf(os.Stderr, "\nsignal caught: '%s'\n", sg.String())
+		fmt.Fprintf(os.Stderr, "\n%s: signal caught: '%s'\n", time.Now().String(), sg.String())
 		if err := stopProfiles(); err != nil {
 			fmt.Fprintf(os.Stderr, "%s\n", err)
 		}
