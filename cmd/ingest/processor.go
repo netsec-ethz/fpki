@@ -274,7 +274,7 @@ func (p *Processor) createCertificateSink() *pip.Sink[updater.Certificate] {
 		"certSink",
 		pip.WithSinkFunction(func(in updater.Certificate) error {
 			p.Manager.Stats.WrittenCerts.Add(1)
-			p.Manager.Stats.WrittenBytes.Add(int64(len(in.Cert.Raw)))
+			p.Manager.Stats.WrittenBytes.Add(int64(len(in.Raw)))
 
 			return nil
 		}),
@@ -289,7 +289,7 @@ func (p *Processor) createCertificatePtrSink() *pip.Sink[*updater.Certificate] {
 				return nil
 			}
 			p.Manager.Stats.WrittenCerts.Add(1)
-			p.Manager.Stats.WrittenBytes.Add(int64(len(in.Cert.Raw)))
+			p.Manager.Stats.WrittenBytes.Add(int64(len(in.Raw)))
 
 			return nil
 		}),

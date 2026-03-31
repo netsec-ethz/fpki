@@ -3,6 +3,7 @@ package updater
 import (
 	"encoding/hex"
 	"fmt"
+	"time"
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
 
@@ -28,9 +29,10 @@ func (c CertWithChainData) String() string {
 // It results from a call to util.UnfoldCert .
 type Certificate struct {
 	CertID   common.SHA256Output
-	Cert     ctx509.Certificate
 	ParentID *common.SHA256Output
 	Names    []string
+	NotAfter time.Time
+	Raw      []byte
 }
 
 func (c Certificate) String() string {
@@ -56,9 +58,10 @@ func CertificatesFromChains(data *CertWithChainData) []Certificate {
 		// Add the certificate.
 		certs[i] = Certificate{
 			CertID:   certIDs[i],
-			Cert:     payloads[i],
 			ParentID: parentIDs[i],
 			Names:    names[i],
+			NotAfter: payloads[i].NotAfter,
+			Raw:      payloads[i].Raw,
 		}
 	}
 

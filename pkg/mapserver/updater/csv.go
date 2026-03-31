@@ -164,9 +164,9 @@ func recordsForCert(dst [][]byte, c Certificate) {
 	// 4 columns: ID, parentID, expTime, payload.
 	idToBase64WithStorage(&dst[0], c.CertID)
 	idOrNilToBase64WithStorage(&dst[1], c.ParentID)
-	timeToStringWithStorage(&dst[2], c.Cert.NotAfter)
+	timeToStringWithStorage(&dst[2], c.NotAfter)
 	// We don't want to reuse the payload storage.
-	dst[3] = []byte(base64.StdEncoding.EncodeToString(c.Cert.Raw))
+	dst[3] = []byte(base64.StdEncoding.EncodeToString(c.Raw))
 }
 
 func recordsForDirty(dst [][]byte, d DirtyDomain) {
