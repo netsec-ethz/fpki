@@ -201,10 +201,9 @@ func TestPendingFilesLogsDirectoryListing(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	require.Contains(t, output, "Start listing directory")
-	require.Contains(t, output, "Finished")
-	require.Contains(t, output, "in ")
-	require.Len(t, strings.Split(strings.TrimSpace(output), "\n"), 1)
+	require.Contains(t, output, "Start listing directory...")
+	require.Contains(t, output, "Finished listing directory in ")
+	require.Len(t, strings.Split(strings.TrimSpace(output), "\n"), 3)
 }
 
 func requireJSONDoesNotContainFiles(t *testing.T, journalFile string) {
