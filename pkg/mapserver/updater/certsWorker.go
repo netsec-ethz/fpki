@@ -139,7 +139,7 @@ func newCertBatchToCsv(
 	w := &certBatchToCsv{}
 
 	// Prepare pre-reserved storage for the strings.
-	storage := CreateStorage(m.MultiInsertSize, 4,
+	storage := CreateStorage(1, 4,
 		IdBase64Len,
 		IdBase64Len,
 		ExpTimeBase64Len,

@@ -38,14 +38,12 @@ func CreateCsvCerts(
 	filenameStorage []byte,
 	certs []Certificate,
 ) (string, error) {
-	return writeRecordsWithStorage(
-		storage,
-		writeCSV,
+	return writeCertCSV(
+		storage[0],
 		filenameStorage,
 		TemporaryDir+"fpki-ingest-certs-",
 		".csv",
 		certs,
-		recordsForCert,
 	)
 }
 
@@ -160,13 +158,56 @@ func writeCSV(filenameStorage []byte, prefix, suffix string, storage [][][]byte)
 	return filename, nil
 }
 
+// writeCertCSV is added as a special case due to the lower memory consumption used here,
+// as opposed to the general approach of using `multiinsert` entries in storage.
+// In this function, only one certificate is converted to a CSV line and then sent to the CSV.
+func writeCertCSV(
+	row [][]byte,
+	filenameStorage []byte,
+	prefix string,
+	suffix string,
+	certs []Certificate,
+) (string, error) {
+	filename, err := noallocs.CreateTempFile(filenameStorage, prefix, suffix)
+	if err != nil {
+		return "", fmt.Errorf("creating temporary file: %w", err)
+	}
+
+	fd, err := noallocs.Open(filenameStorage, filename)
+	if err != nil {
+		return "", fmt.Errorf("opening temporary file %s: %w", filename, err)
+	}
+
+	for _, cert := range certs {
+		recordsForCert(row, cert)
+		for i, field := range row {
+			if i > 0 {
+				if err = noallocs.Write(fd, commaChar); err != nil {
+					return "", fmt.Errorf("writing to temporary file %s: %w", filename, err)
+				}
+			}
+			if err = noallocs.Write(fd, field); err != nil {
+				return "", fmt.Errorf("writing to temporary file %s: %w", filename, err)
+			}
+		}
+		if err = noallocs.Write(fd, newlineChar); err != nil {
+			return "", fmt.Errorf("writing to temporary file %s: %w", filename, err)
+		}
+	}
+
+	if err = noallocs.Close(fd); err != nil {
+		return "", fmt.Errorf("closing temporary file %s: %w", filename, err)
+	}
+
+	return filename, nil
+}
+
 func recordsForCert(dst [][]byte, c Certificate) {
 	// 4 columns: ID, parentID, expTime, payload.
 	idToBase64WithStorage(&dst[0], c.CertID)
 	idOrNilToBase64WithStorage(&dst[1], c.ParentID)
 	timeToStringWithStorage(&dst[2], c.NotAfter)
-	// We don't want to reuse the payload storage.
-	dst[3] = []byte(base64.StdEncoding.EncodeToString(c.Raw))
+	bytesToBase64WithStorage(&dst[3], c.Raw)
 }
 
 func recordsForDirty(dst [][]byte, d DirtyDomain) {
@@ -199,9 +240,7 @@ func idOrNilToBase64WithStorage(storage *[]byte, idPtr *common.SHA256Output) {
 }
 
 func bytesToBase64WithStorage(storage *[]byte, b []byte) {
-	*storage = (*storage)[:0]
-	base64.StdEncoding.AppendEncode(*storage, b)
-	*storage = (*storage)[:base64.StdEncoding.EncodedLen(len(b))]
+	*storage = base64.StdEncoding.AppendEncode((*storage)[:0], b)
 }
 
 func timeToStringWithStorage(storage *[]byte, t time.Time) {

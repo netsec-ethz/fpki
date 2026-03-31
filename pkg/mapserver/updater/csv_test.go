@@ -83,38 +83,23 @@ func TestRecordsForCert(t *testing.T) {
 }
 
 func TestCreateCsvCerts(t *testing.T) {
-	N := 1
+	N := 4
 	certs := make([]Certificate, N)
 	for i := range certs {
 		certs[i] = randomCertificate(t)
-		// Remove payload, as it creates allocations.
-		certs[i].Raw = nil
 	}
 
-	storage := CreateStorage(N, 4, IdBase64Len, IdBase64Len, ExpTimeBase64Len, PayloadBase64Len)
-	filenameStorage := make([]byte, FilepathLen)
+	storage := CreateStorage(1, 4, IdBase64Len, IdBase64Len, ExpTimeBase64Len, PayloadBase64Len)
 
-	// This function is similar to CreateCsvCerts, without actually writing a file.
-	createCsvCerts := func(
-		storage [][][]byte,
-		certs []Certificate,
-	) {
-		noop := func([]byte, string, string, [][][]byte) (string, error) {
-			return "", nil
-		}
-		writeRecordsWithStorage(
-			storage,
-			noop,
-			filenameStorage,
-			"mock-prefix",
-			"mock-suffix",
-			certs,
-			recordsForCert,
-		)
+	// Warm the reusable payload storage to the largest cert in the batch.
+	for _, cert := range certs {
+		recordsForCert(storage[0], cert)
 	}
 
 	allocs := tests.AllocsPerRun(func(tests.B) {
-		createCsvCerts(storage, certs)
+		for _, cert := range certs {
+			recordsForCert(storage[0], cert)
+		}
 	})
 	require.Equal(t, 0, allocs)
 }
@@ -211,7 +196,7 @@ func TestRecordsForDomainCerts(t *testing.T) {
 }
 
 func TestWriteCsvCerts(t *testing.T) {
-	storage := CreateStorage(10, 4,
+	storage := CreateStorage(1, 4,
 		IdBase64Len,
 		IdBase64Len,
 		ExpTimeBase64Len,
