@@ -4,7 +4,7 @@ go 1.23.0
 
 require (
 	github.com/go-sql-driver/mysql v1.8.1
-	github.com/golang/glog v1.2.2
+	github.com/golang/glog v1.2.4
 	github.com/google/certificate-transparency-go v1.1.8
 	github.com/google/trillian v1.6.0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0
