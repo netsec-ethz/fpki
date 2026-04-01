@@ -170,10 +170,21 @@ func getLines(t tests.T, filename string, count int) []line {
 	for i := 0; i < count; i++ {
 		fields, err := csvr.Read()
 		require.NoError(t, err)
-		lines[i].fields = fields
+		lines[i] = mustLineFromFields(t, i+1, fields)
 	}
 
 	return lines
+}
+
+func mustLineFromFields(t tests.T, lineNo int, fields []string) line {
+	t.Helper()
+	require.Greater(t, len(fields), CertChainColumn)
+	return line{
+		certField:       []byte(fields[CertificateColumn]),
+		chainField:      []byte(fields[CertChainColumn]),
+		expirationField: []byte(fields[len(fields)-1]),
+		number:          lineNo,
+	}
 }
 
 func getChains(t tests.T, p *Processor, lines []line) []certChain {
