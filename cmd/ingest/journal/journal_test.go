@@ -23,6 +23,12 @@ var csvFiles = [...]string{
 	"testdata/bundled/200000-299999.gz",
 }
 
+var normalizedCSVFiles = [...]string{
+	"testdata/0-99999.gz",
+	"testdata/100000-199999.gz",
+	"testdata/200000-299999.gz",
+}
+
 // TestSanityOfThisTest verifies that the content of the testdata/bundled directory is as expected.
 func TestSanityOfThisTest(t *testing.T) {
 	gotGz, gotCSV, err := ListCsvFiles(csvPath)
@@ -82,7 +88,7 @@ func TestNewJournal(t *testing.T) {
 	j, err = NewJournal(journalFile, testJobConfig(t), csvPath)
 	require.NoError(t, err)
 	require.Len(t, j.CompletedFiles, 1)
-	require.Equal(t, csvFiles[0], j.CompletedFiles[0])
+	require.Equal(t, normalizedCSVFiles[0], j.CompletedFiles[0])
 	requireJSONDoesNotContainFiles(t, journalFile)
 }
 
@@ -103,6 +109,7 @@ func TestAddCompletedFiles(t *testing.T) {
 	// Add the first file 0-99999.
 	err = j.AddCompletedFiles(expected[0:1])
 	require.NoError(t, err)
+	require.Equal(t, []string{normalizedCSVFiles[0]}, j.CompletedFiles)
 	got, err = j.PendingFiles()
 	require.NoError(t, err)
 	expected = slices.Delete(expected, 0, 1)
@@ -161,10 +168,83 @@ func TestNewJournalNormalizesCompletedFilesOnRead(t *testing.T) {
 	j, err := NewJournal(journalFile, testJobConfig(t), csvPath)
 	require.NoError(t, err)
 
-	require.Equal(t, []string{csvFiles[0], csvFiles[2]}, j.CompletedFiles)
+	require.Equal(t, []string{normalizedCSVFiles[0], normalizedCSVFiles[2]}, j.CompletedFiles)
 	got, err := j.PendingFiles()
 	require.NoError(t, err)
 	require.Equal(t, []string{csvFiles[1]}, got)
+}
+
+func TestPendingFilesEquivalentIngestRootsShareProgress(t *testing.T) {
+	firstRoot := makeEquivalentIngestRoot(t, "external", "same-log", []string{"0-9.gz", "10-19.gz"})
+	secondRoot := makeEquivalentIngestRoot(t, "data", "same-log", []string{"0-9.gz", "10-19.gz", "20-29.gz"})
+
+	journalFile := filepath.Join(t.TempDir(), "journal.json")
+	j, err := NewJournal(journalFile, testJobConfig(t), firstRoot)
+	require.NoError(t, err)
+	require.NoError(t, j.AddCompletedFiles([]string{
+		filepath.Join(firstRoot, "bundled", "0-9.gz"),
+		filepath.Join(firstRoot, "bundled", "10-19.gz"),
+	}))
+
+	j, err = NewJournal(journalFile, testJobConfig(t), secondRoot)
+	require.NoError(t, err)
+
+	got, err := j.PendingFiles()
+	require.NoError(t, err)
+	require.Equal(t, []string{filepath.Join(secondRoot, "bundled", "20-29.gz")}, got)
+}
+
+func TestPendingFilesDifferentIngestRootBasenamesDoNotShareProgress(t *testing.T) {
+	firstRoot := makeEquivalentIngestRoot(t, "external", "log-a", []string{"0-9.gz"})
+	secondRoot := makeEquivalentIngestRoot(t, "data", "log-b", []string{"0-9.gz"})
+
+	journalFile := filepath.Join(t.TempDir(), "journal.json")
+	j, err := NewJournal(journalFile, testJobConfig(t), firstRoot)
+	require.NoError(t, err)
+	require.NoError(t, j.AddCompletedFiles([]string{filepath.Join(firstRoot, "bundled", "0-9.gz")}))
+
+	j, err = NewJournal(journalFile, testJobConfig(t), secondRoot)
+	require.NoError(t, err)
+
+	got, err := j.PendingFiles()
+	require.NoError(t, err)
+	require.Equal(t, []string{filepath.Join(secondRoot, "bundled", "0-9.gz")}, got)
+}
+
+func TestNewJournalMigratesLegacyCompletedFilesAcrossEquivalentRoots(t *testing.T) {
+	firstRoot := makeEquivalentIngestRoot(t, "external", "same-log", []string{"0-9.gz"})
+	secondRoot := makeEquivalentIngestRoot(t, "data", "same-log", []string{"0-9.gz"})
+
+	journalFile := filepath.Join(t.TempDir(), "journal.json")
+	raw := Journal{
+		CompletedFiles: []string{filepath.Join(firstRoot, "bundled", "0-9.gz")},
+	}
+	buf, err := json.Marshal(raw)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(journalFile, buf, 0o644))
+
+	j, err := NewJournal(journalFile, testJobConfig(t), secondRoot)
+	require.NoError(t, err)
+	require.Equal(t, []string{filepath.Join("same-log", "0-9.gz")}, j.CompletedFiles)
+
+	got, err := j.PendingFiles()
+	require.NoError(t, err)
+	require.Empty(t, got)
+}
+
+func TestAddCompletedFilesDeduplicatesEquivalentRoots(t *testing.T) {
+	firstRoot := makeEquivalentIngestRoot(t, "external", "same-log", []string{"0-9.gz"})
+	secondRoot := makeEquivalentIngestRoot(t, "data", "same-log", []string{"0-9.gz"})
+
+	journalFile := filepath.Join(t.TempDir(), "journal.json")
+	j, err := NewJournal(journalFile, testJobConfig(t), firstRoot)
+	require.NoError(t, err)
+
+	require.NoError(t, j.AddCompletedFiles([]string{
+		filepath.Join(firstRoot, "bundled", "0-9.gz"),
+		filepath.Join(secondRoot, "bundled", "0-9.gz"),
+	}))
+	require.Equal(t, []string{filepath.Join("same-log", "0-9.gz")}, j.CompletedFiles)
 }
 
 func TestPendingFilesUsesFreshDirectoryListing(t *testing.T) {
@@ -246,4 +326,16 @@ func testJobConfig(t *testing.T) JobConfiguration {
 	cfg, err := NewJobConfiguration("onlyingest", 2)
 	require.NoError(t, err)
 	return cfg
+}
+
+func makeEquivalentIngestRoot(t *testing.T, parent string, ingestBase string, files []string) string {
+	t.Helper()
+
+	root := filepath.Join(t.TempDir(), parent, ingestBase)
+	bundledDir := filepath.Join(root, "bundled")
+	require.NoError(t, os.MkdirAll(bundledDir, 0o755))
+	for _, name := range files {
+		require.NoError(t, os.WriteFile(filepath.Join(bundledDir, name), nil, 0o644))
+	}
+	return root
 }
