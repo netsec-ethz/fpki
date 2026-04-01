@@ -254,6 +254,7 @@ func configFromFlags() RunConfig {
 
 var diagnosticsRootDir = os.TempDir()
 var diagnosticsNow = time.Now
+var diagnosticsProcessStart = time.Now()
 
 type diagnosticsWriter struct {
 	createDir        func() (string, error)
@@ -266,11 +267,13 @@ type diagnosticsWriter struct {
 }
 
 type diagnosticsMeta struct {
-	Signal string
-	Time   time.Time
-	PID    int
-	Args   []string
-	Config RunConfig
+	Signal       string
+	Time         time.Time
+	ProcessStart time.Time
+	Uptime       time.Duration
+	PID          int
+	Args         []string
+	Config       RunConfig
 }
 
 func createDiagnosticsBundle(cfg RunConfig, sg os.Signal, stderr io.Writer) (string, error) {
@@ -287,13 +290,16 @@ func createDiagnosticsBundleWithWriter(
 	if err != nil {
 		return "", err
 	}
+	captureTime := diagnosticsNow()
 
 	meta := diagnosticsMeta{
-		Signal: signalName(sg),
-		Time:   time.Now(),
-		PID:    os.Getpid(),
-		Args:   append([]string(nil), os.Args...),
-		Config: cfg,
+		Signal:       signalName(sg),
+		Time:         captureTime,
+		ProcessStart: diagnosticsProcessStart,
+		Uptime:       captureTime.Sub(diagnosticsProcessStart),
+		PID:          os.Getpid(),
+		Args:         append([]string(nil), os.Args...),
+		Config:       cfg,
 	}
 
 	var errs []error
@@ -399,10 +405,13 @@ func writeMetaFile(path string, meta diagnosticsMeta) error {
 	defer f.Close()
 
 	_, err = fmt.Fprintf(f,
-		"timestamp=%s\nsignal=%s\npid=%d\nargs=%q\nstrategy=%s\nfilebatch=%d\nmultiinsert=%d\n"+
-			"numfiles=%d\nnumparsers=%d\nnumdechainers=%d\nnumdbworkers=%d\ndirectory=%s\n"+
-			"journal=%s\n",
+		"timestamp=%s\nprocess_start=%s\nuptime=%s\nuptime_seconds=%f\nsignal=%s\npid=%d\nargs=%q\n"+
+			"strategy=%s\nfilebatch=%d\nmultiinsert=%d\nnumfiles=%d\nnumparsers=%d\nnumdechainers=%d\n"+
+			"numdbworkers=%d\ndirectory=%s\njournal=%s\n",
 		meta.Time.Format(time.RFC3339Nano),
+		meta.ProcessStart.Format(time.RFC3339Nano),
+		meta.Uptime,
+		meta.Uptime.Seconds(),
 		meta.Signal,
 		meta.PID,
 		meta.Args,

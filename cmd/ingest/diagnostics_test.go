@@ -17,11 +17,14 @@ func TestCreateDiagnosticsBundleWritesExpectedFiles(t *testing.T) {
 	root := t.TempDir()
 	origRoot := diagnosticsRootDir
 	origNow := diagnosticsNow
+	origProcessStart := diagnosticsProcessStart
 	diagnosticsRootDir = root
 	diagnosticsNow = func() time.Time { return time.Date(2026, 3, 31, 9, 12, 13, 456000000, time.UTC) }
+	diagnosticsProcessStart = time.Date(2026, 3, 31, 9, 0, 0, 0, time.UTC)
 	t.Cleanup(func() {
 		diagnosticsRootDir = origRoot
 		diagnosticsNow = origNow
+		diagnosticsProcessStart = origProcessStart
 	})
 
 	cfg := RunConfig{
@@ -59,11 +62,14 @@ func TestCreateDiagnosticsBundleWritesMetadata(t *testing.T) {
 	root := t.TempDir()
 	origRoot := diagnosticsRootDir
 	origNow := diagnosticsNow
+	origProcessStart := diagnosticsProcessStart
 	diagnosticsRootDir = root
 	diagnosticsNow = func() time.Time { return time.Date(2026, 3, 31, 9, 12, 13, 456000000, time.UTC) }
+	diagnosticsProcessStart = time.Date(2026, 3, 31, 9, 0, 0, 0, time.UTC)
 	t.Cleanup(func() {
 		diagnosticsRootDir = origRoot
 		diagnosticsNow = origNow
+		diagnosticsProcessStart = origProcessStart
 	})
 
 	cfg := RunConfig{
@@ -85,6 +91,10 @@ func TestCreateDiagnosticsBundleWritesMetadata(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(dir, "meta.txt"))
 	require.NoError(t, err)
 	text := string(data)
+	require.Contains(t, text, "timestamp=2026-03-31T09:12:13.456Z")
+	require.Contains(t, text, "process_start=2026-03-31T09:00:00Z")
+	require.Contains(t, text, "uptime=12m13.456s")
+	require.Contains(t, text, "uptime_seconds=733.456000")
 	require.Contains(t, text, "signal=terminated")
 	require.Contains(t, text, "strategy=onlyingest")
 	require.Contains(t, text, "filebatch=200")
@@ -102,11 +112,15 @@ func TestCreateDiagnosticsBundleCreatesDifferentDirectories(t *testing.T) {
 	root := t.TempDir()
 	origRoot := diagnosticsRootDir
 	origNow := diagnosticsNow
+	origProcessStart := diagnosticsProcessStart
 	diagnosticsRootDir = root
 	times := []time.Time{
 		time.Date(2026, 3, 31, 9, 12, 13, 456000000, time.UTC),
+		time.Date(2026, 3, 31, 9, 12, 13, 456000000, time.UTC),
+		time.Date(2026, 3, 31, 9, 12, 13, 457000000, time.UTC),
 		time.Date(2026, 3, 31, 9, 12, 13, 457000000, time.UTC),
 	}
+	diagnosticsProcessStart = time.Date(2026, 3, 31, 9, 0, 0, 0, time.UTC)
 	diagnosticsNow = func() time.Time {
 		tm := times[0]
 		times = times[1:]
@@ -115,6 +129,7 @@ func TestCreateDiagnosticsBundleCreatesDifferentDirectories(t *testing.T) {
 	t.Cleanup(func() {
 		diagnosticsRootDir = origRoot
 		diagnosticsNow = origNow
+		diagnosticsProcessStart = origProcessStart
 	})
 
 	var stderr bytes.Buffer
@@ -171,11 +186,14 @@ func TestCreateDiagnosticsDirUsesTimestampedNames(t *testing.T) {
 	root := t.TempDir()
 	origRoot := diagnosticsRootDir
 	origNow := diagnosticsNow
+	origProcessStart := diagnosticsProcessStart
 	diagnosticsRootDir = root
 	diagnosticsNow = func() time.Time { return time.Date(2026, 3, 31, 9, 12, 13, 456000000, time.UTC) }
+	diagnosticsProcessStart = time.Date(2026, 3, 31, 9, 0, 0, 0, time.UTC)
 	t.Cleanup(func() {
 		diagnosticsRootDir = origRoot
 		diagnosticsNow = origNow
+		diagnosticsProcessStart = origProcessStart
 	})
 
 	dir, err := createDiagnosticsDir()
