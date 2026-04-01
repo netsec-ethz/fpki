@@ -291,6 +291,105 @@ func TestComplexJoinPipelines(t *testing.T) {
 	require.Equal(t, len(p2GotValues), p2SourceCallCount)
 }
 
+// TestJoinPipelinesRawSkipsFullPrepareForSkippedStages verifies that raw-joined
+// pipelines still initialize skipped stages enough for linking, but do not run
+// source-specific prepare logic on skipped sources. That prevents the skipped
+// source from spawning its self-trigger goroutine and retaining the old joined
+// pipeline/manager across batches.
+func TestJoinPipelinesRawSkipsFullPrepareForSkippedStages(t *testing.T) {
+	defer PrintAllDebugLines()
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Second)
+	defer cancelF()
+
+	gotValues := make([]int, 0)
+	unusedSourceCh := make(chan int)
+
+	p1, err := NewPipeline(
+		func(p *Pipeline) {
+			a := SourceStage[int](p)
+			b := StageAtIndex[int, int](p, 1)
+			c := SinkStage[int](p)
+
+			LinkStagesFanOut(a, b)
+			LinkStagesFanOut(b, c)
+		},
+		WithStages(
+			NewSource[int](
+				"a",
+				WithSourceSlice(&[]int{1, 2, 3}, func(in int) (int, error) {
+					return 0, nil
+				}),
+				WithSequentialOutputs[None, int](),
+			),
+			NewStage[int, int](
+				"b",
+				WithProcessFunction(func(in int) ([]int, []int, error) {
+					return []int{in + 1}, []int{0}, nil
+				}),
+				WithSequentialInputs[int, int](),
+				WithSequentialOutputs[int, int](),
+			),
+			NewSink[int](
+				"c",
+				WithSinkFunction(func(in int) error {
+					return nil
+				}),
+				WithSequentialInputs[int, None](),
+			),
+		),
+	)
+	require.NoError(t, err)
+
+	p2, err := NewPipeline(
+		func(p *Pipeline) {
+			d := SourceStage[int](p)
+			e := SinkStage[int](p)
+
+			LinkStagesFanOut(d, e)
+		},
+		WithStages(
+			NewSource[int](
+				"d",
+				WithSourceChannel(&unusedSourceCh, func(in int) ([]int, error) {
+					return []int{0}, nil
+				}),
+				WithSequentialOutputs[None, int](),
+			),
+			NewSink[int](
+				"e",
+				WithSinkFunction(func(in int) error {
+					gotValues = append(gotValues, in)
+					return nil
+				}),
+				WithSequentialInputs[int, None](),
+			),
+		),
+	)
+	require.NoError(t, err)
+
+	joined := JoinPipelinesRaw(
+		func(p *Pipeline) {
+			a := SourceStage[int](p)
+			b := StageAtIndex[int, int](p, 1)
+			e := SinkStage[int](p)
+
+			LinkStagesFanOut(a, b)
+			LinkStagesFanOut(b, e)
+		},
+		p1,
+		p2,
+	)
+
+	tests.TestOrTimeout(t, tests.WithTimeout(time.Second), func(t tests.T) {
+		joined.Resume(ctx)
+		err := joined.Wait(ctx)
+		require.NoError(t, err)
+	})
+
+	require.Equal(t, []int{2, 3, 4}, gotValues)
+	require.Nil(t, p2.Source.(*Source[int]).TopErrCh)
+}
+
 func TestChannelReferenceCaptures(t *testing.T) {
 	t.Run("capture", func(t *testing.T) {
 		t.Parallel()

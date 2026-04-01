@@ -281,9 +281,13 @@ func LinkStagesCrissCross[IN, OUT, NEXT any](
 	}()
 }
 
-// Prepare creates the necessary fields of the stage to be linked with others.
-// It MUST NOT spawn any goroutines at this point.
-func (s *Stage[IN, OUT]) Prepare(ctx context.Context) {
+// prepareStage creates the necessary fields of the stage to be linked with others.
+// It MUST NOT spawn any goroutines at this point. Channels must be created, so that stages
+// can be connected to each other. Joining pipelines requires the channels, but needs to avoid
+// creating goroutines.
+// Joining pipelines will call prepareStage to all stages, even those that will be skipped
+// (meaning, stages that are connected, but never resumed, like the first sink or last source).
+func (s *Stage[IN, OUT]) prepareStage(ctx context.Context) {
 	s.Ctx = ctx
 	s.ErrCh = make(chan error)
 	s.StopCh = make(chan None)
@@ -302,6 +306,13 @@ func (s *Stage[IN, OUT]) Prepare(ctx context.Context) {
 
 	// Cannot aggregate the error channels here, as they will be modified after linking with
 	// other stages.
+}
+
+// Prepare creates the necessary fields of the stage to be linked with others.
+// It MUST NOT spawn any goroutines at this point, because joining pipelines only calls
+// the prepareStage method.
+func (s *Stage[IN, OUT]) Prepare(ctx context.Context) {
+	s.prepareStage(ctx)
 }
 
 // Resume resumes processing from this stage.
