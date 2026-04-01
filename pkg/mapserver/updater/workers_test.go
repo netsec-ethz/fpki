@@ -1,6 +1,7 @@
 package updater
 
 import (
+	"bytes"
 	"context"
 	"runtime"
 	"sync"
@@ -205,6 +206,80 @@ func TestDomainBatcherAllocationOverhead(t *testing.T) {
 	t.Logf("allocs = %d", allocs)
 	// The test is flaky: sometimes we get 0 allocations, sometimes 1 or even more.
 	require.LessOrEqual(t, allocs, N/10)
+}
+
+func TestRingCacheRotatePreservesReturnedCertificateBatch(t *testing.T) {
+	// Rotation must not mutate the batch slice that was just handed downstream; otherwise
+	// clearing a recycled buffer could corrupt an in-flight insert batch.
+	rc := newRingCache[Certificate](1)
+	cert := Certificate{
+		Raw:   []byte("payload"),
+		Names: []string{"example.org"},
+	}
+
+	rc.addElem(cert)
+	batch := rc.current()
+
+	rc.rotate()
+
+	require.Equal(t, []byte("payload"), batch[0].Raw)
+	require.Equal(t, []string{"example.org"}, batch[0].Names)
+}
+
+func TestRingCacheRotateClearsReusedCertificateReferences(t *testing.T) {
+	// Once a certificate buffer comes back around for reuse, its previous pointer-bearing fields
+	// should be zeroed so old Raw/Names payloads are no longer kept reachable by the backing array.
+	rc := newRingCache[Certificate](1)
+
+	firstRaw := bytes.Repeat([]byte{1}, 32)
+	firstNames := []string{"first.example"}
+	rc.addElem(Certificate{
+		ParentID: &common.SHA256Output{1},
+		Raw:      firstRaw,
+		Names:    firstNames,
+	})
+	rc.rotate()
+
+	secondRaw := bytes.Repeat([]byte{2}, 32)
+	secondNames := []string{"second.example"}
+	rc.addElem(Certificate{
+		ParentID: &common.SHA256Output{2},
+		Raw:      secondRaw,
+		Names:    secondNames,
+	})
+	rc.rotate()
+
+	thirdRaw := bytes.Repeat([]byte{3}, 32)
+	thirdNames := []string{"third.example"}
+	rc.addElem(Certificate{
+		ParentID: &common.SHA256Output{3},
+		Raw:      thirdRaw,
+		Names:    thirdNames,
+	})
+	rc.rotate()
+
+	reused := rc.elements[0][:cap(rc.elements[0])]
+	require.Len(t, reused, 1)
+	require.Nil(t, reused[0].ParentID)
+	require.Nil(t, reused[0].Raw)
+	require.Nil(t, reused[0].Names)
+}
+
+func TestRingCacheRotateClearsReusedDirtyDomainName(t *testing.T) {
+	// Dirty-domain batches also reuse backing storage, so the recycled slot must drop the prior
+	// Name string reference instead of retaining it until a later overwrite.
+	rc := newRingCache[DirtyDomain](1)
+
+	rc.addElem(DirtyDomain{Name: "first.example"})
+	rc.rotate()
+	rc.addElem(DirtyDomain{Name: "second.example"})
+	rc.rotate()
+	rc.addElem(DirtyDomain{Name: "third.example"})
+	rc.rotate()
+
+	reused := rc.elements[0][:cap(rc.elements[0])]
+	require.Len(t, reused, 1)
+	require.Empty(t, reused[0].Name)
 }
 
 func extractDomains(certs []Certificate) []DirtyDomain {
