@@ -25,7 +25,6 @@ type RunConfig struct {
 	SkipMissingFiles bool
 	CpuProfile       string
 	MemProfile       string
-	DebugMemProfDump string
 }
 
 type JournalStore interface {

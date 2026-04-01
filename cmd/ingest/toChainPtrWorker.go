@@ -1,9 +1,7 @@
 package main
 
 import (
-	"encoding/base64"
 	"fmt"
-	"strings"
 	"time"
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
@@ -20,6 +18,7 @@ type lineToChainPtrWorker struct {
 	cache cache.Cache // IDs of certificates already seen
 }
 
+// NewLineToChainPtrWorker creates a stage that emits pointers to parsed certificate chains.
 func NewLineToChainPtrWorker(p *Processor, numWorker int) *lineToChainPtrWorker {
 	w := &lineToChainPtrWorker{
 		now:   time.Now(),
@@ -44,9 +43,11 @@ func NewLineToChainPtrWorker(p *Processor, numWorker int) *lineToChainPtrWorker 
 	return w
 }
 
+// parseLine decodes one compact CSV row into a pointer-based certificate chain representation.
 func (w *lineToChainPtrWorker) parseLine(p *Processor, line *line) (*certChain, error) {
-	// First avoid even parsing already expired certs.
-	n, err := getExpiration(line.fields)
+	// First avoid even parsing already expired certs. As in the value-based worker, we only
+	// inspect the compact expiration field extracted by the CSV stage.
+	n, err := getExpiration(line.expirationField)
 	if err != nil {
 		return nil, err
 	}
@@ -55,8 +56,8 @@ func (w *lineToChainPtrWorker) parseLine(p *Processor, line *line) (*certChain, 
 		return nil, nil
 	}
 
-	// From this point on, we need to parse the certificate.
-	rawBytes, err := base64.StdEncoding.DecodeString(line.fields[CertificateColumn])
+	// Decode the leaf certificate payload directly from the byte-oriented CSV representation.
+	rawBytes, err := decodeBase64Field(line.certField)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +70,7 @@ func (w *lineToChainPtrWorker) parseLine(p *Processor, line *line) (*certChain, 
 	// Get the leaf certificate ID.
 	certID := common.SHA256Hash32Bytes(rawBytes)
 	if w.cache.Contains(&certID) {
-		// For some reason this leaf certificate has been ingested already. Skip.
+		// The leaf was already seen by this worker, so skip duplicate work and output.
 		return nil, nil
 	}
 	cert, err := ctx509.ParseCertificate(rawBytes)
@@ -83,15 +84,15 @@ func (w *lineToChainPtrWorker) parseLine(p *Processor, line *line) (*certChain, 
 		return nil, nil
 	}
 
-	// The certificate chain is a list of base64 strings separated by semicolon (;).
-	strs := strings.Split(line.fields[CertChainColumn], ";")
-	chain := make([]*ctx509.Certificate, len(strs))
-	chainIDs := make([]*common.SHA256Output, len(strs))
-	for i, s := range strs {
-		rawBytes, err = base64.StdEncoding.DecodeString(s)
+	// The chain is still represented as semicolon-delimited base64 payloads.
+	chainFields := splitSemicolonField(line.chainField)
+	chain := make([]*ctx509.Certificate, len(chainFields))
+	chainIDs := make([]*common.SHA256Output, len(chainFields))
+	for i, s := range chainFields {
+		rawBytes, err = decodeBase64Field(s)
 		if err != nil {
 			return nil, fmt.Errorf("at line %d: %s\n%s",
-				line.number, err, line.fields[CertChainColumn])
+				line.number, err, string(line.chainField))
 		}
 		// Update statistics.
 		p.Manager.Stats.ReadBytes.Add(int64(len(rawBytes)))
@@ -99,11 +100,11 @@ func (w *lineToChainPtrWorker) parseLine(p *Processor, line *line) (*certChain, 
 		// Check if the parent certificate is in the cache.
 		id := common.SHA256Hash32Bytes(rawBytes)
 		if !w.cache.Contains(&id) {
-			// Not seen before, push it to the DB.
+			// Keep only the parent payloads that have not already been observed by this worker.
 			chain[i], err = ctx509.ParseCertificate(rawBytes)
 			if err != nil {
 				return nil, fmt.Errorf("at line %d: %s\n%s",
-					line.number, err, line.fields[CertChainColumn])
+					line.number, err, string(line.chainField))
 			}
 			w.cache.AddIDs(&id)
 			p.Manager.Stats.UncachedCerts.Add(1)

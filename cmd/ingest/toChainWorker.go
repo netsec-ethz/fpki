@@ -1,10 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"encoding/base64"
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
 	ctx509 "github.com/google/certificate-transparency-go/x509"
@@ -22,6 +22,7 @@ const (
 
 type certChain updater.CertWithChainData
 
+// String returns a compact debug label for a parsed certificate chain.
 func (c certChain) String() string {
 	return updater.CertWithChainData(c).String()
 }
@@ -33,6 +34,7 @@ type lineToChainWorker struct {
 	cache cache.Cache // IDs of certificates already seen
 }
 
+// NewLineToChainWorker creates a stage that turns compact CSV rows into parsed certificate chains.
 func NewLineToChainWorker(p *Processor, numWorker int) *lineToChainWorker {
 	w := &lineToChainWorker{
 		now:   time.Now(),
@@ -61,9 +63,11 @@ func NewLineToChainWorker(p *Processor, numWorker int) *lineToChainWorker {
 	return w
 }
 
+// parseLine decodes one compact CSV row into a leaf certificate plus its parent chain metadata.
 func (w *lineToChainWorker) parseLine(p *Processor, line *line) (*certChain, error) {
-	// First avoid even parsing already expired certs.
-	n, err := getExpiration(line.fields)
+	// First avoid even parsing already expired certs. The splitter already isolated the last
+	// column for us, so we can parse the timestamp without materializing the whole row.
+	n, err := getExpiration(line.expirationField)
 	if err != nil {
 		return nil, err
 	}
@@ -77,8 +81,9 @@ func (w *lineToChainWorker) parseLine(p *Processor, line *line) (*certChain, err
 		return nil, nil
 	}
 
-	// From this point on, we need to parse the certificate.
-	rawBytes, err := base64.StdEncoding.DecodeString(line.fields[CertificateColumn])
+	// From this point on, we need the actual leaf payload. Decode directly from the compact
+	// byte field produced by the fast/slow CSV parser.
+	rawBytes, err := decodeBase64Field(line.certField)
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +94,7 @@ func (w *lineToChainWorker) parseLine(p *Processor, line *line) (*certChain, err
 	// Get the leaf certificate ID.
 	certID := common.SHA256Hash32Bytes(rawBytes)
 	if w.cache.Contains(&certID) {
-		// For some reason this leaf certificate has been ingested already. Skip.
+		// The leaf was already seen by this worker, so avoid reparsing and reinserting it.
 		return nil, nil
 	}
 
@@ -106,15 +111,16 @@ func (w *lineToChainWorker) parseLine(p *Processor, line *line) (*certChain, err
 		return nil, nil
 	}
 
-	// The certificate chain is a list of base64 strings separated by semicolon (;).
-	strs := strings.Split(line.fields[CertChainColumn], ";")
-	chain := make([]*ctx509.Certificate, len(strs))
-	chainIDs := make([]*common.SHA256Output, len(strs))
-	for i, s := range strs {
-		rawBytes, err = base64.StdEncoding.DecodeString(s)
+	// The certificate chain field is still semicolon-delimited. Split it lazily without
+	// converting the whole field to []string first.
+	chainFields := splitSemicolonField(line.chainField)
+	chain := make([]*ctx509.Certificate, len(chainFields))
+	chainIDs := make([]*common.SHA256Output, len(chainFields))
+	for i, s := range chainFields {
+		rawBytes, err = decodeBase64Field(s)
 		if err != nil {
 			return nil, fmt.Errorf("at line %d: %s\n%s",
-				line.number, err, line.fields[CertChainColumn])
+				line.number, err, string(line.chainField))
 		}
 		// Update statistics.
 		p.Manager.Stats.ReadBytes.Add(int64(len(rawBytes)))
@@ -122,11 +128,11 @@ func (w *lineToChainWorker) parseLine(p *Processor, line *line) (*certChain, err
 		// Check if the parent certificate is in the cache.
 		id := common.SHA256Hash32Bytes(rawBytes)
 		if !w.cache.Contains(&id) {
-			// Not seen before, push it to the DB.
+			// Only parse and keep parent payloads that still need to be unfolded into DB rows.
 			chain[i], err = ctx509.ParseCertificate(rawBytes)
 			if err != nil {
 				return nil, fmt.Errorf("at line %d: %s\n%s",
-					line.number, err, line.fields[CertChainColumn])
+					line.number, err, string(line.chainField))
 			}
 			w.cache.AddIDs(&id)
 			p.Manager.Stats.UncachedCerts.Add(1)
@@ -144,19 +150,48 @@ func (w *lineToChainWorker) parseLine(p *Processor, line *line) (*certChain, err
 
 // getExpiration returns the expiration time in seconds. It is stored already in seconds on the
 // last column of the CSV entry, usually index 7.
-func getExpiration(fields []string) (int64, error) {
-	// Because some entries in the CSVs are malformed by not escaping their SAN field, we cannot
-	// reliably use a column index, but the last column of the entry.
-	expirationColumn := len(fields) - 1
-
-	s := strings.Split(fields[expirationColumn], ".")
-	if len(s) != 2 {
-		return 0, fmt.Errorf("unrecognized timestamp in the last column: %s", fields[expirationColumn])
+func getExpiration(field []byte) (int64, error) {
+	// Expiration values are stored as "<unix-seconds>.<fraction>" in the last column.
+	dot := bytes.IndexByte(field, '.')
+	if dot <= 0 || dot == len(field)-1 {
+		return 0, fmt.Errorf("unrecognized timestamp in the last column: %s", string(field))
 	}
-	exp, err := strconv.ParseInt(s[0], 10, 64)
+	exp, err := strconv.ParseInt(string(field[:dot]), 10, 64)
 	if err != nil {
 		return 0, fmt.Errorf("parsing the expiration time \"%s\" got: %w",
-			fields[expirationColumn], err)
+			string(field), err)
 	}
 	return exp, nil
+}
+
+// splitSemicolonField returns subslices for each semicolon-delimited chain payload.
+func splitSemicolonField(field []byte) [][]byte {
+	// Keep subslices pointing into the original row buffer to avoid allocating per chain element.
+	count := 1
+	for _, b := range field {
+		if b == ';' {
+			count++
+		}
+	}
+	parts := make([][]byte, 0, count)
+	start := 0
+	for i := 0; i <= len(field); i++ {
+		if i < len(field) && field[i] != ';' {
+			continue
+		}
+		parts = append(parts, field[start:i])
+		start = i + 1
+	}
+	return parts
+}
+
+// decodeBase64Field decodes one base64-encoded CSV field into its raw bytes.
+func decodeBase64Field(field []byte) ([]byte, error) {
+	// Allocate exactly once for the decoded payload and let the base64 package fill it in place.
+	dst := make([]byte, base64.StdEncoding.DecodedLen(len(field)))
+	n, err := base64.StdEncoding.Decode(dst, field)
+	if err != nil {
+		return nil, err
+	}
+	return dst[:n], nil
 }

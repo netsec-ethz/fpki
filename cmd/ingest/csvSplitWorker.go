@@ -1,19 +1,22 @@
 package main
 
 import (
-	"encoding/csv"
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 
+	"github.com/netsec-ethz/fpki/cmd/ingest/fastcsv"
 	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
 type line struct {
-	fields []string // records
-	number int      // line number
+	certField       []byte
+	chainField      []byte
+	expirationField []byte
+	number          int
 }
 
 func (l line) String() string {
@@ -23,8 +26,6 @@ func (l line) String() string {
 // csvSplitWorker is a processing stage that takes a CsvFile and outputs all its lines.
 // The distribution is done in a staggered fan-out way to the next stages, so that each next
 // stage i processes lines i, i+W, i+2W, etc (W being the number or next stages).
-// TODO: instead of returning all lines, just return W lines and only read lines from file to
-// memory when requested. This requires a change in pkg/pipeline.
 type csvSplitWorker struct {
 	*pip.Stage[util.CsvFile, line]
 	lines            chan line  // Created once per file.
@@ -85,24 +86,52 @@ func (w *csvSplitWorker) startReadingLines(f util.CsvFile) error {
 		return err
 	}
 
-	r := csv.NewReader(fileReader)
-	r.FieldsPerRecord = -1 // don't check number of fields
-	var records []string
+	r := bufio.NewReader(fileReader)
 	w.lines = make(chan line, cap(w.lines))
 	w.done = make(chan error, 1)
 	go func() {
 		var finalErr error
 		for lineNo := 1; ; lineNo++ {
-			records, err = r.Read()
-			if err != nil {
-				if !errors.Is(err, io.EOF) {
-					finalErr = fmt.Errorf("reading %s: %w", f.Filename(), err)
-				}
+			// Read one physical row at a time so we can keep the fast-path parser byte-oriented
+			// and avoid materializing a full []string record for the common case.
+			rawLine, readErr := r.ReadBytes('\n')
+			if readErr != nil && !errors.Is(readErr, io.EOF) {
+				finalErr = fmt.Errorf("reading %s: %w", f.Filename(), readErr)
 				break
 			}
-			w.lines <- line{
-				fields: records,
-				number: lineNo,
+			if len(rawLine) > 0 {
+				parsed, parseErr := fastcsv.ParseLine(rawLine, f.Filename(), lineNo)
+				if parseErr != nil {
+					// If row parsing fails, continue draining the reader first. This preserves
+					// underlying stream errors such as truncated gzip data instead of masking them
+					// behind a row-shape error from the fast parser.
+					drainErr := drainReader(r)
+					if errors.Is(readErr, io.EOF) {
+						finalErr = errors.Join(
+							fmt.Errorf("reading %s: %w", f.Filename(), io.ErrUnexpectedEOF),
+							parseErr,
+						)
+					} else if drainErr != nil {
+						finalErr = errors.Join(
+							fmt.Errorf("reading %s: %w", f.Filename(), drainErr),
+							parseErr,
+						)
+					} else {
+						finalErr = parseErr
+					}
+					break
+				}
+				// Forward only the compact, ingest-relevant fields to the next stage.
+				w.lines <- line{
+					certField:       parsed.CertField,
+					chainField:      parsed.ChainField,
+					expirationField: parsed.ExpirationField,
+					number:          parsed.Number,
+				}
+			}
+			// EOF after a successfully parsed final row is the normal termination path.
+			if errors.Is(readErr, io.EOF) {
+				break
 			}
 		}
 		close(w.lines)
@@ -118,4 +147,12 @@ func (w *csvSplitWorker) startReadingLines(f util.CsvFile) error {
 	}()
 
 	return nil
+}
+
+func drainReader(r io.Reader) error {
+	_, err := io.Copy(io.Discard, r)
+	if errors.Is(err, io.EOF) {
+		return nil
+	}
+	return err
 }

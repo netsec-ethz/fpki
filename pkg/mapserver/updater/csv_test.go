@@ -43,8 +43,8 @@ func TestRecordsForCert(t *testing.T) {
 
 	// First check allocations.
 	// Remove payload (as it requires an allocation)
-	payload := c.Cert.Raw
-	c.Cert.Raw = nil
+	payload := c.Raw
+	c.Raw = nil
 	allocs := tests.AllocsPerRun(func(tests.B) {
 		recordsForCert(storage[0], c)
 	})
@@ -54,7 +54,7 @@ func TestRecordsForCert(t *testing.T) {
 
 	// Now check that the CSV encoding is correct.
 	// Restore the payload and serialize again.
-	c.Cert.Raw = payload
+	c.Raw = payload
 	recordsForCert(storage[0], c)
 
 	require.Len(t, row, 4)
@@ -63,8 +63,8 @@ func TestRecordsForCert(t *testing.T) {
 	}
 	require.Equal(t, base64.StdEncoding.EncodeToString(c.CertID[:]), string(row[0]))
 	require.Equal(t, idPtrToStr(c.ParentID), string(row[1]))
-	require.Equal(t, c.Cert.NotAfter.Format(time.DateTime), string(row[2]))
-	require.Equal(t, base64.StdEncoding.EncodeToString(c.Cert.Raw), string(row[3]))
+	require.Equal(t, c.NotAfter.Format(time.DateTime), string(row[2]))
+	require.Equal(t, base64.StdEncoding.EncodeToString(c.Raw), string(row[3]))
 
 	// Another cert to records.
 	c = randomCertificate(t)
@@ -78,43 +78,28 @@ func TestRecordsForCert(t *testing.T) {
 	}
 	require.Equal(t, base64.StdEncoding.EncodeToString(c.CertID[:]), string(row[0]))
 	require.Equal(t, idPtrToStr(c.ParentID), string(row[1]))
-	require.Equal(t, c.Cert.NotAfter.Format(time.DateTime), string(row[2]))
-	require.Equal(t, base64.StdEncoding.EncodeToString(c.Cert.Raw), string(row[3]))
+	require.Equal(t, c.NotAfter.Format(time.DateTime), string(row[2]))
+	require.Equal(t, base64.StdEncoding.EncodeToString(c.Raw), string(row[3]))
 }
 
 func TestCreateCsvCerts(t *testing.T) {
-	N := 1
+	N := 4
 	certs := make([]Certificate, N)
 	for i := range certs {
 		certs[i] = randomCertificate(t)
-		// Remove payload, as it creates allocations.
-		certs[i].Cert.Raw = nil
 	}
 
-	storage := CreateStorage(N, 4, IdBase64Len, IdBase64Len, ExpTimeBase64Len, PayloadBase64Len)
-	filenameStorage := make([]byte, FilepathLen)
+	storage := CreateStorage(1, 4, IdBase64Len, IdBase64Len, ExpTimeBase64Len, PayloadBase64Len)
 
-	// This function is similar to CreateCsvCerts, without actually writing a file.
-	createCsvCerts := func(
-		storage [][][]byte,
-		certs []Certificate,
-	) {
-		noop := func([]byte, string, string, [][][]byte) (string, error) {
-			return "", nil
-		}
-		writeRecordsWithStorage(
-			storage,
-			noop,
-			filenameStorage,
-			"mock-prefix",
-			"mock-suffix",
-			certs,
-			recordsForCert,
-		)
+	// Warm the reusable payload storage to the largest cert in the batch.
+	for _, cert := range certs {
+		recordsForCert(storage[0], cert)
 	}
 
 	allocs := tests.AllocsPerRun(func(tests.B) {
-		createCsvCerts(storage, certs)
+		for _, cert := range certs {
+			recordsForCert(storage[0], cert)
+		}
 	})
 	require.Equal(t, 0, allocs)
 }
@@ -211,7 +196,7 @@ func TestRecordsForDomainCerts(t *testing.T) {
 }
 
 func TestWriteCsvCerts(t *testing.T) {
-	storage := CreateStorage(10, 4,
+	storage := CreateStorage(1, 4,
 		IdBase64Len,
 		IdBase64Len,
 		ExpTimeBase64Len,
@@ -262,8 +247,8 @@ func TestWriteCsvCerts(t *testing.T) {
 	for i, orig := range certs {
 		require.Equal(t, &orig.CertID, ids[i])
 		require.Equal(t, orig.ParentID, parents[i])
-		require.Equal(t, orig.Cert.NotAfter, expTimes[i])
-		require.Equal(t, orig.Cert.Raw, payloads[i])
+		require.Equal(t, orig.NotAfter, expTimes[i])
+		require.Equal(t, orig.Raw, payloads[i])
 	}
 
 	// Finally, remove temporary file.
@@ -272,10 +257,12 @@ func TestWriteCsvCerts(t *testing.T) {
 
 func randomCertificate(t tests.T) Certificate {
 	name := random.RandomLeafNames(t, 1)[0]
+	cert := random.RandomX509Cert(t, name)
 	return Certificate{
 		CertID:   random.RandomIDsForTest(t, 1)[0],
 		ParentID: random.RandomIDPtrsForTest(t, 1)[0],
-		Cert:     random.RandomX509Cert(t, name),
+		NotAfter: cert.NotAfter,
+		Raw:      cert.Raw,
 		Names:    []string{name},
 	}
 }

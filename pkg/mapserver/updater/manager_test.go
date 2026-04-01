@@ -268,7 +268,7 @@ func TestMinimalAllocsManager(t *testing.T) {
 	certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
 	// We remove the payload since the CSV formatter allocates memory to it if non nil.
 	for _, cert := range certs {
-		cert.Cert.Raw = nil
+		cert.Raw = nil
 	}
 	t.Log("certificates created")
 
@@ -352,7 +352,6 @@ func cloneCertSlice(certs []Certificate, multiplier int) []Certificate {
 	duplicated := certs
 	for i := 1; i < multiplier; i++ {
 		for _, pC := range certs {
-			payload := pC.Cert
 			id := pC.CertID
 			pParentID := pC.ParentID
 			if pParentID != nil {
@@ -362,10 +361,11 @@ func cloneCertSlice(certs []Certificate, multiplier int) []Certificate {
 			names := append(pC.Names[:0:0], pC.Names...)
 
 			c := Certificate{
-				Cert:     payload,
 				CertID:   id,
 				ParentID: pParentID,
 				Names:    names,
+				NotAfter: pC.NotAfter,
+				Raw:      pC.Raw,
 			}
 			duplicated = append(duplicated, c)
 		}
@@ -384,9 +384,10 @@ func toCertificates(
 	for i := 0; i < len(payloads); i++ {
 		c := Certificate{
 			CertID:   ids[i],
-			Cert:     payloads[i],
 			ParentID: parentIDs[i],
 			Names:    names[i],
+			NotAfter: payloads[i].NotAfter,
+			Raw:      payloads[i].Raw,
 		}
 		certs = append(certs, c)
 	}

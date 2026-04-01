@@ -10,7 +10,11 @@ func createFilepathRingCache() noallocs.RingCache[[]byte] {
 	)
 }
 
-const ringCacheN = 2
+// ringCacheN has size 3 to allow concurrent access to:
+// 1. In-flight (downstream) to next stage.
+// 2. Actively being zeroed.
+// 3. Actively being filled from previous stage.
+const ringCacheN = 3
 
 type ringCache[T any] struct {
 	currentIndex int
@@ -38,8 +42,11 @@ func (rc *ringCache[T]) addElem(elem T) {
 }
 
 func (rc *ringCache[T]) rotate() {
-	// Reuse storage.
-	rc.elements[rc.currentIndex] = rc.elements[rc.currentIndex][:0]
-	// Point to next cache.
+	// Switch to the alternate buffer first so the slice just handed downstream keeps its payload.
 	rc.currentIndex = (rc.currentIndex + 1) % ringCacheN
+
+	// Clear the buffer we are about to reuse so stale pointers from the previous cycle do not
+	// keep payloads reachable until overwritten.
+	clear(rc.elements[rc.currentIndex])
+	rc.elements[rc.currentIndex] = rc.elements[rc.currentIndex][:0]
 }

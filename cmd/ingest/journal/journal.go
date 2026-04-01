@@ -146,9 +146,10 @@ func (j *Journal) listFiles() ([]string, error) {
 	}
 
 	start := time.Now()
-	fmt.Printf("Start listing directory")
+	fmt.Println("Start listing directory...")
 	defer func() {
-		fmt.Printf(" Finished in %s\n", time.Since(start).Round(time.Millisecond))
+		fmt.Printf("\nFinished listing directory in %s\n",
+			time.Since(start).Round(time.Millisecond))
 	}()
 
 	gzFiles, csvFiles, err := ListCsvFiles(j.IngestDir)

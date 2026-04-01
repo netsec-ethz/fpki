@@ -2,10 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"runtime"
 	"runtime/pprof"
 	"syscall"
 	"time"
@@ -121,33 +125,28 @@ func mainFunction() error {
 		}()
 	}
 
-	// Memprof dump if SIGUSR1.
-	if cfg.DebugMemProfDump != "" {
-		util.RunOnSignal(
-			ctx,
-			func(os.Signal) {
-				if err := createMemDump(cfg.DebugMemProfDump); err != nil {
+	// Diagnostics and signal catching.
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
+	go func() {
+		for sg := range signals {
+			fmt.Fprintf(os.Stderr, "\n%s: signal caught: '%s'\n", time.Now().String(), sg.String())
+			if sg == syscall.SIGINT || sg == syscall.SIGTERM {
+				if err := stopProfiles(); err != nil {
 					fmt.Fprintf(os.Stderr, "%s\n", err)
 				}
-			},
-			syscall.SIGUSR1,
-		)
-	}
-
-	// Signals catching:
-	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		sg := <-signals
-		fmt.Fprintf(os.Stderr, "\nsignal caught: '%s'\n", sg.String())
-		if err := stopProfiles(); err != nil {
-			fmt.Fprintf(os.Stderr, "%s\n", err)
+			}
+			dir, err := createDiagnosticsBundle(cfg, sg, os.Stderr)
+			if dir != "" {
+				fmt.Fprintf(os.Stderr, "\nDiagnostics dumped to %s\n", dir)
+			}
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "%s\n", err)
+			}
+			if sg == syscall.SIGINT || sg == syscall.SIGTERM {
+				os.Exit(1)
+			}
 		}
-		// Memory dump file name, if any:
-		if err := createMemDump("/tmp/fpki-ingest-crash-memdump.pprof"); err != nil {
-			fmt.Fprintf(os.Stderr, "%s\n", err)
-		}
-		os.Exit(1)
 	}()
 
 	return runIngest(cfg, RunDependencies{
@@ -250,20 +249,188 @@ func configFromFlags() RunConfig {
 		SkipMissingFiles: *args.SkipMissingFiles,
 		CpuProfile:       *args.CpuProfile,
 		MemProfile:       *args.MemProfile,
-		DebugMemProfDump: *args.DebugMemProfDump,
 	}
 }
 
-func createMemDump(filename string) error {
-	f, err := os.Create(filename)
+var diagnosticsRootDir = os.TempDir()
+var diagnosticsNow = time.Now
+var diagnosticsProcessStart = time.Now()
+
+type diagnosticsWriter struct {
+	createDir        func() (string, error)
+	writeHeap        func(string) error
+	writeHeapAfterGC func(string) error
+	writeAllocs      func(string) error
+	writeGoroutines  func(string) error
+	writeMemStats    func(string) error
+	writeMeta        func(string, diagnosticsMeta) error
+}
+
+type diagnosticsMeta struct {
+	Signal       string
+	Time         time.Time
+	ProcessStart time.Time
+	Uptime       time.Duration
+	PID          int
+	Args         []string
+	Config       RunConfig
+}
+
+func createDiagnosticsBundle(cfg RunConfig, sg os.Signal, stderr io.Writer) (string, error) {
+	return createDiagnosticsBundleWithWriter(cfg, sg, stderr, newDefaultDiagnosticsWriter())
+}
+
+func createDiagnosticsBundleWithWriter(
+	cfg RunConfig,
+	sg os.Signal,
+	stderr io.Writer,
+	writer diagnosticsWriter,
+) (string, error) {
+	dir, err := writer.createDir()
+	if err != nil {
+		return "", err
+	}
+	captureTime := diagnosticsNow()
+
+	meta := diagnosticsMeta{
+		Signal:       signalName(sg),
+		Time:         captureTime,
+		ProcessStart: diagnosticsProcessStart,
+		Uptime:       captureTime.Sub(diagnosticsProcessStart),
+		PID:          os.Getpid(),
+		Args:         append([]string(nil), os.Args...),
+		Config:       cfg,
+	}
+
+	var errs []error
+	writeFile := func(name string, fn func(string) error) {
+		path := filepath.Join(dir, name)
+		if err := fn(path); err != nil {
+			err = fmt.Errorf("writing %s: %w", name, err)
+			errs = append(errs, err)
+			fmt.Fprintf(stderr, "%s\n", err)
+		}
+	}
+
+	writeFile("heap.pprof", writer.writeHeap)
+	writeFile("allocs.pprof", writer.writeAllocs)
+	writeFile("goroutines.txt", writer.writeGoroutines)
+	writeFile("memstats.txt", writer.writeMemStats)
+	writeFile("heap-after-gc.pprof", writer.writeHeapAfterGC)
+	writeFile("meta.txt", func(path string) error {
+		return writer.writeMeta(path, meta)
+	})
+
+	return dir, errors.Join(errs...)
+}
+
+func newDefaultDiagnosticsWriter() diagnosticsWriter {
+	return diagnosticsWriter{
+		createDir:        createDiagnosticsDir,
+		writeHeap:        func(path string) error { return writeProfile(path, "heap", 0, false) },
+		writeHeapAfterGC: func(path string) error { return writeProfile(path, "heap", 0, true) },
+		writeAllocs:      func(path string) error { return writeProfile(path, "allocs", 0, false) },
+		writeGoroutines:  func(path string) error { return writeProfile(path, "goroutine", 2, false) },
+		writeMemStats:    writeMemStatsFile,
+		writeMeta:        writeMetaFile,
+	}
+}
+
+func createDiagnosticsDir() (string, error) {
+	for range 16 {
+		dir := filepath.Join(
+			diagnosticsRootDir,
+			fmt.Sprintf("fpki-diagnostics-%s", diagnosticsNow().Format("20060102-150405.000")),
+		)
+		err := os.Mkdir(dir, 0o755)
+		if err == nil {
+			return dir, nil
+		}
+		if os.IsExist(err) {
+			time.Sleep(time.Millisecond)
+			continue
+		}
+		return "", err
+	}
+	return "", fmt.Errorf("failed to create diagnostics directory after multiple attempts")
+}
+
+func writeProfile(path, name string, debug int, forceGC bool) error {
+	if forceGC {
+		runtime.GC()
+	}
+	prof := pprof.Lookup(name)
+	if prof == nil {
+		return fmt.Errorf("pprof profile %q is unavailable", name)
+	}
+	f, err := os.Create(path)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	err = pprof.Lookup("heap").WriteTo(f, 0) // use "heap" or "allocs"
+	return prof.WriteTo(f, debug)
+}
+
+func writeMemStatsFile(path string) error {
+	var stats runtime.MemStats
+	runtime.ReadMemStats(&stats)
+
+	f, err := os.Create(path)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "\nMemory dumped to %s\n", filename)
-	return nil
+	defer f.Close()
+
+	_, err = fmt.Fprintf(f,
+		"Alloc=%d\nHeapAlloc=%d\nHeapInuse=%d\nHeapIdle=%d\nHeapReleased=%d\nSys=%d\nNumGC=%d\n"+
+			"NextGC=%d\nGCCPUFraction=%f\n",
+		stats.Alloc,
+		stats.HeapAlloc,
+		stats.HeapInuse,
+		stats.HeapIdle,
+		stats.HeapReleased,
+		stats.Sys,
+		stats.NumGC,
+		stats.NextGC,
+		stats.GCCPUFraction,
+	)
+	return err
+}
+
+func writeMetaFile(path string, meta diagnosticsMeta) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	_, err = fmt.Fprintf(f,
+		"timestamp=%s\nprocess_start=%s\nuptime=%s\nuptime_seconds=%f\nsignal=%s\npid=%d\nargs=%q\n"+
+			"strategy=%s\nfilebatch=%d\nmultiinsert=%d\nnumfiles=%d\nnumparsers=%d\nnumdechainers=%d\n"+
+			"numdbworkers=%d\ndirectory=%s\njournal=%s\n",
+		meta.Time.Format(time.RFC3339Nano),
+		meta.ProcessStart.Format(time.RFC3339Nano),
+		meta.Uptime,
+		meta.Uptime.Seconds(),
+		meta.Signal,
+		meta.PID,
+		meta.Args,
+		meta.Config.Strategy,
+		meta.Config.FileBatch,
+		meta.Config.MultiInsertSize,
+		meta.Config.NumFiles,
+		meta.Config.NumParsers,
+		meta.Config.NumChainToCerts,
+		meta.Config.NumDBWriters,
+		meta.Config.Directory,
+		meta.Config.JournalFile,
+	)
+	return err
+}
+
+func signalName(sg os.Signal) string {
+	if sg == nil {
+		return "unknown"
+	}
+	return sg.String()
 }

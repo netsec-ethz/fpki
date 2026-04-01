@@ -5,6 +5,10 @@ import (
 	"fmt"
 )
 
+type prepareStageOnly interface {
+	prepareStage(context.Context)
+}
+
 func JoinPipelinesRaw(
 	newLinkFunc func(*Pipeline),
 	pipelines ...*Pipeline,
@@ -56,8 +60,20 @@ func JoinPipelinesRaw(
 		Source:   pipelines[0].Source,
 		Sink:     pipelines[len(pipelines)-1].Sink,
 		prepare: func(p *Pipeline) {
-			// When preparing this pipeline, prepare the new stages and also the skipped ones.
-			for _, s := range append(newStages, skippedStages...) {
+			// Active stages must run their full prepare lifecycle.
+			for _, s := range newStages {
+				s.Prepare(p.Ctx)
+			}
+
+			// Skipped stages still need their base channels initialized so the original
+			// link functions can rewire them, but they must not run source/sink-specific
+			// prepare logic because those stages are never resumed as part of the joined
+			// pipeline.
+			for _, s := range skippedStages {
+				if stage, ok := s.(prepareStageOnly); ok {
+					stage.prepareStage(p.Ctx)
+					continue
+				}
 				s.Prepare(p.Ctx)
 			}
 		},

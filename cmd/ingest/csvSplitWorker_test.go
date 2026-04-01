@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/netsec-ethz/fpki/cmd/ingest/fastcsv"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 	"github.com/netsec-ethz/fpki/pkg/util"
 	"github.com/stretchr/testify/require"
@@ -98,4 +99,36 @@ func TestCsvSplitWorkerMissingFileStillFailsByDefault(t *testing.T) {
 	err = w.startReadingLines(f)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, os.ErrNotExist))
+}
+
+func TestCsvSplitWorkerHardErrorLogsToStderr(t *testing.T) {
+	filename := filepath.Join(t.TempDir(), "broken.csv")
+	require.NoError(t, os.WriteFile(filename, []byte("a,b,c\n"), 0o644))
+
+	var stderr bytes.Buffer
+	restore := fastcsv.SetStderr(&stderr)
+	defer restore()
+
+	stats := updater.NewStatistics(time.Hour, nil)
+	defer stats.Stop()
+
+	p := &Processor{
+		Manager: &updater.Manager{
+			Stats: stats,
+		},
+	}
+	w := NewCsvSplitWorker(p)
+
+	f, err := util.LoadCsvFile(filename)
+	require.NoError(t, err)
+	require.NoError(t, w.startReadingLines(f))
+
+	_, ok := <-w.lines
+	require.False(t, ok)
+
+	err = <-w.done
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "too_few_fields")
+	require.Contains(t, stderr.String(), "fast-csv reject:")
+	require.Contains(t, stderr.String(), "file="+filename)
 }
