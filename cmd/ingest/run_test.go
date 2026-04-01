@@ -28,10 +28,12 @@ func TestRunIngestFreshJournalPersistsProgress(t *testing.T) {
 	require.Zero(t, updateCount)
 
 	j := loadJournalForTest(t, cfg)
-	require.Equal(t, []string{
-		filepath.Join(ingestTestBase, "0-9.gz"),
-		filepath.Join(ingestTestBase, "10-19.gz"),
-		filepath.Join(ingestTestBase, "20-29.gz"),
+	require.Equal(t, map[string]map[string]struct{}{
+		ingestTestBase: {
+			"0-9.gz":   {},
+			"10-19.gz": {},
+			"20-29.gz": {},
+		},
 	}, j.CompletedFiles)
 	pending, err := j.PendingFiles()
 	require.NoError(t, err)
@@ -53,10 +55,12 @@ func TestRunIngestResumesFromExistingJournal(t *testing.T) {
 	require.Equal(t, [][]string{{files[1]}, {files[2]}}, runOrder)
 
 	j = loadJournalForTest(t, cfg)
-	require.Equal(t, []string{
-		filepath.Join(ingestTestBase, "0-9.gz"),
-		filepath.Join(ingestTestBase, "10-19.gz"),
-		filepath.Join(ingestTestBase, "20-29.gz"),
+	require.Equal(t, map[string]map[string]struct{}{
+		ingestTestBase: {
+			"0-9.gz":   {},
+			"10-19.gz": {},
+			"20-29.gz": {},
+		},
 	}, j.CompletedFiles)
 }
 
@@ -98,7 +102,11 @@ func TestRunIngestFailedBatchDoesNotAdvanceJournal(t *testing.T) {
 	require.Equal(t, 1, updateCount)
 
 	j := loadJournalForTest(t, cfg)
-	require.Equal(t, []string{filepath.Join(ingestTestBase, "0-9.gz")}, j.CompletedFiles)
+	require.Equal(t, map[string]map[string]struct{}{
+		ingestTestBase: {
+			"0-9.gz": {},
+		},
+	}, j.CompletedFiles)
 	pending, err := j.PendingFiles()
 	require.NoError(t, err)
 	require.Equal(t, files[1:], pending)

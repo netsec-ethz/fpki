@@ -20,7 +20,7 @@ type Journal struct {
 	Cmds        [][]string //`json:"Cmds"`
 
 	JobConfiguration JobConfiguration //`json:"Configuration"`
-	CompletedFiles   []string         // Deduplicated, sorted list.
+	CompletedFiles   map[string]map[string]struct{}
 }
 
 type JobConfiguration struct {
@@ -32,6 +32,13 @@ type JobConfiguration struct {
 
 type Job struct {
 	Files []string //`json:"Files,omitempty"`
+}
+
+type journalJSON struct {
+	Cwds             []string                       `json:"Cwds"`
+	Cmds             [][]string                     `json:"Cmds"`
+	JobConfiguration JobConfiguration               `json:"JobConfiguration"`
+	CompletedFiles   map[string]map[string]struct{} `json:"CompletedFiles"`
 }
 
 // NewJobConfiguration translates the ingest strategy flags into the journal's
@@ -61,8 +68,9 @@ func NewJobConfiguration(strategy string, fileBatch int) (JobConfiguration, erro
 // completed-file entries into the journal key format.
 func NewJournal(journalFile string, cfg JobConfiguration, ingestDir string) (*Journal, error) {
 	j := &Journal{
-		JournalFile: journalFile,
-		IngestDir:   ingestDir,
+		JournalFile:    journalFile,
+		IngestDir:      ingestDir,
+		CompletedFiles: map[string]map[string]struct{}{},
 	}
 
 	// Check if file exists.
@@ -89,41 +97,36 @@ func NewJournal(journalFile string, cfg JobConfiguration, ingestDir string) (*Jo
 }
 
 // AddCompletedFiles adds the file names to the set of completed files.
-// The function normalizes them into journal keys and keeps the final set
-// deduplicated and sorted.
+// The function normalizes them into ingest-dir and filename keys and inserts
+// them into the nested completed-files set.
 func (j *Journal) AddCompletedFiles(files []string) error {
-	normalized, err := normalizeCompletedFiles(files, j.IngestDir)
-	if err != nil {
-		return err
-	}
-	j.CompletedFiles = append(j.CompletedFiles, normalized...)
-	if err := sortCompactCompletedFiles(&j.CompletedFiles); err != nil {
-		return err
+	for _, file := range files {
+		ingestDirBase, fileBase, err := normalizeCompletedFile(file, j.IngestDir)
+		if err != nil {
+			return err
+		}
+		addCompletedFile(j.CompletedFiles, ingestDirBase, fileBase)
 	}
 
 	return j.Write()
 }
 
 // PendingFiles returns the set subtraction LiveDirectoryListing - CompletedFiles.
-// CompletedFiles is expected to already contain only normalized journal keys,
-// so live files are normalized on the fly before membership is checked.
+// CompletedFiles is expected to already contain only normalized ingest-dir and
+// filename keys, so live files are normalized on the fly before membership is checked.
 func (j *Journal) PendingFiles() ([]string, error) {
 	files, err := j.listFiles()
 	if err != nil {
 		return nil, err
 	}
-	completed := make(map[string]struct{}, len(j.CompletedFiles))
-	for _, key := range j.CompletedFiles {
-		completed[key] = struct{}{}
-	}
 
 	pending := make([]string, 0, len(files))
 	for _, file := range files {
-		key, err := normalizeCompletedFile(file, j.IngestDir)
+		ingestDirBase, fileBase, err := normalizeCompletedFile(file, j.IngestDir)
 		if err != nil {
 			return nil, err
 		}
-		if _, ok := completed[key]; ok {
+		if containsCompletedFile(j.CompletedFiles, ingestDirBase, fileBase) {
 			continue
 		}
 		pending = append(pending, file)
@@ -206,7 +209,12 @@ func (j *Journal) close(f *os.File) error {
 
 // write encodes the journal to JSON and writes it to the provided file.
 func (j *Journal) write(f *os.File) error {
-	buf, err := json.MarshalIndent(*j, "", "  ")
+	buf, err := json.MarshalIndent(journalJSON{
+		Cwds:             j.Cwds,
+		Cmds:             j.Cmds,
+		JobConfiguration: j.JobConfiguration,
+		CompletedFiles:   j.CompletedFiles,
+	}, "", "  ")
 	if err != nil {
 		return fmt.Errorf("cannot translate journal to json: %w", err)
 	}
@@ -227,13 +235,28 @@ func (j *Journal) writeAndClose(f *os.File) error {
 }
 
 // normalize restores the CompletedFiles invariant after loading JSON:
-// every entry must be stored as "basename(ingestDir)/basename(file)".
+// every entry must be stored as CompletedFiles[ingestDirBase][fileBase].
 func (j *Journal) normalize() error {
-	normalized, err := normalizeCompletedFiles(j.CompletedFiles, "")
-	if err != nil {
-		return err
+	if j.CompletedFiles == nil {
+		j.CompletedFiles = map[string]map[string]struct{}{}
+		return nil
 	}
-	j.CompletedFiles = normalized
+
+	for ingestDirBase, files := range j.CompletedFiles {
+		if ingestDirBase == "" {
+			return fmt.Errorf("empty ingest directory key in completed files")
+		}
+		if files == nil {
+			j.CompletedFiles[ingestDirBase] = map[string]struct{}{}
+			continue
+		}
+		for fileBase := range files {
+			if fileBase == "" {
+				return fmt.Errorf("empty file key in completed files for ingest dir %q", ingestDirBase)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -243,10 +266,15 @@ func (j *Journal) read(f *os.File) error {
 	if err != nil {
 		return fmt.Errorf("cannot read journal file: %w", err)
 	}
-	err = json.Unmarshal(buff, j)
+	var raw journalJSON
+	err = json.Unmarshal(buff, &raw)
 	if err != nil {
 		return fmt.Errorf("journal file wrong format: %w", err)
 	}
+	j.Cwds = raw.Cwds
+	j.Cmds = raw.Cmds
+	j.JobConfiguration = raw.JobConfiguration
+	j.CompletedFiles = raw.CompletedFiles
 	if err := j.normalize(); err != nil {
 		return fmt.Errorf("journal file wrong format: %w", err)
 	}
@@ -261,60 +289,33 @@ func (j *Journal) readAndClose(f *os.File) error {
 	return j.close(f)
 }
 
-// sortCompactCompletedFiles keeps a slice of journal keys sorted by bundle name
-// and removes duplicates.
-func sortCompactCompletedFiles(files *[]string) error {
-	if err := util.SortByBundleName(*files); err != nil {
-		return err
+// addCompletedFile inserts a completed file into the nested set, creating the
+// ingest-dir bucket when needed.
+func addCompletedFile(completed map[string]map[string]struct{}, ingestDirBase, fileBase string) {
+	files, ok := completed[ingestDirBase]
+	if !ok {
+		files = map[string]struct{}{}
+		completed[ingestDirBase] = files
 	}
-	*files = slices.Compact(*files)
-	return nil
+	files[fileBase] = struct{}{}
 }
 
-// normalizeCompletedFiles converts a batch of file identifiers into normalized
-// journal keys and returns them sorted and deduplicated.
-func normalizeCompletedFiles(files []string, ingestDir string) ([]string, error) {
-	normalized := make([]string, len(files))
-	for i, file := range files {
-		key, err := normalizeCompletedFile(file, ingestDir)
-		if err != nil {
-			return nil, err
-		}
-		normalized[i] = key
+// containsCompletedFile reports whether the nested completed-files set already
+// contains the given ingest-dir and filename pair.
+func containsCompletedFile(completed map[string]map[string]struct{}, ingestDirBase, fileBase string) bool {
+	files, ok := completed[ingestDirBase]
+	if !ok {
+		return false
 	}
-	if err := sortCompactCompletedFiles(&normalized); err != nil {
-		return nil, err
-	}
-	return normalized, nil
+	_, ok = files[fileBase]
+	return ok
 }
 
-// normalizeCompletedFile converts either a current-run file path or a stored
-// journal entry into the canonical "ingest-dir-basename/file-basename" key.
-func normalizeCompletedFile(file string, ingestDir string) (string, error) {
-	if ingestDir != "" {
-		return filepath.Join(filepath.Base(filepath.Clean(ingestDir)), filepath.Base(file)), nil
+// normalizeCompletedFile converts a current-run file path into the canonical
+// ingest-dir and filename pair.
+func normalizeCompletedFile(file string, ingestDir string) (string, string, error) {
+	if ingestDir == "" {
+		return "", "", fmt.Errorf("cannot normalize completed file %q without ingest directory", file)
 	}
-
-	file = filepath.Clean(file)
-	dir := filepath.Dir(file)
-	if dir == "." {
-		return "", fmt.Errorf("cannot normalize completed file %q", file)
-	}
-
-	// Already normalized: "ingest-dir-basename/filename".
-	parent := filepath.Dir(dir)
-	if parent == "." {
-		return filepath.Join(filepath.Base(dir), filepath.Base(file)), nil
-	}
-
-	// Legacy entries store full paths. For files in "bundled/", the ingest dir
-	// is the parent of "bundled"; otherwise it is the direct parent directory.
-	ingestDirBase := filepath.Base(dir)
-	if ingestDirBase == "bundled" {
-		ingestDirBase = filepath.Base(parent)
-	}
-	if ingestDirBase == "." || ingestDirBase == string(filepath.Separator) || ingestDirBase == "" {
-		return "", fmt.Errorf("cannot normalize completed file %q", file)
-	}
-	return filepath.Join(ingestDirBase, filepath.Base(file)), nil
+	return filepath.Base(filepath.Clean(ingestDir)), filepath.Base(file), nil
 }
