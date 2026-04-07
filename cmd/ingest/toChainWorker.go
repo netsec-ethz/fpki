@@ -73,6 +73,7 @@ func (w *lineToChainWorker) parseLine(p *Processor, line *line) (*certChain, err
 	}
 
 	// Regardless of whether we skip it or not, we processed one more cert.
+	p.Manager.Stats.ReadRows.Add(1)
 	p.Manager.Stats.ReadCerts.Add(1)
 
 	if w.now.After(time.Unix(n, 0)) {

@@ -208,7 +208,8 @@ func mainFunction() error {
 func printStats(s *updater.Stats) {
 	readFiles := s.TotalFilesRead.Load()
 	totalFiles := s.TotalFiles.Load()
-	totalCerts := s.TotalCerts.Load()
+	totalRows := s.TotalRows.Load()
+	readRows := s.ReadRows.Load()
 
 	readCerts := s.ReadCerts.Load()
 	readBytes := s.ReadBytes.Load()
@@ -219,20 +220,28 @@ func printStats(s *updater.Stats) {
 	expiredCerts := s.ExpiredCerts.Load()
 	secondsSinceStart := float64(time.Since(s.CreateTime).Seconds())
 
-	msg := fmt.Sprintf("%d/%d Files read. %d certs read [%.2f%%], %d written. %.0f certs/s "+
-		"(%.0f%% uncached, %.0f%% expired), %.1f | %.1f Mb/s r|w                    ",
+	msg := fmt.Sprintf("%d/%d Files read. %d/%d rows read [%.2f%%], %d cert payloads read, %d written. %.0f certs/s "+
+		"(%.0f%% uncached payloads, %.0f%% expired rows), %.1f | %.1f Mb/s r|w                    ",
 		readFiles, totalFiles,
+		readRows, totalRows,
+		safeDivide(float64(readRows)*100, float64(totalRows)),
 		readCerts,
-		float64(readCerts)*100./float64(totalCerts),
 		writtenCerts,
-		float64(readCerts)/secondsSinceStart,
-		float64(uncachedCerts)*100./float64(readCerts),
-		float64(expiredCerts)*100./float64(readCerts),
-		float64(readBytes)/1024./1024./secondsSinceStart,
-		float64(writtenBytes)/1024./1024./secondsSinceStart,
+		safeDivide(float64(readCerts), secondsSinceStart),
+		safeDivide(float64(uncachedCerts)*100, float64(readCerts)),
+		safeDivide(float64(expiredCerts)*100, float64(readRows)),
+		safeDivide(float64(readBytes)/1024/1024, secondsSinceStart),
+		safeDivide(float64(writtenBytes)/1024/1024, secondsSinceStart),
 	)
 
 	fmt.Fprintf(os.Stderr, "%s\r", msg)
+}
+
+func safeDivide(numerator, denominator float64) float64 {
+	if denominator <= 0 {
+		return 0
+	}
+	return numerator / denominator
 }
 
 func configFromFlags() RunConfig {

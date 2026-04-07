@@ -19,7 +19,10 @@ type Stats struct {
 	TotalFiles     atomic.Int64
 	TotalFilesRead atomic.Int64
 
-	TotalCerts atomic.Int64 // estimated from filenames.
+	TotalRows atomic.Int64 // estimated from filenames.
+	ReadRows  atomic.Int64 // CSV rows processed.
+
+	TotalCerts atomic.Int64 // certificate payloads expected/read, not CSV rows.
 
 	updateFreq  time.Duration
 	updateFunc  func(*Stats)
