@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"runtime"
@@ -30,6 +31,7 @@ type RunConfig struct {
 type JournalStore interface {
 	PendingFiles() ([]string, error)
 	AddCompletedFiles([]string) error
+	Close() error
 }
 
 // RunDependencies collects all necessary functions to effectively run ingest.
@@ -62,6 +64,13 @@ func runIngest(cfg RunConfig, deps RunDependencies) error {
 	if err := cfg.validate(); err != nil {
 		return err
 	}
+	return runIngestContext(context.Background(), cfg, deps)
+}
+
+func runIngestContext(ctx context.Context, cfg RunConfig, deps RunDependencies) error {
+	if err := cfg.validate(); err != nil {
+		return err
+	}
 
 	jobCfg, err := cfg.JobConfiguration()
 	if err != nil {
@@ -74,6 +83,10 @@ func runIngest(cfg RunConfig, deps RunDependencies) error {
 	if err != nil {
 		return err
 	}
+	// Ensure the journal is always flushed.
+	defer j.Close()
+
+	// TODO: use context in all processing functions, e.g. coalesce,updateSMT.
 
 	coalesce := deps.Coalesce
 	if coalesce == nil {
@@ -85,10 +98,16 @@ func runIngest(cfg RunConfig, deps RunDependencies) error {
 	}
 
 	if !jobCfg.IngestFiles {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if jobCfg.Coalesce {
 			if err := coalesce(); err != nil {
 				return err
 			}
+		}
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 		if jobCfg.UpdateSMT {
 			if err := updateSMT(); err != nil {
@@ -111,6 +130,7 @@ func runIngest(cfg RunConfig, deps RunDependencies) error {
 	}
 
 	return ingestFilesInBatches(
+		ctx,
 		j,
 		stats,
 		cfg.FileBatch,
@@ -136,6 +156,7 @@ func runIngest(cfg RunConfig, deps RunDependencies) error {
 }
 
 func ingestFilesInBatches(
+	ctx context.Context,
 	j JournalStore,
 	stats *updater.Stats,
 	fileBatchSize int,
@@ -143,6 +164,10 @@ func ingestFilesInBatches(
 	beforeBatch func(batchNum, batchCount int) error,
 	forEachBatch func([]string) error,
 ) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	if estimateCertCount == nil {
 		estimateCertCount = util.EstimateCertCount
 	}
@@ -156,6 +181,9 @@ func ingestFilesInBatches(
 		stats.TotalFiles.Store(int64(len(allFilenames)))
 		stats.TotalRows.Store(0)
 		for _, fileName := range allFilenames {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			n, err := estimateCertCount(fileName)
 			if err != nil {
 				return err
@@ -176,6 +204,9 @@ func ingestFilesInBatches(
 	batchCount := ((len(allFilenames) - 1) / fileBatchSize) + 1
 
 	for i := 0; i < len(allFilenames); i += fileBatchSize {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if beforeBatch != nil {
 			if err := beforeBatch(i/fileBatchSize+1, batchCount); err != nil {
 				return err

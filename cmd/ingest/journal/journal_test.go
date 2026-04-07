@@ -275,6 +275,21 @@ func TestWritePersistsNestedCompletedFilesJSON(t *testing.T) {
 	require.Equal(t, normalizedCSVSet(0, 2), completed)
 }
 
+func TestClosePersistsAndIsIdempotent(t *testing.T) {
+	journalFile := filepath.Join(t.TempDir(), "journal.json")
+	j, err := NewJournal(journalFile, testJobConfig(t), csvPath)
+	require.NoError(t, err)
+
+	addCompletedFile(j.CompletedFiles, "testdata", "0-99999.gz")
+
+	require.NoError(t, j.Close())
+	require.NoError(t, j.Close())
+
+	reopened, err := NewJournal(journalFile, testJobConfig(t), csvPath)
+	require.NoError(t, err)
+	require.Equal(t, normalizedCSVSet(0), reopened.CompletedFiles)
+}
+
 // TestPendingFilesUsesFreshDirectoryListing verifies that PendingFiles always
 // reflects the current filesystem contents rather than a cached listing.
 func TestPendingFilesUsesFreshDirectoryListing(t *testing.T) {

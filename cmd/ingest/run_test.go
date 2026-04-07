@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"slices"
@@ -137,6 +138,20 @@ func TestRunIngestMissingDirectoryReturnsError(t *testing.T) {
 	err := runIngest(cfg, newTestDeps(t, &runOrder, &coalesceCount, &updateCount, 0))
 	require.Error(t, err)
 	require.ErrorIs(t, err, os.ErrNotExist)
+	require.Empty(t, runOrder)
+}
+
+func TestRunIngestContextCancelledBeforeBatch(t *testing.T) {
+	dir, _ := makeIngestTestFiles(t)
+	cfg := newTestRunConfig(dir, filepath.Join(t.TempDir(), "journal.json"), 1, "onlyingest")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	var runOrder [][]string
+	var coalesceCount, updateCount int
+	err := runIngestContext(ctx, cfg, newTestDeps(t, &runOrder, &coalesceCount, &updateCount, 0))
+	require.ErrorIs(t, err, context.Canceled)
 	require.Empty(t, runOrder)
 }
 
