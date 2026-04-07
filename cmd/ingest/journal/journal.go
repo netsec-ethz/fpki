@@ -37,19 +37,6 @@ type Job struct {
 	JobConfiguration JobConfiguration `json:"JobConfiguration"`
 }
 
-type journalJSON struct {
-	Jobs             []Job                          `json:"Jobs"`
-	Cwds             []string                       `json:"Cwds"`
-	Cmds             [][]string                     `json:"Cmds"`
-	JobConfiguration JobConfiguration               `json:"JobConfiguration"`
-	CompletedFiles   map[string]map[string]struct{} `json:"CompletedFiles"`
-}
-
-type journalWriteJSON struct {
-	Jobs           []Job                          `json:"Jobs"`
-	CompletedFiles map[string]map[string]struct{} `json:"CompletedFiles"`
-}
-
 // NewJobConfiguration translates the ingest strategy flags into the journal's
 // execution configuration.
 func NewJobConfiguration(strategy string, fileBatch int) (JobConfiguration, error) {
@@ -255,10 +242,7 @@ func closeFile(f *os.File) error {
 
 // write encodes the journal to JSON and writes it to the provided file.
 func (j *Journal) write(f *os.File) error {
-	buf, err := json.MarshalIndent(journalWriteJSON{
-		Jobs:           j.Jobs,
-		CompletedFiles: j.CompletedFiles,
-	}, "", "  ")
+	buf, err := json.MarshalIndent(j, "", "  ")
 	if err != nil {
 		return fmt.Errorf("cannot translate journal to json: %w", err)
 	}
@@ -344,38 +328,17 @@ func (j *Journal) read(f *os.File) error {
 	if err != nil {
 		return fmt.Errorf("cannot read journal file: %w", err)
 	}
-	var raw journalJSON
+	var raw Journal
 	err = json.Unmarshal(buff, &raw)
 	if err != nil {
 		return fmt.Errorf("journal file wrong format: %w", err)
 	}
 	j.CompletedFiles = raw.CompletedFiles
 	j.Jobs = raw.Jobs
-	if len(j.Jobs) == 0 && (len(raw.Cwds) > 0 || len(raw.Cmds) > 0) {
-		j.Jobs = upgradeLegacyJobs(raw.Cwds, raw.Cmds, raw.JobConfiguration)
-	}
 	if err := j.normalize(); err != nil {
 		return fmt.Errorf("journal file wrong format: %w", err)
 	}
 	return nil
-}
-
-func upgradeLegacyJobs(cwds []string, cmds [][]string, cfg JobConfiguration) []Job {
-	n := max(len(cwds), len(cmds))
-	jobs := make([]Job, 0, n)
-	for i := 0; i < n; i++ {
-		job := Job{
-			JobConfiguration: cfg,
-		}
-		if i < len(cwds) {
-			job.Cwd = cwds[i]
-		}
-		if i < len(cmds) {
-			job.Cmd = slices.Clone(cmds[i])
-		}
-		jobs = append(jobs, job)
-	}
-	return jobs
 }
 
 // readAndClose reads the journal from disk and then closes the file handle.

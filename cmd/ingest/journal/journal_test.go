@@ -301,41 +301,6 @@ func TestWritePersistsJobsJSON(t *testing.T) {
 	require.False(t, hasJobConfig)
 }
 
-func TestNewJournalReadsLegacyJobMetadataOnRead(t *testing.T) {
-	journalFile := filepath.Join(t.TempDir(), "journal.json")
-	cfg := testJobConfig(t)
-	raw := map[string]any{
-		"Cwds": []string{"/tmp/one", "/tmp/two"},
-		"Cmds": [][]string{
-			{"ingest", "--first"},
-			{"ingest", "--second"},
-		},
-		"JobConfiguration": cfg,
-		"CompletedFiles":   map[string]map[string]struct{}{},
-	}
-	buf, err := json.Marshal(raw)
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(journalFile, buf, 0o644))
-
-	j, err := NewJournal(journalFile, cfg, csvPath)
-	require.NoError(t, err)
-
-	require.Len(t, j.Jobs, 3)
-	require.Equal(t, Job{
-		Cwd:              "/tmp/one",
-		Cmd:              []string{"ingest", "--first"},
-		JobConfiguration: cfg,
-	}, j.Jobs[0])
-	require.Equal(t, Job{
-		Cwd:              "/tmp/two",
-		Cmd:              []string{"ingest", "--second"},
-		JobConfiguration: cfg,
-	}, j.Jobs[1])
-	require.NotEmpty(t, j.Jobs[2].Cwd)
-	require.NotEmpty(t, j.Jobs[2].Cmd)
-	require.Equal(t, cfg, j.Jobs[2].JobConfiguration)
-}
-
 func TestClosePersistsAndIsIdempotent(t *testing.T) {
 	journalFile := filepath.Join(t.TempDir(), "journal.json")
 	j, err := NewJournal(journalFile, testJobConfig(t), csvPath)
