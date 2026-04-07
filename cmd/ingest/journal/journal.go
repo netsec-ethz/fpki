@@ -7,13 +7,17 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
+// Journal persists ingest progress so future runs can skip files whose
+// certificate-index ranges are already fully covered.
 type Journal struct {
 	mu          sync.Mutex
 	closed      bool
@@ -24,9 +28,11 @@ type Journal struct {
 	// persisted job history may contain entries from earlier invocations.
 	CurrentJob     Job `json:"-"`
 	Jobs           []Job
-	CompletedFiles map[string]map[string]struct{}
+	CompletedFiles map[string][]Interval
 }
 
+// JobConfiguration captures the ingest-mode settings that affect how one run
+// should be executed and resumed.
 type JobConfiguration struct {
 	IngestFiles bool
 	Coalesce    bool
@@ -37,11 +43,20 @@ type JobConfiguration struct {
 	IncludePlainCSVs bool
 }
 
+// Job records one invocation of the ingest command in the journal history.
 type Job struct {
 	Cwd              string           `json:"Cwd"`
 	Cmd              []string         `json:"Cmd"`
 	JobConfiguration JobConfiguration `json:"JobConfiguration"`
 }
+
+// Interval represents an inclusive range of certificate indices.
+type Interval struct {
+	Start uint
+	End   uint
+}
+
+var completedIntervalPattern = regexp.MustCompile(`^(\d+)-(\d+)$`)
 
 // NewJobConfiguration translates the ingest strategy flags into the journal's
 // execution configuration, including whether plain `.csv` bundles should be
@@ -74,7 +89,7 @@ func NewJournal(journalFile string, cfg JobConfiguration, ingestDir string) (*Jo
 	j := &Journal{
 		JournalFile:    journalFile,
 		IngestDir:      ingestDir,
-		CompletedFiles: map[string]map[string]struct{}{},
+		CompletedFiles: map[string][]Interval{},
 	}
 
 	// Check if file exists.
@@ -107,9 +122,9 @@ func NewJournal(journalFile string, cfg JobConfiguration, ingestDir string) (*Jo
 	return j, nil
 }
 
-// AddCompletedFiles adds the file names to the set of completed files.
-// The function normalizes them into ingest-dir and filename keys and inserts
-// them into the nested completed-files set.
+// AddCompletedFiles adds the file names to the set of completed intervals.
+// The function normalizes them into ingest-dir and interval keys and merges
+// them into the nested completed-interval slices.
 func (j *Journal) AddCompletedFiles(files []string) error {
 	j.mu.Lock()
 	defer j.mu.Unlock()
@@ -119,18 +134,19 @@ func (j *Journal) AddCompletedFiles(files []string) error {
 	}
 
 	for _, file := range files {
-		ingestDirBase, fileBase, err := normalizeCompletedFile(file, j.IngestDir)
+		ingestDirBase, interval, err := normalizeCompletedFile(file, j.IngestDir)
 		if err != nil {
 			return err
 		}
-		addCompletedFile(j.CompletedFiles, ingestDirBase, fileBase)
+		addCompletedInterval(j.CompletedFiles, ingestDirBase, interval)
 	}
 	return j.writeLocked()
 }
 
 // PendingFiles returns the set subtraction LiveDirectoryListing - CompletedFiles.
-// CompletedFiles is expected to already contain only normalized ingest-dir and
-// filename keys, so live files are normalized on the fly before membership is checked.
+// CompletedFiles is expected to already contain normalized ingest-dir and
+// interval coverage, so live files are normalized on the fly before coverage
+// is checked.
 func (j *Journal) PendingFiles() ([]string, error) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
@@ -146,11 +162,11 @@ func (j *Journal) PendingFiles() ([]string, error) {
 
 	pending := make([]string, 0, len(files))
 	for _, file := range files {
-		ingestDirBase, fileBase, err := normalizeCompletedFile(file, j.IngestDir)
+		ingestDirBase, interval, err := normalizeCompletedFile(file, j.IngestDir)
 		if err != nil {
 			return nil, err
 		}
-		if containsCompletedFile(j.CompletedFiles, ingestDirBase, fileBase) {
+		if containsCompletedInterval(j.CompletedFiles, ingestDirBase, interval) {
 			continue
 		}
 		pending = append(pending, file)
@@ -270,6 +286,7 @@ func (j *Journal) write(f *os.File) error {
 	return nil
 }
 
+// writeLocked atomically rewrites the journal file while the journal mutex is held.
 func (j *Journal) writeLocked() error {
 	dir := filepath.Dir(j.JournalFile)
 	tempFile, err := os.CreateTemp(dir, filepath.Base(j.JournalFile)+".tmp-*")
@@ -306,6 +323,7 @@ func (j *Journal) writeLocked() error {
 	return nil
 }
 
+// registerShutdownHook ensures the journal is flushed during global process shutdown.
 func (j *Journal) registerShutdownHook() {
 	j.closeOnce.Do(func() {
 		util.RegisterShutdownFunc(j.Close)
@@ -313,26 +331,30 @@ func (j *Journal) registerShutdownHook() {
 }
 
 // normalize restores the CompletedFiles invariant after loading JSON:
-// every entry must be stored as CompletedFiles[ingestDirBase][fileBase].
+// every entry must be stored as CompletedFiles[ingestDirBase] as a sorted,
+// non-overlapping, minimal interval list.
 func (j *Journal) normalize() error {
 	if j.CompletedFiles == nil {
-		j.CompletedFiles = map[string]map[string]struct{}{}
+		j.CompletedFiles = map[string][]Interval{}
 		return nil
 	}
 
-	for ingestDirBase, files := range j.CompletedFiles {
+	for ingestDirBase, intervals := range j.CompletedFiles {
 		if ingestDirBase == "" {
 			return fmt.Errorf("empty ingest directory key in completed files")
 		}
-		if files == nil {
-			j.CompletedFiles[ingestDirBase] = map[string]struct{}{}
+		if intervals == nil {
+			j.CompletedFiles[ingestDirBase] = []Interval{}
 			continue
 		}
-		for fileBase := range files {
-			if fileBase == "" {
-				return fmt.Errorf("empty file key in completed files for ingest dir %q", ingestDirBase)
+		normalized := make([]Interval, 0, len(intervals))
+		for _, interval := range intervals {
+			if interval.Start > interval.End {
+				return fmt.Errorf("invalid interval %s for ingest dir %q", interval.String(), ingestDirBase)
 			}
+			normalized = appendInterval(normalized, interval)
 		}
+		j.CompletedFiles[ingestDirBase] = normalized
 	}
 
 	return nil
@@ -344,13 +366,20 @@ func (j *Journal) read(f *os.File) error {
 	if err != nil {
 		return fmt.Errorf("cannot read journal file: %w", err)
 	}
-	var raw Journal
+	var raw struct {
+		Jobs           []Job           `json:"Jobs"`
+		CompletedFiles json.RawMessage `json:"CompletedFiles"`
+	}
 	err = json.Unmarshal(buff, &raw)
 	if err != nil {
 		return fmt.Errorf("journal file wrong format: %w", err)
 	}
-	j.CompletedFiles = raw.CompletedFiles
 	j.Jobs = raw.Jobs
+	completedFiles, err := decodeCompletedFiles(raw.CompletedFiles)
+	if err != nil {
+		return fmt.Errorf("journal file wrong format: %w", err)
+	}
+	j.CompletedFiles = completedFiles
 	if err := j.normalize(); err != nil {
 		return fmt.Errorf("journal file wrong format: %w", err)
 	}
@@ -365,35 +394,211 @@ func (j *Journal) readAndClose(f *os.File) error {
 	return closeFile(f)
 }
 
-// addCompletedFile inserts a completed file into the nested set, creating the
-// ingest-dir bucket when needed.
-func addCompletedFile(completed map[string]map[string]struct{}, ingestDirBase, fileBase string) {
-	files, ok := completed[ingestDirBase]
-	if !ok {
-		files = map[string]struct{}{}
-		completed[ingestDirBase] = files
+// decodeCompletedFiles accepts both the current interval-array encoding and the
+// legacy filename-set encoding, returning normalized interval coverage.
+func decodeCompletedFiles(raw json.RawMessage) (map[string][]Interval, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return map[string][]Interval{}, nil
 	}
-	files[fileBase] = struct{}{}
+
+	var newFormat map[string][]string
+	if err := json.Unmarshal(raw, &newFormat); err == nil {
+		completed := make(map[string][]Interval, len(newFormat))
+		for ingestDirBase, encodedIntervals := range newFormat {
+			intervals := make([]Interval, 0, len(encodedIntervals))
+			for _, encoded := range encodedIntervals {
+				interval, err := parseIntervalString(encoded)
+				if err != nil {
+					return nil, err
+				}
+				intervals = append(intervals, interval)
+			}
+			completed[ingestDirBase] = intervals
+		}
+		return completed, nil
+	}
+
+	var legacyFormat map[string]map[string]struct{}
+	if err := json.Unmarshal(raw, &legacyFormat); err == nil {
+		completed := make(map[string][]Interval, len(legacyFormat))
+		for ingestDirBase, files := range legacyFormat {
+			for fileBase := range files {
+				interval, err := parseFileInterval(fileBase)
+				if err != nil {
+					return nil, err
+				}
+				addCompletedInterval(completed, ingestDirBase, interval)
+			}
+		}
+		return completed, nil
+	}
+
+	return nil, fmt.Errorf("unsupported completed files encoding")
 }
 
-// containsCompletedFile reports whether the nested completed-files set already
-// contains the given ingest-dir and filename pair.
-func containsCompletedFile(completed map[string]map[string]struct{}, ingestDirBase, fileBase string) bool {
-	files, ok := completed[ingestDirBase]
+// journalOnDisk is the persisted JSON shape for journal state.
+type journalOnDisk struct {
+	Jobs           []Job               `json:"Jobs"`
+	CompletedFiles map[string][]string `json:"CompletedFiles"`
+}
+
+// MarshalJSON serializes the in-memory interval representation into the
+// human-readable on-disk string-array format.
+func (j *Journal) MarshalJSON() ([]byte, error) {
+	onDisk := journalOnDisk{
+		Jobs:           j.Jobs,
+		CompletedFiles: make(map[string][]string, len(j.CompletedFiles)),
+	}
+	for ingestDirBase, intervals := range j.CompletedFiles {
+		encoded := make([]string, len(intervals))
+		for i, interval := range intervals {
+			encoded[i] = interval.String()
+		}
+		onDisk.CompletedFiles[ingestDirBase] = encoded
+	}
+	return json.Marshal(onDisk)
+}
+
+// addCompletedInterval inserts a completed interval into the nested set,
+// creating the ingest-dir bucket when needed.
+func addCompletedInterval(completed map[string][]Interval, ingestDirBase string, interval Interval) {
+	intervals, ok := completed[ingestDirBase]
+	if !ok {
+		intervals = []Interval{}
+	}
+	completed[ingestDirBase] = appendInterval(intervals, interval)
+}
+
+// appendInterval inserts one interval into an existing sorted interval list,
+// merging overlaps and adjacencies to preserve a minimal canonical form.
+func appendInterval(intervals []Interval, interval Interval) []Interval {
+	// Find the insertion point by interval start. Because the slice is kept
+	// sorted, only the interval immediately before the insertion point and any
+	// intervals starting at or after it can possibly merge with the new range.
+	idx, _ := slices.BinarySearchFunc(intervals, interval, func(existing, target Interval) int {
+		switch {
+		case existing.Start < target.Start:
+			return -1
+		case existing.Start > target.Start:
+			return 1
+		default:
+			return 0
+		}
+	})
+
+	// First absorb a predecessor if it overlaps with or directly touches the
+	// new interval. This may shift the insertion point left by one slot.
+	if idx > 0 && canMerge(intervals[idx-1], interval) {
+		idx--
+		interval = mergeIntervals(intervals[idx], interval)
+		intervals = append(intervals[:idx], intervals[idx+1:]...)
+	}
+	// Then keep consuming following intervals for as long as the merged range
+	// still overlaps or touches them, yielding one minimal interval in the end.
+	for idx < len(intervals) && canMerge(interval, intervals[idx]) {
+		interval = mergeIntervals(interval, intervals[idx])
+		intervals = append(intervals[:idx], intervals[idx+1:]...)
+	}
+
+	// Reinsert the final merged interval at the computed position while
+	// preserving sort order.
+	intervals = append(intervals, Interval{})
+	copy(intervals[idx+1:], intervals[idx:])
+	intervals[idx] = interval
+	return intervals
+}
+
+// canMerge reports whether two inclusive intervals overlap or touch.
+func canMerge(a, b Interval) bool {
+	return a.Start <= b.End+1 && b.Start <= a.End+1
+}
+
+// mergeIntervals returns the smallest interval covering both inputs.
+func mergeIntervals(a, b Interval) Interval {
+	return Interval{
+		Start: min(a.Start, b.Start),
+		End:   max(a.End, b.End),
+	}
+}
+
+// containsCompletedInterval reports whether the nested completed interval set
+// fully covers the given ingest-dir and interval pair.
+func containsCompletedInterval(completed map[string][]Interval, ingestDirBase string, interval Interval) bool {
+	intervals, ok := completed[ingestDirBase]
 	if !ok {
 		return false
 	}
-	_, ok = files[fileBase]
-	return ok
+	idx, found := slices.BinarySearchFunc(intervals, interval, func(existing, target Interval) int {
+		switch {
+		case existing.Start < target.Start:
+			return -1
+		case existing.Start > target.Start:
+			return 1
+		default:
+			return 0
+		}
+	})
+	if found {
+		return intervals[idx].End >= interval.End
+	}
+	if idx == 0 {
+		return false
+	}
+	candidate := intervals[idx-1]
+	return candidate.Start <= interval.Start && candidate.End >= interval.End
 }
 
 // normalizeCompletedFile converts a current-run file path into the canonical
-// ingest-dir and filename pair.
-func normalizeCompletedFile(file string, ingestDir string) (string, string, error) {
+// ingest-dir and interval pair.
+func normalizeCompletedFile(file string, ingestDir string) (string, Interval, error) {
 	if ingestDir == "" {
-		return "", "", fmt.Errorf("cannot normalize completed file %q without ingest directory", file)
+		return "", Interval{}, fmt.Errorf("cannot normalize completed file %q without ingest directory", file)
 	}
-	return filepath.Base(filepath.Clean(ingestDir)), filepath.Base(file), nil
+	interval, err := parseFileInterval(file)
+	if err != nil {
+		return "", Interval{}, err
+	}
+	return filepath.Base(filepath.Clean(ingestDir)), interval, nil
+}
+
+// parseFileInterval extracts an inclusive interval from a bundle filename such
+// as `A-B.gz` or `A-B.csv`.
+func parseFileInterval(file string) (Interval, error) {
+	filename := filepath.Base(file)
+	if ext := filepath.Ext(filename); ext == ".gz" || ext == ".csv" {
+		filename = filename[:len(filename)-len(ext)]
+	}
+	interval, err := parseIntervalString(filename)
+	if err != nil {
+		return Interval{}, fmt.Errorf("cannot parse completed file %q: %w", file, err)
+	}
+	return interval, nil
+}
+
+// parseIntervalString parses the persisted `A-B` interval encoding.
+func parseIntervalString(value string) (Interval, error) {
+	groups := completedIntervalPattern.FindStringSubmatch(value)
+	if len(groups) != 3 {
+		return Interval{}, fmt.Errorf("unexpected interval %q", value)
+	}
+	start, err := strconv.ParseUint(groups[1], 10, 64)
+	if err != nil {
+		return Interval{}, fmt.Errorf("unexpected interval %q", value)
+	}
+	end, err := strconv.ParseUint(groups[2], 10, 64)
+	if err != nil {
+		return Interval{}, fmt.Errorf("unexpected interval %q", value)
+	}
+	interval := Interval{Start: uint(start), End: uint(end)}
+	if interval.Start > interval.End {
+		return Interval{}, fmt.Errorf("unexpected interval %q", value)
+	}
+	return interval, nil
+}
+
+// String formats the interval using the persisted inclusive `A-B` form.
+func (i Interval) String() string {
+	return fmt.Sprintf("%d-%d", i.Start, i.End)
 }
 
 // syncDirAfterRename is a NOOP (read comment inside the function).

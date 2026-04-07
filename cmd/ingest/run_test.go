@@ -29,13 +29,9 @@ func TestRunIngestFreshJournalPersistsProgress(t *testing.T) {
 	require.Zero(t, updateCount)
 
 	j := loadJournalForTest(t, cfg)
-	require.Equal(t, map[string]map[string]struct{}{
-		ingestTestBase: {
-			"0-9.gz":   {},
-			"10-19.gz": {},
-			"20-29.gz": {},
-		},
-	}, j.CompletedFiles)
+	require.Equal(t, completedIngestTestIntervals(
+		journal.Interval{Start: 0, End: 29},
+	), j.CompletedFiles)
 	pending, err := j.PendingFiles()
 	require.NoError(t, err)
 	require.Empty(t, pending)
@@ -56,13 +52,9 @@ func TestRunIngestResumesFromExistingJournal(t *testing.T) {
 	require.Equal(t, [][]string{{files[1]}, {files[2]}}, runOrder)
 
 	j = loadJournalForTest(t, cfg)
-	require.Equal(t, map[string]map[string]struct{}{
-		ingestTestBase: {
-			"0-9.gz":   {},
-			"10-19.gz": {},
-			"20-29.gz": {},
-		},
-	}, j.CompletedFiles)
+	require.Equal(t, completedIngestTestIntervals(
+		journal.Interval{Start: 0, End: 29},
+	), j.CompletedFiles)
 }
 
 func TestRunIngestSkipsWhenAlreadyComplete(t *testing.T) {
@@ -103,11 +95,9 @@ func TestRunIngestFailedBatchDoesNotAdvanceJournal(t *testing.T) {
 	require.Equal(t, 1, updateCount)
 
 	j := loadJournalForTest(t, cfg)
-	require.Equal(t, map[string]map[string]struct{}{
-		ingestTestBase: {
-			"0-9.gz": {},
-		},
-	}, j.CompletedFiles)
+	require.Equal(t, completedIngestTestIntervals(
+		journal.Interval{Start: 0, End: 9},
+	), j.CompletedFiles)
 	pending, err := j.PendingFiles()
 	require.NoError(t, err)
 	require.Equal(t, files[1:], pending)
@@ -260,4 +250,10 @@ func loadJournalForTest(t *testing.T, cfg RunConfig) *journal.Journal {
 	j, err := journal.NewJournal(cfg.JournalFile, jobCfg, cfg.Directory)
 	require.NoError(t, err)
 	return j
+}
+
+func completedIngestTestIntervals(intervals ...journal.Interval) map[string][]journal.Interval {
+	return map[string][]journal.Interval{
+		ingestTestBase: intervals,
+	}
 }
