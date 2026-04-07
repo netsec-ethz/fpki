@@ -394,8 +394,7 @@ func (j *Journal) readAndClose(f *os.File) error {
 	return closeFile(f)
 }
 
-// decodeCompletedFiles accepts both the current interval-array encoding and the
-// legacy filename-set encoding, returning normalized interval coverage.
+// decodeCompletedFiles decodes the current interval-array encoding used on disk.
 func decodeCompletedFiles(raw json.RawMessage) (map[string][]Interval, error) {
 	if len(raw) == 0 || string(raw) == "null" {
 		return map[string][]Interval{}, nil
@@ -414,21 +413,6 @@ func decodeCompletedFiles(raw json.RawMessage) (map[string][]Interval, error) {
 				intervals = append(intervals, interval)
 			}
 			completed[ingestDirBase] = intervals
-		}
-		return completed, nil
-	}
-
-	var legacyFormat map[string]map[string]struct{}
-	if err := json.Unmarshal(raw, &legacyFormat); err == nil {
-		completed := make(map[string][]Interval, len(legacyFormat))
-		for ingestDirBase, files := range legacyFormat {
-			for fileBase := range files {
-				interval, err := parseFileInterval(fileBase)
-				if err != nil {
-					return nil, err
-				}
-				addCompletedInterval(completed, ingestDirBase, interval)
-			}
 		}
 		return completed, nil
 	}

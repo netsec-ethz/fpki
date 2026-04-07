@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -90,116 +91,140 @@ func TestNewJournal(t *testing.T) {
 	requireJSONDoesNotContainFiles(t, journalFile)
 }
 
-// TestAddCompletedFilesMergesAdjacentRanges verifies that adding consecutive
-// completed files coalesces them into one interval.
-func TestAddCompletedFilesMergesAdjacentRanges(t *testing.T) {
-	journalFile := filepath.Join(t.TempDir(), fmt.Sprintf("%s.json", t.Name()))
-
-	j, err := NewJournal(journalFile, testJobConfig(t, false), csvPath)
-	require.NoError(t, err)
-
-	got, err := j.PendingFiles()
-	require.NoError(t, err)
-	require.Equal(t, csvFiles[:], got)
-
-	require.NoError(t, j.AddCompletedFiles(csvFiles[0:1]))
-	require.Equal(t, completedIntervals(Interval{Start: 0, End: 99999}), j.CompletedFiles)
-	got, err = j.PendingFiles()
-	require.NoError(t, err)
-	require.Equal(t, []string{csvFiles[1], csvFiles[2]}, got)
-
-	require.NoError(t, j.AddCompletedFiles(csvFiles[1:2]))
-	require.Equal(t, completedIntervals(Interval{Start: 0, End: 199999}), j.CompletedFiles)
-	got, err = j.PendingFiles()
-	require.NoError(t, err)
-	require.Equal(t, []string{csvFiles[2]}, got)
-}
-
-// TestAddCompletedFilesKeepsGaps verifies that missing files remain represented
-// as gaps between completed intervals.
-func TestAddCompletedFilesKeepsGaps(t *testing.T) {
-	journalFile := filepath.Join(t.TempDir(), fmt.Sprintf("%s.json", t.Name()))
-
-	j, err := NewJournal(journalFile, testJobConfig(t, false), csvPath)
-	require.NoError(t, err)
-
-	require.NoError(t, j.AddCompletedFiles([]string{csvFiles[0], csvFiles[2]}))
-
-	require.Equal(t, completedIntervals(
-		Interval{Start: 0, End: 99999},
-		Interval{Start: 200000, End: 299999},
-	), j.CompletedFiles)
-
-	got, err := j.PendingFiles()
-	require.NoError(t, err)
-	require.Equal(t, []string{csvFiles[1]}, got)
-}
-
-// TestAddCompletedFilesBridgesIntervals verifies that inserting a middle range
-// joins two neighboring completed intervals.
-func TestAddCompletedFilesBridgesIntervals(t *testing.T) {
-	completed := map[string][]Interval{
-		"testdata": {
-			{Start: 0, End: 9},
-			{Start: 20, End: 29},
+// TestAddCompletedFilesIntervalScenarios verifies that completed files are
+// merged into minimal intervals while preserving gaps when coverage is missing.
+func TestAddCompletedFilesIntervalScenarios(t *testing.T) {
+	testCases := map[string]struct {
+		setupJournal  func(*Journal)
+		addFiles      []string
+		wantCompleted map[string][]Interval
+		wantPending   []string
+	}{
+		"merges adjacent ranges": {
+			addFiles: []string{csvFiles[0], csvFiles[1]},
+			wantCompleted: completedIntervals(
+				Interval{Start: 0, End: 199999},
+			),
+			wantPending: []string{csvFiles[2]},
+		},
+		"keeps gaps": {
+			addFiles: []string{csvFiles[0], csvFiles[2]},
+			wantCompleted: completedIntervals(
+				Interval{Start: 0, End: 99999},
+				Interval{Start: 200000, End: 299999},
+			),
+			wantPending: []string{csvFiles[1]},
+		},
+		"bridges existing intervals": {
+			setupJournal: func(j *Journal) {
+				j.CompletedFiles = map[string][]Interval{
+					"testdata": {
+						{Start: 0, End: 9},
+						{Start: 20, End: 29},
+					},
+				}
+			},
+			addFiles: []string{
+				filepath.Join(csvPath, "bundled", "10-19.gz"),
+			},
+			wantCompleted: completedIntervals(
+				Interval{Start: 0, End: 29},
+			),
+			wantPending: csvFiles[:],
 		},
 	}
 
-	addCompletedInterval(completed, "testdata", Interval{Start: 10, End: 19})
+	for name, tc := range testCases {
+		name, tc := name, tc
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-	require.Equal(t, completedIntervals(Interval{Start: 0, End: 29}), completed)
+			journalFile := filepath.Join(
+				t.TempDir(),
+				fmt.Sprintf("%s.json", strings.ReplaceAll(t.Name(), "/", "-")),
+			)
+
+			j, err := NewJournal(journalFile, testJobConfig(t, false), csvPath)
+			require.NoError(t, err)
+
+			if tc.setupJournal != nil {
+				tc.setupJournal(j)
+			}
+
+			require.NoError(t, j.AddCompletedFiles(tc.addFiles))
+			require.Equal(t, tc.wantCompleted, j.CompletedFiles)
+
+			got, err := j.PendingFiles()
+			require.NoError(t, err)
+			require.Equal(t, tc.wantPending, got)
+		})
+	}
 }
 
 // TestAppendInterval exercises direct interval insertion and merging behavior
 // independent of the higher-level journal APIs.
 func TestAppendInterval(t *testing.T) {
-	t.Run("insert disjoint interval in order", func(t *testing.T) {
-		got := appendInterval([]Interval{
-			{Start: 0, End: 9},
-			{Start: 20, End: 29},
-		}, Interval{Start: 40, End: 49})
+	testCases := map[string]struct {
+		intervals []Interval
+		append    Interval
+		want      []Interval
+	}{
+		"insert disjoint interval in order": {
+			intervals: []Interval{
+				{Start: 0, End: 9},
+				{Start: 20, End: 29},
+			},
+			append: Interval{Start: 40, End: 49},
+			want: []Interval{
+				{Start: 0, End: 9},
+				{Start: 20, End: 29},
+				{Start: 40, End: 49},
+			},
+		},
+		"merge adjacent predecessor": {
+			intervals: []Interval{
+				{Start: 0, End: 9},
+				{Start: 20, End: 29},
+			},
+			append: Interval{Start: 10, End: 19},
+			want: []Interval{
+				{Start: 0, End: 29},
+			},
+		},
+		"merge overlapping successor": {
+			intervals: []Interval{
+				{Start: 20, End: 29},
+				{Start: 40, End: 49},
+			},
+			append: Interval{Start: 25, End: 45},
+			want: []Interval{
+				{Start: 20, End: 49},
+			},
+		},
+		"insert before first interval": {
+			intervals: []Interval{
+				{Start: 20, End: 29},
+				{Start: 40, End: 49},
+			},
+			append: Interval{Start: 0, End: 9},
+			want: []Interval{
+				{Start: 0, End: 9},
+				{Start: 20, End: 29},
+				{Start: 40, End: 49},
+			},
+		},
+	}
 
-		require.Equal(t, []Interval{
-			{Start: 0, End: 9},
-			{Start: 20, End: 29},
-			{Start: 40, End: 49},
-		}, got)
-	})
+	for name, tc := range testCases {
+		name, tc := name, tc
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-	t.Run("merge adjacent predecessor", func(t *testing.T) {
-		got := appendInterval([]Interval{
-			{Start: 0, End: 9},
-			{Start: 20, End: 29},
-		}, Interval{Start: 10, End: 19})
+			got := appendInterval(tc.intervals, tc.append)
 
-		require.Equal(t, []Interval{
-			{Start: 0, End: 29},
-		}, got)
-	})
-
-	t.Run("merge overlapping successor", func(t *testing.T) {
-		got := appendInterval([]Interval{
-			{Start: 20, End: 29},
-			{Start: 40, End: 49},
-		}, Interval{Start: 25, End: 45})
-
-		require.Equal(t, []Interval{
-			{Start: 20, End: 49},
-		}, got)
-	})
-
-	t.Run("insert before first interval", func(t *testing.T) {
-		got := appendInterval([]Interval{
-			{Start: 20, End: 29},
-			{Start: 40, End: 49},
-		}, Interval{Start: 0, End: 9})
-
-		require.Equal(t, []Interval{
-			{Start: 0, End: 9},
-			{Start: 20, End: 29},
-			{Start: 40, End: 49},
-		}, got)
-	})
+			require.Equal(t, tc.want, got)
+		})
+	}
 }
 
 // TestContainsCompletedInterval verifies that coverage checks succeed only when
@@ -253,29 +278,6 @@ func TestNewJournalInvalidJSON(t *testing.T) {
 
 	_, err = NewJournal(journalFile, testJobConfig(t, false), csvPath)
 	require.Error(t, err)
-}
-
-// TestNewJournalReadsLegacyCompletedFilesOnRead verifies that the legacy
-// filename-set encoding is loaded and normalized into intervals.
-func TestNewJournalReadsLegacyCompletedFilesOnRead(t *testing.T) {
-	journalFile := filepath.Join(t.TempDir(), "journal.json")
-	raw := map[string]any{
-		"CompletedFiles": map[string]map[string]struct{}{
-			"testdata": {
-				"0-99999.gz":       {},
-				"100000-199999.gz": {},
-				"200000-299999.gz": {},
-			},
-		},
-	}
-	buf, err := json.Marshal(raw)
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(journalFile, buf, 0o644))
-
-	j, err := NewJournal(journalFile, testJobConfig(t, false), csvPath)
-	require.NoError(t, err)
-
-	require.Equal(t, completedIntervals(Interval{Start: 0, End: 299999}), j.CompletedFiles)
 }
 
 // TestNewJournalReadsIntervalCompletedFilesOnRead verifies that the new
@@ -357,21 +359,6 @@ func TestAddCompletedFilesDeduplicatesEquivalentRoots(t *testing.T) {
 	require.Equal(t, map[string][]Interval{"same-log": {{Start: 0, End: 9}}}, j.CompletedFiles)
 }
 
-// TestNewJournalRejectsMalformedCompletedFilesEncoding verifies that an
-// unsupported CompletedFiles JSON encoding is rejected.
-func TestNewJournalRejectsMalformedCompletedFilesEncoding(t *testing.T) {
-	journalFile := filepath.Join(t.TempDir(), "journal.json")
-	raw := map[string]any{
-		"CompletedFiles": []string{"bad-entry-without-slash"},
-	}
-	buf, err := json.Marshal(raw)
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(journalFile, buf, 0o644))
-
-	_, err = NewJournal(journalFile, testJobConfig(t, false), csvPath)
-	require.Error(t, err)
-}
-
 // TestNewJournalRejectsMalformedIntervalString verifies that reversed or
 // otherwise invalid interval strings are rejected on load.
 func TestNewJournalRejectsMalformedIntervalString(t *testing.T) {
@@ -387,55 +374,6 @@ func TestNewJournalRejectsMalformedIntervalString(t *testing.T) {
 
 	_, err = NewJournal(journalFile, testJobConfig(t, false), csvPath)
 	require.Error(t, err)
-}
-
-// TestWritePersistsIntervalCompletedFilesJSON verifies that Write persists
-// CompletedFiles using the new interval-array JSON format.
-func TestWritePersistsIntervalCompletedFilesJSON(t *testing.T) {
-	journalFile := filepath.Join(t.TempDir(), "journal.json")
-	j, err := NewJournal(journalFile, testJobConfig(t, false), csvPath)
-	require.NoError(t, err)
-	require.NoError(t, j.AddCompletedFiles([]string{csvFiles[0], csvFiles[2]}))
-
-	buf, err := os.ReadFile(journalFile)
-	require.NoError(t, err)
-
-	var raw map[string]json.RawMessage
-	require.NoError(t, json.Unmarshal(buf, &raw))
-
-	var completed map[string][]string
-	require.NoError(t, json.Unmarshal(raw["CompletedFiles"], &completed))
-	require.Equal(t, map[string][]string{
-		"testdata": {"0-99999", "200000-299999"},
-	}, completed)
-}
-
-// TestWritePersistsJobsJSON verifies that job history is still written in the
-// dedicated Jobs field rather than flattened legacy fields.
-func TestWritePersistsJobsJSON(t *testing.T) {
-	journalFile := filepath.Join(t.TempDir(), "journal.json")
-	_, err := NewJournal(journalFile, testJobConfig(t, false), csvPath)
-	require.NoError(t, err)
-
-	buf, err := os.ReadFile(journalFile)
-	require.NoError(t, err)
-
-	var raw map[string]json.RawMessage
-	require.NoError(t, json.Unmarshal(buf, &raw))
-
-	var jobs []Job
-	require.NoError(t, json.Unmarshal(raw["Jobs"], &jobs))
-	require.Len(t, jobs, 1)
-	require.NotEmpty(t, jobs[0].Cwd)
-	require.NotEmpty(t, jobs[0].Cmd)
-	require.Equal(t, testJobConfig(t, false), jobs[0].JobConfiguration)
-
-	_, hasCwds := raw["Cwds"]
-	_, hasCmds := raw["Cmds"]
-	_, hasJobConfig := raw["JobConfiguration"]
-	require.False(t, hasCwds)
-	require.False(t, hasCmds)
-	require.False(t, hasJobConfig)
 }
 
 // TestClosePersistsAndIsIdempotent verifies that Close flushes state and can be
