@@ -15,16 +15,13 @@ import (
 )
 
 type Journal struct {
-	mu          sync.Mutex
-	closed      bool
-	closeOnce   sync.Once
-	JournalFile string     `json:"-"` // Exclude from JSON.
-	IngestDir   string     `json:"-"` // Only used to refresh file listings.
-	Cwds        []string   //`json:"Cwds"`
-	Cmds        [][]string //`json:"Cmds"`
-
-	JobConfiguration JobConfiguration //`json:"Configuration"`
-	CompletedFiles   map[string]map[string]struct{}
+	mu             sync.Mutex
+	closed         bool
+	closeOnce      sync.Once
+	JournalFile    string `json:"-"` // Exclude from JSON.
+	IngestDir      string `json:"-"` // Only used to refresh file listings.
+	Jobs           []Job
+	CompletedFiles map[string]map[string]struct{}
 }
 
 type JobConfiguration struct {
@@ -35,14 +32,22 @@ type JobConfiguration struct {
 }
 
 type Job struct {
-	Files []string //`json:"Files,omitempty"`
+	Cwd              string           `json:"Cwd"`
+	Cmd              []string         `json:"Cmd"`
+	JobConfiguration JobConfiguration `json:"JobConfiguration"`
 }
 
 type journalJSON struct {
+	Jobs             []Job                          `json:"Jobs"`
 	Cwds             []string                       `json:"Cwds"`
 	Cmds             [][]string                     `json:"Cmds"`
 	JobConfiguration JobConfiguration               `json:"JobConfiguration"`
 	CompletedFiles   map[string]map[string]struct{} `json:"CompletedFiles"`
+}
+
+type journalWriteJSON struct {
+	Jobs           []Job                          `json:"Jobs"`
+	CompletedFiles map[string]map[string]struct{} `json:"CompletedFiles"`
 }
 
 // NewJobConfiguration translates the ingest strategy flags into the journal's
@@ -93,7 +98,7 @@ func NewJournal(journalFile string, cfg JobConfiguration, ingestDir string) (*Jo
 			return nil, err
 		}
 
-		if err := j.updateCwdOsArgs(); err != nil {
+		if err := j.appendJob(cfg); err != nil {
 			return nil, err
 		}
 
@@ -160,12 +165,10 @@ func (j *Journal) PendingFiles() ([]string, error) {
 // reset initializes a new journal instance with the current run configuration.
 func (j *Journal) reset(cfg JobConfiguration, ingestDir string) error {
 	// Update first to get the current CWD and os.Args.
-	err := j.updateCwdOsArgs()
+	err := j.appendJob(cfg)
 	if err != nil {
 		return err
 	}
-
-	j.JobConfiguration = cfg
 	j.IngestDir = ingestDir
 
 	return j.Write()
@@ -198,16 +201,18 @@ func (j *Journal) listFiles() ([]string, error) {
 	return files, nil
 }
 
-// updateCwdOsArgs appends the current working directory and process arguments
-// to the journal history.
-func (j *Journal) updateCwdOsArgs() error {
-	// Append new command line and working directories.
+// appendJob records the current working directory, process arguments, and run
+// configuration as one journal history entry.
+func (j *Journal) appendJob(cfg JobConfiguration) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
 	}
-	j.Cwds = append(j.Cwds, cwd)
-	j.Cmds = append(j.Cmds, os.Args)
+	j.Jobs = append(j.Jobs, Job{
+		Cwd:              cwd,
+		Cmd:              slices.Clone(os.Args),
+		JobConfiguration: cfg,
+	})
 
 	return nil
 }
@@ -250,11 +255,9 @@ func closeFile(f *os.File) error {
 
 // write encodes the journal to JSON and writes it to the provided file.
 func (j *Journal) write(f *os.File) error {
-	buf, err := json.MarshalIndent(journalJSON{
-		Cwds:             j.Cwds,
-		Cmds:             j.Cmds,
-		JobConfiguration: j.JobConfiguration,
-		CompletedFiles:   j.CompletedFiles,
+	buf, err := json.MarshalIndent(journalWriteJSON{
+		Jobs:           j.Jobs,
+		CompletedFiles: j.CompletedFiles,
 	}, "", "  ")
 	if err != nil {
 		return fmt.Errorf("cannot translate journal to json: %w", err)
@@ -346,14 +349,33 @@ func (j *Journal) read(f *os.File) error {
 	if err != nil {
 		return fmt.Errorf("journal file wrong format: %w", err)
 	}
-	j.Cwds = raw.Cwds
-	j.Cmds = raw.Cmds
-	j.JobConfiguration = raw.JobConfiguration
 	j.CompletedFiles = raw.CompletedFiles
+	j.Jobs = raw.Jobs
+	if len(j.Jobs) == 0 && (len(raw.Cwds) > 0 || len(raw.Cmds) > 0) {
+		j.Jobs = upgradeLegacyJobs(raw.Cwds, raw.Cmds, raw.JobConfiguration)
+	}
 	if err := j.normalize(); err != nil {
 		return fmt.Errorf("journal file wrong format: %w", err)
 	}
 	return nil
+}
+
+func upgradeLegacyJobs(cwds []string, cmds [][]string, cfg JobConfiguration) []Job {
+	n := max(len(cwds), len(cmds))
+	jobs := make([]Job, 0, n)
+	for i := 0; i < n; i++ {
+		job := Job{
+			JobConfiguration: cfg,
+		}
+		if i < len(cwds) {
+			job.Cwd = cwds[i]
+		}
+		if i < len(cmds) {
+			job.Cmd = slices.Clone(cmds[i])
+		}
+		jobs = append(jobs, job)
+	}
+	return jobs
 }
 
 // readAndClose reads the journal from disk and then closes the file handle.
