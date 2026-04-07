@@ -3,9 +3,11 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -202,4 +204,97 @@ func TestCreateDiagnosticsDirUsesTimestampedNames(t *testing.T) {
 	base := filepath.Base(dir)
 	require.Equal(t, "fpki-diagnostics-20260331-091213.456", base)
 	require.True(t, strings.HasPrefix(base, "fpki-diagnostics-"))
+}
+
+func TestSignalHandlerCancelsOnFirstTerminationSignal(t *testing.T) {
+	signals := make(chan os.Signal, 2)
+	var (
+		interrupted atomic.Bool
+		cancelled   atomic.Int32
+		exits       atomic.Int32
+		profiles    atomic.Int32
+		diagnostics atomic.Int32
+		stderr      bytes.Buffer
+	)
+
+	done := startIngestSignalHandler(signals, RunConfig{}, &stderr, ingestSignalHandlerDeps{
+		stopProfiles: func() error {
+			profiles.Add(1)
+			return nil
+		},
+		createDiagnostics: func(RunConfig, os.Signal, io.Writer) (string, error) {
+			diagnostics.Add(1)
+			return "/tmp/fpki-diagnostics-test", nil
+		},
+		cancel: func() {
+			cancelled.Add(1)
+		},
+		interrupted: &interrupted,
+		exit: func(int) {
+			exits.Add(1)
+		},
+	})
+
+	signals <- syscall.SIGINT
+	close(signals)
+	<-done
+
+	require.True(t, interrupted.Load())
+	require.Equal(t, int32(1), cancelled.Load())
+	require.Equal(t, int32(0), exits.Load())
+	require.Equal(t, int32(1), profiles.Load())
+	require.Equal(t, int32(1), diagnostics.Load())
+	require.Contains(t, stderr.String(), "signal caught: 'interrupt'")
+}
+
+func TestSignalHandlerForcesExitOnSecondTerminationSignal(t *testing.T) {
+	signals := make(chan os.Signal, 2)
+	var (
+		interrupted atomic.Bool
+		cancelled   atomic.Int32
+		exitCode    atomic.Int32
+		stderr      bytes.Buffer
+	)
+
+	done := startIngestSignalHandler(signals, RunConfig{}, &stderr, ingestSignalHandlerDeps{
+		stopProfiles: func() error { return nil },
+		createDiagnostics: func(RunConfig, os.Signal, io.Writer) (string, error) {
+			return "", nil
+		},
+		cancel: func() {
+			cancelled.Add(1)
+		},
+		interrupted: &interrupted,
+		exit: func(code int) {
+			exitCode.Store(int32(code))
+		},
+	})
+
+	signals <- syscall.SIGINT
+	signals <- syscall.SIGINT
+	<-done
+
+	require.True(t, interrupted.Load())
+	require.Equal(t, int32(1), cancelled.Load())
+	require.Equal(t, int32(128+int32(syscall.SIGINT)), exitCode.Load())
+	require.Contains(t, stderr.String(), "forcing immediate exit on second signal")
+}
+
+func TestSignalHandlerPanicsWhenRequiredDepsAreMissing(t *testing.T) {
+	signals := make(chan os.Signal, 1)
+	var stderr bytes.Buffer
+
+	require.PanicsWithValue(t,
+		"startIngestSignalHandler: interrupted is nil",
+		func() {
+			startIngestSignalHandler(signals, RunConfig{}, &stderr, ingestSignalHandlerDeps{
+				stopProfiles: func() error { return nil },
+				createDiagnostics: func(RunConfig, os.Signal, io.Writer) (string, error) {
+					return "", nil
+				},
+				cancel: func() {},
+				exit:   func(int) {},
+			})
+		},
+	)
 }

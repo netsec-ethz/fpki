@@ -140,28 +140,13 @@ func mainFunction() error {
 	defer signal.Stop(signals)
 
 	var interrupted atomic.Bool
-	go func() {
-		for sg := range signals {
-			fmt.Fprintf(os.Stderr, "\n%s: signal caught: '%s'\n", time.Now().String(), sg.String())
-			if sg == syscall.SIGINT || sg == syscall.SIGTERM {
-				if err := stopProfiles(); err != nil {
-					fmt.Fprintf(os.Stderr, "%s\n", err)
-				}
-			}
-			dir, err := createDiagnosticsBundle(cfg, sg, os.Stderr)
-			if dir != "" {
-				fmt.Fprintf(os.Stderr, "\nDiagnostics dumped to %s\n", dir)
-			}
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "%s\n", err)
-			}
-			if sg == syscall.SIGINT || sg == syscall.SIGTERM {
-				interrupted.Store(true)
-				cancel()
-				return
-			}
-		}
-	}()
+	startIngestSignalHandler(signals, cfg, os.Stderr, ingestSignalHandlerDeps{
+		stopProfiles:      stopProfiles,
+		createDiagnostics: createDiagnosticsBundle,
+		cancel:            cancel,
+		interrupted:       &interrupted,
+		exit:              util.Exit,
+	})
 
 	err = runIngestContext(ctx, cfg, RunDependencies{
 		NewJournal: func(cfg RunConfig, jobCfg journal.JobConfiguration) (JournalStore, error) {
@@ -277,6 +262,85 @@ func configFromFlags() RunConfig {
 		CpuProfile:       *args.CpuProfile,
 		MemProfile:       *args.MemProfile,
 	}
+}
+
+type ingestSignalHandlerDeps struct {
+	stopProfiles      func() error
+	createDiagnostics func(RunConfig, os.Signal, io.Writer) (string, error)
+	cancel            context.CancelFunc
+	interrupted       *atomic.Bool
+	exit              func(int)
+}
+
+func startIngestSignalHandler(
+	signals <-chan os.Signal,
+	cfg RunConfig,
+	stderr io.Writer,
+	deps ingestSignalHandlerDeps,
+) <-chan struct{} {
+	if stderr == nil {
+		panic("startIngestSignalHandler: stderr is nil")
+	}
+	if deps.stopProfiles == nil {
+		panic("startIngestSignalHandler: stopProfiles is nil")
+	}
+	if deps.createDiagnostics == nil {
+		panic("startIngestSignalHandler: createDiagnostics is nil")
+	}
+	if deps.cancel == nil {
+		panic("startIngestSignalHandler: cancel is nil")
+	}
+	if deps.interrupted == nil {
+		panic("startIngestSignalHandler: interrupted is nil")
+	}
+	if deps.exit == nil {
+		panic("startIngestSignalHandler: exit is nil")
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+
+		terminationRequested := false
+		for sg := range signals {
+			fmt.Fprintf(stderr, "\n%s: signal caught: '%s'\n", time.Now().String(), sg.String())
+
+			isTermination := sg == syscall.SIGINT || sg == syscall.SIGTERM
+			if isTermination && terminationRequested {
+				fmt.Fprintf(stderr, "forcing immediate exit on second signal: '%s'\n", sg.String())
+				deps.exit(signalExitCode(sg))
+				return
+			}
+
+			if isTermination {
+				terminationRequested = true
+				if err := deps.stopProfiles(); err != nil {
+					fmt.Fprintf(stderr, "%s\n", err)
+				}
+			}
+
+			dir, err := deps.createDiagnostics(cfg, sg, stderr)
+			if dir != "" {
+				fmt.Fprintf(stderr, "\nDiagnostics dumped to %s\n", dir)
+			}
+			if err != nil {
+				fmt.Fprintf(stderr, "%s\n", err)
+			}
+
+			if isTermination {
+				deps.interrupted.Store(true)
+				deps.cancel()
+			}
+		}
+	}()
+	return done
+}
+
+func signalExitCode(sg os.Signal) int {
+	if sg == syscall.SIGTERM {
+		return 128 + int(syscall.SIGTERM)
+	}
+	return 128 + int(syscall.SIGINT)
 }
 
 var diagnosticsRootDir = os.TempDir()
