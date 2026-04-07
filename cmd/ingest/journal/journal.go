@@ -15,11 +15,14 @@ import (
 )
 
 type Journal struct {
-	mu             sync.Mutex
-	closed         bool
-	closeOnce      sync.Once
-	JournalFile    string `json:"-"` // Exclude from JSON.
-	IngestDir      string `json:"-"` // Only used to refresh file listings.
+	mu          sync.Mutex
+	closed      bool
+	closeOnce   sync.Once
+	JournalFile string `json:"-"` // Exclude from JSON.
+	IngestDir   string `json:"-"` // Only used to refresh file listings.
+	// CurrentJob keeps the active run configuration available even though the
+	// persisted job history may contain entries from earlier invocations.
+	CurrentJob     Job `json:"-"`
 	Jobs           []Job
 	CompletedFiles map[string]map[string]struct{}
 }
@@ -29,6 +32,9 @@ type JobConfiguration struct {
 	Coalesce    bool
 	UpdateSMT   bool
 	FileBatch   int
+	// IncludePlainCSVs opts the run into also listing uncompressed `.csv`
+	// bundles. When false, ingest only discovers `.gz` inputs.
+	IncludePlainCSVs bool
 }
 
 type Job struct {
@@ -38,10 +44,12 @@ type Job struct {
 }
 
 // NewJobConfiguration translates the ingest strategy flags into the journal's
-// execution configuration.
-func NewJobConfiguration(strategy string, fileBatch int) (JobConfiguration, error) {
+// execution configuration, including whether plain `.csv` bundles should be
+// considered alongside compressed `.gz` files.
+func NewJobConfiguration(strategy string, fileBatch int, includePlainCSVs bool) (JobConfiguration, error) {
 	jc := JobConfiguration{
-		FileBatch: fileBatch,
+		FileBatch:        fileBatch,
+		IncludePlainCSVs: includePlainCSVs,
 	}
 	switch strategy {
 	case "onlyingest":
@@ -95,6 +103,7 @@ func NewJournal(journalFile string, cfg JobConfiguration, ingestDir string) (*Jo
 	}
 
 	j.registerShutdownHook()
+	j.CurrentJob = Job{JobConfiguration: cfg}
 	return j, nil
 }
 
@@ -162,7 +171,8 @@ func (j *Journal) reset(cfg JobConfiguration, ingestDir string) error {
 }
 
 // listFiles refreshes the current ingest directory listing and returns the
-// discovered CSV/GZ files in bundle order.
+// discovered input files in bundle order. Plain `.csv` files are only included
+// when the active job configuration explicitly enables them.
 func (j *Journal) listFiles() ([]string, error) {
 	if j.IngestDir == "" {
 		return nil, nil
@@ -180,7 +190,12 @@ func (j *Journal) listFiles() ([]string, error) {
 		return nil, err
 	}
 
-	files := append(gzFiles, csvFiles...)
+	files := slices.Clone(gzFiles)
+	// Default to the compressed bundle set and only opt into plain CSVs when
+	// the current invocation requested them.
+	if j.CurrentJob.JobConfiguration.IncludePlainCSVs {
+		files = append(files, csvFiles...)
+	}
 	if err := util.SortByBundleName(files); err != nil {
 		return nil, err
 	}
@@ -200,6 +215,7 @@ func (j *Journal) appendJob(cfg JobConfiguration) error {
 		Cmd:              slices.Clone(os.Args),
 		JobConfiguration: cfg,
 	})
+	j.CurrentJob = j.Jobs[len(j.Jobs)-1]
 
 	return nil
 }

@@ -30,15 +30,16 @@ func TestCreateDiagnosticsBundleWritesExpectedFiles(t *testing.T) {
 	})
 
 	cfg := RunConfig{
-		Directory:       "/input",
-		Strategy:        "onlyingest",
-		JournalFile:     "/tmp/journal.json",
-		FileBatch:       200,
-		MultiInsertSize: 1000,
-		NumFiles:        16,
-		NumParsers:      8,
-		NumChainToCerts: 4,
-		NumDBWriters:    2,
+		Directory:        "/input",
+		Strategy:         "onlyingest",
+		JournalFile:      "/tmp/journal.json",
+		FileBatch:        200,
+		MultiInsertSize:  1000,
+		NumFiles:         16,
+		NumParsers:       8,
+		NumChainToCerts:  4,
+		NumDBWriters:     2,
+		IncludePlainCSVs: true,
 	}
 
 	var stderr bytes.Buffer
@@ -75,15 +76,16 @@ func TestCreateDiagnosticsBundleWritesMetadata(t *testing.T) {
 	})
 
 	cfg := RunConfig{
-		Directory:       "/input",
-		Strategy:        "onlyingest",
-		JournalFile:     "/tmp/journal.json",
-		FileBatch:       200,
-		MultiInsertSize: 1000,
-		NumFiles:        16,
-		NumParsers:      8,
-		NumChainToCerts: 4,
-		NumDBWriters:    2,
+		Directory:        "/input",
+		Strategy:         "onlyingest",
+		JournalFile:      "/tmp/journal.json",
+		FileBatch:        200,
+		MultiInsertSize:  1000,
+		NumFiles:         16,
+		NumParsers:       8,
+		NumChainToCerts:  4,
+		NumDBWriters:     2,
+		IncludePlainCSVs: true,
 	}
 
 	var stderr bytes.Buffer
@@ -105,6 +107,7 @@ func TestCreateDiagnosticsBundleWritesMetadata(t *testing.T) {
 	require.Contains(t, text, "numparsers=8")
 	require.Contains(t, text, "numdechainers=4")
 	require.Contains(t, text, "numdbworkers=2")
+	require.Contains(t, text, "includeplaincsvs=true")
 	require.Contains(t, text, "directory=/input")
 	require.Contains(t, text, "journal=/tmp/journal.json")
 	require.Contains(t, text, `args=[`)

@@ -69,7 +69,7 @@ func TestPerformanceListCsvFiles(t *testing.T) {
 func TestNewJournal(t *testing.T) {
 	journalFile := filepath.Join(t.TempDir(), fmt.Sprintf("%s.json", t.Name()))
 
-	j, err := NewJournal(journalFile, testJobConfig(t), "")
+	j, err := NewJournal(journalFile, testJobConfig(t, false), "")
 	require.NoError(t, err)
 	require.Equal(t, journalFile, j.JournalFile)
 	require.FileExists(t, journalFile)
@@ -77,7 +77,7 @@ func TestNewJournal(t *testing.T) {
 	requireJSONDoesNotContainFiles(t, journalFile)
 
 	// Recreate.
-	j, err = NewJournal(journalFile, testJobConfig(t), "")
+	j, err = NewJournal(journalFile, testJobConfig(t, false), "")
 	require.NoError(t, err)
 	require.Equal(t, journalFile, j.JournalFile)
 	require.FileExists(t, journalFile)
@@ -86,7 +86,7 @@ func TestNewJournal(t *testing.T) {
 
 	// Recreate, with existing non-processed files.
 	journalFile = filepath.Join(t.TempDir(), "with-files.json")
-	j, err = NewJournal(journalFile, testJobConfig(t), csvPath)
+	j, err = NewJournal(journalFile, testJobConfig(t, false), csvPath)
 	require.NoError(t, err)
 	got, err := j.PendingFiles()
 	require.NoError(t, err)
@@ -98,7 +98,7 @@ func TestNewJournal(t *testing.T) {
 	err = j.AddCompletedFiles(csvFiles[:1])
 	require.NoError(t, err)
 	// Check that the completed file is there.
-	j, err = NewJournal(journalFile, testJobConfig(t), csvPath)
+	j, err = NewJournal(journalFile, testJobConfig(t, false), csvPath)
 	require.NoError(t, err)
 	require.Equal(t, normalizedCSVSet(0), j.CompletedFiles)
 	requireJSONDoesNotContainFiles(t, journalFile)
@@ -109,7 +109,7 @@ func TestNewJournal(t *testing.T) {
 func TestAddCompletedFiles(t *testing.T) {
 	journalFile := filepath.Join(t.TempDir(), fmt.Sprintf("%s.json", t.Name()))
 
-	j, err := NewJournal(journalFile, testJobConfig(t), csvPath)
+	j, err := NewJournal(journalFile, testJobConfig(t, false), csvPath)
 	require.NoError(t, err)
 
 	got, err := j.PendingFiles()
@@ -140,7 +140,7 @@ func TestAddCompletedFiles(t *testing.T) {
 func TestPendingFiles(t *testing.T) {
 	journalFile := filepath.Join(t.TempDir(), fmt.Sprintf("%s.json", t.Name()))
 
-	j, err := NewJournal(journalFile, testJobConfig(t), csvPath)
+	j, err := NewJournal(journalFile, testJobConfig(t, false), csvPath)
 	require.NoError(t, err)
 
 	err = j.AddCompletedFiles([]string{csvFiles[0], csvFiles[2]})
@@ -157,7 +157,7 @@ func TestNewJournalInvalidJSON(t *testing.T) {
 	err := os.WriteFile(journalFile, []byte("{"), 0o644)
 	require.NoError(t, err)
 
-	_, err = NewJournal(journalFile, testJobConfig(t), csvPath)
+	_, err = NewJournal(journalFile, testJobConfig(t, false), csvPath)
 	require.Error(t, err)
 }
 
@@ -177,7 +177,7 @@ func TestNewJournalReadsNestedCompletedFilesOnRead(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(journalFile, buf, 0o644))
 
-	j, err := NewJournal(journalFile, testJobConfig(t), csvPath)
+	j, err := NewJournal(journalFile, testJobConfig(t, false), csvPath)
 	require.NoError(t, err)
 
 	require.Equal(t, normalizedCSVSet(0, 2), j.CompletedFiles)
@@ -190,14 +190,14 @@ func TestPendingFilesEquivalentIngestRootsShareProgress(t *testing.T) {
 	secondRoot := makeEquivalentIngestRoot(t, "data", "same-log", []string{"0-9.gz", "10-19.gz", "20-29.gz"})
 
 	journalFile := filepath.Join(t.TempDir(), "journal.json")
-	j, err := NewJournal(journalFile, testJobConfig(t), firstRoot)
+	j, err := NewJournal(journalFile, testJobConfig(t, false), firstRoot)
 	require.NoError(t, err)
 	require.NoError(t, j.AddCompletedFiles([]string{
 		filepath.Join(firstRoot, "bundled", "0-9.gz"),
 		filepath.Join(firstRoot, "bundled", "10-19.gz"),
 	}))
 
-	j, err = NewJournal(journalFile, testJobConfig(t), secondRoot)
+	j, err = NewJournal(journalFile, testJobConfig(t, false), secondRoot)
 	require.NoError(t, err)
 
 	got, err := j.PendingFiles()
@@ -212,11 +212,11 @@ func TestPendingFilesDifferentIngestRootBasenamesDoNotShareProgress(t *testing.T
 	secondRoot := makeEquivalentIngestRoot(t, "data", "log-b", []string{"0-9.gz"})
 
 	journalFile := filepath.Join(t.TempDir(), "journal.json")
-	j, err := NewJournal(journalFile, testJobConfig(t), firstRoot)
+	j, err := NewJournal(journalFile, testJobConfig(t, false), firstRoot)
 	require.NoError(t, err)
 	require.NoError(t, j.AddCompletedFiles([]string{filepath.Join(firstRoot, "bundled", "0-9.gz")}))
 
-	j, err = NewJournal(journalFile, testJobConfig(t), secondRoot)
+	j, err = NewJournal(journalFile, testJobConfig(t, false), secondRoot)
 	require.NoError(t, err)
 
 	got, err := j.PendingFiles()
@@ -231,7 +231,7 @@ func TestAddCompletedFilesDeduplicatesEquivalentRoots(t *testing.T) {
 	secondRoot := makeEquivalentIngestRoot(t, "data", "same-log", []string{"0-9.gz"})
 
 	journalFile := filepath.Join(t.TempDir(), "journal.json")
-	j, err := NewJournal(journalFile, testJobConfig(t), firstRoot)
+	j, err := NewJournal(journalFile, testJobConfig(t, false), firstRoot)
 	require.NoError(t, err)
 
 	require.NoError(t, j.AddCompletedFiles([]string{
@@ -252,7 +252,7 @@ func TestNewJournalRejectsMalformedCompletedFilesEncoding(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(journalFile, buf, 0o644))
 
-	_, err = NewJournal(journalFile, testJobConfig(t), csvPath)
+	_, err = NewJournal(journalFile, testJobConfig(t, false), csvPath)
 	require.Error(t, err)
 }
 
@@ -260,7 +260,7 @@ func TestNewJournalRejectsMalformedCompletedFilesEncoding(t *testing.T) {
 // CompletedFiles using the nested JSON object format.
 func TestWritePersistsNestedCompletedFilesJSON(t *testing.T) {
 	journalFile := filepath.Join(t.TempDir(), "journal.json")
-	j, err := NewJournal(journalFile, testJobConfig(t), csvPath)
+	j, err := NewJournal(journalFile, testJobConfig(t, false), csvPath)
 	require.NoError(t, err)
 	require.NoError(t, j.AddCompletedFiles([]string{csvFiles[0], csvFiles[2]}))
 
@@ -277,7 +277,7 @@ func TestWritePersistsNestedCompletedFilesJSON(t *testing.T) {
 
 func TestWritePersistsJobsJSON(t *testing.T) {
 	journalFile := filepath.Join(t.TempDir(), "journal.json")
-	_, err := NewJournal(journalFile, testJobConfig(t), csvPath)
+	_, err := NewJournal(journalFile, testJobConfig(t, false), csvPath)
 	require.NoError(t, err)
 
 	buf, err := os.ReadFile(journalFile)
@@ -291,7 +291,7 @@ func TestWritePersistsJobsJSON(t *testing.T) {
 	require.Len(t, jobs, 1)
 	require.NotEmpty(t, jobs[0].Cwd)
 	require.NotEmpty(t, jobs[0].Cmd)
-	require.Equal(t, testJobConfig(t), jobs[0].JobConfiguration)
+	require.Equal(t, testJobConfig(t, false), jobs[0].JobConfiguration)
 
 	_, hasCwds := raw["Cwds"]
 	_, hasCmds := raw["Cmds"]
@@ -303,7 +303,7 @@ func TestWritePersistsJobsJSON(t *testing.T) {
 
 func TestClosePersistsAndIsIdempotent(t *testing.T) {
 	journalFile := filepath.Join(t.TempDir(), "journal.json")
-	j, err := NewJournal(journalFile, testJobConfig(t), csvPath)
+	j, err := NewJournal(journalFile, testJobConfig(t, false), csvPath)
 	require.NoError(t, err)
 
 	addCompletedFile(j.CompletedFiles, "testdata", "0-99999.gz")
@@ -311,7 +311,7 @@ func TestClosePersistsAndIsIdempotent(t *testing.T) {
 	require.NoError(t, j.Close())
 	require.NoError(t, j.Close())
 
-	reopened, err := NewJournal(journalFile, testJobConfig(t), csvPath)
+	reopened, err := NewJournal(journalFile, testJobConfig(t, false), csvPath)
 	require.NoError(t, err)
 	require.Equal(t, normalizedCSVSet(0), reopened.CompletedFiles)
 }
@@ -327,7 +327,7 @@ func TestPendingFilesUsesFreshDirectoryListing(t *testing.T) {
 	require.NoError(t, os.WriteFile(firstFile, nil, 0o644))
 
 	journalFile := filepath.Join(t.TempDir(), "journal.json")
-	j, err := NewJournal(journalFile, testJobConfig(t), root)
+	j, err := NewJournal(journalFile, testJobConfig(t, false), root)
 	require.NoError(t, err)
 
 	got, err := j.PendingFiles()
@@ -342,6 +342,38 @@ func TestPendingFilesUsesFreshDirectoryListing(t *testing.T) {
 	require.Equal(t, []string{firstFile, secondFile}, got)
 }
 
+func TestPendingFilesExcludesPlainCSVsByDefault(t *testing.T) {
+	root := makeMixedIngestRoot(t)
+	journalFile := filepath.Join(t.TempDir(), "journal.json")
+
+	j, err := NewJournal(journalFile, testJobConfig(t, false), root)
+	require.NoError(t, err)
+
+	got, err := j.PendingFiles()
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		filepath.Join(root, "bundled", "0-9.gz"),
+		filepath.Join(root, "bundled", "10-19.gz"),
+	}, got)
+}
+
+func TestPendingFilesIncludesPlainCSVsWhenEnabled(t *testing.T) {
+	root := makeMixedIngestRoot(t)
+	journalFile := filepath.Join(t.TempDir(), "journal.json")
+
+	j, err := NewJournal(journalFile, testJobConfig(t, true), root)
+	require.NoError(t, err)
+
+	got, err := j.PendingFiles()
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		filepath.Join(root, "bundled", "0-9.gz"),
+		filepath.Join(root, "bundled", "10-19.gz"),
+		filepath.Join(root, "20-29.csv"),
+		filepath.Join(root, "30-39.csv"),
+	}, got)
+}
+
 func requireJSONDoesNotContainFiles(t *testing.T, journalFile string) {
 	t.Helper()
 	buf, err := os.ReadFile(journalFile)
@@ -350,9 +382,9 @@ func requireJSONDoesNotContainFiles(t *testing.T, journalFile string) {
 }
 
 // testJobConfig returns a JobConfiguration with "onlyingest" and batch size of 2.
-func testJobConfig(t *testing.T) JobConfiguration {
+func testJobConfig(t *testing.T, includePlainCSVs bool) JobConfiguration {
 	t.Helper()
-	cfg, err := NewJobConfiguration("onlyingest", 2)
+	cfg, err := NewJobConfiguration("onlyingest", 2, includePlainCSVs)
 	require.NoError(t, err)
 	return cfg
 }
@@ -365,6 +397,21 @@ func makeEquivalentIngestRoot(t *testing.T, parent string, ingestBase string, fi
 	require.NoError(t, os.MkdirAll(bundledDir, 0o755))
 	for _, name := range files {
 		require.NoError(t, os.WriteFile(filepath.Join(bundledDir, name), nil, 0o644))
+	}
+	return root
+}
+
+func makeMixedIngestRoot(t *testing.T) string {
+	t.Helper()
+
+	root := t.TempDir()
+	bundledDir := filepath.Join(root, "bundled")
+	require.NoError(t, os.MkdirAll(bundledDir, 0o755))
+	for _, name := range []string{"0-9.gz", "10-19.gz"} {
+		require.NoError(t, os.WriteFile(filepath.Join(bundledDir, name), nil, 0o644))
+	}
+	for _, name := range []string{"20-29.csv", "30-39.csv"} {
+		require.NoError(t, os.WriteFile(filepath.Join(root, name), nil, 0o644))
 	}
 	return root
 }

@@ -14,15 +14,18 @@ import (
 )
 
 type RunConfig struct {
-	Directory        string
-	Strategy         string
-	JournalFile      string
-	FileBatch        int
-	MultiInsertSize  int
-	NumFiles         int
-	NumParsers       int
-	NumChainToCerts  int
-	NumDBWriters     int
+	Directory       string
+	Strategy        string
+	JournalFile     string
+	FileBatch       int
+	MultiInsertSize int
+	NumFiles        int
+	NumParsers      int
+	NumChainToCerts int
+	NumDBWriters    int
+	// IncludePlainCSVs controls whether pending-file discovery includes plain
+	// `.csv` bundles or restricts processing to compressed `.gz` bundles only.
+	IncludePlainCSVs bool
 	SkipMissingFiles bool
 	CpuProfile       string
 	MemProfile       string
@@ -46,7 +49,7 @@ type RunDependencies struct {
 }
 
 func (cfg RunConfig) JobConfiguration() (journal.JobConfiguration, error) {
-	return journal.NewJobConfiguration(cfg.Strategy, cfg.FileBatch)
+	return journal.NewJobConfiguration(cfg.Strategy, cfg.FileBatch, cfg.IncludePlainCSVs)
 }
 
 func (cfg RunConfig) validate() error {

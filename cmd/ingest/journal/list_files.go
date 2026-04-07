@@ -8,7 +8,8 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
-// ListCsvFiles returns the .gz and .csv files sorted by name.
+// ListCsvFiles returns the discovered `.gz` and `.csv` files separately,
+// leaving higher layers to decide which sets to include in a given run.
 func ListCsvFiles(dir string) (gzFiles, csvFiles []string, err error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {

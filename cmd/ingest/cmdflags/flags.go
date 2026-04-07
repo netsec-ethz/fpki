@@ -9,16 +9,19 @@ import (
 
 // Flags for the command line:
 var (
-	CpuProfile       *string
-	MemProfile       *string
-	MultiInsertSize  *int
-	NumFiles         *int
-	NumParsers       *int
-	NumChainToCerts  *int
-	NumDBWriters     *int
-	Strategy         *string
-	FileBatch        *int
-	JournalFile      *string
+	CpuProfile      *string
+	MemProfile      *string
+	MultiInsertSize *int
+	NumFiles        *int
+	NumParsers      *int
+	NumChainToCerts *int
+	NumDBWriters    *int
+	Strategy        *string
+	FileBatch       *int
+	JournalFile     *string
+	// IncludePlainCSVs restores the legacy behavior of also ingesting uncompressed
+	// bundle files alongside the default .gz input set.
+	IncludePlainCSVs *bool
 	SkipMissingFiles *bool
 )
 
@@ -59,6 +62,9 @@ func _configureFlags() {
 		"all files are processed in one batch")
 	JournalFile = flag.String("journal", DefJournalFile,
 		"Journal file to keep track of progress and resume")
+	IncludePlainCSVs = flag.Bool("includeplaincsvs", false,
+		"include plain .csv files in addition to .gz files when listing ingest inputs; "+
+			"by default only .gz files are processed")
 	SkipMissingFiles = flag.Bool("skipmissingfiles", false,
 		"report missing input files and continue instead of failing the batch")
 	flag.Parse()
