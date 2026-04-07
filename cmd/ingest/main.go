@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/pprof"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -50,12 +52,13 @@ const (
 func main() {
 	if err := mainFunction(); err != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", err)
-		os.Exit(1)
+		util.Exit(1)
 	}
 }
 
 func mainFunction() error {
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	defer util.ShutdownFunction()
 
 	tr.SetGlobalTracerName("ingest-cli")
@@ -82,25 +85,31 @@ func mainFunction() error {
 	defer conn.Close()
 
 	// Profiling:
+	var stopProfilesOnce sync.Once
+	var stopProfilesErr error
 	stopProfiles := func() error {
-		if cfg.CpuProfile != "" || cfg.MemProfile != "" {
-			fmt.Fprintln(os.Stderr, "\nStopping profiling")
-		}
+		stopProfilesOnce.Do(func() {
+			if cfg.CpuProfile != "" || cfg.MemProfile != "" {
+				fmt.Fprintln(os.Stderr, "\nStopping profiling")
+			}
 
-		if cfg.CpuProfile != "" {
-			pprof.StopCPUProfile()
-		}
-		if cfg.MemProfile != "" {
-			f, err := os.Create(cfg.MemProfile)
-			if err != nil {
-				return err
+			if cfg.CpuProfile != "" {
+				pprof.StopCPUProfile()
 			}
-			defer f.Close()
-			if err := pprof.WriteHeapProfile(f); err != nil {
-				return err
+			if cfg.MemProfile != "" {
+				f, err := os.Create(cfg.MemProfile)
+				if err != nil {
+					stopProfilesErr = err
+					return
+				}
+				defer f.Close()
+				if err := pprof.WriteHeapProfile(f); err != nil {
+					stopProfilesErr = err
+					return
+				}
 			}
-		}
-		return nil
+		})
+		return stopProfilesErr
 	}
 	defer func() {
 		if err := stopProfiles(); err != nil {
@@ -128,6 +137,9 @@ func mainFunction() error {
 	// Diagnostics and signal catching.
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
+	defer signal.Stop(signals)
+
+	var interrupted atomic.Bool
 	go func() {
 		for sg := range signals {
 			fmt.Fprintf(os.Stderr, "\n%s: signal caught: '%s'\n", time.Now().String(), sg.String())
@@ -144,12 +156,14 @@ func mainFunction() error {
 				fmt.Fprintf(os.Stderr, "%s\n", err)
 			}
 			if sg == syscall.SIGINT || sg == syscall.SIGTERM {
-				os.Exit(1)
+				interrupted.Store(true)
+				cancel()
+				return
 			}
 		}
 	}()
 
-	return runIngest(cfg, RunDependencies{
+	err = runIngestContext(ctx, cfg, RunDependencies{
 		NewJournal: func(cfg RunConfig, jobCfg journal.JobConfiguration) (JournalStore, error) {
 			return journal.NewJournal(cfg.JournalFile, jobCfg, cfg.Directory)
 		},
@@ -203,6 +217,10 @@ func mainFunction() error {
 			return cleanupDirty(ctx, conn)
 		},
 	})
+	if interrupted.Load() && errors.Is(err, context.Canceled) {
+		return fmt.Errorf("ingest interrupted")
+	}
+	return err
 }
 
 func printStats(s *updater.Stats) {

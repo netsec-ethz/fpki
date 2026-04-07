@@ -8,12 +8,16 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
 type Journal struct {
+	mu          sync.Mutex
+	closed      bool
+	closeOnce   sync.Once
 	JournalFile string     `json:"-"` // Exclude from JSON.
 	IngestDir   string     `json:"-"` // Only used to refresh file listings.
 	Cwds        []string   //`json:"Cwds"`
@@ -78,28 +82,41 @@ func NewJournal(journalFile string, cfg JobConfiguration, ingestDir string) (*Jo
 	switch {
 	case errors.Is(err, os.ErrNotExist):
 		// Does not exist, create it.
-		return j, j.reset(cfg, ingestDir)
+		if err := j.reset(cfg, ingestDir); err != nil {
+			return nil, err
+		}
 	case err != nil:
 		return nil, fmt.Errorf("cannot use journal, file error: %w", err)
 	default:
+		// Read the journal, if any.
+		if err := j.readAndClose(f); err != nil {
+			return nil, err
+		}
+
+		if err := j.updateCwdOsArgs(); err != nil {
+			return nil, err
+		}
+
+		if err := j.Write(); err != nil {
+			return nil, err
+		}
 	}
 
-	// Read the journal, if any.
-	if err := j.readAndClose(f); err != nil {
-		return nil, err
-	}
-
-	if err := j.updateCwdOsArgs(); err != nil {
-		return nil, err
-	}
-
-	return j, j.Write()
+	j.registerShutdownHook()
+	return j, nil
 }
 
 // AddCompletedFiles adds the file names to the set of completed files.
 // The function normalizes them into ingest-dir and filename keys and inserts
 // them into the nested completed-files set.
 func (j *Journal) AddCompletedFiles(files []string) error {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+
+	if j.closed {
+		return fmt.Errorf("cannot add completed files to closed journal")
+	}
+
 	for _, file := range files {
 		ingestDirBase, fileBase, err := normalizeCompletedFile(file, j.IngestDir)
 		if err != nil {
@@ -107,14 +124,20 @@ func (j *Journal) AddCompletedFiles(files []string) error {
 		}
 		addCompletedFile(j.CompletedFiles, ingestDirBase, fileBase)
 	}
-
-	return j.Write()
+	return j.writeLocked()
 }
 
 // PendingFiles returns the set subtraction LiveDirectoryListing - CompletedFiles.
 // CompletedFiles is expected to already contain only normalized ingest-dir and
 // filename keys, so live files are normalized on the fly before membership is checked.
 func (j *Journal) PendingFiles() ([]string, error) {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+
+	if j.closed {
+		return nil, fmt.Errorf("cannot read pending files from closed journal")
+	}
+
 	files, err := j.listFiles()
 	if err != nil {
 		return nil, err
@@ -191,15 +214,33 @@ func (j *Journal) updateCwdOsArgs() error {
 
 // Write persists the in-memory journal state to disk.
 func (j *Journal) Write() error {
-	f, err := os.Create(j.JournalFile)
-	if err != nil {
-		return fmt.Errorf("cannot open journal file: %w", err)
+	j.mu.Lock()
+	defer j.mu.Unlock()
+
+	if j.closed {
+		return fmt.Errorf("cannot write closed journal")
 	}
-	return j.writeAndClose(f)
+
+	return j.writeLocked()
 }
 
-// close closes the journal file and wraps any filesystem error.
-func (j *Journal) close(f *os.File) error {
+// Close flushes the latest journal state to disk. It is safe to call more than once.
+func (j *Journal) Close() error {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+
+	if j.closed {
+		return nil
+	}
+	if err := j.writeLocked(); err != nil {
+		return err
+	}
+	j.closed = true
+	return nil
+}
+
+// closeFile closes the file and wraps any filesystem error.
+func closeFile(f *os.File) error {
 	err := f.Close()
 	if err != nil {
 		return fmt.Errorf("cannot close journal file: %w", err)
@@ -226,12 +267,46 @@ func (j *Journal) write(f *os.File) error {
 	return nil
 }
 
-// writeAndClose writes the journal contents and then closes the destination file.
-func (j *Journal) writeAndClose(f *os.File) error {
-	if err := j.write(f); err != nil {
+func (j *Journal) writeLocked() error {
+	dir := filepath.Dir(j.JournalFile)
+	tempFile, err := os.CreateTemp(dir, filepath.Base(j.JournalFile)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("cannot create temporary journal file: %w", err)
+	}
+
+	tempName := tempFile.Name()
+	cleanup := func() {
+		_ = os.Remove(tempName)
+	}
+
+	if err := j.write(tempFile); err != nil {
+		_ = tempFile.Close()
+		cleanup()
 		return err
 	}
-	return j.close(f)
+	if err := tempFile.Sync(); err != nil {
+		_ = tempFile.Close()
+		cleanup()
+		return fmt.Errorf("cannot sync journal file: %w", err)
+	}
+	if err := closeFile(tempFile); err != nil {
+		cleanup()
+		return err
+	}
+	if err := os.Rename(tempName, j.JournalFile); err != nil {
+		cleanup()
+		return fmt.Errorf("cannot replace journal file: %w", err)
+	}
+	if err := syncDirAfterRename(dir); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (j *Journal) registerShutdownHook() {
+	j.closeOnce.Do(func() {
+		util.RegisterShutdownFunc(j.Close)
+	})
 }
 
 // normalize restores the CompletedFiles invariant after loading JSON:
@@ -286,7 +361,7 @@ func (j *Journal) readAndClose(f *os.File) error {
 	if err := j.read(f); err != nil {
 		return err
 	}
-	return j.close(f)
+	return closeFile(f)
 }
 
 // addCompletedFile inserts a completed file into the nested set, creating the
@@ -318,4 +393,22 @@ func normalizeCompletedFile(file string, ingestDir string) (string, string, erro
 		return "", "", fmt.Errorf("cannot normalize completed file %q without ingest directory", file)
 	}
 	return filepath.Base(filepath.Clean(ingestDir)), filepath.Base(file), nil
+}
+
+// syncDirAfterRename is a NOOP (read comment inside the function).
+func syncDirAfterRename(dir string) error {
+	// f, err := os.Open(dir)
+	// if err != nil {
+	// 	return fmt.Errorf("cannot open journal directory: %w", err)
+	// }
+	// defer f.Close()
+	// if err := f.Sync(); err != nil {
+	// 	return fmt.Errorf("cannot sync journal directory: %w", err)
+	// }
+	// return nil
+
+	// We trust the machine won't crash.
+	// Otherwise, the code above will ensure the filesystem has written in disk the result of the
+	// rename operation, thus making it more resilient to OS or machine crashes.
+	return nil
 }
