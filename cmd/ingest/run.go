@@ -154,13 +154,13 @@ func ingestFilesInBatches(
 
 	if stats != nil {
 		stats.TotalFiles.Store(int64(len(allFilenames)))
-		stats.TotalCerts.Store(0)
+		stats.TotalRows.Store(0)
 		for _, fileName := range allFilenames {
 			n, err := estimateCertCount(fileName)
 			if err != nil {
 				return err
 			}
-			stats.TotalCerts.Add(int64(n))
+			stats.TotalRows.Add(int64(n))
 		}
 	}
 

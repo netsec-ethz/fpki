@@ -51,6 +51,7 @@ func (w *lineToChainPtrWorker) parseLine(p *Processor, line *line) (*certChain, 
 	if err != nil {
 		return nil, err
 	}
+	p.Manager.Stats.ReadRows.Add(1)
 	if w.now.After(time.Unix(n, 0)) {
 		// Skip this certificate.
 		return nil, nil
