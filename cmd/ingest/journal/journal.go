@@ -7,74 +7,64 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
+// Journal persists ingest progress so future runs can skip files whose
+// certificate-index ranges are already fully covered.
 type Journal struct {
 	mu          sync.Mutex
 	closed      bool
 	closeOnce   sync.Once
-	JournalFile string     `json:"-"` // Exclude from JSON.
-	IngestDir   string     `json:"-"` // Only used to refresh file listings.
-	Cwds        []string   //`json:"Cwds"`
-	Cmds        [][]string //`json:"Cmds"`
-
-	JobConfiguration JobConfiguration //`json:"Configuration"`
-	CompletedFiles   map[string]map[string]struct{}
+	JournalFile string `json:"-"` // Exclude from JSON.
+	IngestDir   string `json:"-"` // Only used to refresh file listings.
+	Jobs        []Job
 }
 
+// JobConfiguration captures the ingest-mode settings that affect how one run
+// should be executed and resumed.
 type JobConfiguration struct {
 	IngestFiles bool
 	Coalesce    bool
 	UpdateSMT   bool
 	FileBatch   int
+	// IncludePlainCSVs opts the run into also listing uncompressed `.csv`
+	// bundles. When false, ingest only discovers `.gz` inputs.
+	IncludePlainCSVs bool
 }
 
+// Job records one invocation of the ingest command in the journal history.
 type Job struct {
-	Files []string //`json:"Files,omitempty"`
+	Cwd              string           `json:"Cwd"`
+	Cmd              []string         `json:"Cmd"`
+	JobConfiguration JobConfiguration `json:"JobConfiguration"`
+	StartTime        string           `json:"StartTime"`
+	EndTime          string           `json:"EndTime"`
+	Coalesced        bool             `json:"Coalesced"`
+	UpdatedSMT       bool             `json:"UpdatedSMT"`
+	CompletedIndices CompletedIndices `json:"CompletedIndices"`
 }
 
-type journalJSON struct {
-	Cwds             []string                       `json:"Cwds"`
-	Cmds             [][]string                     `json:"Cmds"`
-	JobConfiguration JobConfiguration               `json:"JobConfiguration"`
-	CompletedFiles   map[string]map[string]struct{} `json:"CompletedFiles"`
-}
+type CompletedIndices map[string][]Interval
 
-// NewJobConfiguration translates the ingest strategy flags into the journal's
-// execution configuration.
-func NewJobConfiguration(strategy string, fileBatch int) (JobConfiguration, error) {
-	jc := JobConfiguration{
-		FileBatch: fileBatch,
-	}
-	switch strategy {
-	case "onlyingest":
-		jc.IngestFiles = true
-	case "":
-		jc.IngestFiles = true
-		fallthrough
-	case "skipingest":
-		jc.Coalesce = true
-		fallthrough
-	case "onlysmtupdate":
-		jc.UpdateSMT = true
-	default:
-		return JobConfiguration{}, fmt.Errorf("strategy value not understood by journal: %s", strategy)
-	}
-	return jc, nil
+// Interval represents an inclusive range of certificate indices.
+type Interval struct {
+	Start uint
+	End   uint
 }
 
 // NewJournal loads or creates the journal file and normalizes any stored
-// completed-file entries into the journal key format.
+// completed-index entries into the journal key format.
 func NewJournal(journalFile string, cfg JobConfiguration, ingestDir string) (*Journal, error) {
 	j := &Journal{
-		JournalFile:    journalFile,
-		IngestDir:      ingestDir,
-		CompletedFiles: map[string]map[string]struct{}{},
+		JournalFile: journalFile,
+		IngestDir:   ingestDir,
 	}
 
 	// Check if file exists.
@@ -93,7 +83,7 @@ func NewJournal(journalFile string, cfg JobConfiguration, ingestDir string) (*Jo
 			return nil, err
 		}
 
-		if err := j.updateCwdOsArgs(); err != nil {
+		if err := j.appendJob(cfg); err != nil {
 			return nil, err
 		}
 
@@ -106,30 +96,64 @@ func NewJournal(journalFile string, cfg JobConfiguration, ingestDir string) (*Jo
 	return j, nil
 }
 
-// AddCompletedFiles adds the file names to the set of completed files.
-// The function normalizes them into ingest-dir and filename keys and inserts
-// them into the nested completed-files set.
-func (j *Journal) AddCompletedFiles(files []string) error {
+// NewJobConfiguration translates the ingest strategy flags into the journal's
+// execution configuration, including whether plain `.csv` bundles should be
+// considered alongside compressed `.gz` files.
+func NewJobConfiguration(strategy string, fileBatch int, includePlainCSVs bool) (JobConfiguration, error) {
+	jc := JobConfiguration{
+		FileBatch:        fileBatch,
+		IncludePlainCSVs: includePlainCSVs,
+	}
+	switch strategy {
+	case "onlyingest":
+		jc.IngestFiles = true
+	case "":
+		jc.IngestFiles = true
+		fallthrough
+	case "skipingest":
+		jc.Coalesce = true
+		fallthrough
+	case "onlysmtupdate":
+		jc.UpdateSMT = true
+	default:
+		return JobConfiguration{}, fmt.Errorf("strategy value not understood by journal: %s", strategy)
+	}
+	return jc, nil
+}
+
+var completedIntervalRe = regexp.MustCompile(`^(\d+)-(\d+)$`)
+
+// CommitProgress updates the active job's completed-index snapshot, optional
+// phase flags, and end timestamp in one persisted journal write.
+func (j *Journal) CommitProgress(files []string, coalesced bool, updatedSMT bool) error {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 
 	if j.closed {
-		return fmt.Errorf("cannot add completed files to closed journal")
+		return fmt.Errorf("cannot commit progress to closed journal")
+	}
+
+	job, err := j.currentJob()
+	if err != nil {
+		return err
 	}
 
 	for _, file := range files {
-		ingestDirBase, fileBase, err := normalizeCompletedFile(file, j.IngestDir)
+		ingestDirBase, interval, err := normalizeCompletedFile(file, j.IngestDir)
 		if err != nil {
 			return err
 		}
-		addCompletedFile(j.CompletedFiles, ingestDirBase, fileBase)
+		addCompletedInterval(job.CompletedIndices, ingestDirBase, interval)
 	}
+	job.Coalesced = coalesced
+	job.UpdatedSMT = updatedSMT
 	return j.writeLocked()
 }
 
-// PendingFiles returns the set subtraction LiveDirectoryListing - CompletedFiles.
-// CompletedFiles is expected to already contain only normalized ingest-dir and
-// filename keys, so live files are normalized on the fly before membership is checked.
+// PendingFiles returns the set subtraction LiveDirectoryListing - CompletedIndices.
+// CompletedIndices is expected to already contain normalized ingest-dir and
+// interval coverage, so live files are normalized on the fly before coverage
+// is checked.
 func (j *Journal) PendingFiles() ([]string, error) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
@@ -142,14 +166,18 @@ func (j *Journal) PendingFiles() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	job, err := j.currentJob()
+	if err != nil {
+		return nil, err
+	}
 
 	pending := make([]string, 0, len(files))
 	for _, file := range files {
-		ingestDirBase, fileBase, err := normalizeCompletedFile(file, j.IngestDir)
+		ingestDirBase, interval, err := normalizeCompletedFile(file, j.IngestDir)
 		if err != nil {
 			return nil, err
 		}
-		if containsCompletedFile(j.CompletedFiles, ingestDirBase, fileBase) {
+		if containsCompletedInterval(job.CompletedIndices, ingestDirBase, interval) {
 			continue
 		}
 		pending = append(pending, file)
@@ -160,19 +188,18 @@ func (j *Journal) PendingFiles() ([]string, error) {
 // reset initializes a new journal instance with the current run configuration.
 func (j *Journal) reset(cfg JobConfiguration, ingestDir string) error {
 	// Update first to get the current CWD and os.Args.
-	err := j.updateCwdOsArgs()
+	err := j.appendJob(cfg)
 	if err != nil {
 		return err
 	}
-
-	j.JobConfiguration = cfg
 	j.IngestDir = ingestDir
 
 	return j.Write()
 }
 
 // listFiles refreshes the current ingest directory listing and returns the
-// discovered CSV/GZ files in bundle order.
+// discovered input files in bundle order. Plain `.csv` files are only included
+// when the active job configuration explicitly enables them.
 func (j *Journal) listFiles() ([]string, error) {
 	if j.IngestDir == "" {
 		return nil, nil
@@ -190,7 +217,16 @@ func (j *Journal) listFiles() ([]string, error) {
 		return nil, err
 	}
 
-	files := append(gzFiles, csvFiles...)
+	files := slices.Clone(gzFiles)
+	// Default to the compressed bundle set and only opt into plain CSVs when
+	// the current invocation requested them.
+	job, err := j.currentJob()
+	if err != nil {
+		return nil, err
+	}
+	if job.JobConfiguration.IncludePlainCSVs {
+		files = append(files, csvFiles...)
+	}
 	if err := util.SortByBundleName(files); err != nil {
 		return nil, err
 	}
@@ -198,16 +234,21 @@ func (j *Journal) listFiles() ([]string, error) {
 	return files, nil
 }
 
-// updateCwdOsArgs appends the current working directory and process arguments
-// to the journal history.
-func (j *Journal) updateCwdOsArgs() error {
-	// Append new command line and working directories.
+// appendJob records the current working directory, process arguments, and run
+// configuration as one journal history entry.
+func (j *Journal) appendJob(cfg JobConfiguration) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
 	}
-	j.Cwds = append(j.Cwds, cwd)
-	j.Cmds = append(j.Cmds, os.Args)
+
+	j.Jobs = append(j.Jobs, Job{
+		Cwd:              cwd,
+		Cmd:              slices.Clone(os.Args),
+		JobConfiguration: cfg,
+		StartTime:        time.Now().UTC().Format(time.RFC3339),
+		CompletedIndices: cloneCompletedIndices(j.latestCompletedIndices()),
+	})
 
 	return nil
 }
@@ -239,23 +280,9 @@ func (j *Journal) Close() error {
 	return nil
 }
 
-// closeFile closes the file and wraps any filesystem error.
-func closeFile(f *os.File) error {
-	err := f.Close()
-	if err != nil {
-		return fmt.Errorf("cannot close journal file: %w", err)
-	}
-	return nil
-}
-
 // write encodes the journal to JSON and writes it to the provided file.
 func (j *Journal) write(f *os.File) error {
-	buf, err := json.MarshalIndent(journalJSON{
-		Cwds:             j.Cwds,
-		Cmds:             j.Cmds,
-		JobConfiguration: j.JobConfiguration,
-		CompletedFiles:   j.CompletedFiles,
-	}, "", "  ")
+	buf, err := json.MarshalIndent(j, "", "  ")
 	if err != nil {
 		return fmt.Errorf("cannot translate journal to json: %w", err)
 	}
@@ -267,7 +294,11 @@ func (j *Journal) write(f *os.File) error {
 	return nil
 }
 
+// writeLocked atomically rewrites the journal file while the journal mutex is held.
 func (j *Journal) writeLocked() error {
+	if len(j.Jobs) > 0 {
+		j.Jobs[len(j.Jobs)-1].EndTime = time.Now().UTC().Format(time.RFC3339)
+	}
 	dir := filepath.Dir(j.JournalFile)
 	tempFile, err := os.CreateTemp(dir, filepath.Base(j.JournalFile)+".tmp-*")
 	if err != nil {
@@ -303,35 +334,24 @@ func (j *Journal) writeLocked() error {
 	return nil
 }
 
+// registerShutdownHook ensures the journal is flushed during global process shutdown.
 func (j *Journal) registerShutdownHook() {
 	j.closeOnce.Do(func() {
 		util.RegisterShutdownFunc(j.Close)
 	})
 }
 
-// normalize restores the CompletedFiles invariant after loading JSON:
-// every entry must be stored as CompletedFiles[ingestDirBase][fileBase].
+// normalize restores the CompletedIndices invariant after loading JSON:
+// every entry must be stored as CompletedIndices[ingestDirBase] as a sorted,
+// non-overlapping, minimal interval list.
 func (j *Journal) normalize() error {
-	if j.CompletedFiles == nil {
-		j.CompletedFiles = map[string]map[string]struct{}{}
-		return nil
+	for i := range j.Jobs {
+		normalized, err := normalizeCompletedIndices(j.Jobs[i].CompletedIndices)
+		if err != nil {
+			return fmt.Errorf("job %d: %w", i, err)
+		}
+		j.Jobs[i].CompletedIndices = normalized
 	}
-
-	for ingestDirBase, files := range j.CompletedFiles {
-		if ingestDirBase == "" {
-			return fmt.Errorf("empty ingest directory key in completed files")
-		}
-		if files == nil {
-			j.CompletedFiles[ingestDirBase] = map[string]struct{}{}
-			continue
-		}
-		for fileBase := range files {
-			if fileBase == "" {
-				return fmt.Errorf("empty file key in completed files for ingest dir %q", ingestDirBase)
-			}
-		}
-	}
-
 	return nil
 }
 
@@ -341,15 +361,12 @@ func (j *Journal) read(f *os.File) error {
 	if err != nil {
 		return fmt.Errorf("cannot read journal file: %w", err)
 	}
-	var raw journalJSON
-	err = json.Unmarshal(buff, &raw)
+	var decoded Journal
+	err = json.Unmarshal(buff, &decoded)
 	if err != nil {
 		return fmt.Errorf("journal file wrong format: %w", err)
 	}
-	j.Cwds = raw.Cwds
-	j.Cmds = raw.Cmds
-	j.JobConfiguration = raw.JobConfiguration
-	j.CompletedFiles = raw.CompletedFiles
+	j.Jobs = decoded.Jobs
 	if err := j.normalize(); err != nil {
 		return fmt.Errorf("journal file wrong format: %w", err)
 	}
@@ -364,35 +381,262 @@ func (j *Journal) readAndClose(f *os.File) error {
 	return closeFile(f)
 }
 
-// addCompletedFile inserts a completed file into the nested set, creating the
-// ingest-dir bucket when needed.
-func addCompletedFile(completed map[string]map[string]struct{}, ingestDirBase, fileBase string) {
-	files, ok := completed[ingestDirBase]
-	if !ok {
-		files = map[string]struct{}{}
-		completed[ingestDirBase] = files
+func (j *Journal) latestCompletedIndices() CompletedIndices {
+	if len(j.Jobs) == 0 {
+		return CompletedIndices{}
 	}
-	files[fileBase] = struct{}{}
+	return j.Jobs[len(j.Jobs)-1].CompletedIndices
 }
 
-// containsCompletedFile reports whether the nested completed-files set already
-// contains the given ingest-dir and filename pair.
-func containsCompletedFile(completed map[string]map[string]struct{}, ingestDirBase, fileBase string) bool {
-	files, ok := completed[ingestDirBase]
+func (j *Journal) currentJob() (*Job, error) {
+	if len(j.Jobs) == 0 {
+		return nil, fmt.Errorf("journal has no jobs")
+	}
+	job := &j.Jobs[len(j.Jobs)-1]
+	if job.CompletedIndices == nil {
+		job.CompletedIndices = CompletedIndices{}
+	}
+	return job, nil
+}
+
+// MarshalJSON serializes the in-memory interval representation into the
+// human-readable on-disk string-array format.
+func (c CompletedIndices) MarshalJSON() ([]byte, error) {
+	return json.Marshal(encodeCompletedIndices(c))
+}
+
+// UnmarshalJSON restores the persisted string interval representation into the
+// in-memory interval representation used by journal logic.
+func (c *CompletedIndices) UnmarshalJSON(data []byte) error {
+	var raw map[string][]string
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	completedIndices, err := decodeCompletedIndices(raw)
+	if err != nil {
+		return err
+	}
+	*c = completedIndices
+	return nil
+}
+
+// String formats the interval using the persisted inclusive `A-B` form.
+func (i Interval) String() string {
+	return fmt.Sprintf("%d-%d", i.Start, i.End)
+}
+
+func encodeCompletedIndices(completedIndices CompletedIndices) map[string][]string {
+	encodedCompletedIndices := make(map[string][]string, len(completedIndices))
+	for ingestDirBase, intervals := range completedIndices {
+		encoded := make([]string, len(intervals))
+		for i, interval := range intervals {
+			encoded[i] = interval.String()
+		}
+		encodedCompletedIndices[ingestDirBase] = encoded
+	}
+	return encodedCompletedIndices
+}
+
+func decodeCompletedIndices(raw map[string][]string) (CompletedIndices, error) {
+	if raw == nil {
+		return CompletedIndices{}, nil
+	}
+
+	completed := make(CompletedIndices, len(raw))
+	for ingestDirBase, encodedIntervals := range raw {
+		intervals := make([]Interval, 0, len(encodedIntervals))
+		for _, encoded := range encodedIntervals {
+			interval, err := parseIntervalString(encoded)
+			if err != nil {
+				return nil, err
+			}
+			intervals = append(intervals, interval)
+		}
+		completed[ingestDirBase] = intervals
+	}
+	return completed, nil
+}
+
+func normalizeCompletedIndices(completedIndices CompletedIndices) (CompletedIndices, error) {
+	if completedIndices == nil {
+		return CompletedIndices{}, nil
+	}
+
+	normalizedCompletedIndices := make(CompletedIndices, len(completedIndices))
+	for ingestDirBase, intervals := range completedIndices {
+		if ingestDirBase == "" {
+			return nil, fmt.Errorf("empty ingest directory key in completed indices")
+		}
+		if intervals == nil {
+			normalizedCompletedIndices[ingestDirBase] = []Interval{}
+			continue
+		}
+
+		normalized := make([]Interval, 0, len(intervals))
+		for _, interval := range intervals {
+			if interval.Start > interval.End {
+				return nil, fmt.Errorf("invalid interval %s for ingest dir %q", interval.String(), ingestDirBase)
+			}
+			normalized = appendInterval(normalized, interval)
+		}
+		normalizedCompletedIndices[ingestDirBase] = normalized
+	}
+	return normalizedCompletedIndices, nil
+}
+
+func cloneCompletedIndices(completedIndices CompletedIndices) CompletedIndices {
+	cloned := make(CompletedIndices, len(completedIndices))
+	for ingestDirBase, intervals := range completedIndices {
+		cloned[ingestDirBase] = slices.Clone(intervals)
+	}
+	return cloned
+}
+
+// closeFile closes the file and wraps any filesystem error.
+func closeFile(f *os.File) error {
+	err := f.Close()
+	if err != nil {
+		return fmt.Errorf("cannot close journal file: %w", err)
+	}
+	return nil
+}
+
+// addCompletedInterval inserts a completed interval into the nested set,
+// creating the ingest-dir bucket when needed.
+func addCompletedInterval(completed CompletedIndices, ingestDirBase string, interval Interval) {
+	intervals, ok := completed[ingestDirBase]
+	if !ok {
+		intervals = []Interval{}
+	}
+	completed[ingestDirBase] = appendInterval(intervals, interval)
+}
+
+// appendInterval inserts one interval into an existing sorted interval list,
+// merging overlaps and adjacencies to preserve a minimal canonical form.
+func appendInterval(intervals []Interval, interval Interval) []Interval {
+	// Find the insertion point by interval start. Because the slice is kept
+	// sorted, only the interval immediately before the insertion point and any
+	// intervals starting at or after it can possibly merge with the new range.
+	idx, _ := slices.BinarySearchFunc(intervals, interval, func(existing, target Interval) int {
+		switch {
+		case existing.Start < target.Start:
+			return -1
+		case existing.Start > target.Start:
+			return 1
+		default:
+			return 0
+		}
+	})
+
+	// First absorb a predecessor if it overlaps with or directly touches the
+	// new interval. This may shift the insertion point left by one slot.
+	if idx > 0 && canMerge(intervals[idx-1], interval) {
+		idx--
+		interval = mergeIntervals(intervals[idx], interval)
+		intervals = append(intervals[:idx], intervals[idx+1:]...)
+	}
+	// Then keep consuming following intervals for as long as the merged range
+	// still overlaps or touches them, yielding one minimal interval in the end.
+	for idx < len(intervals) && canMerge(interval, intervals[idx]) {
+		interval = mergeIntervals(interval, intervals[idx])
+		intervals = append(intervals[:idx], intervals[idx+1:]...)
+	}
+
+	// Reinsert the final merged interval at the computed position while
+	// preserving sort order.
+	intervals = append(intervals, Interval{})
+	copy(intervals[idx+1:], intervals[idx:])
+	intervals[idx] = interval
+	return intervals
+}
+
+// canMerge reports whether two inclusive intervals overlap or touch.
+func canMerge(a, b Interval) bool {
+	return a.Start <= b.End+1 && b.Start <= a.End+1
+}
+
+// mergeIntervals returns the smallest interval covering both inputs.
+func mergeIntervals(a, b Interval) Interval {
+	return Interval{
+		Start: min(a.Start, b.Start),
+		End:   max(a.End, b.End),
+	}
+}
+
+// containsCompletedInterval reports whether the nested completed interval set
+// fully covers the given ingest-dir and interval pair.
+func containsCompletedInterval(completed CompletedIndices, ingestDirBase string, interval Interval) bool {
+	intervals, ok := completed[ingestDirBase]
 	if !ok {
 		return false
 	}
-	_, ok = files[fileBase]
-	return ok
+	idx, found := slices.BinarySearchFunc(intervals, interval, func(existing, target Interval) int {
+		switch {
+		case existing.Start < target.Start:
+			return -1
+		case existing.Start > target.Start:
+			return 1
+		default:
+			return 0
+		}
+	})
+	if found {
+		return intervals[idx].End >= interval.End
+	}
+	if idx == 0 {
+		return false
+	}
+	candidate := intervals[idx-1]
+	return candidate.Start <= interval.Start && candidate.End >= interval.End
 }
 
 // normalizeCompletedFile converts a current-run file path into the canonical
-// ingest-dir and filename pair.
-func normalizeCompletedFile(file string, ingestDir string) (string, string, error) {
+// ingest-dir and interval pair.
+func normalizeCompletedFile(file string, ingestDir string) (string, Interval, error) {
 	if ingestDir == "" {
-		return "", "", fmt.Errorf("cannot normalize completed file %q without ingest directory", file)
+		return "", Interval{}, fmt.Errorf("cannot normalize completed file %q without ingest directory", file)
 	}
-	return filepath.Base(filepath.Clean(ingestDir)), filepath.Base(file), nil
+	interval, err := parseFileInterval(file)
+	if err != nil {
+		return "", Interval{}, err
+	}
+	return filepath.Base(filepath.Clean(ingestDir)), interval, nil
+}
+
+// parseFileInterval extracts an inclusive interval from a bundle filename such
+// as `A-B.gz` or `A-B.csv`.
+func parseFileInterval(file string) (Interval, error) {
+	filename := filepath.Base(file)
+	if ext := filepath.Ext(filename); ext == ".gz" || ext == ".csv" {
+		filename = filename[:len(filename)-len(ext)]
+	}
+	interval, err := parseIntervalString(filename)
+	if err != nil {
+		return Interval{}, fmt.Errorf("cannot parse completed file %q: %w", file, err)
+	}
+	return interval, nil
+}
+
+// parseIntervalString parses the persisted `A-B` interval encoding.
+func parseIntervalString(value string) (Interval, error) {
+	groups := completedIntervalRe.FindStringSubmatch(value)
+	if len(groups) != 3 {
+		return Interval{}, fmt.Errorf("unexpected interval %q", value)
+	}
+	start, err := strconv.ParseUint(groups[1], 10, 64)
+	if err != nil {
+		return Interval{}, fmt.Errorf("unexpected interval %q", value)
+	}
+	end, err := strconv.ParseUint(groups[2], 10, 64)
+	if err != nil {
+		return Interval{}, fmt.Errorf("unexpected interval %q", value)
+	}
+	interval := Interval{Start: uint(start), End: uint(end)}
+	if interval.Start > interval.End {
+		return Interval{}, fmt.Errorf("unexpected interval %q", value)
+	}
+	return interval, nil
 }
 
 // syncDirAfterRename is a NOOP (read comment inside the function).

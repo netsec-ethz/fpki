@@ -148,8 +148,8 @@ func mainFunction() error {
 		exit:              util.Exit,
 	})
 
-	err = runIngestContext(ctx, cfg, RunDependencies{
-		NewJournal: func(cfg RunConfig, jobCfg journal.JobConfiguration) (JournalStore, error) {
+	err = runIngest(ctx, cfg, RunDependencies{
+		NewJournal: func(cfg RunConfig, jobCfg journal.JobConfiguration) (*journal.Journal, error) {
 			return journal.NewJournal(cfg.JournalFile, jobCfg, cfg.Directory)
 		},
 		NewStatistics: func() *updater.Stats {
@@ -258,6 +258,7 @@ func configFromFlags() RunConfig {
 		NumParsers:       *args.NumParsers,
 		NumChainToCerts:  *args.NumChainToCerts,
 		NumDBWriters:     *args.NumDBWriters,
+		IncludePlainCSVs: *args.IncludePlainCSVs,
 		SkipMissingFiles: *args.SkipMissingFiles,
 		CpuProfile:       *args.CpuProfile,
 		MemProfile:       *args.MemProfile,
@@ -498,7 +499,7 @@ func writeMetaFile(path string, meta diagnosticsMeta) error {
 	_, err = fmt.Fprintf(f,
 		"timestamp=%s\nprocess_start=%s\nuptime=%s\nuptime_seconds=%f\nsignal=%s\npid=%d\nargs=%q\n"+
 			"strategy=%s\nfilebatch=%d\nmultiinsert=%d\nnumfiles=%d\nnumparsers=%d\nnumdechainers=%d\n"+
-			"numdbworkers=%d\ndirectory=%s\njournal=%s\n",
+			"numdbworkers=%d\nincludeplaincsvs=%t\ndirectory=%s\njournal=%s\n",
 		meta.Time.Format(time.RFC3339Nano),
 		meta.ProcessStart.Format(time.RFC3339Nano),
 		meta.Uptime,
@@ -513,6 +514,7 @@ func writeMetaFile(path string, meta diagnosticsMeta) error {
 		meta.Config.NumParsers,
 		meta.Config.NumChainToCerts,
 		meta.Config.NumDBWriters,
+		meta.Config.IncludePlainCSVs,
 		meta.Config.Directory,
 		meta.Config.JournalFile,
 	)

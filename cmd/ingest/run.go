@@ -14,29 +14,26 @@ import (
 )
 
 type RunConfig struct {
-	Directory        string
-	Strategy         string
-	JournalFile      string
-	FileBatch        int
-	MultiInsertSize  int
-	NumFiles         int
-	NumParsers       int
-	NumChainToCerts  int
-	NumDBWriters     int
+	Directory       string
+	Strategy        string
+	JournalFile     string
+	FileBatch       int
+	MultiInsertSize int
+	NumFiles        int
+	NumParsers      int
+	NumChainToCerts int
+	NumDBWriters    int
+	// IncludePlainCSVs controls whether pending-file discovery includes plain
+	// `.csv` bundles or restricts processing to compressed `.gz` bundles only.
+	IncludePlainCSVs bool
 	SkipMissingFiles bool
 	CpuProfile       string
 	MemProfile       string
 }
 
-type JournalStore interface {
-	PendingFiles() ([]string, error)
-	AddCompletedFiles([]string) error
-	Close() error
-}
-
 // RunDependencies collects all necessary functions to effectively run ingest.
 type RunDependencies struct {
-	NewJournal        func(RunConfig, journal.JobConfiguration) (JournalStore, error)
+	NewJournal        func(RunConfig, journal.JobConfiguration) (*journal.Journal, error)
 	NewStatistics     func() *updater.Stats
 	EstimateCertCount func(string) (uint, error)
 	BeforeBatch       func(batchNum, batchCount int) error
@@ -46,7 +43,7 @@ type RunDependencies struct {
 }
 
 func (cfg RunConfig) JobConfiguration() (journal.JobConfiguration, error) {
-	return journal.NewJobConfiguration(cfg.Strategy, cfg.FileBatch)
+	return journal.NewJobConfiguration(cfg.Strategy, cfg.FileBatch, cfg.IncludePlainCSVs)
 }
 
 func (cfg RunConfig) validate() error {
@@ -60,14 +57,7 @@ func (cfg RunConfig) validate() error {
 	return nil
 }
 
-func runIngest(cfg RunConfig, deps RunDependencies) error {
-	if err := cfg.validate(); err != nil {
-		return err
-	}
-	return runIngestContext(context.Background(), cfg, deps)
-}
-
-func runIngestContext(ctx context.Context, cfg RunConfig, deps RunDependencies) error {
+func runIngest(ctx context.Context, cfg RunConfig, deps RunDependencies) error {
 	if err := cfg.validate(); err != nil {
 		return err
 	}
@@ -105,12 +95,18 @@ func runIngestContext(ctx context.Context, cfg RunConfig, deps RunDependencies) 
 			if err := coalesce(); err != nil {
 				return err
 			}
+			if err := j.CommitProgress(nil, true, false); err != nil {
+				return err
+			}
 		}
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		if jobCfg.UpdateSMT {
 			if err := updateSMT(); err != nil {
+				return err
+			}
+			if err := j.CommitProgress(nil, jobCfg.Coalesce, true); err != nil {
 				return err
 			}
 		}
@@ -150,14 +146,14 @@ func runIngestContext(ctx context.Context, cfg RunConfig, deps RunDependencies) 
 					return err
 				}
 			}
-			return j.AddCompletedFiles(files)
+			return j.CommitProgress(files, jobCfg.Coalesce, jobCfg.UpdateSMT)
 		},
 	)
 }
 
 func ingestFilesInBatches(
 	ctx context.Context,
-	j JournalStore,
+	j *journal.Journal,
 	stats *updater.Stats,
 	fileBatchSize int,
 	estimateCertCount func(string) (uint, error),
