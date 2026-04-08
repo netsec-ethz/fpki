@@ -140,14 +140,20 @@ func (c *mysqlDB) RecomputeDirtyDomainsCertAndPolicyIDs(ctx context.Context) err
 		go func(partition int) {
 			defer wg.Done()
 			str := "CALL calc_dirty_domains(?)"
-			_, errs[i] = c.db.ExecContext(ctx, str, i)
+			if _, err := c.db.ExecContext(ctx, str, partition); err != nil {
+				errs[partition] = fmt.Errorf(
+					"coalescing dirty domains in partition %d: %w",
+					partition,
+					err,
+				)
+			}
 		}(i)
 	}
 	wg.Wait()
 
 	err := util.ErrorsCoalesce(errs...)
 	if err != nil {
-		return fmt.Errorf("coalescing for domains: %w", err)
+		return fmt.Errorf("coalescing dirty-domain payloads: %w", err)
 	}
 
 	return nil

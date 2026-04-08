@@ -437,7 +437,7 @@ func UpdateWithKeepExisting(
 
 func CoalescePayloadsForDirtyDomains(ctx context.Context, conn db.Conn) error {
 	if err := conn.RecomputeDirtyDomainsCertAndPolicyIDs(ctx); err != nil {
-		return fmt.Errorf("coalescing payloads of dirty domains: %w", err)
+		return fmt.Errorf("coalescing dirty-domain payloads: %w", err)
 	}
 	return nil
 }
