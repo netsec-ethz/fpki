@@ -281,9 +281,9 @@ func TestCoalesceForDirtyDomains_MixedCertsAndPolicies(t *testing.T) {
 	require.Equal(t, expectedPolIDsID, gotPolIDsID)
 }
 
-// TestCoalesceForDirtyDomains_RemovesStalePayloadRows checks that domains who no longer have
-// any certs or policies, end up disappearing from the domain_payloads table.
-func TestCoalesceForDirtyDomains_RemovesStalePayloadRows(t *testing.T) {
+// TestCoalesceForDirtyDomains_RemovesStaleDomainState checks that domains who no longer have
+// any certs or policies disappear from both domain_payloads and domains.
+func TestCoalesceForDirtyDomains_RemovesStaleDomainState(t *testing.T) {
 	// Because we are using "random" bytes deterministically here, set a fixed seed.
 	rand.Seed(1)
 
@@ -301,7 +301,7 @@ func TestCoalesceForDirtyDomains_RemovesStalePayloadRows(t *testing.T) {
 	c := mysql.NewMysqlDBForTests(conn)
 	leaf := "stale.example.com"
 
-	// Create one domain with both certs and policies so that a domain_payloads row exists first.
+	// Create one domain with both certs and policies so rows exist in both tables first.
 	certs, certIDs, parentCertIDs, certNames := testCertHierarchyForLeafs(t, []string{leaf})
 	pols, _ := testPolicyHierarchyForLeafs(t, []string{leaf})
 	err := updater.UpdateWithKeepExisting(ctx, conn, certNames, certIDs, parentCertIDs,
@@ -321,8 +321,15 @@ func TestCoalesceForDirtyDomains_RemovesStalePayloadRows(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, count)
 
+	err = c.DB().QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM domains WHERE domain_id = ?",
+		domainID[:],
+	).Scan(&count)
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+
 	// Remove every remaining link for that dirty domain, then mark it dirty again and re-run
-	// coalescing. The old payload row must disappear instead of surviving with stale data.
+	// coalescing. Both the payload row and the domain row must disappear.
 	_, err = c.DB().ExecContext(ctx,
 		"DELETE FROM domain_certs WHERE domain_id = ?",
 		domainID[:],
@@ -344,6 +351,13 @@ func TestCoalesceForDirtyDomains_RemovesStalePayloadRows(t *testing.T) {
 
 	err = c.DB().QueryRowContext(ctx,
 		"SELECT COUNT(*) FROM domain_payloads WHERE domain_id = ?",
+		domainID[:],
+	).Scan(&count)
+	require.NoError(t, err)
+	require.Equal(t, 0, count)
+
+	err = c.DB().QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM domains WHERE domain_id = ?",
 		domainID[:],
 	).Scan(&count)
 	require.NoError(t, err)

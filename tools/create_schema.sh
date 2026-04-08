@@ -206,18 +206,51 @@ BEGIN
 	-- TODO: wrap the deletion and the insertion in a transaction.
 
 	-- Dynamic SQL because PARTITION only accepts literals (not variables).
-	SET @delete_sql = CONCAT("
+	-- Only delete rows for dirty domains that no longer have any linked certs or policies.
+	-- Non-empty domains are updated via REPLACE below, which avoids a bulk delete+insert cycle
+	-- across partitions and keeps the lock footprint closer to the original implementation.
+	SET @delete_payloads_sql = CONCAT("
 		DELETE dp
-		FROM domain_payloads AS dp
+		FROM domain_payloads PARTITION(p", partition_number, ") AS dp
 		INNER JOIN dirty PARTITION(p", partition_number, ") AS d
 			ON dp.domain_id = d.domain_id
+		WHERE NOT EXISTS (
+			SELECT 1
+			FROM domain_certs AS dc
+			WHERE dc.domain_id = dp.domain_id
+		)
+		AND NOT EXISTS (
+			SELECT 1
+			FROM domain_policies AS pol
+			WHERE pol.domain_id = dp.domain_id
+		)
 	");
-	PREPARE stmt FROM @delete_sql;
+	PREPARE stmt FROM @delete_payloads_sql;
+	EXECUTE stmt;
+	DEALLOCATE PREPARE stmt;
+
+	SET @delete_domains_sql = CONCAT("
+		DELETE dom
+		FROM domains PARTITION(p", partition_number, ") AS dom
+		INNER JOIN dirty PARTITION(p", partition_number, ") AS d
+			ON dom.domain_id = d.domain_id
+		WHERE NOT EXISTS (
+			SELECT 1
+			FROM domain_certs AS dc
+			WHERE dc.domain_id = dom.domain_id
+		)
+		AND NOT EXISTS (
+			SELECT 1
+			FROM domain_policies AS dp
+			WHERE dp.domain_id = dom.domain_id
+		)
+	");
+	PREPARE stmt FROM @delete_domains_sql;
 	EXECUTE stmt;
 	DEALLOCATE PREPARE stmt;
 
 	SET @insert_sql = CONCAT("
-		INSERT INTO domain_payloads(domain_id, cert_ids, cert_ids_id, policy_ids, policy_ids_id)
+		REPLACE INTO domain_payloads(domain_id, cert_ids, cert_ids_id, policy_ids, policy_ids_id)
 		WITH RECURSIVE
 		cert_closure AS (
 			-- Base case: all leaf certs linked to a dirty domain in this partition.
