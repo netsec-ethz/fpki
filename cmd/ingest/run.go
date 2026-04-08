@@ -63,14 +63,7 @@ func (cfg RunConfig) validate() error {
 	return nil
 }
 
-func runIngest(cfg RunConfig, deps RunDependencies) error {
-	if err := cfg.validate(); err != nil {
-		return err
-	}
-	return runIngestContext(context.Background(), cfg, deps)
-}
-
-func runIngestContext(ctx context.Context, cfg RunConfig, deps RunDependencies) error {
+func runIngest(ctx context.Context, cfg RunConfig, deps RunDependencies) error {
 	if err := cfg.validate(); err != nil {
 		return err
 	}

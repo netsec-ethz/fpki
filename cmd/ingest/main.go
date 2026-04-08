@@ -148,7 +148,7 @@ func mainFunction() error {
 		exit:              util.Exit,
 	})
 
-	err = runIngestContext(ctx, cfg, RunDependencies{
+	err = runIngest(ctx, cfg, RunDependencies{
 		NewJournal: func(cfg RunConfig, jobCfg journal.JobConfiguration) (JournalStore, error) {
 			return journal.NewJournal(cfg.JournalFile, jobCfg, cfg.Directory)
 		},
