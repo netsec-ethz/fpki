@@ -17,19 +17,37 @@ const ingestTestBase = "fpki-ingest-test"
 
 func TestRunIngestScenarios(t *testing.T) {
 	runIngestCases := map[string]struct {
-		fileBatch       int
-		strategy        string
-		failBatch       int
-		missingDir      bool
-		makeContext     func(*testing.T) context.Context
-		prepare         func(*testing.T, RunConfig, []string)
-		check           func(*testing.T, RunConfig, []string, error, [][]string, int, int)
+		// fileBatch controls the configured ingest batch size for the scenario.
+		fileBatch int
+		// strategy selects which ingest/coalesce/SMT phases the run should execute.
+		strategy string
+		// failBatch injects a forced RunBatch failure on the Nth batch.
+		// Zero means no failure.
+		failBatch int
+		// missingDir swaps the generated ingest root for a path that does not exist.
+		missingDir bool
+		// makeContext optionally provides a custom context.
+		// When nil the runner uses context.Background().
+		makeContext func(*testing.T) context.Context
+		// prepare mutates the test setup before runIngest is called.
+		prepare func(*testing.T, RunConfig, []string)
+		// check asserts the outcome using the run config, ingest files,
+		// error, batch order, and phase counts.
+		check func(*testing.T, RunConfig, []string, error, [][]string, int, int)
 	}{
 		// Starts from an empty journal and persists the full ingest interval in one run.
 		"fresh_journal_persists_progress": {
 			fileBatch: 0,
 			strategy:  "onlyingest",
-			check: func(t *testing.T, cfg RunConfig, files []string, err error, runOrder [][]string, coalesceCount int, updateCount int) {
+			check: func(
+				t *testing.T,
+				cfg RunConfig,
+				files []string,
+				err error,
+				runOrder [][]string,
+				coalesceCount int,
+				updateCount int,
+			) {
 				require.NoError(t, err)
 				require.Equal(t, [][]string{files}, runOrder)
 				require.Zero(t, coalesceCount)
@@ -52,7 +70,15 @@ func TestRunIngestScenarios(t *testing.T) {
 				j := loadJournalForTest(t, cfg)
 				require.NoError(t, j.CommitProgress(files[:1], false, false))
 			},
-			check: func(t *testing.T, cfg RunConfig, files []string, err error, runOrder [][]string, coalesceCount int, updateCount int) {
+			check: func(
+				t *testing.T,
+				cfg RunConfig,
+				files []string,
+				err error,
+				runOrder [][]string,
+				coalesceCount int,
+				updateCount int,
+			) {
 				require.NoError(t, err)
 				require.Equal(t, [][]string{{files[1]}, {files[2]}}, runOrder)
 				require.Zero(t, coalesceCount)
@@ -72,7 +98,15 @@ func TestRunIngestScenarios(t *testing.T) {
 				j := loadJournalForTest(t, cfg)
 				require.NoError(t, j.CommitProgress(files, false, false))
 			},
-			check: func(t *testing.T, _ RunConfig, _ []string, err error, runOrder [][]string, coalesceCount int, updateCount int) {
+			check: func(
+				t *testing.T,
+				_ RunConfig,
+				_ []string,
+				err error,
+				runOrder [][]string,
+				coalesceCount int,
+				updateCount int,
+			) {
 				require.NoError(t, err)
 				require.Empty(t, runOrder)
 				require.Zero(t, coalesceCount)
@@ -83,19 +117,36 @@ func TestRunIngestScenarios(t *testing.T) {
 		"batching_respects_file_order": {
 			fileBatch: 2,
 			strategy:  "onlyingest",
-			check: func(t *testing.T, _ RunConfig, files []string, err error, runOrder [][]string, coalesceCount int, updateCount int) {
+			check: func(
+				t *testing.T,
+				_ RunConfig,
+				files []string,
+				err error,
+				runOrder [][]string,
+				coalesceCount int,
+				updateCount int,
+			) {
 				require.NoError(t, err)
 				require.Equal(t, [][]string{{files[0], files[1]}, {files[2]}}, runOrder)
 				require.Zero(t, coalesceCount)
 				require.Zero(t, updateCount)
 			},
 		},
-		// Leaves the journal at the last successful batch when a later batch fails after coalesce and SMT.
+		// Leaves the journal at the last successful batch when a later batch
+		// fails after coalesce and SMT.
 		"failed_second_batch_keeps_last_successful_progress": {
 			fileBatch: 1,
 			strategy:  "",
 			failBatch: 2,
-			check: func(t *testing.T, cfg RunConfig, files []string, err error, runOrder [][]string, coalesceCount int, updateCount int) {
+			check: func(
+				t *testing.T,
+				cfg RunConfig,
+				files []string,
+				err error,
+				runOrder [][]string,
+				coalesceCount int,
+				updateCount int,
+			) {
 				require.Error(t, err)
 				require.Len(t, runOrder, 2)
 				require.Equal(t, 1, coalesceCount)
@@ -119,19 +170,36 @@ func TestRunIngestScenarios(t *testing.T) {
 			prepare: func(t *testing.T, cfg RunConfig, _ []string) {
 				require.NoError(t, os.WriteFile(cfg.JournalFile, []byte("{"), 0o644))
 			},
-			check: func(t *testing.T, _ RunConfig, _ []string, err error, runOrder [][]string, coalesceCount int, updateCount int) {
+			check: func(
+				t *testing.T,
+				_ RunConfig,
+				_ []string,
+				err error,
+				runOrder [][]string,
+				coalesceCount int,
+				updateCount int,
+			) {
 				require.Error(t, err)
 				require.Empty(t, runOrder)
 				require.Zero(t, coalesceCount)
 				require.Zero(t, updateCount)
 			},
 		},
-		// Surfaces missing ingest directories as filesystem errors without running any batches.
+		// Surfaces missing ingest directories as filesystem errors without
+		// running any batches.
 		"missing_directory_returns_error": {
 			fileBatch:  1,
 			strategy:   "onlyingest",
 			missingDir: true,
-			check: func(t *testing.T, _ RunConfig, _ []string, err error, runOrder [][]string, coalesceCount int, updateCount int) {
+			check: func(
+				t *testing.T,
+				_ RunConfig,
+				_ []string,
+				err error,
+				runOrder [][]string,
+				coalesceCount int,
+				updateCount int,
+			) {
 				require.Error(t, err)
 				require.ErrorIs(t, err, os.ErrNotExist)
 				require.Empty(t, runOrder)
@@ -139,7 +207,8 @@ func TestRunIngestScenarios(t *testing.T) {
 				require.Zero(t, updateCount)
 			},
 		},
-		// Returns early when the caller-provided context is already canceled before any batch starts.
+		// Returns early when the caller-provided context is already canceled
+		// before any batch starts.
 		"context_canceled_before_batch": {
 			fileBatch: 1,
 			strategy:  "onlyingest",
@@ -149,29 +218,55 @@ func TestRunIngestScenarios(t *testing.T) {
 				cancel()
 				return ctx
 			},
-			check: func(t *testing.T, _ RunConfig, _ []string, err error, runOrder [][]string, coalesceCount int, updateCount int) {
+			check: func(
+				t *testing.T,
+				_ RunConfig,
+				_ []string,
+				err error,
+				runOrder [][]string,
+				coalesceCount int,
+				updateCount int,
+			) {
 				require.ErrorIs(t, err, context.Canceled)
 				require.Empty(t, runOrder)
 				require.Zero(t, coalesceCount)
 				require.Zero(t, updateCount)
 			},
 		},
-		// Runs the default strategy through ingest, coalesce, and SMT update in one pass.
+		// Runs the default strategy through ingest, coalesce,
+		// and SMT update in one pass.
 		"default_strategy_runs_all_phases": {
 			fileBatch: 0,
 			strategy:  "",
-			check: func(t *testing.T, _ RunConfig, _ []string, err error, runOrder [][]string, coalesceCount int, updateCount int) {
+			check: func(
+				t *testing.T,
+				_ RunConfig,
+				_ []string,
+				err error,
+				runOrder [][]string,
+				coalesceCount int,
+				updateCount int,
+			) {
 				require.NoError(t, err)
 				require.Len(t, runOrder, 1)
 				require.Equal(t, 1, coalesceCount)
 				require.Equal(t, 1, updateCount)
 			},
 		},
-		// Skips file ingestion and runs only coalesce plus SMT update on the carried-forward snapshot.
+		// Skips file ingestion and runs only coalesce plus SMT update
+		// on the carried-forward snapshot.
 		"skipingest_strategy_runs_followup_phases_only": {
 			fileBatch: 0,
 			strategy:  "skipingest",
-			check: func(t *testing.T, _ RunConfig, _ []string, err error, runOrder [][]string, coalesceCount int, updateCount int) {
+			check: func(
+				t *testing.T,
+				_ RunConfig,
+				_ []string,
+				err error,
+				runOrder [][]string,
+				coalesceCount int,
+				updateCount int,
+			) {
 				require.NoError(t, err)
 				require.Empty(t, runOrder)
 				require.Equal(t, 1, coalesceCount)
@@ -182,7 +277,15 @@ func TestRunIngestScenarios(t *testing.T) {
 		"onlysmtupdate_strategy_runs_smt_only": {
 			fileBatch: 0,
 			strategy:  "onlysmtupdate",
-			check: func(t *testing.T, _ RunConfig, _ []string, err error, runOrder [][]string, coalesceCount int, updateCount int) {
+			check: func(
+				t *testing.T,
+				_ RunConfig,
+				_ []string,
+				err error,
+				runOrder [][]string,
+				coalesceCount int,
+				updateCount int,
+			) {
 				require.NoError(t, err)
 				require.Empty(t, runOrder)
 				require.Zero(t, coalesceCount)
@@ -198,7 +301,12 @@ func TestRunIngestScenarios(t *testing.T) {
 				dir = filepath.Join(t.TempDir(), "does-not-exist")
 			}
 
-			cfg := newTestRunConfig(dir, filepath.Join(t.TempDir(), "journal.json"), tc.fileBatch, tc.strategy)
+			cfg := newTestRunConfig(
+				dir,
+				filepath.Join(t.TempDir(), "journal.json"),
+				tc.fileBatch,
+				tc.strategy,
+			)
 			if tc.prepare != nil {
 				tc.prepare(t, cfg, files)
 			}
@@ -258,7 +366,7 @@ func newTestDeps(
 	t.Helper()
 
 	return RunDependencies{
-		NewJournal: func(cfg RunConfig, jobCfg journal.JobConfiguration) (JournalStore, error) {
+		NewJournal: func(cfg RunConfig, jobCfg journal.JobConfiguration) (*journal.Journal, error) {
 			return journal.NewJournal(cfg.JournalFile, jobCfg, cfg.Directory)
 		},
 		NewStatistics: func() *updater.Stats {
@@ -295,8 +403,8 @@ func loadJournalForTest(t *testing.T, cfg RunConfig) *journal.Journal {
 	return j
 }
 
-func completedIngestTestIntervals(intervals ...journal.Interval) map[string][]journal.Interval {
-	return map[string][]journal.Interval{
+func completedIngestTestIntervals(intervals ...journal.Interval) journal.CompletedIndices {
+	return journal.CompletedIndices{
 		ingestTestBase: intervals,
 	}
 }

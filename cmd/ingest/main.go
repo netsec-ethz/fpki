@@ -149,7 +149,7 @@ func mainFunction() error {
 	})
 
 	err = runIngest(ctx, cfg, RunDependencies{
-		NewJournal: func(cfg RunConfig, jobCfg journal.JobConfiguration) (JournalStore, error) {
+		NewJournal: func(cfg RunConfig, jobCfg journal.JobConfiguration) (*journal.Journal, error) {
 			return journal.NewJournal(cfg.JournalFile, jobCfg, cfg.Directory)
 		},
 		NewStatistics: func() *updater.Stats {

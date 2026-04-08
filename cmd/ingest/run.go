@@ -31,15 +31,9 @@ type RunConfig struct {
 	MemProfile       string
 }
 
-type JournalStore interface {
-	PendingFiles() ([]string, error)
-	CommitProgress(files []string, coalesced bool, updatedSMT bool) error
-	Close() error
-}
-
 // RunDependencies collects all necessary functions to effectively run ingest.
 type RunDependencies struct {
-	NewJournal        func(RunConfig, journal.JobConfiguration) (JournalStore, error)
+	NewJournal        func(RunConfig, journal.JobConfiguration) (*journal.Journal, error)
 	NewStatistics     func() *updater.Stats
 	EstimateCertCount func(string) (uint, error)
 	BeforeBatch       func(batchNum, batchCount int) error
@@ -159,7 +153,7 @@ func runIngest(ctx context.Context, cfg RunConfig, deps RunDependencies) error {
 
 func ingestFilesInBatches(
 	ctx context.Context,
-	j JournalStore,
+	j *journal.Journal,
 	stats *updater.Stats,
 	fileBatchSize int,
 	estimateCertCount func(string) (uint, error),

@@ -21,8 +21,8 @@ var csvFiles = [...]string{
 	"testdata/bundled/200000-299999.gz",
 }
 
-func completedIntervals(intervals ...Interval) map[string][]Interval {
-	return map[string][]Interval{
+func completedIntervals(intervals ...Interval) CompletedIndices {
+	return CompletedIndices{
 		"testdata": intervals,
 	}
 }
@@ -91,7 +91,11 @@ func TestNewJournal(t *testing.T) {
 
 	j, err = NewJournal(journalFile, testJobConfig(t, false), csvPath)
 	require.NoError(t, err)
-	require.Equal(t, completedIntervals(Interval{Start: 0, End: 99999}), latestJob(t, j).CompletedIndices)
+	require.Equal(
+		t,
+		completedIntervals(Interval{Start: 0, End: 99999}),
+		latestJob(t, j).CompletedIndices,
+	)
 	requireJSONDoesNotContainFiles(t, journalFile)
 }
 
@@ -101,7 +105,7 @@ func TestAddCompletedFilesIntervalScenarios(t *testing.T) {
 	testCases := map[string]struct {
 		setupJournal  func(*Journal)
 		addFiles      []string
-		wantCompleted map[string][]Interval
+		wantCompleted CompletedIndices
 		wantPending   []string
 	}{
 		"merges adjacent ranges": {
@@ -118,15 +122,15 @@ func TestAddCompletedFilesIntervalScenarios(t *testing.T) {
 				Interval{Start: 200000, End: 299999},
 			),
 			wantPending: []string{csvFiles[1]},
-			},
-			"bridges existing intervals": {
-				setupJournal: func(j *Journal) {
-					latestJob(t, j).CompletedIndices = map[string][]Interval{
-						"testdata": {
-							{Start: 0, End: 9},
-							{Start: 20, End: 29},
-						},
-					}
+		},
+		"bridges existing intervals": {
+			setupJournal: func(j *Journal) {
+				latestJob(t, j).CompletedIndices = CompletedIndices{
+					"testdata": {
+						{Start: 0, End: 9},
+						{Start: 20, End: 29},
+					},
+				}
 			},
 			addFiles: []string{
 				filepath.Join(csvPath, "bundled", "10-19.gz"),
@@ -231,35 +235,120 @@ func TestAppendInterval(t *testing.T) {
 	}
 }
 
-// TestContainsCompletedInterval verifies that coverage checks succeed only when
-// one stored interval fully contains the queried interval.
-func TestContainsCompletedInterval(t *testing.T) {
-	completed := map[string][]Interval{
-		"testdata": {
-			{Start: 0, End: 9},
-			{Start: 20, End: 39},
+// TestContainsCompletedIntervalScenarios verifies that coverage checks succeed
+// only when one stored interval fully contains the queried interval.
+func TestContainsCompletedIntervalScenarios(t *testing.T) {
+	testCases := map[string]struct {
+		completed     CompletedIndices
+		ingestDirBase string
+		query         Interval
+		want          bool
+	}{
+		"exact_interval_hit": {
+			completed: CompletedIndices{
+				"testdata": {
+					{Start: 0, End: 9},
+					{Start: 20, End: 39},
+				},
+			},
+			ingestDirBase: "testdata",
+			query:         Interval{Start: 0, End: 9},
+			want:          true,
+		},
+		"contained_sub_range": {
+			completed: CompletedIndices{
+				"testdata": {
+					{Start: 0, End: 9},
+					{Start: 20, End: 39},
+				},
+			},
+			ingestDirBase: "testdata",
+			query:         Interval{Start: 22, End: 25},
+			want:          true,
+		},
+		"second_interval_exact_hit": {
+			completed: CompletedIndices{
+				"testdata": {
+					{Start: 0, End: 9},
+					{Start: 20, End: 39},
+				},
+			},
+			ingestDirBase: "testdata",
+			query:         Interval{Start: 20, End: 39},
+			want:          true,
+		},
+		"overlaps_end_without_full_coverage": {
+			completed: CompletedIndices{
+				"testdata": {
+					{Start: 0, End: 9},
+					{Start: 20, End: 39},
+				},
+			},
+			ingestDirBase: "testdata",
+			query:         Interval{Start: 5, End: 10},
+			want:          false,
+		},
+		"gap_interval": {
+			completed: CompletedIndices{
+				"testdata": {
+					{Start: 0, End: 9},
+					{Start: 20, End: 39},
+				},
+			},
+			ingestDirBase: "testdata",
+			query:         Interval{Start: 10, End: 19},
+			want:          false,
+		},
+		"spanning_two_intervals": {
+			completed: CompletedIndices{
+				"testdata": {
+					{Start: 0, End: 9},
+					{Start: 20, End: 39},
+				},
+			},
+			ingestDirBase: "testdata",
+			query:         Interval{Start: 15, End: 25},
+			want:          false,
+		},
+		"missing_ingest_root": {
+			completed: CompletedIndices{
+				"testdata": {
+					{Start: 0, End: 9},
+					{Start: 20, End: 39},
+				},
+			},
+			ingestDirBase: "missing",
+			query:         Interval{Start: 0, End: 9},
+			want:          false,
 		},
 	}
 
-	require.True(t, containsCompletedInterval(completed, "testdata", Interval{Start: 0, End: 9}))
-	require.True(t, containsCompletedInterval(completed, "testdata", Interval{Start: 22, End: 25}))
-	require.True(t, containsCompletedInterval(completed, "testdata", Interval{Start: 20, End: 39}))
+	for name, tc := range testCases {
+		name, tc := name, tc
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-	require.False(t, containsCompletedInterval(completed, "testdata", Interval{Start: 5, End: 10}))
-	require.False(t, containsCompletedInterval(completed, "testdata", Interval{Start: 10, End: 19}))
-	require.False(t, containsCompletedInterval(completed, "testdata", Interval{Start: 15, End: 25}))
-	require.False(t, containsCompletedInterval(completed, "missing", Interval{Start: 0, End: 9}))
+			got := containsCompletedInterval(tc.completed, tc.ingestDirBase, tc.query)
+
+			require.Equal(t, tc.want, got)
+		})
+	}
 }
 
 // TestPendingFilesSkipsOnlyFullyCoveredFiles verifies that partially covered
 // files are still returned for processing.
 func TestPendingFilesSkipsOnlyFullyCoveredFiles(t *testing.T) {
-	root := makeEquivalentIngestRoot(t, "external", "partial-cover", []string{"0-9.gz", "10-19.gz", "20-29.gz"})
+	root := makeEquivalentIngestRoot(
+		t,
+		"external",
+		"partial-cover",
+		[]string{"0-9.gz", "10-19.gz", "20-29.gz"},
+	)
 	journalFile := filepath.Join(t.TempDir(), "journal.json")
 
 	j, err := NewJournal(journalFile, testJobConfig(t, false), root)
 	require.NoError(t, err)
-	latestJob(t, j).CompletedIndices = map[string][]Interval{
+	latestJob(t, j).CompletedIndices = CompletedIndices{
 		"partial-cover": {
 			{Start: 0, End: 8},
 			{Start: 20, End: 29},
@@ -274,110 +363,175 @@ func TestPendingFilesSkipsOnlyFullyCoveredFiles(t *testing.T) {
 	}, got)
 }
 
-// TestNewJournalInvalidJSON checks that malformed journal JSON is rejected.
-func TestNewJournalInvalidJSON(t *testing.T) {
-	journalFile := filepath.Join(t.TempDir(), "invalid.json")
-	err := os.WriteFile(journalFile, []byte("{"), 0o644)
-	require.NoError(t, err)
-
-	_, err = NewJournal(journalFile, testJobConfig(t, false), csvPath)
-	require.Error(t, err)
-}
-
-// TestNewJournalReadsIntervalCompletedFilesOnRead verifies that the new
-// human-readable interval encoding loads directly into in-memory intervals.
-func TestNewJournalReadsIntervalCompletedFilesOnRead(t *testing.T) {
-	journalFile := filepath.Join(t.TempDir(), "journal.json")
-	raw := map[string]any{
-		"CompletedFiles": map[string][]string{
-			"testdata": {"0-99999", "200000-299999"},
+// TestNewJournalReadScenarios verifies that current-format JSON is either read
+// successfully or rejected when malformed.
+func TestNewJournalReadScenarios(t *testing.T) {
+	testCases := map[string]struct {
+		rawJSON       []byte
+		ingestDir     string
+		wantErr       bool
+		wantCompleted CompletedIndices
+	}{
+		"malformed_json_bytes": {
+			rawJSON:   []byte("{"),
+			ingestDir: csvPath,
+			wantErr:   true,
+		},
+		"valid_job_with_two_completed_intervals": {
+			rawJSON: mustMarshalJSON(t, map[string]any{
+				"Jobs": []map[string]any{
+					{
+						"Cwd":              "/tmp",
+						"Cmd":              []string{"ingest"},
+						"JobConfiguration": testJobConfig(t, false),
+						"StartTime":        "2026-04-08T12:00:00Z",
+						"EndTime":          "2026-04-08T12:00:00Z",
+						"CompletedIndices": map[string][]string{
+							"testdata": {"0-99999", "200000-299999"},
+						},
+					},
+				},
+			}),
+			ingestDir: csvPath,
+			wantCompleted: completedIntervals(
+				Interval{Start: 0, End: 99999},
+				Interval{Start: 200000, End: 299999},
+			),
+		},
+		"valid_job_with_malformed_interval_string": {
+			rawJSON: mustMarshalJSON(t, map[string]any{
+				"Jobs": []map[string]any{
+					{
+						"Cwd":              "/tmp",
+						"Cmd":              []string{"ingest"},
+						"JobConfiguration": testJobConfig(t, false),
+						"StartTime":        "2026-04-08T12:00:00Z",
+						"EndTime":          "2026-04-08T12:00:00Z",
+						"CompletedIndices": map[string][]string{
+							"testdata": {"20-10"},
+						},
+					},
+				},
+			}),
+			ingestDir: csvPath,
+			wantErr:   true,
 		},
 	}
-	buf, err := json.Marshal(raw)
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(journalFile, buf, 0o644))
 
-	j, err := NewJournal(journalFile, testJobConfig(t, false), csvPath)
-	require.NoError(t, err)
-	require.Equal(t, completedIntervals(
-		Interval{Start: 0, End: 99999},
-		Interval{Start: 200000, End: 299999},
-	), latestJob(t, j).CompletedIndices)
+	for name, tc := range testCases {
+		name, tc := name, tc
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			journalFile := filepath.Join(t.TempDir(), "journal.json")
+			require.NoError(t, os.WriteFile(journalFile, tc.rawJSON, 0o644))
+
+			j, err := NewJournal(journalFile, testJobConfig(t, false), tc.ingestDir)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			require.Equal(t, tc.wantCompleted, latestJob(t, j).CompletedIndices)
+		})
+	}
 }
 
-// TestPendingFilesEquivalentIngestRootsShareProgress verifies that equivalent
-// ingest roots with the same basename share completed-file state.
-func TestPendingFilesEquivalentIngestRootsShareProgress(t *testing.T) {
-	firstRoot := makeEquivalentIngestRoot(t, "external", "same-log", []string{"0-9.gz", "10-19.gz"})
-	secondRoot := makeEquivalentIngestRoot(t, "data", "same-log", []string{"0-9.gz", "10-19.gz", "20-29.gz"})
-
-	journalFile := filepath.Join(t.TempDir(), "journal.json")
-	j, err := NewJournal(journalFile, testJobConfig(t, false), firstRoot)
-	require.NoError(t, err)
-	require.NoError(t, j.CommitProgress([]string{
-		filepath.Join(firstRoot, "bundled", "0-9.gz"),
-		filepath.Join(firstRoot, "bundled", "10-19.gz"),
-	}, false, false))
-
-	j, err = NewJournal(journalFile, testJobConfig(t, false), secondRoot)
-	require.NoError(t, err)
-
-	got, err := j.PendingFiles()
-	require.NoError(t, err)
-	require.Equal(t, []string{filepath.Join(secondRoot, "bundled", "20-29.gz")}, got)
-}
-
-// TestPendingFilesDifferentIngestRootBasenamesDoNotShareProgress verifies that
-// different ingest-dir basenames do not share completed-file state.
-func TestPendingFilesDifferentIngestRootBasenamesDoNotShareProgress(t *testing.T) {
-	firstRoot := makeEquivalentIngestRoot(t, "external", "log-a", []string{"0-9.gz"})
-	secondRoot := makeEquivalentIngestRoot(t, "data", "log-b", []string{"0-9.gz"})
-
-	journalFile := filepath.Join(t.TempDir(), "journal.json")
-	j, err := NewJournal(journalFile, testJobConfig(t, false), firstRoot)
-	require.NoError(t, err)
-	require.NoError(t, j.CommitProgress([]string{filepath.Join(firstRoot, "bundled", "0-9.gz")}, false, false))
-
-	j, err = NewJournal(journalFile, testJobConfig(t, false), secondRoot)
-	require.NoError(t, err)
-
-	got, err := j.PendingFiles()
-	require.NoError(t, err)
-	require.Equal(t, []string{filepath.Join(secondRoot, "bundled", "0-9.gz")}, got)
-}
-
-// TestCommitProgressDeduplicatesEquivalentRoots checks that adding the same
-// normalized file through equivalent ingest roots remains idempotent.
-func TestCommitProgressDeduplicatesEquivalentRoots(t *testing.T) {
-	firstRoot := makeEquivalentIngestRoot(t, "external", "same-log", []string{"0-9.gz"})
-	secondRoot := makeEquivalentIngestRoot(t, "data", "same-log", []string{"0-9.gz"})
-
-	journalFile := filepath.Join(t.TempDir(), "journal.json")
-	j, err := NewJournal(journalFile, testJobConfig(t, false), firstRoot)
-	require.NoError(t, err)
-
-	require.NoError(t, j.CommitProgress([]string{
-		filepath.Join(firstRoot, "bundled", "0-9.gz"),
-		filepath.Join(secondRoot, "bundled", "0-9.gz"),
-	}, false, false))
-	require.Equal(t, map[string][]Interval{"same-log": {{Start: 0, End: 9}}}, latestJob(t, j).CompletedIndices)
-}
-
-// TestNewJournalRejectsMalformedIntervalString verifies that reversed or
-// otherwise invalid interval strings are rejected on load.
-func TestNewJournalRejectsMalformedIntervalString(t *testing.T) {
-	journalFile := filepath.Join(t.TempDir(), "journal.json")
-	raw := map[string]any{
-		"CompletedFiles": map[string][]string{
-			"testdata": {"20-10"},
+// TestEquivalentIngestRootProgressScenarios verifies basename-based progress
+// sharing and equivalent-root deduplication behavior.
+func TestEquivalentIngestRootProgressScenarios(t *testing.T) {
+	testCases := map[string]struct {
+		firstBase      string
+		secondBase     string
+		firstFiles     []string
+		secondFiles    []string
+		commitFiles    func(firstRoot, secondRoot string) []string
+		reopenOnSecond bool
+		wantPending    []string
+		wantCompleted  CompletedIndices
+	}{
+		"same_basename_shares_progress_across_reopen": {
+			firstBase:   "same-log",
+			secondBase:  "same-log",
+			firstFiles:  []string{"0-9.gz", "10-19.gz"},
+			secondFiles: []string{"0-9.gz", "10-19.gz", "20-29.gz"},
+			commitFiles: func(firstRoot, _ string) []string {
+				return []string{
+					filepath.Join(firstRoot, "bundled", "0-9.gz"),
+					filepath.Join(firstRoot, "bundled", "10-19.gz"),
+				}
+			},
+			reopenOnSecond: true,
+			wantPending: []string{
+				filepath.Join("ROOT", "bundled", "20-29.gz"),
+			},
+		},
+		"different_basenames_do_not_share_progress": {
+			firstBase:   "log-a",
+			secondBase:  "log-b",
+			firstFiles:  []string{"0-9.gz"},
+			secondFiles: []string{"0-9.gz"},
+			commitFiles: func(firstRoot, _ string) []string {
+				return []string{
+					filepath.Join(firstRoot, "bundled", "0-9.gz"),
+				}
+			},
+			reopenOnSecond: true,
+			wantPending: []string{
+				filepath.Join("ROOT", "bundled", "0-9.gz"),
+			},
+		},
+		"duplicate_commit_from_equivalent_roots_stays_deduplicated": {
+			firstBase:   "same-log",
+			secondBase:  "same-log",
+			firstFiles:  []string{"0-9.gz"},
+			secondFiles: []string{"0-9.gz"},
+			commitFiles: func(firstRoot, secondRoot string) []string {
+				return []string{
+					filepath.Join(firstRoot, "bundled", "0-9.gz"),
+					filepath.Join(secondRoot, "bundled", "0-9.gz"),
+				}
+			},
+			wantCompleted: CompletedIndices{
+				"same-log": {{Start: 0, End: 9}},
+			},
 		},
 	}
-	buf, err := json.Marshal(raw)
-	require.NoError(t, err)
-	require.NoError(t, os.WriteFile(journalFile, buf, 0o644))
 
-	_, err = NewJournal(journalFile, testJobConfig(t, false), csvPath)
-	require.Error(t, err)
+	for name, tc := range testCases {
+		name, tc := name, tc
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			firstRoot := makeEquivalentIngestRoot(t, "external", tc.firstBase, tc.firstFiles)
+			secondRoot := makeEquivalentIngestRoot(t, "data", tc.secondBase, tc.secondFiles)
+
+			journalFile := filepath.Join(t.TempDir(), "journal.json")
+			j, err := NewJournal(journalFile, testJobConfig(t, false), firstRoot)
+			require.NoError(t, err)
+
+			require.NoError(
+				t,
+				j.CommitProgress(tc.commitFiles(firstRoot, secondRoot), false, false),
+			)
+
+			if tc.wantCompleted != nil {
+				require.Equal(t, tc.wantCompleted, latestJob(t, j).CompletedIndices)
+			}
+
+			if !tc.reopenOnSecond {
+				return
+			}
+
+			j, err = NewJournal(journalFile, testJobConfig(t, false), secondRoot)
+			require.NoError(t, err)
+
+			got, err := j.PendingFiles()
+			require.NoError(t, err)
+			require.Equal(t, replaceRootPlaceholder(tc.wantPending, secondRoot), got)
+		})
+	}
 }
 
 // TestClosePersistsAndIsIdempotent verifies that Close flushes state and can be
@@ -394,7 +548,11 @@ func TestClosePersistsAndIsIdempotent(t *testing.T) {
 
 	reopened, err := NewJournal(journalFile, testJobConfig(t, false), csvPath)
 	require.NoError(t, err)
-	require.Equal(t, completedIntervals(Interval{Start: 0, End: 99999}), latestJob(t, reopened).CompletedIndices)
+	require.Equal(
+		t,
+		completedIntervals(Interval{Start: 0, End: 99999}),
+		latestJob(t, reopened).CompletedIndices,
+	)
 }
 
 // TestPendingFilesUsesFreshDirectoryListing verifies that PendingFiles always
@@ -423,40 +581,46 @@ func TestPendingFilesUsesFreshDirectoryListing(t *testing.T) {
 	require.Equal(t, []string{firstFile, secondFile}, got)
 }
 
-// TestPendingFilesExcludesPlainCSVsByDefault verifies that plain `.csv` files
-// stay hidden unless the run configuration opts into them.
-func TestPendingFilesExcludesPlainCSVsByDefault(t *testing.T) {
-	root := makeMixedIngestRoot(t)
-	journalFile := filepath.Join(t.TempDir(), "journal.json")
+// TestPendingFilesPlainCSVScenarios verifies that plain CSV discovery follows
+// the IncludePlainCSVs configuration.
+func TestPendingFilesPlainCSVScenarios(t *testing.T) {
+	testCases := map[string]struct {
+		includePlainCSVs bool
+		want             []string
+	}{
+		"plain_csvs_excluded_by_default": {
+			want: []string{
+				filepath.Join("ROOT", "bundled", "0-9.gz"),
+				filepath.Join("ROOT", "bundled", "10-19.gz"),
+			},
+		},
+		"plain_csvs_included_when_enabled": {
+			includePlainCSVs: true,
+			want: []string{
+				filepath.Join("ROOT", "bundled", "0-9.gz"),
+				filepath.Join("ROOT", "bundled", "10-19.gz"),
+				filepath.Join("ROOT", "20-29.csv"),
+				filepath.Join("ROOT", "30-39.csv"),
+			},
+		},
+	}
 
-	j, err := NewJournal(journalFile, testJobConfig(t, false), root)
-	require.NoError(t, err)
+	for name, tc := range testCases {
+		name, tc := name, tc
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-	got, err := j.PendingFiles()
-	require.NoError(t, err)
-	require.Equal(t, []string{
-		filepath.Join(root, "bundled", "0-9.gz"),
-		filepath.Join(root, "bundled", "10-19.gz"),
-	}, got)
-}
+			root := makeMixedIngestRoot(t)
+			journalFile := filepath.Join(t.TempDir(), "journal.json")
 
-// TestPendingFilesIncludesPlainCSVsWhenEnabled verifies that enabling the flag
-// restores mixed `.gz` and `.csv` discovery.
-func TestPendingFilesIncludesPlainCSVsWhenEnabled(t *testing.T) {
-	root := makeMixedIngestRoot(t)
-	journalFile := filepath.Join(t.TempDir(), "journal.json")
+			j, err := NewJournal(journalFile, testJobConfig(t, tc.includePlainCSVs), root)
+			require.NoError(t, err)
 
-	j, err := NewJournal(journalFile, testJobConfig(t, true), root)
-	require.NoError(t, err)
-
-	got, err := j.PendingFiles()
-	require.NoError(t, err)
-	require.Equal(t, []string{
-		filepath.Join(root, "bundled", "0-9.gz"),
-		filepath.Join(root, "bundled", "10-19.gz"),
-		filepath.Join(root, "20-29.csv"),
-		filepath.Join(root, "30-39.csv"),
-	}, got)
+			got, err := j.PendingFiles()
+			require.NoError(t, err)
+			require.Equal(t, replaceRootPlaceholder(tc.want, root), got)
+		})
+	}
 }
 
 // requireJSONDoesNotContainFiles asserts that the journal JSON does not use the
@@ -475,6 +639,21 @@ func latestJob(t *testing.T, j *Journal) *Job {
 	return &j.Jobs[len(j.Jobs)-1]
 }
 
+func mustMarshalJSON(t *testing.T, value any) []byte {
+	t.Helper()
+	buf, err := json.Marshal(value)
+	require.NoError(t, err)
+	return buf
+}
+
+func replaceRootPlaceholder(paths []string, root string) []string {
+	replaced := make([]string, len(paths))
+	for i, path := range paths {
+		replaced[i] = strings.Replace(path, "ROOT", root, 1)
+	}
+	return replaced
+}
+
 // testJobConfig returns a JobConfiguration with "onlyingest" and batch size of 2.
 func testJobConfig(t *testing.T, includePlainCSVs bool) JobConfiguration {
 	t.Helper()
@@ -485,7 +664,12 @@ func testJobConfig(t *testing.T, includePlainCSVs bool) JobConfiguration {
 
 // makeEquivalentIngestRoot creates a temporary ingest directory tree with the
 // requested basename and bundled files.
-func makeEquivalentIngestRoot(t *testing.T, parent string, ingestBase string, files []string) string {
+func makeEquivalentIngestRoot(
+	t *testing.T,
+	parent string,
+	ingestBase string,
+	files []string,
+) string {
 	t.Helper()
 
 	root := filepath.Join(t.TempDir(), parent, ingestBase)

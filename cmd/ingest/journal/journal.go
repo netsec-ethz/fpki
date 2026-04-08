@@ -19,13 +19,12 @@ import (
 // Journal persists ingest progress so future runs can skip files whose
 // certificate-index ranges are already fully covered.
 type Journal struct {
-	mu                   sync.Mutex
-	closed               bool
-	closeOnce            sync.Once
-	JournalFile          string `json:"-"` // Exclude from JSON.
-	IngestDir            string `json:"-"` // Only used to refresh file listings.
-	loadedCompletedFiles map[string][]Interval
-	Jobs                 []Job
+	mu          sync.Mutex
+	closed      bool
+	closeOnce   sync.Once
+	JournalFile string `json:"-"` // Exclude from JSON.
+	IngestDir   string `json:"-"` // Only used to refresh file listings.
+	Jobs        []Job
 }
 
 // JobConfiguration captures the ingest-mode settings that affect how one run
@@ -42,15 +41,17 @@ type JobConfiguration struct {
 
 // Job records one invocation of the ingest command in the journal history.
 type Job struct {
-	Cwd              string                 `json:"Cwd"`
-	Cmd              []string               `json:"Cmd"`
-	JobConfiguration JobConfiguration       `json:"JobConfiguration"`
-	StartTime        string                 `json:"StartTime"`
-	EndTime          string                 `json:"EndTime"`
-	Coalesced        bool                   `json:"Coalesced"`
-	UpdatedSMT       bool                   `json:"UpdatedSMT"`
-	CompletedIndices map[string][]Interval  `json:"-"`
+	Cwd              string           `json:"Cwd"`
+	Cmd              []string         `json:"Cmd"`
+	JobConfiguration JobConfiguration `json:"JobConfiguration"`
+	StartTime        string           `json:"StartTime"`
+	EndTime          string           `json:"EndTime"`
+	Coalesced        bool             `json:"Coalesced"`
+	UpdatedSMT       bool             `json:"UpdatedSMT"`
+	CompletedIndices CompletedIndices `json:"CompletedIndices"`
 }
+
+type CompletedIndices map[string][]Interval
 
 // Interval represents an inclusive range of certificate indices.
 type Interval struct {
@@ -58,35 +59,8 @@ type Interval struct {
 	End   uint
 }
 
-var completedIntervalPattern = regexp.MustCompile(`^(\d+)-(\d+)$`)
-
-// NewJobConfiguration translates the ingest strategy flags into the journal's
-// execution configuration, including whether plain `.csv` bundles should be
-// considered alongside compressed `.gz` files.
-func NewJobConfiguration(strategy string, fileBatch int, includePlainCSVs bool) (JobConfiguration, error) {
-	jc := JobConfiguration{
-		FileBatch:        fileBatch,
-		IncludePlainCSVs: includePlainCSVs,
-	}
-	switch strategy {
-	case "onlyingest":
-		jc.IngestFiles = true
-	case "":
-		jc.IngestFiles = true
-		fallthrough
-	case "skipingest":
-		jc.Coalesce = true
-		fallthrough
-	case "onlysmtupdate":
-		jc.UpdateSMT = true
-	default:
-		return JobConfiguration{}, fmt.Errorf("strategy value not understood by journal: %s", strategy)
-	}
-	return jc, nil
-}
-
 // NewJournal loads or creates the journal file and normalizes any stored
-// completed-file entries into the journal key format.
+// completed-index entries into the journal key format.
 func NewJournal(journalFile string, cfg JobConfiguration, ingestDir string) (*Journal, error) {
 	j := &Journal{
 		JournalFile: journalFile,
@@ -121,6 +95,33 @@ func NewJournal(journalFile string, cfg JobConfiguration, ingestDir string) (*Jo
 	j.registerShutdownHook()
 	return j, nil
 }
+
+// NewJobConfiguration translates the ingest strategy flags into the journal's
+// execution configuration, including whether plain `.csv` bundles should be
+// considered alongside compressed `.gz` files.
+func NewJobConfiguration(strategy string, fileBatch int, includePlainCSVs bool) (JobConfiguration, error) {
+	jc := JobConfiguration{
+		FileBatch:        fileBatch,
+		IncludePlainCSVs: includePlainCSVs,
+	}
+	switch strategy {
+	case "onlyingest":
+		jc.IngestFiles = true
+	case "":
+		jc.IngestFiles = true
+		fallthrough
+	case "skipingest":
+		jc.Coalesce = true
+		fallthrough
+	case "onlysmtupdate":
+		jc.UpdateSMT = true
+	default:
+		return JobConfiguration{}, fmt.Errorf("strategy value not understood by journal: %s", strategy)
+	}
+	return jc, nil
+}
+
+var completedIntervalRe = regexp.MustCompile(`^(\d+)-(\d+)$`)
 
 // CommitProgress updates the active job's completed-index snapshot, optional
 // phase flags, and end timestamp in one persisted journal write.
@@ -279,15 +280,6 @@ func (j *Journal) Close() error {
 	return nil
 }
 
-// closeFile closes the file and wraps any filesystem error.
-func closeFile(f *os.File) error {
-	err := f.Close()
-	if err != nil {
-		return fmt.Errorf("cannot close journal file: %w", err)
-	}
-	return nil
-}
-
 // write encodes the journal to JSON and writes it to the provided file.
 func (j *Journal) write(f *os.File) error {
 	buf, err := json.MarshalIndent(j, "", "  ")
@@ -360,12 +352,6 @@ func (j *Journal) normalize() error {
 		}
 		j.Jobs[i].CompletedIndices = normalized
 	}
-
-	normalizedLoaded, err := normalizeCompletedIndices(j.loadedCompletedFiles)
-	if err != nil {
-		return err
-	}
-	j.loadedCompletedFiles = normalizedLoaded
 	return nil
 }
 
@@ -375,21 +361,12 @@ func (j *Journal) read(f *os.File) error {
 	if err != nil {
 		return fmt.Errorf("cannot read journal file: %w", err)
 	}
-	var raw rawJournal
-	err = json.Unmarshal(buff, &raw)
+	var decoded Journal
+	err = json.Unmarshal(buff, &decoded)
 	if err != nil {
 		return fmt.Errorf("journal file wrong format: %w", err)
 	}
-	jobs, err := decodeJobs(raw)
-	if err != nil {
-		return fmt.Errorf("journal file wrong format: %w", err)
-	}
-	j.Jobs = jobs
-	completedFiles, err := decodeCompletedIndices(raw.CompletedFiles)
-	if err != nil {
-		return fmt.Errorf("journal file wrong format: %w", err)
-	}
-	j.loadedCompletedFiles = completedFiles
+	j.Jobs = decoded.Jobs
 	if err := j.normalize(); err != nil {
 		return fmt.Errorf("journal file wrong format: %w", err)
 	}
@@ -404,142 +381,52 @@ func (j *Journal) readAndClose(f *os.File) error {
 	return closeFile(f)
 }
 
-// decodeCompletedIndices decodes the current interval-array encoding used on disk.
-func decodeCompletedIndices(raw json.RawMessage) (map[string][]Interval, error) {
-	if len(raw) == 0 || string(raw) == "null" {
-		return map[string][]Interval{}, nil
+func (j *Journal) latestCompletedIndices() CompletedIndices {
+	if len(j.Jobs) == 0 {
+		return CompletedIndices{}
 	}
-
-	var newFormat map[string][]string
-	if err := json.Unmarshal(raw, &newFormat); err == nil {
-		completed := make(map[string][]Interval, len(newFormat))
-		for ingestDirBase, encodedIntervals := range newFormat {
-			intervals := make([]Interval, 0, len(encodedIntervals))
-			for _, encoded := range encodedIntervals {
-				interval, err := parseIntervalString(encoded)
-				if err != nil {
-					return nil, err
-				}
-				intervals = append(intervals, interval)
-			}
-			completed[ingestDirBase] = intervals
-		}
-		return completed, nil
-	}
-
-	return nil, fmt.Errorf("unsupported completed indices encoding")
+	return j.Jobs[len(j.Jobs)-1].CompletedIndices
 }
 
-// journalOnDisk is the persisted JSON shape for journal state.
-type journalOnDisk struct {
-	Jobs []jobOnDisk `json:"Jobs"`
+func (j *Journal) currentJob() (*Job, error) {
+	if len(j.Jobs) == 0 {
+		return nil, fmt.Errorf("journal has no jobs")
+	}
+	job := &j.Jobs[len(j.Jobs)-1]
+	if job.CompletedIndices == nil {
+		job.CompletedIndices = CompletedIndices{}
+	}
+	return job, nil
 }
 
 // MarshalJSON serializes the in-memory interval representation into the
 // human-readable on-disk string-array format.
-func (j *Journal) MarshalJSON() ([]byte, error) {
-	onDisk := journalOnDisk{
-		Jobs: make([]jobOnDisk, 0, len(j.Jobs)),
-	}
-	for _, job := range j.Jobs {
-		onDisk.Jobs = append(onDisk.Jobs, encodeJob(job))
-	}
-	return json.Marshal(onDisk)
+func (c CompletedIndices) MarshalJSON() ([]byte, error) {
+	return json.Marshal(encodeCompletedIndices(c))
 }
 
-type rawJournal struct {
-	Jobs             []rawJob          `json:"Jobs"`
-	CompletedFiles   json.RawMessage   `json:"CompletedFiles"`
-	Cwds             []string          `json:"Cwds"`
-	Cmds             [][]string        `json:"Cmds"`
-	JobConfiguration *JobConfiguration `json:"JobConfiguration"`
-}
-
-type rawJob struct {
-	Cwd              string           `json:"Cwd"`
-	Cmd              []string         `json:"Cmd"`
-	JobConfiguration JobConfiguration `json:"JobConfiguration"`
-	StartTime        string           `json:"StartTime"`
-	EndTime          string           `json:"EndTime"`
-	Coalesced        bool             `json:"Coalesced"`
-	UpdatedSMT       bool             `json:"UpdatedSMT"`
-	CompletedIndices json.RawMessage  `json:"CompletedIndices"`
-}
-
-type jobOnDisk struct {
-	Cwd              string              `json:"Cwd"`
-	Cmd              []string            `json:"Cmd"`
-	JobConfiguration JobConfiguration    `json:"JobConfiguration"`
-	StartTime        string              `json:"StartTime"`
-	EndTime          string              `json:"EndTime"`
-	Coalesced        bool                `json:"Coalesced"`
-	UpdatedSMT       bool                `json:"UpdatedSMT"`
-	CompletedIndices map[string][]string `json:"CompletedIndices"`
-}
-
-func decodeJobs(raw rawJournal) ([]Job, error) {
-	if len(raw.Jobs) > 0 {
-		jobs := make([]Job, 0, len(raw.Jobs))
-		for _, rawJob := range raw.Jobs {
-			completedIndices, err := decodeCompletedIndices(rawJob.CompletedIndices)
-			if err != nil {
-				return nil, err
-			}
-			jobs = append(jobs, Job{
-				Cwd:              rawJob.Cwd,
-				Cmd:              slices.Clone(rawJob.Cmd),
-				JobConfiguration: rawJob.JobConfiguration,
-				StartTime:        rawJob.StartTime,
-				EndTime:          rawJob.EndTime,
-				Coalesced:        rawJob.Coalesced,
-				UpdatedSMT:       rawJob.UpdatedSMT,
-				CompletedIndices: completedIndices,
-			})
-		}
-		return jobs, nil
+// UnmarshalJSON restores the persisted string interval representation into the
+// in-memory interval representation used by journal logic.
+func (c *CompletedIndices) UnmarshalJSON(data []byte) error {
+	var raw map[string][]string
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
 	}
 
-	count := max(len(raw.Cwds), len(raw.Cmds))
-	if raw.JobConfiguration != nil && count == 0 {
-		count = 1
+	completedIndices, err := decodeCompletedIndices(raw)
+	if err != nil {
+		return err
 	}
-	if count == 0 {
-		return nil, nil
-	}
-
-	jobs := make([]Job, 0, count)
-	for i := 0; i < count; i++ {
-		job := Job{
-			CompletedIndices: map[string][]Interval{},
-		}
-		if i < len(raw.Cwds) {
-			job.Cwd = raw.Cwds[i]
-		}
-		if i < len(raw.Cmds) {
-			job.Cmd = slices.Clone(raw.Cmds[i])
-		}
-		if raw.JobConfiguration != nil {
-			job.JobConfiguration = *raw.JobConfiguration
-		}
-		jobs = append(jobs, job)
-	}
-	return jobs, nil
+	*c = completedIndices
+	return nil
 }
 
-func encodeJob(job Job) jobOnDisk {
-	return jobOnDisk{
-		Cwd:              job.Cwd,
-		Cmd:              slices.Clone(job.Cmd),
-		JobConfiguration: job.JobConfiguration,
-		StartTime:        job.StartTime,
-		EndTime:          job.EndTime,
-		Coalesced:        job.Coalesced,
-		UpdatedSMT:       job.UpdatedSMT,
-		CompletedIndices: encodeCompletedIndices(job.CompletedIndices),
-	}
+// String formats the interval using the persisted inclusive `A-B` form.
+func (i Interval) String() string {
+	return fmt.Sprintf("%d-%d", i.Start, i.End)
 }
 
-func encodeCompletedIndices(completedIndices map[string][]Interval) map[string][]string {
+func encodeCompletedIndices(completedIndices CompletedIndices) map[string][]string {
 	encodedCompletedIndices := make(map[string][]string, len(completedIndices))
 	for ingestDirBase, intervals := range completedIndices {
 		encoded := make([]string, len(intervals))
@@ -551,12 +438,32 @@ func encodeCompletedIndices(completedIndices map[string][]Interval) map[string][
 	return encodedCompletedIndices
 }
 
-func normalizeCompletedIndices(completedIndices map[string][]Interval) (map[string][]Interval, error) {
-	if completedIndices == nil {
-		return map[string][]Interval{}, nil
+func decodeCompletedIndices(raw map[string][]string) (CompletedIndices, error) {
+	if raw == nil {
+		return CompletedIndices{}, nil
 	}
 
-	normalizedCompletedIndices := make(map[string][]Interval, len(completedIndices))
+	completed := make(CompletedIndices, len(raw))
+	for ingestDirBase, encodedIntervals := range raw {
+		intervals := make([]Interval, 0, len(encodedIntervals))
+		for _, encoded := range encodedIntervals {
+			interval, err := parseIntervalString(encoded)
+			if err != nil {
+				return nil, err
+			}
+			intervals = append(intervals, interval)
+		}
+		completed[ingestDirBase] = intervals
+	}
+	return completed, nil
+}
+
+func normalizeCompletedIndices(completedIndices CompletedIndices) (CompletedIndices, error) {
+	if completedIndices == nil {
+		return CompletedIndices{}, nil
+	}
+
+	normalizedCompletedIndices := make(CompletedIndices, len(completedIndices))
 	for ingestDirBase, intervals := range completedIndices {
 		if ingestDirBase == "" {
 			return nil, fmt.Errorf("empty ingest directory key in completed indices")
@@ -578,43 +485,26 @@ func normalizeCompletedIndices(completedIndices map[string][]Interval) (map[stri
 	return normalizedCompletedIndices, nil
 }
 
-func cloneCompletedIndices(completedIndices map[string][]Interval) map[string][]Interval {
-	cloned := make(map[string][]Interval, len(completedIndices))
+func cloneCompletedIndices(completedIndices CompletedIndices) CompletedIndices {
+	cloned := make(CompletedIndices, len(completedIndices))
 	for ingestDirBase, intervals := range completedIndices {
 		cloned[ingestDirBase] = slices.Clone(intervals)
 	}
 	return cloned
 }
 
-func (j *Journal) latestCompletedIndices() map[string][]Interval {
-	if len(j.Jobs) == 0 {
-		return j.loadedCompletedFiles
+// closeFile closes the file and wraps any filesystem error.
+func closeFile(f *os.File) error {
+	err := f.Close()
+	if err != nil {
+		return fmt.Errorf("cannot close journal file: %w", err)
 	}
-
-	completedIndices := j.Jobs[len(j.Jobs)-1].CompletedIndices
-	if len(completedIndices) > 0 {
-		return completedIndices
-	}
-	if len(j.loadedCompletedFiles) > 0 {
-		return j.loadedCompletedFiles
-	}
-	return completedIndices
-}
-
-func (j *Journal) currentJob() (*Job, error) {
-	if len(j.Jobs) == 0 {
-		return nil, fmt.Errorf("journal has no jobs")
-	}
-	job := &j.Jobs[len(j.Jobs)-1]
-	if job.CompletedIndices == nil {
-		job.CompletedIndices = map[string][]Interval{}
-	}
-	return job, nil
+	return nil
 }
 
 // addCompletedInterval inserts a completed interval into the nested set,
 // creating the ingest-dir bucket when needed.
-func addCompletedInterval(completed map[string][]Interval, ingestDirBase string, interval Interval) {
+func addCompletedInterval(completed CompletedIndices, ingestDirBase string, interval Interval) {
 	intervals, ok := completed[ingestDirBase]
 	if !ok {
 		intervals = []Interval{}
@@ -676,7 +566,7 @@ func mergeIntervals(a, b Interval) Interval {
 
 // containsCompletedInterval reports whether the nested completed interval set
 // fully covers the given ingest-dir and interval pair.
-func containsCompletedInterval(completed map[string][]Interval, ingestDirBase string, interval Interval) bool {
+func containsCompletedInterval(completed CompletedIndices, ingestDirBase string, interval Interval) bool {
 	intervals, ok := completed[ingestDirBase]
 	if !ok {
 		return false
@@ -730,7 +620,7 @@ func parseFileInterval(file string) (Interval, error) {
 
 // parseIntervalString parses the persisted `A-B` interval encoding.
 func parseIntervalString(value string) (Interval, error) {
-	groups := completedIntervalPattern.FindStringSubmatch(value)
+	groups := completedIntervalRe.FindStringSubmatch(value)
 	if len(groups) != 3 {
 		return Interval{}, fmt.Errorf("unexpected interval %q", value)
 	}
@@ -747,11 +637,6 @@ func parseIntervalString(value string) (Interval, error) {
 		return Interval{}, fmt.Errorf("unexpected interval %q", value)
 	}
 	return interval, nil
-}
-
-// String formats the interval using the persisted inclusive `A-B` form.
-func (i Interval) String() string {
-	return fmt.Sprintf("%d-%d", i.Start, i.End)
 }
 
 // syncDirAfterRename is a NOOP (read comment inside the function).
