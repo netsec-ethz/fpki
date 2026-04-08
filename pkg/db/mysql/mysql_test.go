@@ -200,7 +200,7 @@ func TestCoalesceForDirtyDomains(t *testing.T) {
 		gotCertIDsID, gotCertIDs, err := conn.RetrieveDomainCertificatesIDs(ctx, domainID)
 		require.NoError(t, err)
 		expectedSize := common.SHA256Size * len(certs) / len(leafCerts)
-		require.Len(t, gotCertIDs, expectedSize, "bad length, should be %d but it's %d",
+		require.Equal(t, expectedSize, len(gotCertIDs), "bad length, should be %d but it's %d",
 			expectedSize, len(gotCertIDs))
 		// From the certificate IDs, grab the IDs corresponding to this leaf:
 		N := len(certIDs) / len(leafCerts) // IDs per leaf = total / leaf_count
@@ -217,7 +217,7 @@ func TestCoalesceForDirtyDomains(t *testing.T) {
 		gotPolIDsID, gotPolIDs, err := conn.RetrieveDomainPoliciesIDs(ctx, domainID)
 		require.NoError(t, err)
 		expectedSize := common.SHA256Size * len(pols) / len(leafPols)
-		require.Len(t, gotPolIDs, expectedSize, "bad length, should be %d but it's %d",
+		require.Equal(t, expectedSize, len(gotPolIDs), "bad length, should be %d but it's %d",
 			expectedSize, len(gotPolIDs))
 		// From the policy IDs, grab the IDs corresponding to this leaf:
 		N := len(polIDs) / len(leafPols)
@@ -227,6 +227,59 @@ func TestCoalesceForDirtyDomains(t *testing.T) {
 		require.Equal(t, expectedPolIDs, gotPolIDs)
 		require.Equal(t, expectedPolIDsID, gotPolIDsID)
 	}
+}
+
+// TestCoalesceForDirtyDomains_MixedCertsAndPolicies is a special regression test that covers
+// the case when a domain has both certificates and policies.
+// At the moment it FAILS, exposing a bug in the calc_dirty_domains stored procedure.
+func TestCoalesceForDirtyDomains_MixedCertsAndPolicies(t *testing.T) {
+	// Because we are using "random" bytes deterministically here, set a fixed seed.
+	rand.Seed(1)
+
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelF()
+
+	// Configure a test DB.
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	// Connect to the DB.
+	conn := testdb.Connect(t, config)
+	defer conn.Close()
+
+	leaf := "mixed.example.com"
+
+	// Prepare one mock leaf certificate hierarchy and one mock policy hierarchy for the same
+	// domain. This is the shape that currently triggers duplicated IDs in calc_dirty_domains.
+	certs, certIDs, parentCertIDs, certNames := testCertHierarchyForLeafs(t, []string{leaf})
+	pols, polIDs := testPolicyHierarchyForLeafs(t, []string{leaf})
+
+	// Update with both certificates and policies for the same domain.
+	err := updater.UpdateWithKeepExisting(ctx, conn, certNames, certIDs, parentCertIDs,
+		certs, util.ExtractExpirations(certs), pols)
+	require.NoError(t, err)
+
+	// Coalescing of payloads.
+	err = updater.CoalescePayloadsForDirtyDomains(ctx, conn)
+	require.NoError(t, err)
+
+	domainID := common.SHA256Hash32Bytes([]byte(leaf))
+
+	gotCertIDsID, gotCertIDs, err := conn.RetrieveDomainCertificatesIDs(ctx, domainID)
+	require.NoError(t, err)
+	require.Equal(t, len(certIDs), len(common.BytesToIDs(gotCertIDs)),
+		"expected %d but got %d certificates", len(certIDs), len(common.BytesToIDs(gotCertIDs)))
+	expectedCertIDs, expectedCertIDsID := glueSortedIDsAndComputeItsID(certIDs)
+	require.Equal(t, expectedCertIDs, gotCertIDs)
+	require.Equal(t, expectedCertIDsID, gotCertIDsID)
+
+	gotPolIDsID, gotPolIDs, err := conn.RetrieveDomainPoliciesIDs(ctx, domainID)
+	require.NoError(t, err)
+	require.Equal(t, len(polIDs), len(common.BytesToIDs(gotPolIDs)),
+		"expected %d but got %d certificates", len(polIDs), len(common.BytesToIDs(gotPolIDs)))
+	expectedPolIDs, expectedPolIDsID := glueSortedIDsAndComputeItsID(polIDs)
+	require.Equal(t, expectedPolIDs, gotPolIDs)
+	require.Equal(t, expectedPolIDsID, gotPolIDsID)
 }
 
 func TestRetrieveCertificatePayloads(t *testing.T) {
