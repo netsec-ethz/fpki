@@ -229,9 +229,8 @@ func TestCoalesceForDirtyDomains(t *testing.T) {
 	}
 }
 
-// TestCoalesceForDirtyDomains_MixedCertsAndPolicies is a special regression test that covers
-// the case when a domain has both certificates and policies.
-// At the moment it FAILS, exposing a bug in the calc_dirty_domains stored procedure.
+// TestCoalesceForDirtyDomains_MixedCertsAndPolicies is a regression test that covers the case
+// when a domain has both certificates and policies.
 func TestCoalesceForDirtyDomains_MixedCertsAndPolicies(t *testing.T) {
 	// Because we are using "random" bytes deterministically here, set a fixed seed.
 	rand.Seed(1)
@@ -280,6 +279,75 @@ func TestCoalesceForDirtyDomains_MixedCertsAndPolicies(t *testing.T) {
 	expectedPolIDs, expectedPolIDsID := glueSortedIDsAndComputeItsID(polIDs)
 	require.Equal(t, expectedPolIDs, gotPolIDs)
 	require.Equal(t, expectedPolIDsID, gotPolIDsID)
+}
+
+// TestCoalesceForDirtyDomains_RemovesStalePayloadRows checks that domains who no longer have
+// any certs or policies, end up disappearing from the domain_payloads table.
+func TestCoalesceForDirtyDomains_RemovesStalePayloadRows(t *testing.T) {
+	// Because we are using "random" bytes deterministically here, set a fixed seed.
+	rand.Seed(1)
+
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelF()
+
+	// Configure a test DB.
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	// Connect to the DB.
+	conn := testdb.Connect(t, config)
+	defer conn.Close()
+
+	c := mysql.NewMysqlDBForTests(conn)
+	leaf := "stale.example.com"
+
+	// Create one domain with both certs and policies so that a domain_payloads row exists first.
+	certs, certIDs, parentCertIDs, certNames := testCertHierarchyForLeafs(t, []string{leaf})
+	pols, _ := testPolicyHierarchyForLeafs(t, []string{leaf})
+	err := updater.UpdateWithKeepExisting(ctx, conn, certNames, certIDs, parentCertIDs,
+		certs, util.ExtractExpirations(certs), pols)
+	require.NoError(t, err)
+
+	err = updater.CoalescePayloadsForDirtyDomains(ctx, conn)
+	require.NoError(t, err)
+
+	domainID := common.SHA256Hash32Bytes([]byte(leaf))
+
+	var count int
+	err = c.DB().QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM domain_payloads WHERE domain_id = ?",
+		domainID[:],
+	).Scan(&count)
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+
+	// Remove every remaining link for that dirty domain, then mark it dirty again and re-run
+	// coalescing. The old payload row must disappear instead of surviving with stale data.
+	_, err = c.DB().ExecContext(ctx,
+		"DELETE FROM domain_certs WHERE domain_id = ?",
+		domainID[:],
+	)
+	require.NoError(t, err)
+	_, err = c.DB().ExecContext(ctx,
+		"DELETE FROM domain_policies WHERE domain_id = ?",
+		domainID[:],
+	)
+	require.NoError(t, err)
+
+	err = conn.CleanupDirty(ctx)
+	require.NoError(t, err)
+	err = conn.InsertDomainsIntoDirty(ctx, []common.SHA256Output{domainID})
+	require.NoError(t, err)
+
+	err = updater.CoalescePayloadsForDirtyDomains(ctx, conn)
+	require.NoError(t, err)
+
+	err = c.DB().QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM domain_payloads WHERE domain_id = ?",
+		domainID[:],
+	).Scan(&count)
+	require.NoError(t, err)
+	require.Equal(t, 0, count)
 }
 
 func TestRetrieveCertificatePayloads(t *testing.T) {

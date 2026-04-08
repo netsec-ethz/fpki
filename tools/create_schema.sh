@@ -197,119 +197,86 @@ USE $DBNAME;
 DROP PROCEDURE IF EXISTS calc_dirty_domains;
 DELIMITER $$
 -- The procedure has one argument: the partition number to operate on. Usually 0..31.
--- Because MySQL doesn't support FULL OUTER JOIN, we have to emulate it.
--- We want:
--- SELECT * FROM t1
--- FULL OUTER JOIN
--- SELECT * FROM t2
--- ------------------------------------
--- We emulate is with:
--- SELECT * FROM t1
--- LEFT JOIN t2 ON t1.id = t2.id
--- UNION
--- SELECT * FROM t1
--- RIGHT JOIN t2 ON t1.id = t2.id
--- https://stackoverflow.com/questions/4796872/how-can-i-do-a-full-outer-join-in-mysql
---
--- The table t1 is a CTE that retrieves the certificates.
--- The table t2 is a CTE that retrieves the policies.
--- ------------------------------------
--- This SP needs ~ 5 seconds per 20K dirty domains.
+-- The old SP needed ~ 5 seconds per 20K dirty domains.
 CREATE PROCEDURE calc_dirty_domains(IN partition_number INT)
 BEGIN
 
 	SET group_concat_max_len = 1073741824; -- so that GROUP_CONCAT doesn't truncate results
 
-    -- Dynamnic SQL because PARTITION only accepts literals (not variables).
-    set @sql = CONCAT("
-	-- Replace the domain ID, its certificates, policies, and their corresponding SHA256 for all dirty domains.
-	REPLACE INTO domain_payloads(domain_id, cert_ids, cert_ids_id, policy_ids, policy_ids_id) -- Values from subquery.
-	SELECT domain_id, cert_ids, UNHEX(SHA2(cert_ids, 256)) AS cert_ids_id, policy_ids, UNHEX(SHA2(policy_ids, 256)) AS policy_ids_id FROM -- Subquery to compute the SHA256 in place.
-	(
+	-- TODO: wrap the deletion and the insertion in a transaction.
 
-	SELECT A.domain_id,GROUP_CONCAT(cert_id ORDER BY cert_id SEPARATOR '') AS cert_ids,GROUP_CONCAT(policy_id ORDER BY policy_id SEPARATOR '') AS policy_ids FROM
-		(
-			WITH RECURSIVE cte AS (
-				-- Base case: specify which leaf certs we choose: those that
-				-- have a link with a domain that is part of the dirty domains.
-				SELECT dirty.domain_id, certs.cert_id, parent_id
-				FROM certs
-				INNER JOIN domain_certs ON certs.cert_id = domain_certs.cert_id
-				INNER JOIN dirty PARTITION(p", partition_number,") ON domain_certs.domain_id = dirty.domain_id
-				UNION ALL
-				-- Recursive case: any certificate that has its ID as
-				-- parent ID of the previous set, recursively.
-				SELECT cte.domain_id, certs.cert_id, certs.parent_id
-				FROM certs
-				JOIN cte ON certs.cert_id = cte.parent_id
-			)
-			SELECT DISTINCT domain_id, cert_id FROM cte
-		) AS A
-	LEFT OUTER JOIN
-		(
-			WITH RECURSIVE cte AS (
-				-- Base case: specify which leaf policies we choose: those that
-				-- have a link with a domain that is part of the dirty domains.
-				SELECT dirty.domain_id, policies.policy_id, parent_id
-				FROM policies
-				INNER JOIN domain_policies ON policies.policy_id = domain_policies.policy_id
-				INNER JOIN dirty PARTITION(p", partition_number, ") ON domain_policies.domain_id = dirty.domain_id
-				UNION ALL
-				-- Recursive case: any poilicy that has its ID as
-				-- parent ID of the previous set, recursively.
-				SELECT cte.domain_id, policies.policy_id, policies.parent_id
-				FROM policies
-				JOIN cte ON policies.policy_id = cte.parent_id
-			)
-			SELECT DISTINCT domain_id, policy_id FROM cte
-		) AS B
-	ON A.domain_id = B.domain_id
-	GROUP BY domain_id
+	-- Dynamic SQL because PARTITION only accepts literals (not variables).
+	SET @delete_sql = CONCAT("
+		DELETE dp
+		FROM domain_payloads AS dp
+		INNER JOIN dirty PARTITION(p", partition_number, ") AS d
+			ON dp.domain_id = d.domain_id
+	");
+	PREPARE stmt FROM @delete_sql;
+	EXECUTE stmt;
+	DEALLOCATE PREPARE stmt;
 
-	UNION
-
-	SELECT B.domain_id,GROUP_CONCAT(cert_id ORDER BY cert_id SEPARATOR '') AS cert_ids,GROUP_CONCAT(policy_id ORDER BY policy_id SEPARATOR '') AS policy_ids FROM
-		(
-			WITH RECURSIVE cte AS (
-				-- Base case: specify which leaf certs we choose: those that
-				-- have a link with a domain that is part of the dirty domains.
-				SELECT dirty.domain_id, certs.cert_id, parent_id
-				FROM certs
-				INNER JOIN domain_certs ON certs.cert_id = domain_certs.cert_id
-				INNER JOIN dirty PARTITION(p", partition_number, ") ON domain_certs.domain_id = dirty.domain_id
-				UNION ALL
-				-- Recursive case: any certificate that has its ID as
-				-- parent ID of the previous set, recursively.
-				SELECT cte.domain_id, certs.cert_id, certs.parent_id
-				FROM certs
-				JOIN cte ON certs.cert_id = cte.parent_id
-			)
-			SELECT DISTINCT domain_id, cert_id FROM cte
-		) AS A
-	RIGHT OUTER JOIN
-		(
-			WITH RECURSIVE cte AS (
-				-- Base case: specify which leaf policies we choose: those that
-				-- have a link with a domain that is part of the dirty domains.
-				SELECT dirty.domain_id, policies.policy_id, parent_id
-				FROM policies
-				INNER JOIN domain_policies ON policies.policy_id = domain_policies.policy_id
-				INNER JOIN dirty PARTITION(p", partition_number, ") ON domain_policies.domain_id = dirty.domain_id
-				UNION ALL
-				-- Recursive case: any poilicy that has its ID as
-				-- parent ID of the previous set, recursively.
-				SELECT cte.domain_id, policies.policy_id, policies.parent_id
-				FROM policies
-				JOIN cte ON policies.policy_id = cte.parent_id
-			)
-			SELECT DISTINCT domain_id, policy_id FROM cte
-		) AS B
-	ON A.domain_id = B.domain_id
-	GROUP BY domain_id
-
-	) AS hasher_query;"
-    );
-    PREPARE stmt FROM @sql;
+	SET @insert_sql = CONCAT("
+		INSERT INTO domain_payloads(domain_id, cert_ids, cert_ids_id, policy_ids, policy_ids_id)
+		WITH RECURSIVE
+		cert_closure AS (
+			-- Base case: all leaf certs linked to a dirty domain in this partition.
+			SELECT d.domain_id, c.cert_id, c.parent_id
+			FROM dirty PARTITION(p", partition_number, ") AS d
+			INNER JOIN domain_certs AS dc ON dc.domain_id = d.domain_id
+			INNER JOIN certs AS c ON c.cert_id = dc.cert_id
+			UNION ALL
+			-- Recursive case: walk up the certificate chain.
+			SELECT cc.domain_id, c.cert_id, c.parent_id
+			FROM cert_closure AS cc
+			INNER JOIN certs AS c ON c.cert_id = cc.parent_id
+		),
+		cert_agg AS (
+			SELECT domain_id, GROUP_CONCAT(cert_id ORDER BY cert_id SEPARATOR '') AS cert_ids
+			FROM (
+				SELECT DISTINCT domain_id, cert_id
+				FROM cert_closure
+			) AS cert_ids_per_domain
+			GROUP BY domain_id
+		),
+		policy_closure AS (
+			-- Base case: all leaf policies linked to a dirty domain in this partition.
+			SELECT d.domain_id, p.policy_id, p.parent_id
+			FROM dirty PARTITION(p", partition_number, ") AS d
+			INNER JOIN domain_policies AS dp ON dp.domain_id = d.domain_id
+			INNER JOIN policies AS p ON p.policy_id = dp.policy_id
+			UNION ALL
+			-- Recursive case: walk up the policy chain.
+			SELECT pc.domain_id, p.policy_id, p.parent_id
+			FROM policy_closure AS pc
+			INNER JOIN policies AS p ON p.policy_id = pc.parent_id
+		),
+		policy_agg AS (
+			SELECT domain_id, GROUP_CONCAT(policy_id ORDER BY policy_id SEPARATOR '') AS policy_ids
+			FROM (
+				SELECT DISTINCT domain_id, policy_id
+				FROM policy_closure
+			) AS policy_ids_per_domain
+			GROUP BY domain_id
+		)
+		SELECT
+			d.domain_id,
+			ca.cert_ids,
+			CASE
+				WHEN ca.cert_ids IS NULL THEN NULL
+				ELSE UNHEX(SHA2(ca.cert_ids, 256))
+			END AS cert_ids_id,
+			pa.policy_ids,
+			CASE
+				WHEN pa.policy_ids IS NULL THEN NULL
+				ELSE UNHEX(SHA2(pa.policy_ids, 256))
+			END AS policy_ids_id
+		FROM dirty PARTITION(p", partition_number, ") AS d
+		LEFT JOIN cert_agg AS ca ON ca.domain_id = d.domain_id
+		LEFT JOIN policy_agg AS pa ON pa.domain_id = d.domain_id
+		WHERE ca.cert_ids IS NOT NULL OR pa.policy_ids IS NOT NULL
+	");
+	PREPARE stmt FROM @insert_sql;
 	EXECUTE stmt;
 	DEALLOCATE PREPARE stmt;
 
