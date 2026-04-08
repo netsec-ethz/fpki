@@ -33,7 +33,7 @@ type RunConfig struct {
 
 type JournalStore interface {
 	PendingFiles() ([]string, error)
-	AddCompletedFiles([]string) error
+	CommitProgress(files []string, coalesced bool, updatedSMT bool) error
 	Close() error
 }
 
@@ -108,12 +108,18 @@ func runIngestContext(ctx context.Context, cfg RunConfig, deps RunDependencies) 
 			if err := coalesce(); err != nil {
 				return err
 			}
+			if err := j.CommitProgress(nil, true, false); err != nil {
+				return err
+			}
 		}
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		if jobCfg.UpdateSMT {
 			if err := updateSMT(); err != nil {
+				return err
+			}
+			if err := j.CommitProgress(nil, jobCfg.Coalesce, true); err != nil {
 				return err
 			}
 		}
@@ -153,7 +159,7 @@ func runIngestContext(ctx context.Context, cfg RunConfig, deps RunDependencies) 
 					return err
 				}
 			}
-			return j.AddCompletedFiles(files)
+			return j.CommitProgress(files, jobCfg.Coalesce, jobCfg.UpdateSMT)
 		},
 	)
 }

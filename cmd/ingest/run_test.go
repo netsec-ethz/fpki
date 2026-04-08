@@ -31,7 +31,7 @@ func TestRunIngestFreshJournalPersistsProgress(t *testing.T) {
 	j := loadJournalForTest(t, cfg)
 	require.Equal(t, completedIngestTestIntervals(
 		journal.Interval{Start: 0, End: 29},
-	), j.CompletedFiles)
+	), latestJobForTest(t, j).CompletedIndices)
 	pending, err := j.PendingFiles()
 	require.NoError(t, err)
 	require.Empty(t, pending)
@@ -42,7 +42,7 @@ func TestRunIngestResumesFromExistingJournal(t *testing.T) {
 	cfg := newTestRunConfig(dir, filepath.Join(t.TempDir(), "journal.json"), 1, "onlyingest")
 
 	j := loadJournalForTest(t, cfg)
-	require.NoError(t, j.AddCompletedFiles(files[:1]))
+	require.NoError(t, j.CommitProgress(files[:1], false, false))
 
 	var runOrder [][]string
 	var coalesceCount, updateCount int
@@ -54,7 +54,7 @@ func TestRunIngestResumesFromExistingJournal(t *testing.T) {
 	j = loadJournalForTest(t, cfg)
 	require.Equal(t, completedIngestTestIntervals(
 		journal.Interval{Start: 0, End: 29},
-	), j.CompletedFiles)
+	), latestJobForTest(t, j).CompletedIndices)
 }
 
 func TestRunIngestSkipsWhenAlreadyComplete(t *testing.T) {
@@ -62,7 +62,7 @@ func TestRunIngestSkipsWhenAlreadyComplete(t *testing.T) {
 	cfg := newTestRunConfig(dir, filepath.Join(t.TempDir(), "journal.json"), 2, "onlyingest")
 
 	j := loadJournalForTest(t, cfg)
-	require.NoError(t, j.AddCompletedFiles(files))
+	require.NoError(t, j.CommitProgress(files, false, false))
 
 	var runOrder [][]string
 	var coalesceCount, updateCount int
@@ -97,7 +97,9 @@ func TestRunIngestFailedBatchDoesNotAdvanceJournal(t *testing.T) {
 	j := loadJournalForTest(t, cfg)
 	require.Equal(t, completedIngestTestIntervals(
 		journal.Interval{Start: 0, End: 9},
-	), j.CompletedFiles)
+	), latestJobForTest(t, j).CompletedIndices)
+	require.True(t, previousJobForTest(t, j).Coalesced)
+	require.True(t, previousJobForTest(t, j).UpdatedSMT)
 	pending, err := j.PendingFiles()
 	require.NoError(t, err)
 	require.Equal(t, files[1:], pending)
@@ -256,4 +258,16 @@ func completedIngestTestIntervals(intervals ...journal.Interval) map[string][]jo
 	return map[string][]journal.Interval{
 		ingestTestBase: intervals,
 	}
+}
+
+func latestJobForTest(t *testing.T, j *journal.Journal) journal.Job {
+	t.Helper()
+	require.NotEmpty(t, j.Jobs)
+	return j.Jobs[len(j.Jobs)-1]
+}
+
+func previousJobForTest(t *testing.T, j *journal.Journal) journal.Job {
+	t.Helper()
+	require.GreaterOrEqual(t, len(j.Jobs), 2)
+	return j.Jobs[len(j.Jobs)-2]
 }

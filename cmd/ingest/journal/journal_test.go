@@ -63,14 +63,18 @@ func TestNewJournal(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, journalFile, j.JournalFile)
 	require.FileExists(t, journalFile)
-	require.Empty(t, j.CompletedFiles)
+	require.Empty(t, latestJob(t, j).CompletedIndices)
+	require.NotEmpty(t, latestJob(t, j).StartTime)
+	require.NotEmpty(t, latestJob(t, j).EndTime)
+	require.False(t, latestJob(t, j).Coalesced)
+	require.False(t, latestJob(t, j).UpdatedSMT)
 	requireJSONDoesNotContainFiles(t, journalFile)
 
 	j, err = NewJournal(journalFile, testJobConfig(t, false), "")
 	require.NoError(t, err)
 	require.Equal(t, journalFile, j.JournalFile)
 	require.FileExists(t, journalFile)
-	require.Empty(t, j.CompletedFiles)
+	require.Empty(t, latestJob(t, j).CompletedIndices)
 	requireJSONDoesNotContainFiles(t, journalFile)
 
 	journalFile = filepath.Join(t.TempDir(), "with-files.json")
@@ -79,15 +83,15 @@ func TestNewJournal(t *testing.T) {
 	got, err := j.PendingFiles()
 	require.NoError(t, err)
 	require.Len(t, got, len(csvFiles))
-	require.Empty(t, j.CompletedFiles)
+	require.Empty(t, latestJob(t, j).CompletedIndices)
 	requireJSONDoesNotContainFiles(t, journalFile)
 
-	err = j.AddCompletedFiles(csvFiles[:1])
+	err = j.CommitProgress(csvFiles[:1], false, false)
 	require.NoError(t, err)
 
 	j, err = NewJournal(journalFile, testJobConfig(t, false), csvPath)
 	require.NoError(t, err)
-	require.Equal(t, completedIntervals(Interval{Start: 0, End: 99999}), j.CompletedFiles)
+	require.Equal(t, completedIntervals(Interval{Start: 0, End: 99999}), latestJob(t, j).CompletedIndices)
 	requireJSONDoesNotContainFiles(t, journalFile)
 }
 
@@ -114,15 +118,15 @@ func TestAddCompletedFilesIntervalScenarios(t *testing.T) {
 				Interval{Start: 200000, End: 299999},
 			),
 			wantPending: []string{csvFiles[1]},
-		},
-		"bridges existing intervals": {
-			setupJournal: func(j *Journal) {
-				j.CompletedFiles = map[string][]Interval{
-					"testdata": {
-						{Start: 0, End: 9},
-						{Start: 20, End: 29},
-					},
-				}
+			},
+			"bridges existing intervals": {
+				setupJournal: func(j *Journal) {
+					latestJob(t, j).CompletedIndices = map[string][]Interval{
+						"testdata": {
+							{Start: 0, End: 9},
+							{Start: 20, End: 29},
+						},
+					}
 			},
 			addFiles: []string{
 				filepath.Join(csvPath, "bundled", "10-19.gz"),
@@ -151,8 +155,8 @@ func TestAddCompletedFilesIntervalScenarios(t *testing.T) {
 				tc.setupJournal(j)
 			}
 
-			require.NoError(t, j.AddCompletedFiles(tc.addFiles))
-			require.Equal(t, tc.wantCompleted, j.CompletedFiles)
+			require.NoError(t, j.CommitProgress(tc.addFiles, false, false))
+			require.Equal(t, tc.wantCompleted, latestJob(t, j).CompletedIndices)
 
 			got, err := j.PendingFiles()
 			require.NoError(t, err)
@@ -255,7 +259,7 @@ func TestPendingFilesSkipsOnlyFullyCoveredFiles(t *testing.T) {
 
 	j, err := NewJournal(journalFile, testJobConfig(t, false), root)
 	require.NoError(t, err)
-	j.CompletedFiles = map[string][]Interval{
+	latestJob(t, j).CompletedIndices = map[string][]Interval{
 		"partial-cover": {
 			{Start: 0, End: 8},
 			{Start: 20, End: 29},
@@ -298,7 +302,7 @@ func TestNewJournalReadsIntervalCompletedFilesOnRead(t *testing.T) {
 	require.Equal(t, completedIntervals(
 		Interval{Start: 0, End: 99999},
 		Interval{Start: 200000, End: 299999},
-	), j.CompletedFiles)
+	), latestJob(t, j).CompletedIndices)
 }
 
 // TestPendingFilesEquivalentIngestRootsShareProgress verifies that equivalent
@@ -310,10 +314,10 @@ func TestPendingFilesEquivalentIngestRootsShareProgress(t *testing.T) {
 	journalFile := filepath.Join(t.TempDir(), "journal.json")
 	j, err := NewJournal(journalFile, testJobConfig(t, false), firstRoot)
 	require.NoError(t, err)
-	require.NoError(t, j.AddCompletedFiles([]string{
+	require.NoError(t, j.CommitProgress([]string{
 		filepath.Join(firstRoot, "bundled", "0-9.gz"),
 		filepath.Join(firstRoot, "bundled", "10-19.gz"),
-	}))
+	}, false, false))
 
 	j, err = NewJournal(journalFile, testJobConfig(t, false), secondRoot)
 	require.NoError(t, err)
@@ -332,7 +336,7 @@ func TestPendingFilesDifferentIngestRootBasenamesDoNotShareProgress(t *testing.T
 	journalFile := filepath.Join(t.TempDir(), "journal.json")
 	j, err := NewJournal(journalFile, testJobConfig(t, false), firstRoot)
 	require.NoError(t, err)
-	require.NoError(t, j.AddCompletedFiles([]string{filepath.Join(firstRoot, "bundled", "0-9.gz")}))
+	require.NoError(t, j.CommitProgress([]string{filepath.Join(firstRoot, "bundled", "0-9.gz")}, false, false))
 
 	j, err = NewJournal(journalFile, testJobConfig(t, false), secondRoot)
 	require.NoError(t, err)
@@ -342,9 +346,9 @@ func TestPendingFilesDifferentIngestRootBasenamesDoNotShareProgress(t *testing.T
 	require.Equal(t, []string{filepath.Join(secondRoot, "bundled", "0-9.gz")}, got)
 }
 
-// TestAddCompletedFilesDeduplicatesEquivalentRoots checks that adding the same
+// TestCommitProgressDeduplicatesEquivalentRoots checks that adding the same
 // normalized file through equivalent ingest roots remains idempotent.
-func TestAddCompletedFilesDeduplicatesEquivalentRoots(t *testing.T) {
+func TestCommitProgressDeduplicatesEquivalentRoots(t *testing.T) {
 	firstRoot := makeEquivalentIngestRoot(t, "external", "same-log", []string{"0-9.gz"})
 	secondRoot := makeEquivalentIngestRoot(t, "data", "same-log", []string{"0-9.gz"})
 
@@ -352,11 +356,11 @@ func TestAddCompletedFilesDeduplicatesEquivalentRoots(t *testing.T) {
 	j, err := NewJournal(journalFile, testJobConfig(t, false), firstRoot)
 	require.NoError(t, err)
 
-	require.NoError(t, j.AddCompletedFiles([]string{
+	require.NoError(t, j.CommitProgress([]string{
 		filepath.Join(firstRoot, "bundled", "0-9.gz"),
 		filepath.Join(secondRoot, "bundled", "0-9.gz"),
-	}))
-	require.Equal(t, map[string][]Interval{"same-log": {{Start: 0, End: 9}}}, j.CompletedFiles)
+	}, false, false))
+	require.Equal(t, map[string][]Interval{"same-log": {{Start: 0, End: 9}}}, latestJob(t, j).CompletedIndices)
 }
 
 // TestNewJournalRejectsMalformedIntervalString verifies that reversed or
@@ -383,14 +387,14 @@ func TestClosePersistsAndIsIdempotent(t *testing.T) {
 	j, err := NewJournal(journalFile, testJobConfig(t, false), csvPath)
 	require.NoError(t, err)
 
-	addCompletedInterval(j.CompletedFiles, "testdata", Interval{Start: 0, End: 99999})
+	addCompletedInterval(latestJob(t, j).CompletedIndices, "testdata", Interval{Start: 0, End: 99999})
 
 	require.NoError(t, j.Close())
 	require.NoError(t, j.Close())
 
 	reopened, err := NewJournal(journalFile, testJobConfig(t, false), csvPath)
 	require.NoError(t, err)
-	require.Equal(t, completedIntervals(Interval{Start: 0, End: 99999}), reopened.CompletedFiles)
+	require.Equal(t, completedIntervals(Interval{Start: 0, End: 99999}), latestJob(t, reopened).CompletedIndices)
 }
 
 // TestPendingFilesUsesFreshDirectoryListing verifies that PendingFiles always
@@ -462,6 +466,13 @@ func requireJSONDoesNotContainFiles(t *testing.T, journalFile string) {
 	buf, err := os.ReadFile(journalFile)
 	require.NoError(t, err)
 	require.NotContains(t, string(buf), "\"Files\"")
+	require.NotContains(t, string(buf), "\"CompletedFiles\"")
+}
+
+func latestJob(t *testing.T, j *Journal) *Job {
+	t.Helper()
+	require.NotEmpty(t, j.Jobs)
+	return &j.Jobs[len(j.Jobs)-1]
 }
 
 // testJobConfig returns a JobConfiguration with "onlyingest" and batch size of 2.
