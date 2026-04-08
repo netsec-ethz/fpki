@@ -192,7 +192,7 @@ EOF
   echo "$CMD" | $MYSQLCMD
 
 
-  CMD=$(cat <<EOF
+CMD=$(cat <<EOF
 USE $DBNAME;
 DROP PROCEDURE IF EXISTS calc_dirty_domains;
 DELIMITER $$

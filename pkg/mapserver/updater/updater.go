@@ -436,7 +436,6 @@ func UpdateWithKeepExisting(
 }
 
 func CoalescePayloadsForDirtyDomains(ctx context.Context, conn db.Conn) error {
-	// Do all updates at once, in one thread/connection (faster than multiple routines).
 	if err := conn.RecomputeDirtyDomainsCertAndPolicyIDs(ctx); err != nil {
 		return fmt.Errorf("coalescing payloads of dirty domains: %w", err)
 	}

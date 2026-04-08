@@ -129,6 +129,8 @@ func (c *mysqlDB) CleanupDirty(ctx context.Context) error {
 	return nil
 }
 
+// RecomputeDirtyDomainsCertAndPolicyIDs spawns NumPartitions (typically 32) goroutines,
+// and calls the calc_dirty_domains(partition_index) on each of them.
 func (c *mysqlDB) RecomputeDirtyDomainsCertAndPolicyIDs(ctx context.Context) error {
 	// Call the coalescing stored procedure with the partition number.
 	errs := make([]error, NumPartitions)
