@@ -10,29 +10,49 @@
 # And the algorithm is deterministic, so we can re-collect already added certificates. So for the mysql config, we can sacrifice
 # the reliability. For better performance, we can even disable redo logs(not done yet).
 
+#[mysql]
+#mysql_native_password=ON
+
+
 [mysqld]
 # Set the temporary directory to the RAID-0 mount (bigger and faster):
 tmpdir=/mnt/data/tmp
-
 # Only allow connections from localhost:
 bind-address = 127.0.0.1
 mysqlx-bind-address = 127.0.0.1
 max_allowed_packet=1G
 
 
-secure_file_priv = /tmp/
+# The CSV to table files live here (RAID-0):
+secure_file_priv = /mnt/data/tmp/
+
+# Raise the mysqld open-file ceiling so parallel coalescing can spill temporary tables/files
+# without hitting the lower container default of ~8k descriptors.
+open_files_limit = 10000
+
+max_connections = 100
+
+
+# -------------------------------
+# Config for disk
+# -------------------------------
+innodb_page_size = 64KB
 
 
 # -------------------------------
 # config for memory and cpu
 # -------------------------------
 
-innodb_buffer_pool_size = 16GB  # 16 GB
+innodb_buffer_pool_size = 16GB
 
-innodb_buffer_pool_instances = 64  # one per thread/connection
+#innodb_buffer_pool_instances = 16  # one per thread/connection
+innodb_buffer_pool_instances = 32  # one per thread/connection
 innodb_thread_concurrency = 0
-innodb_write_io_threads = 64
-innodb_read_io_threads = 64
+# IO:
+#innodb_write_io_threads = 8
+innodb_write_io_threads = 8
+#innodb_read_io_threads = 8
+innodb_read_io_threads = 8
 
 # -------------------------------
 # config for log
@@ -50,14 +70,20 @@ innodb_use_fdatasync = "ON"
 
 innodb_stats_on_metadata = 0
 
-key_buffer_size=0 # we are not using MyISAM table
+key_buffer_size=8388608 # Key cache
 
-innodb_log_file_size = 2G
+#innodb_log_file_size = 2G # obsolete
 
-innodb_log_files_in_group = 2
+innodb_log_checksums = OFF
+#innodb_redo_log_enabled = NO # disable with ALTER INSTANCE DISABLE INNODB REDO_LOG
+
+#innodb_log_files_in_group = 2
 
 innodb_log_buffer_size = 1G # can be larger if we have larger memory
 
-innodb_flush_log_at_trx_commit=0 # Fastest choice but less secure.
+# Flushing log after commit:
+# 0 is fastest choice but less secure. 1 is the safest. 2 is safe if OS or hardware do not fail.
+#innodb_flush_log_at_trx_commit=1
+innodb_flush_log_at_trx_commit=0
 
 innodb_table_locks = 0

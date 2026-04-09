@@ -41,6 +41,51 @@ mysql -u root -e "SELECT user,authentication_string,plugin,host FROM mysql.user;
 Previously we suggested to use the option `mysql_native_password` instead of `caching_sha2_password`,
 but since MySQL version 9 it has been deprecated and removed.
 
+## Running MySQL 9.4 via Docker Compose
+
+If you want to try the MySQL 9.4 server binary while reusing the host configuration,
+there is a compose file at [`docker-compose.mysql94.yml`](/home/juagargi/devel/ETH/fpki/tools/docker-compose.mysql94.yml).
+
+It keeps the image's own `/etc/my.cnf` and mounts:
+
+- `tools/db_setup/fpki.cnf` into `/etc/mysql/conf.d/fpki.cnf`
+- a Docker-managed volume at `/var/lib/mysql`
+- `/var/run/mysqld` so the host socket path remains available
+- `/mnt/data/tmp` because `fpki.cnf` points `tmpdir` and `secure_file_priv` there
+
+Typical workflow:
+
+```bash
+sudo systemctl stop mysql # or mysqld
+sudo docker compose -f tools/docker-compose.mysql94.yml up
+```
+
+In another shell, check:
+
+```bash
+mysql -u root -e "SELECT VERSION();"
+mysql -u root -e "SHOW VARIABLES LIKE 'open_files_limit';"
+```
+
+When done:
+
+```bash
+sudo docker compose -f tools/docker-compose.mysql94.yml down
+sudo rc-service mysql start
+```
+
+Important caveats:
+
+- Stop the host mysql service first, or the port and socket will conflict.
+- This compose file keeps the image defaults from `/etc/my.cnf` and layers only `fpki.cnf` on top.
+- This no longer reuses the host `/var/lib/mysql`, so it avoids the MySQL 8.x -> 9.x upgrade restriction you hit.
+- The first startup initializes a fresh MySQL 9.4 datadir inside the named Docker volume `mysql94-data`.
+- To wipe the container datadir and start over, remove the compose volume:
+
+```bash
+sudo docker compose -f tools/docker-compose.mysql94.yml down -v
+```
+
 
 ## System
 
@@ -66,18 +111,18 @@ DESCRIBE SELECT * FROM nodes WHERE id=1234;
 use fpki;
 
 drop procedure if exists doWhile;
-DELIMITER //  
-CREATE PROCEDURE doWhile()   
+DELIMITER //
+CREATE PROCEDURE doWhile()
 BEGIN
-DECLARE i INT DEFAULT 1; 
+DECLARE i INT DEFAULT 1;
 WHILE (i <= 32) DO
     INSERT INTO `fpki`.`nodes` (`id`) VALUES (i);
     SET i = i+1;
 END WHILE;
 END;
-//  
+//
 
-CALL doWhile(); 
+CALL doWhile();
 ```
 
 To rename a DB in MySQL, RENAME doesn't work. We have to create a new empty DB and move each one of the tables there.
