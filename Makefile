@@ -1,6 +1,6 @@
 .PHONY: all clean test policy_log jaeger-start jaeger-stop
 
-all: build_mapserver build_ingest build_policy_log build_integration_test
+all: build_mapserver build_ingest build_policy_log build_integration_test build_benchmarks
 
 clean:
 	@rm -f bin/*
@@ -35,6 +35,9 @@ build_integration_test:
 	@# @go build -o ./bin/test_policylog_interaction  ./tests/integration/policylog_interaction
 	@# @go build -o ./bin/test_smt  ./tests/integration/smt
 	@go build -o ./bin/test_mapserver ./tests/integration/mapserver/
+
+build_benchmarks:
+	@go build -o ./bin/bench-coalesce ./cmd/bench-coalesce/
 
 drop_cacheTable:
 	@mysql -u root -e "DROP TABLE map.deleteTest;"
