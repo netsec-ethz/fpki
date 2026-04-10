@@ -213,6 +213,7 @@ proc: BEGIN
 		DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk_cert;
 		DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk_policy;
 		DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk_final;
+		DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk_result;
 		RESIGNAL;
 	END;
 
@@ -223,6 +224,7 @@ proc: BEGIN
 	DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk_cert;
 	DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk_policy;
 	DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk_final;
+	DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk_result;
 	CREATE TEMPORARY TABLE temp_dirty_chunk (
 		domain_id VARBINARY(32) NOT NULL,
 		PRIMARY KEY(domain_id)
@@ -237,6 +239,14 @@ proc: BEGIN
 	) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
 	CREATE TEMPORARY TABLE temp_dirty_chunk_final (
 		domain_id VARBINARY(32) NOT NULL,
+		PRIMARY KEY(domain_id)
+	) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
+	CREATE TEMPORARY TABLE temp_dirty_chunk_result (
+		domain_id VARBINARY(32) NOT NULL,
+		cert_ids LONGBLOB,
+		cert_ids_id VARBINARY(32) DEFAULT NULL,
+		policy_ids LONGBLOB,
+		policy_ids_id VARBINARY(32) DEFAULT NULL,
 		PRIMARY KEY(domain_id)
 	) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
 
@@ -269,55 +279,20 @@ proc: BEGIN
 		DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk_cert;
 		DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk_policy;
 		DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk_final;
+		DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk_result;
 		LEAVE proc;
 	END IF;
 
 	START TRANSACTION;
 
-	-- Only delete rows for chunk domains that no longer have any linked certs or policies.
-	-- Non-empty domains are updated via REPLACE below, which avoids a bulk delete+insert cycle.
-	SET @delete_payloads_sql = CONCAT("
-		DELETE dp
-		FROM domain_payloads PARTITION(p", partition_number, ") AS dp
-		INNER JOIN temp_dirty_chunk AS d
-			ON dp.domain_id = d.domain_id
-		WHERE NOT EXISTS (
-			SELECT 1
-			FROM domain_certs AS dc
-			WHERE dc.domain_id = dp.domain_id
+	SET @compute_sql = CONCAT("
+		INSERT INTO temp_dirty_chunk_result(
+			domain_id,
+			cert_ids,
+			cert_ids_id,
+			policy_ids,
+			policy_ids_id
 		)
-		AND NOT EXISTS (
-			SELECT 1
-			FROM domain_policies AS pol
-			WHERE pol.domain_id = dp.domain_id
-		)
-	");
-	PREPARE stmt FROM @delete_payloads_sql;
-	EXECUTE stmt;
-	DEALLOCATE PREPARE stmt;
-
-	SET @delete_domains_sql = CONCAT("
-		DELETE dom
-		FROM domains PARTITION(p", partition_number, ") AS dom
-		INNER JOIN temp_dirty_chunk AS d
-			ON dom.domain_id = d.domain_id
-		WHERE NOT EXISTS (
-			SELECT 1
-			FROM domain_certs AS dc
-			WHERE dc.domain_id = dom.domain_id
-		)
-		AND NOT EXISTS (
-			SELECT 1
-			FROM domain_policies AS dp
-			WHERE dp.domain_id = dom.domain_id
-		)
-	");
-	PREPARE stmt FROM @delete_domains_sql;
-	EXECUTE stmt;
-	DEALLOCATE PREPARE stmt;
-
-	SET @insert_sql = CONCAT("
-		REPLACE INTO domain_payloads(domain_id, cert_ids, cert_ids_id, policy_ids, policy_ids_id)
 		WITH RECURSIVE
 		cert_closure AS (
 			-- Base case: all leaf certs linked to a dirty domain in this chunk.
@@ -374,9 +349,40 @@ proc: BEGIN
 		FROM temp_dirty_chunk_final AS d
 		LEFT JOIN cert_agg AS ca ON ca.domain_id = d.domain_id
 		LEFT JOIN policy_agg AS pa ON pa.domain_id = d.domain_id
-		WHERE ca.cert_ids IS NOT NULL OR pa.policy_ids IS NOT NULL
 	");
-	PREPARE stmt FROM @insert_sql;
+	PREPARE stmt FROM @compute_sql;
+	EXECUTE stmt;
+	DEALLOCATE PREPARE stmt;
+
+	SET @replace_sql = CONCAT("
+		REPLACE INTO domain_payloads(domain_id, cert_ids, cert_ids_id, policy_ids, policy_ids_id)
+		SELECT domain_id, cert_ids, cert_ids_id, policy_ids, policy_ids_id
+		FROM temp_dirty_chunk_result
+		WHERE cert_ids IS NOT NULL OR policy_ids IS NOT NULL
+	");
+	PREPARE stmt FROM @replace_sql;
+	EXECUTE stmt;
+	DEALLOCATE PREPARE stmt;
+
+	SET @delete_payloads_sql = CONCAT("
+		DELETE dp
+		FROM domain_payloads PARTITION(p", partition_number, ") AS dp
+		INNER JOIN temp_dirty_chunk_result AS r
+			ON dp.domain_id = r.domain_id
+		WHERE r.cert_ids IS NULL AND r.policy_ids IS NULL
+	");
+	PREPARE stmt FROM @delete_payloads_sql;
+	EXECUTE stmt;
+	DEALLOCATE PREPARE stmt;
+
+	SET @delete_domains_sql = CONCAT("
+		DELETE dom
+		FROM domains PARTITION(p", partition_number, ") AS dom
+		INNER JOIN temp_dirty_chunk_result AS r
+			ON dom.domain_id = r.domain_id
+		WHERE r.cert_ids IS NULL AND r.policy_ids IS NULL
+	");
+	PREPARE stmt FROM @delete_domains_sql;
 	EXECUTE stmt;
 	DEALLOCATE PREPARE stmt;
 
@@ -394,6 +400,7 @@ proc: BEGIN
 	DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk_cert;
 	DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk_policy;
 	DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk_final;
+	DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk_result;
 
 END$$
 DELIMITER ;
