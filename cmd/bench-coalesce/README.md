@@ -4,9 +4,8 @@ This command benchmarks the old and new versions of the `calc_dirty_domains` sto
 
 - How much faster is the new coalescing procedure than the old one?
 - Does the speedup still hold when the generated workload is skewed across partitions?
-- What does cleanup of stale dirty domains cost?
 
-The benchmark lives in [`main.go`](/home/juagargi/devel/ETH/fpki/cmd/bench-coalesce/main.go).
+The benchmark lives in [`main.go`](/home/juan/devel/ETH/fpki/cmd/bench-coalesce/main.go).
 
 The benchmark binary is self-contained with respect to the stored-procedure snapshots:
 
@@ -16,25 +15,23 @@ The benchmark binary is self-contained with respect to the stored-procedure snap
 
 ## What It Benchmarks
 
-The headline benchmark exercises the production Go call path:
+The benchmark exercises the production Go call path:
 
-- [`updater.CoalescePayloadsForDirtyDomains`](/home/juagargi/devel/ETH/fpki/pkg/mapserver/updater/updater.go)
-- [`RecomputeDirtyDomainsCertAndPolicyIDs`](/home/juagargi/devel/ETH/fpki/pkg/db/mysql/dirty.go)
-- `CALL calc_dirty_domains(?)` over all 32 partitions
+- [`updater.CoalescePayloadsForDirtyDomains`](/home/juan/devel/ETH/fpki/pkg/mapserver/updater/updater.go)
+- [`RecomputeDirtyDomainsCertAndPolicyIDs`](/home/juan/devel/ETH/fpki/pkg/db/mysql/dirty.go)
+- `CALL calc_dirty_domains(...)` over all 32 partitions
 
 The procedure variants are loaded from:
 
-- [`calc_dirty_domains_old.sql`](/home/juagargi/devel/ETH/fpki/cmd/bench-coalesce/testdata/calc_dirty_domains_old.sql)
-- [`calc_dirty_domains_rewrite_only.sql`](/home/juagargi/devel/ETH/fpki/cmd/bench-coalesce/testdata/calc_dirty_domains_rewrite_only.sql)
-- [`calc_dirty_domains_new.sql`](/home/juagargi/devel/ETH/fpki/cmd/bench-coalesce/testdata/calc_dirty_domains_new.sql)
+- [`calc_dirty_domains_old.sql`](/home/juan/devel/ETH/fpki/cmd/bench-coalesce/testdata/calc_dirty_domains_old.sql)
+- [`calc_dirty_domains_new.sql`](/home/juan/devel/ETH/fpki/cmd/bench-coalesce/testdata/calc_dirty_domains_new.sql)
 
 At runtime, the command reads embedded copies of those SQL files from `cmd/bench-coalesce/testdata`.
 
 The command compares:
 
-- `old`: the pre-rewrite procedure from `ad22b3f2`
-- `new`: the current procedure with stale-row cleanup from `51bf4423`
-- `rewrite_only`: the intermediate rewrite from `3b3ce935`, used only for medium-size diagnostics
+- `old`: the procedure currently on `master`
+- `new`: the procedure under development
 
 ## Workload Shape
 
@@ -106,7 +103,7 @@ Important implementation details:
 
 ## How To Run It
 
-Run all default sizes and diagnostics:
+Run all default sizes:
 
 ```bash
 go run ./cmd/bench-coalesce
@@ -124,7 +121,7 @@ Run with a larger skew and a 50% policy/certificate balance:
 go run ./cmd/bench-coalesce -sizes medium -partition-skew large -balance 50
 ```
 
-Run with fewer concurrent coalescing workers to reduce server-side temporary-file pressure:
+Run with fewer concurrent coalescing workers:
 
 ```bash
 go run ./cmd/bench-coalesce -sizes medium,large -coalesce-workers 8
@@ -133,13 +130,7 @@ go run ./cmd/bench-coalesce -sizes medium,large -coalesce-workers 8
 Run a short smoke benchmark:
 
 ```bash
-go run ./cmd/bench-coalesce -sizes small -warmup-pairs 0 -measured-pairs 1 -skip-diagnostics
-```
-
-Run only medium, keeping diagnostics:
-
-```bash
-go run ./cmd/bench-coalesce -sizes medium
+go run ./cmd/bench-coalesce -sizes small -warmup-pairs 0 -measured-pairs 1
 ```
 
 Keep generated fixture CSVs for inspection:
@@ -165,18 +156,16 @@ go run ./cmd/bench-coalesce -temp-dir /tmp/my-coalesce-bench
 - `-sizes`: comma-separated subset of `small,medium,large`
 - `-warmup-pairs`: number of warmup old/new pairs per size
 - `-measured-pairs`: number of measured old/new pairs per size
-- `-medium-diagnostic-runs`: number of full `rewrite_only` medium runs
 - `-partition-skew`: one of `no`, `little`, `large`
 - `-balance`: integer percentage from `0` to `75`
-- `-coalesce-workers`: concurrent partition workers used for full runs; defaults to `8`
-- `-skip-diagnostics`: skip `rewrite_only` and per-partition medium diagnostics
+- `-coalesce-workers`: concurrent partition workers used for full runs; defaults to `32`
 - `-keep-artifacts`: keep generated CSV fixtures
 - `-keep-databases`: keep benchmark schemas after the command exits
 - `-temp-dir`: directory used for generated fixture files
 
 ## How To Read The Output
 
-The command prints two main sections.
+The command prints one main summary section.
 
 ### Full-run summary
 
@@ -204,44 +193,19 @@ Interpretation:
 - A positive `new vs old` percentage means the new procedure is faster
 - If `balance=0`, the command prints an explicit note that this is a cert-only workload; that case can legitimately favor the old procedure because policy aggregation is absent and fixed cleanup overhead is more visible
 
-### Medium diagnostics
-
-This section helps explain why the headline result looks the way it does.
-
-It includes:
-
-- `rewrite_only` full-run timings on the medium dataset
-- Per-partition timings for the current procedure on the medium dataset
-
-Use this section to answer:
-
-- Is most of the gain from the rewrite itself, or from cleanup?
-- Are hot partitions much slower than cold ones?
-- Does the chosen `-partition-skew` visibly change the tail?
-- Is total runtime dominated by a small number of partitions?
-
-The partition summary includes:
-
-- `min`: fastest partition
-- `p50`: median partition runtime
-- `p95`: tail partition runtime
-- `max`: slowest partition
-
-If `p95` and `max` are much larger than `p50`, the workload is strongly skewed and the hotter partitions dominate.
-
 ## Why This Can Be Run On The Production Machine
 
 This command was written to avoid touching the production `fpki` schema.
 
 The key safety properties are concrete and easy to verify in code:
 
-- Database names are produced only by [`benchmarkDBName`](/home/juagargi/devel/ETH/fpki/cmd/bench-coalesce/main.go), which always returns names starting with `bench_coalesce_`.
+- Database names are produced only by [`benchmarkDBName`](/home/juan/devel/ETH/fpki/cmd/bench-coalesce/main.go), which always returns names starting with `bench_coalesce_`.
 - Those generated names also include the selected size, skew, and balance values.
-- Databases are created only by [`createBenchmarkDB`](/home/juagargi/devel/ETH/fpki/cmd/bench-coalesce/main.go).
+- Databases are created only by [`createBenchmarkDB`](/home/juan/devel/ETH/fpki/cmd/bench-coalesce/main.go).
 - `createBenchmarkDB` invokes the schema helper by writing `create_new_db <dbName>` to the script stdin.
 - The `<dbName>` used there is always the benchmark-prefixed name from `benchmarkDBName`.
-- Connections for benchmark work are opened only through [`connectBenchmarkDB`](/home/juagargi/devel/ETH/fpki/cmd/bench-coalesce/main.go), which connects to the generated benchmark schema name.
-- Cleanup is handled by [`dropBenchmarkDB`](/home/juagargi/devel/ETH/fpki/cmd/bench-coalesce/main.go), which drops only that generated benchmark schema name.
+- Connections for benchmark work are opened only through [`connectBenchmarkDB`](/home/juan/devel/ETH/fpki/cmd/bench-coalesce/main.go), which connects to the generated benchmark schema name.
+- Cleanup is handled by [`dropBenchmarkDB`](/home/juan/devel/ETH/fpki/cmd/bench-coalesce/main.go), which drops only that generated benchmark schema name.
 
 What this means in practice:
 
@@ -272,12 +236,12 @@ That validation is important because the benchmark is comparing implementations,
 2. Run `small` first to validate the environment.
 3. Run the full benchmark.
 4. Compare the full-run summary.
-5. Use the medium diagnostics to explain where the speedup comes from.
+5. Rerun with different `-partition-skew`, `-balance`, or `-coalesce-workers` values if you want to stress a different workload shape.
 
 Example:
 
 ```bash
-go run ./cmd/bench-coalesce -sizes small -warmup-pairs 0 -measured-pairs 1 -skip-diagnostics
+go run ./cmd/bench-coalesce -sizes small -warmup-pairs 0 -measured-pairs 1
 go run ./cmd/bench-coalesce
 go run ./cmd/bench-coalesce -sizes medium -partition-skew little -balance 25
 ```

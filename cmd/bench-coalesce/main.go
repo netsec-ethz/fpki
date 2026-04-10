@@ -6,7 +6,6 @@ package main
 //   go run ./cmd/bench-coalesce
 //   go run ./cmd/bench-coalesce -sizes small
 //   go run ./cmd/bench-coalesce -sizes medium -warmup-pairs 1 -measured-pairs 2
-//   go run ./cmd/bench-coalesce -sizes small -skip-diagnostics
 //   go run ./cmd/bench-coalesce -sizes medium -partition-skew large -balance 50
 //   go run ./cmd/bench-coalesce -sizes medium -coalesce-workers 8
 //
@@ -64,7 +63,6 @@ const (
 	timeLayout          = "2006-01-02 15:04:05"
 	writerBufferSize    = 8 * 1024 * 1024
 	fullRunTimeout      = 2 * time.Hour
-	partitionRunTimeout = 30 * time.Minute
 )
 
 type variant struct {
@@ -82,12 +80,6 @@ var (
 		ProcedurePath:    "calc_dirty_domains_old.sql",
 		ExpectDomainRows: true,
 		ExpectStaleGone:  false,
-	}
-	rewriteVariant = variant{
-		Name:             "rewrite_only",
-		ProcedurePath:    "calc_dirty_domains_rewrite_only.sql",
-		ExpectDomainRows: true,
-		ExpectStaleGone:  true,
 	}
 	newVariant = variant{
 		Name:             "new",
@@ -111,13 +103,11 @@ type config struct {
 	Sizes           []sizeSpec
 	WarmupPairs     int
 	MeasuredPairs   int
-	MediumDiagRuns  int
 	PartitionSkew   string
 	Balance         int
 	CoalesceWorkers int
 	KeepArtifacts   bool
 	KeepDatabases   bool
-	SkipDiagnostics bool
 }
 
 type fixture struct {
@@ -251,20 +241,6 @@ func main() {
 
 	printFullSummary(fullResults, cfg, fixtures)
 
-	// Medium-size diagnostics keep the main comparison compact while still exposing cleanup
-	// overhead and partition skew behavior.
-	if !cfg.SkipDiagnostics {
-		fx, ok := fixtures["medium"]
-		if ok {
-			fmt.Printf("\n== Medium diagnostics ==\n")
-			diagResults, err := runMediumDiagnostics(cfg, fx)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "medium diagnostics: %v\n", err)
-				os.Exit(1)
-			}
-			printDiagnosticSummary(diagResults)
-		}
-	}
 }
 
 func parseFlags() (*config, error) {
@@ -276,13 +252,11 @@ func parseFlags() (*config, error) {
 	flag.StringVar(&tempDir, "temp-dir", filepath.Join(os.TempDir(), "fpki-bench-coalesce"), "directory for generated fixture files")
 	flag.IntVar(&cfg.WarmupPairs, "warmup-pairs", 2, "number of warmup old/new pairs per size")
 	flag.IntVar(&cfg.MeasuredPairs, "measured-pairs", 8, "number of measured old/new pairs per size")
-	flag.IntVar(&cfg.MediumDiagRuns, "medium-diagnostic-runs", 4, "number of full-run rewrite_only diagnostic samples on the medium fixture")
 	flag.StringVar(&cfg.PartitionSkew, "partition-skew", "no", "certificate/policy partition skew: no, little, or large")
 	flag.IntVar(&cfg.Balance, "balance", 0, "percentage of policies with respect to certificates in the generated workload")
 	flag.IntVar(&cfg.CoalesceWorkers, "coalesce-workers", 32, "number of concurrent partition workers for full coalescing runs")
 	flag.BoolVar(&cfg.KeepArtifacts, "keep-artifacts", false, "keep generated fixture files")
 	flag.BoolVar(&cfg.KeepDatabases, "keep-databases", false, "keep benchmark databases after each run")
-	flag.BoolVar(&cfg.SkipDiagnostics, "skip-diagnostics", false, "skip rewrite_only and per-partition medium diagnostics")
 	flag.Parse()
 
 	workDir, err := os.Getwd()
@@ -311,7 +285,7 @@ func parseFlags() (*config, error) {
 	if len(cfg.Sizes) == 0 {
 		return nil, errors.New("no benchmark sizes selected")
 	}
-	if cfg.WarmupPairs < 0 || cfg.MeasuredPairs <= 0 || cfg.MediumDiagRuns < 0 {
+	if cfg.WarmupPairs < 0 || cfg.MeasuredPairs <= 0 {
 		return nil, errors.New("run counts must be non-negative, with measured-pairs > 0")
 	}
 	switch cfg.PartitionSkew {
@@ -527,28 +501,6 @@ func runMeasuredPairs(cfg *config, fx *fixture) ([]runResult, error) {
 	return results, nil
 }
 
-func runMediumDiagnostics(cfg *config, fx *fixture) ([]runResult, error) {
-	var results []runResult
-	for i := 0; i < cfg.MediumDiagRuns; i++ {
-		label := fmt.Sprintf("rewrite-full-%02d", i+1)
-		result, err := runFullSample(cfg, fx, rewriteVariant, label, true)
-		if err != nil {
-			return nil, err
-		}
-		results = append(results, result)
-	}
-
-	for partition := 0; partition < partitionCount; partition++ {
-		label := fmt.Sprintf("partition-%02d", partition)
-		result, err := runPartitionDiagnostic(cfg, fx, partition, label)
-		if err != nil {
-			return nil, err
-		}
-		results = append(results, result)
-	}
-	return results, nil
-}
-
 func runFullSample(cfg *config, fx *fixture, v variant, runLabel string, record bool) (runResult, error) {
 	dbName := benchmarkDBName(v.Name, fx.SizeName, fx.PartitionSkew, fx.Balance, runLabel)
 	if err := createBenchmarkDB(dbName); err != nil {
@@ -613,58 +565,6 @@ func runFullSample(cfg *config, fx *fixture, v variant, runLabel string, record 
 	return result, nil
 }
 
-func runPartitionDiagnostic(cfg *config, fx *fixture, partition int, runLabel string) (runResult, error) {
-	dbName := benchmarkDBName(newVariant.Name, fx.SizeName, fx.PartitionSkew, fx.Balance, runLabel)
-	if err := createBenchmarkDB(dbName); err != nil {
-		return runResult{}, err
-	}
-	created := true
-	if !cfg.KeepDatabases {
-		defer func() {
-			if created {
-				_ = dropBenchmarkDB(dbName)
-			}
-		}()
-	}
-
-	conn, err := connectBenchmarkDB(dbName)
-	if err != nil {
-		return runResult{}, err
-	}
-	defer conn.Close()
-
-	ctx, cancel := context.WithTimeout(context.Background(), partitionRunTimeout)
-	defer cancel()
-
-	if err := installProcedure(ctx, conn.DB(), newVariant); err != nil {
-		return runResult{}, err
-	}
-	if err := loadFixture(ctx, conn.DB(), fx.Files); err != nil {
-		return runResult{}, err
-	}
-	if err := verifyFixtureCounts(ctx, conn.DB(), fx); err != nil {
-		return runResult{}, err
-	}
-
-	start := time.Now()
-	if err := callVariantPartition(ctx, conn.DB(), newVariant, partition); err != nil {
-		return runResult{}, err
-	}
-	elapsed := time.Since(start)
-
-	result, err := collectPartitionDiagnostic(ctx, conn.DB(), fx, partition, runLabel, elapsed)
-	if err != nil {
-		return runResult{}, err
-	}
-	fmt.Printf("medium/new %s: %s (%d dirty domains in partition)\n",
-		runLabel, result.Elapsed.Round(time.Millisecond), fx.PartitionStats[partition].DirtyDomains)
-
-	if cfg.KeepDatabases {
-		created = false
-	}
-	return result, nil
-}
-
 func pairOrder(pairIndex int) []variant {
 	if pairIndex%2 == 0 {
 		return []variant{oldVariant, newVariant}
@@ -698,8 +598,6 @@ func shortVariantName(name string) string {
 		return "old"
 	case "new":
 		return "new"
-	case "rewrite_only":
-		return "rwo"
 	default:
 		return "unk"
 	}
@@ -1053,62 +951,6 @@ WHERE d.domain_name LIKE 'stale-%'`)
 	}, nil
 }
 
-func collectPartitionDiagnostic(
-	ctx context.Context,
-	db *sql.DB,
-	fx *fixture,
-	partition int,
-	runLabel string,
-	elapsed time.Duration,
-) (runResult, error) {
-	stats := fx.PartitionStats[partition]
-	payloadRows, err := countQuery(ctx, db, fmt.Sprintf("SELECT COUNT(*) FROM domain_payloads PARTITION(p%d)", partition))
-	if err != nil {
-		return runResult{}, err
-	}
-	domainRows, err := countQuery(ctx, db, fmt.Sprintf("SELECT COUNT(*) FROM domains PARTITION(p%d)", partition))
-	if err != nil {
-		return runResult{}, err
-	}
-	remainingStalePayloads, err := countQuery(ctx, db, fmt.Sprintf(`
-SELECT COUNT(*)
-FROM domain_payloads PARTITION(p%d) AS dp
-INNER JOIN domains PARTITION(p%d) AS d ON d.domain_id = dp.domain_id
-WHERE d.domain_name LIKE 'stale-%%'`, partition, partition))
-	if err != nil {
-		return runResult{}, err
-	}
-	remainingStaleDomains, err := countQuery(ctx, db, fmt.Sprintf(
-		"SELECT COUNT(*) FROM domains PARTITION(p%d) WHERE domain_name LIKE 'stale-%%'", partition))
-	if err != nil {
-		return runResult{}, err
-	}
-
-	if payloadRows != stats.ActiveDomains {
-		return runResult{}, fmt.Errorf("partition %d payload rows mismatch: got %d want %d", partition, payloadRows, stats.ActiveDomains)
-	}
-	if domainRows != stats.ActiveDomains {
-		return runResult{}, fmt.Errorf("partition %d domain rows mismatch: got %d want %d", partition, domainRows, stats.ActiveDomains)
-	}
-	if remainingStalePayloads != 0 || remainingStaleDomains != 0 {
-		return runResult{}, fmt.Errorf("partition %d stale rows remain payloads=%d domains=%d", partition, remainingStalePayloads, remainingStaleDomains)
-	}
-
-	return runResult{
-		Variant:                 newVariant.Name,
-		SizeName:                fx.SizeName,
-		RunLabel:                runLabel,
-		Partition:               &partition,
-		Elapsed:                 elapsed,
-		DirtyPerSecond:          safeRate(stats.DirtyDomains, elapsed),
-		ActivePerSecond:         safeRate(stats.ActiveDomains, elapsed),
-		DomainPayloadRows:       payloadRows,
-		DomainRows:              domainRows,
-		RemovedStalePayloadRows: stats.StaleDomains,
-		RemovedStaleDomainRows:  stats.StaleDomains,
-	}, nil
-}
-
 func validateActivePayloads(ctx context.Context, db *sql.DB, fx *fixture) error {
 	// Compare only the active domains here. Stale rows are variant-dependent by design.
 	rows, err := db.QueryContext(ctx, `
@@ -1248,49 +1090,6 @@ func printWorkloadSummary(cfg *config, fixtures map[string]*fixture) {
 		)
 	}
 	fmt.Println()
-}
-
-func printDiagnosticSummary(results []runResult) {
-	var fullRewrite []runResult
-	var partitions []runResult
-	for _, result := range results {
-		if result.Partition == nil {
-			fullRewrite = append(fullRewrite, result)
-			continue
-		}
-		partitions = append(partitions, result)
-	}
-	if len(fullRewrite) > 0 {
-		elapsed := make([]time.Duration, len(fullRewrite))
-		for i, result := range fullRewrite {
-			elapsed[i] = result.Elapsed
-		}
-		fmt.Printf("rewrite_only full runs: median=%s iqr=%s\n",
-			medianDuration(elapsed).Round(time.Millisecond),
-			iqrDuration(elapsed).Round(time.Millisecond))
-	}
-
-	sort.Slice(partitions, func(i, j int) bool {
-		return *partitions[i].Partition < *partitions[j].Partition
-	})
-	fmt.Printf("\n%-10s %-12s %-12s %-12s\n", "partition", "elapsed", "dirty", "active")
-	elapsed := make([]time.Duration, 0, len(partitions))
-	for _, result := range partitions {
-		elapsed = append(elapsed, result.Elapsed)
-		fmt.Printf("p%-9d %-12s %-12.0f %-12.0f\n",
-			*result.Partition,
-			result.Elapsed.Round(time.Millisecond),
-			result.DirtyPerSecond,
-			result.ActivePerSecond)
-	}
-	if len(elapsed) > 0 {
-		sort.Slice(elapsed, func(i, j int) bool { return elapsed[i] < elapsed[j] })
-		fmt.Printf("\npartition elapsed summary: min=%s p50=%s p95=%s max=%s\n",
-			elapsed[0].Round(time.Millisecond),
-			percentileDuration(elapsed, 0.50).Round(time.Millisecond),
-			percentileDuration(elapsed, 0.95).Round(time.Millisecond),
-			elapsed[len(elapsed)-1].Round(time.Millisecond))
-	}
 }
 
 func summarizeFullRuns(results []runResult) map[string]sizeRunSummary {

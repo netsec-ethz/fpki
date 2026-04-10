@@ -145,7 +145,8 @@ proc: BEGIN
 	DEALLOCATE PREPARE stmt;
 
 	SET @replace_sql = CONCAT("
-		REPLACE INTO domain_payloads(domain_id, cert_ids, cert_ids_id, policy_ids, policy_ids_id)
+		REPLACE INTO domain_payloads PARTITION(p", partition_number, ")
+			(domain_id, cert_ids, cert_ids_id, policy_ids, policy_ids_id)
 		SELECT domain_id, cert_ids, cert_ids_id, policy_ids, policy_ids_id
 		FROM temp_dirty_chunk_result
 		WHERE cert_ids IS NOT NULL OR policy_ids IS NOT NULL
