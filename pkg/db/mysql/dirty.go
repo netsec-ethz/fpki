@@ -20,18 +20,38 @@ const (
 )
 
 func (c *mysqlDB) DirtyCount(ctx context.Context) (uint64, error) {
-	// TODO run concurrent goroutines for each partition, add up all partial results.
-	str := "SELECT COUNT(*) FROM dirty"
-	row := c.db.QueryRowContext(ctx, str)
-	if err := row.Err(); err != nil {
+	counts := make([]uint64, NumPartitions)
+	errs := make([]error, NumPartitions)
+
+	var wg sync.WaitGroup
+	wg.Add(NumPartitions)
+	for partition := range NumPartitions {
+		go func(partition int) {
+			defer wg.Done()
+
+			str := fmt.Sprintf("SELECT COUNT(*) FROM dirty PARTITION(p%d)", partition)
+			row := c.db.QueryRowContext(ctx, str)
+			if err := row.Err(); err != nil {
+				errs[partition] = fmt.Errorf("querying dirty partition %d count: %w", partition, err)
+				return
+			}
+
+			if err := row.Scan(&counts[partition]); err != nil {
+				errs[partition] = fmt.Errorf("scanning dirty partition %d count: %w", partition, err)
+			}
+		}(partition)
+	}
+	wg.Wait()
+
+	if err := util.ErrorsCoalesce(errs...); err != nil {
 		return 0, fmt.Errorf("error querying dirty domains count: %w", err)
 	}
 
-	var count uint64
-	if err := row.Scan(&count); err != nil {
-		return 0, fmt.Errorf("error querying dirty domains count: %w", err)
+	var total uint64
+	for _, count := range counts {
+		total += count
 	}
-	return count, nil
+	return total, nil
 }
 
 // RetrieveDirtyDomains returns the domain IDs that are still dirty, i.e. modified certificates for
