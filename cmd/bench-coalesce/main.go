@@ -72,6 +72,8 @@ type variant struct {
 	ProcedurePath    string
 	ExpectDomainRows bool
 	ExpectStaleGone  bool
+	Chunked          bool
+	ChunkSize        int
 }
 
 var (
@@ -92,6 +94,8 @@ var (
 		ProcedurePath:    "calc_dirty_domains_new.sql",
 		ExpectDomainRows: false,
 		ExpectStaleGone:  true,
+		Chunked:          true,
+		ChunkSize:        20000,
 	}
 	headlineVariants = []variant{oldVariant, newVariant}
 )
@@ -587,7 +591,7 @@ func runFullSample(cfg *config, fx *fixture, v variant, runLabel string, record 
 	defer measuredConn.Close()
 
 	start := time.Now()
-	if err := runCoalescingWithWorkers(ctx, measuredConn.DB(), cfg.CoalesceWorkers); err != nil {
+	if err := runCoalescingWithWorkers(ctx, measuredConn.DB(), v, cfg.CoalesceWorkers); err != nil {
 		return runResult{}, err
 	}
 	elapsed := time.Since(start)
@@ -643,7 +647,7 @@ func runPartitionDiagnostic(cfg *config, fx *fixture, partition int, runLabel st
 	}
 
 	start := time.Now()
-	if _, err := conn.DB().ExecContext(ctx, "CALL calc_dirty_domains(?)", partition); err != nil {
+	if err := callVariantPartition(ctx, conn.DB(), newVariant, partition); err != nil {
 		return runResult{}, err
 	}
 	elapsed := time.Since(start)
@@ -1432,16 +1436,47 @@ type partitionCaller interface {
 }
 
 type sqlPartitionCaller struct {
-	db *sql.DB
+	db      *sql.DB
+	variant variant
 }
 
 func (c sqlPartitionCaller) callPartition(ctx context.Context, partition int) error {
-	_, err := c.db.ExecContext(ctx, "CALL calc_dirty_domains(?)", partition)
-	return err
+	return callVariantPartition(ctx, c.db, c.variant, partition)
 }
 
-func runCoalescingWithWorkers(ctx context.Context, db *sql.DB, workers int) error {
-	return callPartitionsWithWorkers(ctx, sqlPartitionCaller{db: db}, workers)
+func runCoalescingWithWorkers(ctx context.Context, db *sql.DB, v variant, workers int) error {
+	return callPartitionsWithWorkers(ctx, sqlPartitionCaller{db: db, variant: v}, workers)
+}
+
+func callVariantPartition(ctx context.Context, db *sql.DB, v variant, partition int) error {
+	if !v.Chunked {
+		_, err := db.ExecContext(ctx, "CALL calc_dirty_domains(?)", partition)
+		return err
+	}
+
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	for {
+		var processedRows int64
+		if _, err := conn.ExecContext(
+			ctx,
+			"CALL calc_dirty_domains(?, ?, @processed_rows)",
+			partition,
+			v.ChunkSize,
+		); err != nil {
+			return err
+		}
+		if err := conn.QueryRowContext(ctx, "SELECT @processed_rows").Scan(&processedRows); err != nil {
+			return err
+		}
+		if processedRows == 0 {
+			return nil
+		}
+	}
 }
 
 func callPartitionsWithWorkers(ctx context.Context, caller partitionCaller, workers int) error {
