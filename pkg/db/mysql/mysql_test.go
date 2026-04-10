@@ -281,6 +281,40 @@ func TestCoalesceForDirtyDomains_MixedCertsAndPolicies(t *testing.T) {
 	require.Equal(t, expectedPolIDsID, gotPolIDsID)
 }
 
+func TestCallCalcDirtyDomainsReturnsProcessedRows(t *testing.T) {
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelF()
+
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	conn := testdb.Connect(t, config)
+	defer conn.Close()
+
+	const partition = 7
+	domainIDs := []common.SHA256Output{
+		dirtyDomainIDForPartition(partition, 1),
+		dirtyDomainIDForPartition(partition, 2),
+		dirtyDomainIDForPartition(partition, 3),
+	}
+	insertIntoDirty(ctx, conn, "dirty", domainIDs)
+
+	processedRows, err := mysql.CallCalcDirtyDomainsForTests(ctx, conn, partition, 2)
+	require.NoError(t, err)
+	require.EqualValues(t, 2, processedRows)
+	requireDirtyCoalescedCounts(ctx, t, conn, partition, 2, 1)
+
+	processedRows, err = mysql.CallCalcDirtyDomainsForTests(ctx, conn, partition, 2)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, processedRows)
+	requireDirtyCoalescedCounts(ctx, t, conn, partition, 3, 0)
+
+	processedRows, err = mysql.CallCalcDirtyDomainsForTests(ctx, conn, partition, 2)
+	require.NoError(t, err)
+	require.Zero(t, processedRows)
+	requireDirtyCoalescedCounts(ctx, t, conn, partition, 3, 0)
+}
+
 // TestCoalesceForDirtyDomains_RemovesStaleDomainState checks that domains who no longer have
 // any certs or policies disappear from both domain_payloads and domains.
 func TestCoalesceForDirtyDomains_RemovesStaleDomainState(t *testing.T) {
@@ -1051,6 +1085,44 @@ func mockDomainData(N int) (
 		binary.LittleEndian.PutUint64(polIDs[i][:], i+2_000_001)
 	}
 	return
+}
+
+func dirtyDomainIDForPartition(partition, suffix byte) common.SHA256Output {
+	var id common.SHA256Output
+	id[0] = partition << 3
+	id[len(id)-1] = suffix
+	return id
+}
+
+func requireDirtyCoalescedCounts(
+	ctx context.Context,
+	t *testing.T,
+	conn db.Conn,
+	partition int,
+	wantCoalesced int,
+	wantPending int,
+) {
+	t.Helper()
+
+	var gotCoalesced int
+	var gotPending int
+
+	coalescedQuery := fmt.Sprintf(
+		"SELECT COUNT(*) FROM dirty PARTITION(p%d) WHERE coalesced = TRUE",
+		partition,
+	)
+	err := conn.DB().QueryRowContext(ctx, coalescedQuery).Scan(&gotCoalesced)
+	require.NoError(t, err)
+
+	pendingQuery := fmt.Sprintf(
+		"SELECT COUNT(*) FROM dirty PARTITION(p%d) WHERE coalesced = FALSE",
+		partition,
+	)
+	err = conn.DB().QueryRowContext(ctx, pendingQuery).Scan(&gotPending)
+	require.NoError(t, err)
+
+	require.Equal(t, wantCoalesced, gotCoalesced)
+	require.Equal(t, wantPending, gotPending)
 }
 
 func insertIntoDomainPayloads(
