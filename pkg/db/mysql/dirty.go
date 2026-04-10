@@ -7,12 +7,20 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
+const (
+	dirtyCoalesceChunkSize = 20000
+	dirtyCoalesceStatsFreq = 5 * time.Second
+)
+
 func (c *mysqlDB) DirtyCount(ctx context.Context) (uint64, error) {
+	// TODO run concurrent goroutines for each partition, add up all partial results.
 	str := "SELECT COUNT(*) FROM dirty"
 	row := c.db.QueryRowContext(ctx, str)
 	if err := row.Err(); err != nil {
@@ -99,8 +107,8 @@ func (c *mysqlDB) insertDomainsIntoDirtyMemory(
 		domainIDsSet[id] = struct{}{}
 	}
 
-	str := "INSERT IGNORE INTO dirty (domain_id) VALUES " + repeatStmt(len(domainIDsSet), 1)
-	data := make([]any, len(domainIDsSet))
+	str := "REPLACE INTO dirty (domain_id, coalesced) VALUES " + repeatStmt(len(domainIDsSet), 2)
+	data := make([]any, 2*len(domainIDsSet))
 	i := 0
 	for k := range domainIDsSet {
 		// Copy the 32 bytes locally here, not just the pointer or slice.
@@ -108,7 +116,8 @@ func (c *mysqlDB) insertDomainsIntoDirtyMemory(
 		// not change and remains constant for all the loop ("captured"). A slice on that array
 		// such as k[:] will create a new slice, with all the same storage across all iterations.
 		localK := k // Because k changes during the loop, we need a local copy that doesn't.
-		data[i] = localK[:]
+		data[2*i] = localK[:]
+		data[2*i+1] = false
 		i++
 	}
 
@@ -129,34 +138,127 @@ func (c *mysqlDB) CleanupDirty(ctx context.Context) error {
 	return nil
 }
 
-// RecomputeDirtyDomainsCertAndPolicyIDs spawns NumPartitions (typically 32) goroutines,
-// and calls the calc_dirty_domains(partition_index) on each of them.
+type dirtyCoalesceProgress struct {
+	processedRows     atomic.Int64
+	pendingPartitions atomic.Int64
+}
+
+// RecomputeDirtyDomainsCertAndPolicyIDs spawns NumPartitions (typically 32) goroutines.
+// Each worker repeatedly coalesces one chunk for its partition until the stored procedure
+// reports that there are no more pending dirty rows in that partition.
 func (c *mysqlDB) RecomputeDirtyDomainsCertAndPolicyIDs(ctx context.Context) error {
-	// Call the coalescing stored procedure with the partition number.
+	totalDirtyCount, err := c.DirtyCount(ctx)
+	if err != nil {
+		return fmt.Errorf("querying dirty domains before coalescing: %w", err)
+	}
+	if totalDirtyCount == 0 {
+		return nil
+	}
+
 	errs := make([]error, NumPartitions)
+	progress := &dirtyCoalesceProgress{}
+	progress.pendingPartitions.Store(NumPartitions)
+	doneLogging := make(chan struct{})
+	defer close(doneLogging)
+	go func() {
+		ticker := time.NewTicker(dirtyCoalesceStatsFreq)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				fmt.Printf(
+					"coalescing progress [%s]: pending partitions=%2d total dirty=%d processed=%d\n",
+					time.Now().Format(time.Stamp),
+					progress.pendingPartitions.Load(),
+					totalDirtyCount,
+					progress.processedRows.Load(),
+				)
+			case <-doneLogging:
+				return
+			}
+		}
+	}()
 	wg := sync.WaitGroup{}
 	wg.Add(NumPartitions)
 	for i := range NumPartitions {
 		go func(partition int) {
 			defer wg.Done()
-			str := "CALL calc_dirty_domains(?)"
-			if _, err := c.db.ExecContext(ctx, str, partition); err != nil {
-				errs[partition] = fmt.Errorf(
-					"coalescing dirty domains in partition %d: %w",
-					partition,
-					err,
-				)
+			defer func() {
+				progress.pendingPartitions.Add(-1)
+			}()
+
+			conn, err := c.db.Conn(ctx)
+			if err != nil {
+				errs[partition] = fmt.Errorf("creating DB connection for partition %d: %w", partition, err)
+				return
+			}
+			defer conn.Close()
+
+			partitionProcessed := int64(0)
+			for {
+				chunkRows, err := callCalcDirtyDomains(ctx, conn, partition, dirtyCoalesceChunkSize)
+				if err != nil {
+					errs[partition] = fmt.Errorf(
+						"coalescing dirty domains in partition %d: %w",
+						partition,
+						err,
+					)
+					return
+				}
+				if chunkRows == 0 {
+					fmt.Printf(
+						"\ndirty coalescing finished [%s]: partition=%d processed=%d\n",
+						time.Now().Format(time.Stamp),
+						partition,
+						partitionProcessed,
+					)
+					return
+				}
+
+				partitionProcessed += chunkRows
+				progress.processedRows.Add(chunkRows)
+				// fmt.Printf(
+				// 	"dirty coalescing chunk [%s]: partition=%d chunk=%d partition_processed=%d total_processed=%d pending_partitions=%d\n",
+				// 	time.Now().Format(time.Stamp),
+				// 	partition,
+				// 	chunkRows,
+				// 	partitionProcessed,
+				// 	totalProcessed,
+				// 	progress.pendingPartitions.Load(),
+				// )
 			}
 		}(i)
 	}
 	wg.Wait()
 
-	err := util.ErrorsCoalesce(errs...)
+	err = util.ErrorsCoalesce(errs...)
 	if err != nil {
 		return fmt.Errorf("coalescing dirty-domain payloads: %w", err)
 	}
 
 	return nil
+}
+
+func callCalcDirtyDomains(
+	ctx context.Context,
+	conn *sql.Conn,
+	partition int,
+	chunkSize int,
+) (int64, error) {
+	if _, err := conn.ExecContext(
+		ctx,
+		"CALL calc_dirty_domains(?, ?, @processed_rows)",
+		partition,
+		chunkSize,
+	); err != nil {
+		return 0, err
+	}
+
+	var processedRows int64
+	if err := conn.QueryRowContext(ctx, "SELECT @processed_rows").Scan(&processedRows); err != nil {
+		return 0, fmt.Errorf("reading processed rows for partition %d: %w", partition, err)
+	}
+	return processedRows, nil
 }
 
 func loadDirtyTableWithCSV(
@@ -170,9 +272,10 @@ func loadDirtyTableWithCSV(
 		return nil, fmt.Errorf("setting permissions to file \"%s\": %w", filepath, err)
 	}
 
-	str := `LOAD DATA CONCURRENT INFILE ? IGNORE INTO TABLE dirty ` +
+	str := `LOAD DATA CONCURRENT INFILE ? REPLACE INTO TABLE dirty ` +
 		`FIELDS TERMINATED BY ',' ENCLOSED BY '"' LINES TERMINATED BY '\n' ` +
 		`(@domain_id) SET ` +
-		`domain_id = FROM_BASE64(@domain_id);`
+		`domain_id = FROM_BASE64(@domain_id), ` +
+		`coalesced = FALSE;`
 	return db.ExecContext(ctx, str, filepath)
 }

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
+	"github.com/netsec-ethz/fpki/pkg/statistics"
 	"github.com/netsec-ethz/fpki/pkg/tests"
 	"github.com/netsec-ethz/fpki/pkg/util"
 	"github.com/stretchr/testify/require"
@@ -155,7 +156,7 @@ func BenchmarkCertSink(b *testing.B) {
 }
 
 func getManager(t tests.T) *updater.Manager {
-	m, err := updater.NewManager(1, nil, 10_000, updater.NewStatistics(time.Hour, nil))
+	m, err := updater.NewManager(1, nil, 10_000, statistics.NewStatistics(time.Hour, nil))
 	require.NoError(t, err)
 	return m
 }

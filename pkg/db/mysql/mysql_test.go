@@ -364,6 +364,83 @@ func TestCoalesceForDirtyDomains_RemovesStaleDomainState(t *testing.T) {
 	require.Equal(t, 0, count)
 }
 
+func TestCoalesceForDirtyDomains_MarksRowsCoalesced(t *testing.T) {
+	rand.Seed(1)
+
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelF()
+
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	conn := testdb.Connect(t, config)
+	defer conn.Close()
+
+	leafCerts := []string{
+		"coalesced-a.example.com",
+		"coalesced-b.example.com",
+	}
+	certs, certIDs, parentCertIDs, certNames := testCertHierarchyForLeafs(t, leafCerts)
+
+	err := updater.UpdateWithKeepExisting(ctx, conn, certNames, certIDs, parentCertIDs,
+		certs, util.ExtractExpirations(certs), nil)
+	require.NoError(t, err)
+
+	err = updater.CoalescePayloadsForDirtyDomains(ctx, conn)
+	require.NoError(t, err)
+
+	var totalRows, coalescedRows int
+	err = conn.DB().QueryRowContext(ctx,
+		"SELECT COUNT(*), COALESCE(SUM(coalesced), 0) FROM dirty",
+	).Scan(&totalRows, &coalescedRows)
+	require.NoError(t, err)
+	require.Greater(t, totalRows, 0)
+	require.Equal(t, totalRows, coalescedRows)
+}
+
+func TestInsertDomainsIntoDirty_ResetsCoalescedFlag(t *testing.T) {
+	rand.Seed(1)
+
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelF()
+
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	conn := testdb.Connect(t, config)
+	defer conn.Close()
+
+	leaf := "reset-coalesced.example.com"
+	certs, certIDs, parentCertIDs, certNames := testCertHierarchyForLeafs(t, []string{leaf})
+
+	err := updater.UpdateWithKeepExisting(ctx, conn, certNames, certIDs, parentCertIDs,
+		certs, util.ExtractExpirations(certs), nil)
+	require.NoError(t, err)
+
+	err = updater.CoalescePayloadsForDirtyDomains(ctx, conn)
+	require.NoError(t, err)
+
+	domainID := common.SHA256Hash32Bytes([]byte(leaf))
+
+	var coalesced bool
+	err = conn.DB().QueryRowContext(ctx,
+		"SELECT coalesced FROM dirty WHERE domain_id = ?",
+		domainID[:],
+	).Scan(&coalesced)
+	require.NoError(t, err)
+	require.True(t, coalesced)
+
+	err = conn.InsertDomainsIntoDirty(ctx, []common.SHA256Output{domainID})
+	require.NoError(t, err)
+
+	err = conn.DB().QueryRowContext(ctx,
+		"SELECT coalesced FROM dirty WHERE domain_id = ?",
+		domainID[:],
+	).Scan(&coalesced)
+	require.NoError(t, err)
+	require.False(t, coalesced)
+}
+
 func TestRetrieveCertificatePayloads(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()

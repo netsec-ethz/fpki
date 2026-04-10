@@ -20,7 +20,7 @@ import (
 	"github.com/netsec-ethz/fpki/cmd/ingest/journal"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
+	"github.com/netsec-ethz/fpki/pkg/statistics"
 	tr "github.com/netsec-ethz/fpki/pkg/tracing"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
@@ -153,11 +153,11 @@ func mainFunction() error {
 		NewJournal: func(cfg RunConfig, jobCfg journal.JobConfiguration) (*journal.Journal, error) {
 			return journal.NewJournal(cfg.JournalFile, jobCfg, cfg.Directory)
 		},
-		NewStatistics: func() *updater.Stats {
-			return updater.NewStatistics(2*time.Second, printStats)
+		NewStatistics: func() *statistics.Stats {
+			return statistics.NewStatistics(2*time.Second, printStats)
 		},
 		BeforeBatch: gcBeforeBatch,
-		RunBatch: func(stats *updater.Stats, files []string) error {
+		RunBatch: func(stats *statistics.Stats, files []string) error {
 			ctx, span := tr.MT().Start(ctx, "file-ingestion")
 			defer span.End()
 
@@ -209,7 +209,7 @@ func mainFunction() error {
 	return err
 }
 
-func printStats(s *updater.Stats) {
+func printStats(s *statistics.Stats) {
 	readFiles := s.TotalFilesRead.Load()
 	totalFiles := s.TotalFiles.Load()
 	totalRows := s.TotalRows.Load()

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/netsec-ethz/fpki/cmd/ingest/journal"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
+	"github.com/netsec-ethz/fpki/pkg/statistics"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
@@ -35,10 +35,10 @@ type RunConfig struct {
 // RunDependencies collects all necessary functions to effectively run ingest.
 type RunDependencies struct {
 	NewJournal        func(RunConfig, journal.JobConfiguration) (*journal.Journal, error)
-	NewStatistics     func() *updater.Stats
+	NewStatistics     func() *statistics.Stats
 	EstimateCertCount func(string) (uint, error)
 	BeforeBatch       func(batchNum, batchCount int) error
-	RunBatch          func(*updater.Stats, []string) error
+	RunBatch          func(*statistics.Stats, []string) error
 	Coalesce          func() error
 	UpdateSMT         func() error
 }
@@ -155,7 +155,7 @@ func runIngest(ctx context.Context, cfg RunConfig, deps RunDependencies) error {
 func ingestFilesInBatches(
 	ctx context.Context,
 	j *journal.Journal,
-	stats *updater.Stats,
+	stats *statistics.Stats,
 	fileBatchSize int,
 	estimateCertCount func(string) (uint, error),
 	beforeBatch func(batchNum, batchCount int) error,

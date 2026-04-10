@@ -14,6 +14,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
 	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
+	"github.com/netsec-ethz/fpki/pkg/statistics"
 	"github.com/netsec-ethz/fpki/pkg/tests"
 	"github.com/netsec-ethz/fpki/pkg/tests/noopdb"
 	"github.com/netsec-ethz/fpki/pkg/tests/random"
@@ -129,7 +130,7 @@ func TestManagerStart(t *testing.T) {
 				tc.NWorkers,
 				conn,
 				tc.MultiInsertSize,
-				NewStatistics(time.Hour, nil),
+				statistics.NewStatistics(time.Hour, nil),
 			)
 			require.NoError(t, err)
 
@@ -211,7 +212,7 @@ func TestManagerResume(t *testing.T) {
 				tc.NWorkers,
 				conn,
 				tc.MultiInsertSize,
-				NewStatistics(time.Hour, nil),
+				statistics.NewStatistics(time.Hour, nil),
 			)
 			require.NoError(t, err)
 
@@ -458,7 +459,7 @@ func createManagerWithOutputFunction(
 	outType pip.DebugPurposesOnlyOutputType,
 ) *Manager {
 
-	manager, err := NewManager(workerCount, conn, 10, NewStatistics(time.Hour, nil))
+	manager, err := NewManager(workerCount, conn, 10, statistics.NewStatistics(time.Hour, nil))
 	require.NoError(t, err)
 
 	stages := manager.Pipeline.Stages

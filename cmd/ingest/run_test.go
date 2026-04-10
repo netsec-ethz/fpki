@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/netsec-ethz/fpki/cmd/ingest/journal"
-	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
+	"github.com/netsec-ethz/fpki/pkg/statistics"
 	"github.com/stretchr/testify/require"
 )
 
@@ -369,10 +369,10 @@ func newTestDeps(
 		NewJournal: func(cfg RunConfig, jobCfg journal.JobConfiguration) (*journal.Journal, error) {
 			return journal.NewJournal(cfg.JournalFile, jobCfg, cfg.Directory)
 		},
-		NewStatistics: func() *updater.Stats {
-			return updater.NewStatistics(time.Hour, nil)
+		NewStatistics: func() *statistics.Stats {
+			return statistics.NewStatistics(time.Hour, nil)
 		},
-		RunBatch: func(_ *updater.Stats, files []string) error {
+		RunBatch: func(_ *statistics.Stats, files []string) error {
 			*runOrder = append(*runOrder, slices.Clone(files))
 			if failBatch > 0 && len(*runOrder) == failBatch {
 				return assertErr{}

@@ -140,8 +140,10 @@ CREATE TABLE dirty (
   domain_id VARBINARY(32) NOT NULL,
   shard TINYINT UNSIGNED AS
     (ORD(LEFT(domain_id, 1)) >> 3 ) STORED,
+  coalesced BOOLEAN NOT NULL DEFAULT FALSE,
 
-  PRIMARY KEY(shard,domain_id)
+  PRIMARY KEY(shard,domain_id),
+  INDEX dirty_coalesced (shard, coalesced, domain_id)
 ) ENGINE=InnoDB CHARSET=binary COLLATE=binary
 PARTITION BY HASH (shard) PARTITIONS 32;
 EOF
@@ -196,23 +198,88 @@ CMD=$(cat <<EOF
 USE $DBNAME;
 DROP PROCEDURE IF EXISTS calc_dirty_domains;
 DELIMITER $$
--- The procedure has one argument: the partition number to operate on. Usually 0..31.
--- The old SP needed ~ 5 seconds per 20K dirty domains.
-CREATE PROCEDURE calc_dirty_domains(IN partition_number INT)
-BEGIN
+-- The procedure processes a chunk of dirty domains from one partition and returns the chunk size.
+CREATE PROCEDURE calc_dirty_domains(
+	IN partition_number INT,
+	IN chunk_size INT,
+	OUT processed_rows BIGINT
+)
+proc: BEGIN
+
+	DECLARE EXIT HANDLER FOR SQLEXCEPTION
+	BEGIN
+		ROLLBACK;
+		DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk;
+		DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk_cert;
+		DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk_policy;
+		DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk_final;
+		RESIGNAL;
+	END;
 
 	SET group_concat_max_len = 1073741824; -- so that GROUP_CONCAT doesn't truncate results
+	SET processed_rows = 0;
 
-	-- TODO: wrap the deletion and the insertion in a transaction.
+	DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk;
+	DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk_cert;
+	DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk_policy;
+	DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk_final;
+	CREATE TEMPORARY TABLE temp_dirty_chunk (
+		domain_id VARBINARY(32) NOT NULL,
+		PRIMARY KEY(domain_id)
+	) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
+	CREATE TEMPORARY TABLE temp_dirty_chunk_cert (
+		domain_id VARBINARY(32) NOT NULL,
+		PRIMARY KEY(domain_id)
+	) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
+	CREATE TEMPORARY TABLE temp_dirty_chunk_policy (
+		domain_id VARBINARY(32) NOT NULL,
+		PRIMARY KEY(domain_id)
+	) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
+	CREATE TEMPORARY TABLE temp_dirty_chunk_final (
+		domain_id VARBINARY(32) NOT NULL,
+		PRIMARY KEY(domain_id)
+	) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
 
 	-- Dynamic SQL because PARTITION only accepts literals (not variables).
-	-- Only delete rows for dirty domains that no longer have any linked certs or policies.
-	-- Non-empty domains are updated via REPLACE below, which avoids a bulk delete+insert cycle
-	-- across partitions and keeps the lock footprint closer to the original implementation.
+
+	-- Get a chunk of the dirty domains that belong to this partition:
+	SET @claim_sql = CONCAT("
+		INSERT INTO temp_dirty_chunk(domain_id)
+		SELECT domain_id
+		FROM dirty PARTITION(p", partition_number, ")
+		WHERE coalesced = FALSE
+		ORDER BY domain_id
+		LIMIT ", chunk_size
+	);
+	PREPARE stmt FROM @claim_sql;
+	EXECUTE stmt;
+	DEALLOCATE PREPARE stmt;
+
+	INSERT INTO temp_dirty_chunk_cert(domain_id)
+	SELECT domain_id FROM temp_dirty_chunk;
+	INSERT INTO temp_dirty_chunk_policy(domain_id)
+	SELECT domain_id FROM temp_dirty_chunk;
+	INSERT INTO temp_dirty_chunk_final(domain_id)
+	SELECT domain_id FROM temp_dirty_chunk;
+
+	-- If nothing to do, then quit.
+	SELECT COUNT(*) INTO processed_rows FROM temp_dirty_chunk;
+	IF processed_rows = 0 THEN
+		DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk;
+		DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk_cert;
+		DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk_policy;
+		DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk_final;
+		LEAVE proc;
+	END IF;
+
+	START TRANSACTION;
+
+	-- Only delete rows for chunk domains that no longer have any linked certs or policies.
+	-- Non-empty domains are updated via REPLACE below, which avoids a bulk delete+insert cycle.
 	SET @delete_payloads_sql = CONCAT("
 		DELETE dp
 		FROM domain_payloads PARTITION(p", partition_number, ") AS dp
-		INNER JOIN dirty PARTITION(p", partition_number, ") AS d
+		INNER JOIN temp_dirty_chunk AS d
 			ON dp.domain_id = d.domain_id
 		WHERE NOT EXISTS (
 			SELECT 1
@@ -232,7 +299,7 @@ BEGIN
 	SET @delete_domains_sql = CONCAT("
 		DELETE dom
 		FROM domains PARTITION(p", partition_number, ") AS dom
-		INNER JOIN dirty PARTITION(p", partition_number, ") AS d
+		INNER JOIN temp_dirty_chunk AS d
 			ON dom.domain_id = d.domain_id
 		WHERE NOT EXISTS (
 			SELECT 1
@@ -253,9 +320,9 @@ BEGIN
 		REPLACE INTO domain_payloads(domain_id, cert_ids, cert_ids_id, policy_ids, policy_ids_id)
 		WITH RECURSIVE
 		cert_closure AS (
-			-- Base case: all leaf certs linked to a dirty domain in this partition.
+			-- Base case: all leaf certs linked to a dirty domain in this chunk.
 			SELECT d.domain_id, c.cert_id, c.parent_id
-			FROM dirty PARTITION(p", partition_number, ") AS d
+			FROM temp_dirty_chunk_cert AS d
 			INNER JOIN domain_certs AS dc ON dc.domain_id = d.domain_id
 			INNER JOIN certs AS c ON c.cert_id = dc.cert_id
 			UNION ALL
@@ -273,9 +340,9 @@ BEGIN
 			GROUP BY domain_id
 		),
 		policy_closure AS (
-			-- Base case: all leaf policies linked to a dirty domain in this partition.
+			-- Base case: all leaf policies linked to a dirty domain in this chunk.
 			SELECT d.domain_id, p.policy_id, p.parent_id
-			FROM dirty PARTITION(p", partition_number, ") AS d
+			FROM temp_dirty_chunk_policy AS d
 			INNER JOIN domain_policies AS dp ON dp.domain_id = d.domain_id
 			INNER JOIN policies AS p ON p.policy_id = dp.policy_id
 			UNION ALL
@@ -304,7 +371,7 @@ BEGIN
 				WHEN pa.policy_ids IS NULL THEN NULL
 				ELSE UNHEX(SHA2(pa.policy_ids, 256))
 			END AS policy_ids_id
-		FROM dirty PARTITION(p", partition_number, ") AS d
+		FROM temp_dirty_chunk_final AS d
 		LEFT JOIN cert_agg AS ca ON ca.domain_id = d.domain_id
 		LEFT JOIN policy_agg AS pa ON pa.domain_id = d.domain_id
 		WHERE ca.cert_ids IS NOT NULL OR pa.policy_ids IS NOT NULL
@@ -312,6 +379,21 @@ BEGIN
 	PREPARE stmt FROM @insert_sql;
 	EXECUTE stmt;
 	DEALLOCATE PREPARE stmt;
+
+	SET @mark_coalesced_sql = CONCAT("
+		UPDATE dirty PARTITION(p", partition_number, ") AS d
+		INNER JOIN temp_dirty_chunk AS t ON d.domain_id = t.domain_id
+		SET d.coalesced = TRUE
+	");
+	PREPARE stmt FROM @mark_coalesced_sql;
+	EXECUTE stmt;
+	DEALLOCATE PREPARE stmt;
+
+	COMMIT;
+	DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk;
+	DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk_cert;
+	DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk_policy;
+	DROP TEMPORARY TABLE IF EXISTS temp_dirty_chunk_final;
 
 END$$
 DELIMITER ;
@@ -355,8 +437,8 @@ BEGIN
 	) AS exp_certs;
 
 	-- Insert the domain IDs that had a certificate in the temporary table.
-	REPLACE INTO dirty(domain_id)
-	SELECT DISTINCT domain_id FROM domain_certs WHERE cert_id IN (SELECT cert_id FROM temp_cert_ids);
+	REPLACE INTO dirty(domain_id, coalesced)
+	SELECT DISTINCT domain_id, FALSE FROM domain_certs WHERE cert_id IN (SELECT cert_id FROM temp_cert_ids);
 
 	-- Remove expired certificates
 	DELETE FROM certs WHERE cert_id IN (SELECT cert_id FROM temp_cert_ids);
