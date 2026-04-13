@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	dirtyCoalesceChunkSize = 20000
+	dirtyCoalesceChunkSize = 1024
 	dirtyCoalesceStatsFreq = 5 * time.Second
 )
 
