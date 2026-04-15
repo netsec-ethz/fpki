@@ -29,6 +29,8 @@ At a high level, ingest:
 The command can optionally continue with coalescing and SMT update work after ingestion, depending
 on `-strategy`.
 
+The destination database name is selected with `-dbname`. It defaults to `fpki`.
+
 ## Batch Lifecycle
 
 The unit of work for the runtime lifecycle is the file batch, not the whole directory.

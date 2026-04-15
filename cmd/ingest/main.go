@@ -74,6 +74,7 @@ func mainFunction() error {
 
 	// Connect to DB via local socket, should be faster.
 	config := db.NewConfig(
+		db.WithDB(cfg.DBName),
 		mysql.WithDefaults(),
 		mysql.WithEnvironment(),
 		mysql.WithLocalSocket("/var/run/mysqld/mysqld.sock"),
@@ -252,6 +253,7 @@ func configFromFlags() RunConfig {
 		Directory:        flag.Arg(0),
 		Strategy:         *args.Strategy,
 		JournalFile:      *args.JournalFile,
+		DBName:           *args.DBName,
 		FileBatch:        *args.FileBatch,
 		MultiInsertSize:  *args.MultiInsertSize,
 		NumFiles:         *args.NumFiles,
