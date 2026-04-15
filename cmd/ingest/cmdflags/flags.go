@@ -11,6 +11,7 @@ import (
 var (
 	CpuProfile      *string
 	MemProfile      *string
+	DBName          *string
 	MultiInsertSize *int
 	NumFiles        *int
 	NumParsers      *int
@@ -32,6 +33,8 @@ const (
 	DefNumDechainers = 4
 	DefNumDBWriters  = 32
 
+	DefDBName = "fpki"
+
 	DefMultiInsertSize = 10_000 // # of certificates, domains, etc inserted at once.
 
 	DefJournalFile = "fpki-journal.json"
@@ -47,6 +50,7 @@ func _configureFlags() {
 
 	CpuProfile = flag.String("cpuprofile", "", "write a CPU profile to file")
 	MemProfile = flag.String("memprofile", "", "write a memory profile to file")
+	DBName = flag.String("dbname", DefDBName, "database name to connect to")
 	MultiInsertSize = flag.Int("multiinsert", DefMultiInsertSize, "number of certificates and "+
 		"domains inserted at once in the DB")
 	NumFiles = flag.Int("numfiles", DefNumFiles, "Number of parallel files being read at once")

@@ -377,7 +377,8 @@ EOF
 
 if [ "${BASH_SOURCE[0]}" -ef "$0" ]
 then
-  echo "This will destroy everything in the fpki database"
+  DBNAME="${1:-fpki}"
+  echo "This will destroy everything in the ${DBNAME} database"
   read -p "Are you sure? (y/n) default=n " answer
   case ${answer:0:1} in
       y|Y )
@@ -386,6 +387,5 @@ then
           exit 1
       ;;
   esac
-  create_new_db fpki
+  create_new_db "${DBNAME}"
 fi
-

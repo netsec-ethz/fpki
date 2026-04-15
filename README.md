@@ -5,9 +5,9 @@
 - generate test policies:
   `cd path/to/policy-generator; go run .`
 - clean DB:
-  `./tools/create_schema.sh`
+  `./tools/create_schema.sh [db-name]`
 - ingest certificates (all `.csv` and `.gz` files located within a `bundled` subfolder are ingested):
-  `go run ./cmd/ingest path/to/cert-directory`
+  `go run ./cmd/ingest -dbname <db-name> path/to/cert-directory`
 - ingest lifecycle, tuning, and troubleshooting notes:
   `cmd/ingest/README.md`
 - ingest root policy
@@ -16,6 +16,8 @@
   `for x in path/to/policy-generator/output/pc_*.pc; do go run cmd/mapserver/main.go -policyFile $x config.json; done`
 - run map server
   `go run cmd/mapserver/main.go config.json`
+
+The mapserver database name is configured through `DBConfig.Values.DBNAME` in its JSON config.
 
 TODO: The information below is old and outdated.
 

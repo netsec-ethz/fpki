@@ -17,6 +17,7 @@ type RunConfig struct {
 	Directory       string
 	Strategy        string
 	JournalFile     string
+	DBName          string
 	FileBatch       int
 	MultiInsertSize int
 	NumFiles        int
