@@ -16,7 +16,7 @@ import (
 
 const (
 	dirtyCoalesceChunkSize = 1024
-	dirtyCoalesceStatsFreq = 5 * time.Second
+	dirtyCoalesceStatsFreq = 1 * time.Second
 )
 
 func (c *mysqlDB) DirtyCount(ctx context.Context) (uint64, error) {
@@ -30,6 +30,42 @@ func (c *mysqlDB) DirtyCount(ctx context.Context) (uint64, error) {
 			defer wg.Done()
 
 			str := fmt.Sprintf("SELECT COUNT(*) FROM dirty PARTITION(p%d)", partition)
+			row := c.db.QueryRowContext(ctx, str)
+			if err := row.Err(); err != nil {
+				errs[partition] = fmt.Errorf("querying dirty partition %d count: %w", partition, err)
+				return
+			}
+
+			if err := row.Scan(&counts[partition]); err != nil {
+				errs[partition] = fmt.Errorf("scanning dirty partition %d count: %w", partition, err)
+			}
+		}(partition)
+	}
+	wg.Wait()
+
+	if err := util.ErrorsCoalesce(errs...); err != nil {
+		return 0, fmt.Errorf("error querying dirty domains count: %w", err)
+	}
+
+	var total uint64
+	for _, count := range counts {
+		total += count
+	}
+	return total, nil
+}
+
+func (c *mysqlDB) DirtyCountNonCoalesced(ctx context.Context) (uint64, error) {
+	counts := make([]uint64, NumPartitions)
+	errs := make([]error, NumPartitions)
+
+	var wg sync.WaitGroup
+	wg.Add(NumPartitions)
+	for partition := range NumPartitions {
+		go func(partition int) {
+			defer wg.Done()
+
+			str := fmt.Sprintf("SELECT COUNT(*) FROM dirty PARTITION(p%d) "+
+				"WHERE coalesced=FALSE", partition)
 			row := c.db.QueryRowContext(ctx, str)
 			if err := row.Err(); err != nil {
 				errs[partition] = fmt.Errorf("querying dirty partition %d count: %w", partition, err)
@@ -167,7 +203,7 @@ type dirtyCoalesceProgress struct {
 // Each worker repeatedly coalesces one chunk for its partition until the stored procedure
 // reports that there are no more pending dirty rows in that partition.
 func (c *mysqlDB) RecomputeDirtyDomainsCertAndPolicyIDs(ctx context.Context) error {
-	totalDirtyCount, err := c.DirtyCount(ctx)
+	totalDirtyCount, err := c.DirtyCountNonCoalesced(ctx)
 	if err != nil {
 		return fmt.Errorf("querying dirty domains before coalescing: %w", err)
 	}
@@ -186,14 +222,16 @@ func (c *mysqlDB) RecomputeDirtyDomainsCertAndPolicyIDs(ctx context.Context) err
 		for {
 			select {
 			case <-ticker.C:
+				// Print coalesce status in place (same line)
 				fmt.Printf(
-					"coalescing progress [%s]: pending partitions=%2d total dirty=%d processed=%d\n",
+					"\r\033[Kcoalescing progress [%s]: pending partitions=%2d total dirty=%d processed=%d",
 					time.Now().Format(time.Stamp),
 					progress.pendingPartitions.Load(),
 					totalDirtyCount,
 					progress.processedRows.Load(),
 				)
 			case <-doneLogging:
+				fmt.Print("\n")
 				return
 			}
 		}
@@ -226,26 +264,11 @@ func (c *mysqlDB) RecomputeDirtyDomainsCertAndPolicyIDs(ctx context.Context) err
 					return
 				}
 				if chunkRows == 0 {
-					fmt.Printf(
-						"\ndirty coalescing finished [%s]: partition=%d processed=%d\n",
-						time.Now().Format(time.Stamp),
-						partition,
-						partitionProcessed,
-					)
 					return
 				}
 
 				partitionProcessed += chunkRows
 				progress.processedRows.Add(chunkRows)
-				// fmt.Printf(
-				// 	"dirty coalescing chunk [%s]: partition=%d chunk=%d partition_processed=%d total_processed=%d pending_partitions=%d\n",
-				// 	time.Now().Format(time.Stamp),
-				// 	partition,
-				// 	chunkRows,
-				// 	partitionProcessed,
-				// 	totalProcessed,
-				// 	progress.pendingPartitions.Load(),
-				// )
 			}
 		}(i)
 	}
