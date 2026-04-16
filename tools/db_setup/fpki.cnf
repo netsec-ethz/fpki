@@ -30,7 +30,9 @@ secure_file_priv = /mnt/data/tmp/
 # without hitting the lower container default of ~8k descriptors.
 open_files_limit = 10000
 
-max_connections = 100
+# We rarely go above 100 connections, but to debug, many times we open new sessions in new connections.
+# Allow a huge number.
+max_connections = 1000
 
 
 # -------------------------------
