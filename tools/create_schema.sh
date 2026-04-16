@@ -34,7 +34,7 @@ CREATE TABLE domains (
     (ORD(LEFT(domain_id, 1)) >> 3 ) STORED,
   domain_name VARCHAR(300) COLLATE ascii_bin DEFAULT NULL,
 
-  PRIMARY KEY (shard,domain_id),
+  PRIMARY KEY (domain_id,shard),
   INDEX domain_name (domain_name)
 ) ENGINE=InnoDB CHARSET=binary COLLATE=binary
 PARTITION BY HASH (shard) PARTITIONS 32;
@@ -53,7 +53,7 @@ CREATE TABLE certs (
   expiration DATETIME NOT NULL,
   payload LONGBLOB,
 
-  PRIMARY KEY(shard,cert_id)
+  PRIMARY KEY(cert_id,shard)
 ) ENGINE=InnoDB CHARSET=binary COLLATE=binary
 PARTITION BY HASH (shard) PARTITIONS 32;
 EOF
@@ -69,8 +69,8 @@ CREATE TABLE domain_certs (
     (ORD(LEFT(domain_id, 1)) >> 3 ) STORED,
   cert_id VARBINARY(32) NOT NULL,
 
-  PRIMARY KEY domain_cert (shard,domain_id,cert_id),
-  INDEX domain_id (domain_id)
+  PRIMARY KEY domain_cert (domain_id,shard,cert_id),
+  INDEX cert_id (cert_id)
 ) ENGINE=InnoDB CHARSET=binary COLLATE=binary
 PARTITION BY HASH (shard) PARTITIONS 32;
 EOF
@@ -88,7 +88,7 @@ CREATE TABLE policies (
   expiration DATETIME NOT NULL,
   payload LONGBLOB,
 
-  PRIMARY KEY(shard,policy_id)
+  PRIMARY KEY(policy_id,shard)
 ) ENGINE=InnoDB CHARSET=binary COLLATE=binary
 PARTITION BY HASH (shard) PARTITIONS 32;
 EOF
@@ -104,8 +104,8 @@ CREATE TABLE domain_policies (
     (ORD(LEFT(domain_id, 1)) >> 3 ) STORED,
   policy_id VARBINARY(32) NOT NULL,
 
-  PRIMARY KEY domain_pol (shard,domain_id,policy_id),
-  INDEX domain_id (domain_id)
+  PRIMARY KEY domain_pol (domain_id,shard,policy_id),
+  INDEX policy_id (policy_id)
 ) ENGINE=InnoDB CHARSET=binary COLLATE=binary
 PARTITION BY HASH (shard) PARTITIONS 32;
 EOF
@@ -126,7 +126,7 @@ CREATE TABLE domain_payloads (
                                                 -- alphabetically sorted, glued together.
   policy_ids_id VARBINARY(32) DEFAULT NULL,     -- ID of cert_ids (above).
 
-  PRIMARY KEY (shard,domain_id)
+  PRIMARY KEY (domain_id,shard)
 ) ENGINE=InnoDB CHARSET=binary COLLATE=binary
 PARTITION BY HASH (shard) PARTITIONS 32;
 EOF
@@ -142,8 +142,8 @@ CREATE TABLE dirty (
     (ORD(LEFT(domain_id, 1)) >> 3 ) STORED,
   coalesced BOOLEAN NOT NULL DEFAULT FALSE,
 
-  PRIMARY KEY(shard,domain_id),
-  INDEX dirty_coalesced (shard, coalesced, domain_id)
+  PRIMARY KEY(domain_id,shard),
+  INDEX dirty_coalesced (coalesced)
 ) ENGINE=InnoDB CHARSET=binary COLLATE=binary
 PARTITION BY HASH (shard) PARTITIONS 32;
 EOF
@@ -261,9 +261,10 @@ proc: BEGIN
 
 		chunk_domains AS (
 			SELECT domain_id
-			FROM dirty PARTITION(p", partition_number, ") FORCE INDEX (dirty_coalesced)
-			WHERE shard = ", partition_number, " AND coalesced = FALSE
-			ORDER BY shard,coalesced,domain_id
+			FROM dirty PARTITION(p", partition_number, ")
+			FORCE INDEX (dirty_coalesced)
+			WHERE coalesced = FALSE
+			ORDER BY coalesced,domain_id
 			LIMIT ", chunk_size, "
 		),
 		cert_closure AS (
@@ -272,7 +273,7 @@ proc: BEGIN
 			INNER JOIN domain_certs AS dc ON dc.domain_id = d.domain_id
 			INNER JOIN certs AS c ON c.cert_id = dc.cert_id
 
-			UNION ALL
+			UNION
 
 			SELECT cc.domain_id, c.cert_id, c.parent_id
 			FROM cert_closure AS cc
@@ -280,10 +281,7 @@ proc: BEGIN
 		),
         cert_agg AS (
 			SELECT domain_id, GROUP_CONCAT(cert_id ORDER BY cert_id SEPARATOR '') AS cert_ids
-			FROM (
-				SELECT DISTINCT domain_id, cert_id
-				FROM cert_closure
-			) AS cert_ids_per_domain
+			FROM cert_closure
 			GROUP BY domain_id
 		),
 		policy_closure AS (
@@ -291,17 +289,16 @@ proc: BEGIN
 			FROM chunk_domains AS d
 			INNER JOIN domain_policies AS dp ON dp.domain_id = d.domain_id
 			INNER JOIN policies AS p ON p.policy_id = dp.policy_id
-			UNION ALL
+
+			UNION
+
 			SELECT pc.domain_id, p.policy_id, p.parent_id
 			FROM policy_closure AS pc
 			INNER JOIN policies AS p ON p.policy_id = pc.parent_id
 		),
 		policy_agg AS (
 			SELECT domain_id, GROUP_CONCAT(policy_id ORDER BY policy_id SEPARATOR '') AS policy_ids
-			FROM (
-				SELECT DISTINCT domain_id, policy_id
-				FROM policy_closure
-			) AS policy_ids_per_domain
+			FROM policy_closure
 			GROUP BY domain_id
 		)
         SELECT
@@ -329,9 +326,10 @@ proc: BEGIN
         FROM domain_payloads PARTITION(p", partition_number, ") AS dp
         INNER JOIN (
             SELECT shard, domain_id
-            FROM dirty PARTITION(p", partition_number, ") FORCE INDEX (dirty_coalesced)
-            WHERE shard = ", partition_number, " AND coalesced = FALSE
-            ORDER BY shard, coalesced, domain_id
+            FROM dirty PARTITION(p", partition_number, ")
+			FORCE INDEX (dirty_coalesced)
+			WHERE coalesced = FALSE
+			ORDER BY coalesced,domain_id
             LIMIT ", chunk_size, "
         ) AS d
         ON dp.shard = d.shard AND dp.domain_id = d.domain_id
@@ -347,9 +345,10 @@ proc: BEGIN
         FROM domains PARTITION(p", partition_number, ") AS dom
         INNER JOIN (
             SELECT shard,domain_id
-            FROM dirty PARTITION(p", partition_number, ") FORCE INDEX (dirty_coalesced)
-            WHERE shard = ", partition_number, " AND coalesced = FALSE
-            ORDER BY shard, coalesced, domain_id
+            FROM dirty PARTITION(p", partition_number, ")
+			FORCE INDEX (dirty_coalesced)
+			WHERE coalesced = FALSE
+			ORDER BY coalesced,domain_id
             LIMIT ", chunk_size, "
         ) AS d
         ON dom.shard = d.shard AND dom.domain_id = d.domain_id
@@ -365,9 +364,10 @@ proc: BEGIN
 		UPDATE dirty PARTITION(p", partition_number, ") AS d
 		INNER JOIN (
 			SELECT shard, domain_id
-            FROM dirty PARTITION(p", partition_number, ") FORCE INDEX (dirty_coalesced)
-            WHERE shard = ", partition_number, " AND coalesced = FALSE
-            ORDER BY shard, coalesced, domain_id
+            FROM dirty PARTITION(p", partition_number, ")
+			FORCE INDEX (dirty_coalesced)
+			WHERE coalesced = FALSE
+			ORDER BY coalesced,domain_id
             LIMIT ", chunk_size, "
 		) AS t
         ON d.shard = t.shard AND d.domain_id = t.domain_id
