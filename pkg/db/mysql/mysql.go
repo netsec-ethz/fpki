@@ -208,7 +208,7 @@ func (c *mysqlDB) retrieveDirtyDomainEntriesInDBJoin(
 		FROM
 		(SELECT domain_id FROM dirty ORDER BY domain_id LIMIT ?,? )
 		AS d
-		JOIN
+		LEFT JOIN
 		domain_payloads AS p
 		ON d.domain_id=p.domain_id;`
 	rows, err := c.db.QueryContext(ctx, str, start, end-start)

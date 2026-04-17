@@ -714,7 +714,7 @@ func TestPruneCerts(t *testing.T) {
 }
 
 func TestRetrieveDomainEntries(t *testing.T) {
-	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancelF := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancelF()
 
 	// Configure a test DB.

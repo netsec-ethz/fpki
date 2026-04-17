@@ -566,25 +566,10 @@ func UpdateSMT(ctx context.Context, conn db.Conn) error {
 		return nil
 	}
 
-	// deleteme re-enable updateSMTfromDirty instead of using updateSMTfromDomains.
-	// Commented out: testing if the in-db join-with-dirty table is faster.
-	// Get the dirty domains.
-	domains, err := conn.RetrieveDirtyDomains(ctx)
+	err = updateSMTfromDirty(ctx, conn, smtTrie, 1_000_000)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("smt [%s]: dirty domains loaded\n", time.Now().Format(time.Stamp))
-
-	err = updateSMTfromDomains(ctx, conn, smtTrie, domains, 1_000_000)
-	if err != nil {
-		return err
-	}
-
-	// // Updating SMT directly from dirty table.
-	// err = updateSMTfromDirty(ctx, conn, smtTrie, 1_000_000)
-	// if err != nil {
-	// 	return err
-	// }
 
 	fmt.Printf("\nsmt [%s]: SMT updated\n", time.Now().Format(time.Stamp))
 
@@ -733,9 +718,15 @@ func keyValuePairToSMTInput(keyValuePair []db.KeyValuePair) ([][]byte, [][]byte,
 	}
 	updateInput := make([]inputPair, 0, len(keyValuePair))
 	for _, pair := range keyValuePair {
+		value := pair.Value
+		if len(value) == 0 {
+			value = trie.DefaultLeaf
+		} else {
+			value = common.SHA256Hash(value) // Compute SHA256 of the payload.
+		}
 		updateInput = append(updateInput, inputPair{
 			Key:   pair.Key,
-			Value: common.SHA256Hash(pair.Value), // Compute SHA256 of the payload.
+			Value: value,
 		})
 	}
 
