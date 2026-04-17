@@ -24,14 +24,6 @@ func (c *MysqlDBForTests) DebugCheckCertsExist(ctx context.Context, ids []common
 	return c.checkCertsExist(ctx, ids, present)
 }
 
-func (c *MysqlDBForTests) RetrieveDirtyDomainEntriesInDBJoin(
-	ctx context.Context,
-	start, end uint64,
-) ([]db.KeyValuePair, error) {
-
-	return c.retrieveDirtyDomainEntriesInDBJoin(ctx, start, end)
-}
-
 func (c *MysqlDBForTests) RetrieveDirtyDomainEntriesParallel(
 	ctx context.Context,
 	domainIDs []common.SHA256Output,

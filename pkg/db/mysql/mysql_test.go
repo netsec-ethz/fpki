@@ -741,7 +741,7 @@ func TestRetrieveDomainEntries(t *testing.T) {
 	require.NoError(t, err)
 	t.Logf("Got data from parallel retrieve at %s", time.Now().Format(time.StampMilli))
 
-	joined, err := c.RetrieveDirtyDomainEntriesInDBJoin(ctx, 0, uint64(len(domainIDs)))
+	joined, err := c.RetrieveDomainEntriesDirtyOnes(ctx, 0, uint64(len(domainIDs)))
 	require.NoError(t, err)
 	t.Logf("Got data from db join retrieve at %s", time.Now().Format(time.StampMilli))
 
@@ -908,7 +908,7 @@ func BenchmarkRetrieveDomainEntries(b *testing.B) {
 
 		b.Run(str+"dirty-join", func(b *testing.B) {
 			bdr.run(func(ctx context.Context) ([]db.KeyValuePair, error) {
-				return c.RetrieveDirtyDomainEntriesInDBJoin(ctx, 0, uint64(i))
+				return c.RetrieveDomainEntriesDirtyOnes(ctx, 0, uint64(i))
 			})
 		})
 		require.Greater(b, bdr.count, 0)

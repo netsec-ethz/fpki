@@ -194,23 +194,19 @@ func (c *mysqlDB) RetrieveDomainEntries(ctx context.Context, domainIDs []common.
 	return c.retrieveDirtyDomainEntriesSequential(ctx, domainIDs)
 }
 
-func (c *mysqlDB) RetrieveDomainEntriesDirtyOnes(ctx context.Context, start, end uint64,
-) ([]db.KeyValuePair, error) {
-	return c.retrieveDirtyDomainEntriesInDBJoin(ctx, start, end)
-}
-
-func (c *mysqlDB) retrieveDirtyDomainEntriesInDBJoin(
+func (c *mysqlDB) RetrieveDomainEntriesDirtyOnes(
 	ctx context.Context,
-	start, end uint64,
+	start uint64,
+	end uint64,
 ) ([]db.KeyValuePair, error) {
 
-	str := `SELECT d.domain_id,p.cert_ids,p.policy_ids
+	str := `SELECT d.domain_id,dp.cert_ids,dp.policy_ids
 		FROM
 		(SELECT domain_id FROM dirty ORDER BY domain_id LIMIT ?,? )
 		AS d
 		LEFT JOIN
-		domain_payloads AS p
-		ON d.domain_id=p.domain_id;`
+		domain_payloads AS dp
+		ON d.domain_id=dp.domain_id;`
 	rows, err := c.db.QueryContext(ctx, str, start, end-start)
 	if err != nil {
 		return nil, fmt.Errorf("retrieving domain payloads from dirty[%d,%d): %w",
