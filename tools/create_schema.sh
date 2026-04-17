@@ -34,7 +34,7 @@ CREATE TABLE domains (
     (ORD(LEFT(domain_id, 1)) >> 3 ) STORED,
   domain_name VARCHAR(300) COLLATE ascii_bin DEFAULT NULL,
 
-  PRIMARY KEY (shard,domain_id),
+  PRIMARY KEY (domain_id,shard),
   INDEX domain_name (domain_name)
 ) ENGINE=InnoDB CHARSET=binary COLLATE=binary
 PARTITION BY HASH (shard) PARTITIONS 32;
@@ -53,7 +53,7 @@ CREATE TABLE certs (
   expiration DATETIME NOT NULL,
   payload LONGBLOB,
 
-  PRIMARY KEY(shard,cert_id)
+  PRIMARY KEY(cert_id,shard)
 ) ENGINE=InnoDB CHARSET=binary COLLATE=binary
 PARTITION BY HASH (shard) PARTITIONS 32;
 EOF
@@ -69,8 +69,8 @@ CREATE TABLE domain_certs (
     (ORD(LEFT(domain_id, 1)) >> 3 ) STORED,
   cert_id VARBINARY(32) NOT NULL,
 
-  PRIMARY KEY domain_cert (shard,domain_id,cert_id),
-  INDEX domain_id (domain_id)
+  PRIMARY KEY domain_cert (domain_id,shard,cert_id),
+  INDEX cert_id (cert_id)
 ) ENGINE=InnoDB CHARSET=binary COLLATE=binary
 PARTITION BY HASH (shard) PARTITIONS 32;
 EOF
@@ -88,7 +88,7 @@ CREATE TABLE policies (
   expiration DATETIME NOT NULL,
   payload LONGBLOB,
 
-  PRIMARY KEY(shard,policy_id)
+  PRIMARY KEY(policy_id,shard)
 ) ENGINE=InnoDB CHARSET=binary COLLATE=binary
 PARTITION BY HASH (shard) PARTITIONS 32;
 EOF
@@ -104,8 +104,8 @@ CREATE TABLE domain_policies (
     (ORD(LEFT(domain_id, 1)) >> 3 ) STORED,
   policy_id VARBINARY(32) NOT NULL,
 
-  PRIMARY KEY domain_pol (shard,domain_id,policy_id),
-  INDEX domain_id (domain_id)
+  PRIMARY KEY domain_pol (domain_id,shard,policy_id),
+  INDEX policy_id (policy_id)
 ) ENGINE=InnoDB CHARSET=binary COLLATE=binary
 PARTITION BY HASH (shard) PARTITIONS 32;
 EOF
@@ -126,7 +126,7 @@ CREATE TABLE domain_payloads (
                                                 -- alphabetically sorted, glued together.
   policy_ids_id VARBINARY(32) DEFAULT NULL,     -- ID of cert_ids (above).
 
-  PRIMARY KEY (shard,domain_id)
+  PRIMARY KEY (domain_id,shard)
 ) ENGINE=InnoDB CHARSET=binary COLLATE=binary
 PARTITION BY HASH (shard) PARTITIONS 32;
 EOF
@@ -140,8 +140,10 @@ CREATE TABLE dirty (
   domain_id VARBINARY(32) NOT NULL,
   shard TINYINT UNSIGNED AS
     (ORD(LEFT(domain_id, 1)) >> 3 ) STORED,
+  coalesced BOOLEAN NOT NULL DEFAULT FALSE,
 
-  PRIMARY KEY(shard,domain_id)
+  PRIMARY KEY(domain_id,shard),
+  INDEX dirty_coalesced (coalesced)
 ) ENGINE=InnoDB CHARSET=binary COLLATE=binary
 PARTITION BY HASH (shard) PARTITIONS 32;
 EOF
@@ -192,7 +194,7 @@ EOF
   echo "$CMD" | $MYSQLCMD
 
 
-  CMD=$(cat <<EOF
+CMD=$(cat <<EOF
 USE $DBNAME;
 DROP PROCEDURE IF EXISTS calc_dirty_domains;
 DELIMITER $$
@@ -215,103 +217,166 @@ DELIMITER $$
 -- The table t2 is a CTE that retrieves the policies.
 -- ------------------------------------
 -- This SP needs ~ 5 seconds per 20K dirty domains.
-CREATE PROCEDURE calc_dirty_domains(IN partition_number INT)
-BEGIN
+CREATE PROCEDURE calc_dirty_domains(
+    IN partition_number INT,
+	IN chunk_size INT,
+	OUT processed_rows BIGINT
+)
+proc: BEGIN
 
-	SET group_concat_max_len = 1073741824; -- so that GROUP_CONCAT doesn't truncate results
+    SET group_concat_max_len = 1073741824; -- so that GROUP_CONCAT doesn't truncate results
 
-    -- Dynamnic SQL because PARTITION only accepts literals (not variables).
-    set @sql = CONCAT("
-	-- Replace the domain ID, its certificates, policies, and their corresponding SHA256 for all dirty domains.
-	REPLACE INTO domain_payloads(domain_id, cert_ids, cert_ids_id, policy_ids, policy_ids_id) -- Values from subquery.
-	SELECT domain_id, cert_ids, UNHEX(SHA2(cert_ids, 256)) AS cert_ids_id, policy_ids, UNHEX(SHA2(policy_ids, 256)) AS policy_ids_id FROM -- Subquery to compute the SHA256 in place.
-	(
+    SET processed_rows = 0;
 
-	SELECT A.domain_id,GROUP_CONCAT(cert_id ORDER BY cert_id SEPARATOR '') AS cert_ids,GROUP_CONCAT(policy_id ORDER BY policy_id SEPARATOR '') AS policy_ids FROM
-		(
-			WITH RECURSIVE cte AS (
-				-- Base case: specify which leaf certs we choose: those that
-				-- have a link with a domain that is part of the dirty domains.
-				SELECT dirty.domain_id, certs.cert_id, parent_id
-				FROM certs
-				INNER JOIN domain_certs ON certs.cert_id = domain_certs.cert_id
-				INNER JOIN dirty PARTITION(p", partition_number,") ON domain_certs.domain_id = dirty.domain_id
-				UNION ALL
-				-- Recursive case: any certificate that has its ID as
-				-- parent ID of the previous set, recursively.
-				SELECT cte.domain_id, certs.cert_id, certs.parent_id
-				FROM certs
-				JOIN cte ON certs.cert_id = cte.parent_id
-			)
-			SELECT DISTINCT domain_id, cert_id FROM cte
-		) AS A
-	LEFT OUTER JOIN
-		(
-			WITH RECURSIVE cte AS (
-				-- Base case: specify which leaf policies we choose: those that
-				-- have a link with a domain that is part of the dirty domains.
-				SELECT dirty.domain_id, policies.policy_id, parent_id
-				FROM policies
-				INNER JOIN domain_policies ON policies.policy_id = domain_policies.policy_id
-				INNER JOIN dirty PARTITION(p", partition_number, ") ON domain_policies.domain_id = dirty.domain_id
-				UNION ALL
-				-- Recursive case: any poilicy that has its ID as
-				-- parent ID of the previous set, recursively.
-				SELECT cte.domain_id, policies.policy_id, policies.parent_id
-				FROM policies
-				JOIN cte ON policies.policy_id = cte.parent_id
-			)
-			SELECT DISTINCT domain_id, policy_id FROM cte
-		) AS B
-	ON A.domain_id = B.domain_id
-	GROUP BY domain_id
-
-	UNION
-
-	SELECT B.domain_id,GROUP_CONCAT(cert_id ORDER BY cert_id SEPARATOR '') AS cert_ids,GROUP_CONCAT(policy_id ORDER BY policy_id SEPARATOR '') AS policy_ids FROM
-		(
-			WITH RECURSIVE cte AS (
-				-- Base case: specify which leaf certs we choose: those that
-				-- have a link with a domain that is part of the dirty domains.
-				SELECT dirty.domain_id, certs.cert_id, parent_id
-				FROM certs
-				INNER JOIN domain_certs ON certs.cert_id = domain_certs.cert_id
-				INNER JOIN dirty PARTITION(p", partition_number, ") ON domain_certs.domain_id = dirty.domain_id
-				UNION ALL
-				-- Recursive case: any certificate that has its ID as
-				-- parent ID of the previous set, recursively.
-				SELECT cte.domain_id, certs.cert_id, certs.parent_id
-				FROM certs
-				JOIN cte ON certs.cert_id = cte.parent_id
-			)
-			SELECT DISTINCT domain_id, cert_id FROM cte
-		) AS A
-	RIGHT OUTER JOIN
-		(
-			WITH RECURSIVE cte AS (
-				-- Base case: specify which leaf policies we choose: those that
-				-- have a link with a domain that is part of the dirty domains.
-				SELECT dirty.domain_id, policies.policy_id, parent_id
-				FROM policies
-				INNER JOIN domain_policies ON policies.policy_id = domain_policies.policy_id
-				INNER JOIN dirty PARTITION(p", partition_number, ") ON domain_policies.domain_id = dirty.domain_id
-				UNION ALL
-				-- Recursive case: any poilicy that has its ID as
-				-- parent ID of the previous set, recursively.
-				SELECT cte.domain_id, policies.policy_id, policies.parent_id
-				FROM policies
-				JOIN cte ON policies.policy_id = cte.parent_id
-			)
-			SELECT DISTINCT domain_id, policy_id FROM cte
-		) AS B
-	ON A.domain_id = B.domain_id
-	GROUP BY domain_id
-
-	) AS hasher_query;"
-    );
-    PREPARE stmt FROM @sql;
+    SET @count_sql = CONCAT("
+		SELECT COUNT(*) INTO @chunk_rows
+		FROM (
+			SELECT domain_id
+			FROM dirty PARTITION(p", partition_number, ") FORCE INDEX (dirty_coalesced)
+			WHERE coalesced = FALSE
+			ORDER BY shard,coalesced,domain_id
+			LIMIT ", chunk_size, "
+		) AS chunk_domains
+	");
+	PREPARE stmt FROM @count_sql;
 	EXECUTE stmt;
 	DEALLOCATE PREPARE stmt;
+
+	SET processed_rows = COALESCE(@chunk_rows, 0);
+	IF processed_rows = 0 THEN
+		LEAVE proc;
+	END IF;
+
+    SET TRANSACTION ISOLATION LEVEL READ COMMITTED;
+
+    SET @replace_sql = CONCAT("
+    REPLACE INTO domain_payloads PARTITION(p", partition_number, ") (
+			domain_id,
+			cert_ids,
+			cert_ids_id,
+			policy_ids,
+			policy_ids_id
+		)
+		WITH RECURSIVE
+
+		chunk_domains AS (
+			SELECT domain_id
+			FROM dirty PARTITION(p", partition_number, ")
+			FORCE INDEX (dirty_coalesced)
+			WHERE coalesced = FALSE
+			ORDER BY coalesced,domain_id
+			LIMIT ", chunk_size, "
+		),
+		cert_closure AS (
+			SELECT d.domain_id, c.cert_id, c.parent_id
+			FROM chunk_domains AS d
+			INNER JOIN domain_certs AS dc ON dc.domain_id = d.domain_id
+			INNER JOIN certs AS c ON c.cert_id = dc.cert_id
+
+			UNION
+
+			SELECT cc.domain_id, c.cert_id, c.parent_id
+			FROM cert_closure AS cc
+			INNER JOIN certs AS c ON c.cert_id = cc.parent_id
+		),
+        cert_agg AS (
+			SELECT domain_id, GROUP_CONCAT(cert_id ORDER BY cert_id SEPARATOR '') AS cert_ids
+			FROM cert_closure
+			GROUP BY domain_id
+		),
+		policy_closure AS (
+			SELECT d.domain_id, p.policy_id, p.parent_id
+			FROM chunk_domains AS d
+			INNER JOIN domain_policies AS dp ON dp.domain_id = d.domain_id
+			INNER JOIN policies AS p ON p.policy_id = dp.policy_id
+
+			UNION
+
+			SELECT pc.domain_id, p.policy_id, p.parent_id
+			FROM policy_closure AS pc
+			INNER JOIN policies AS p ON p.policy_id = pc.parent_id
+		),
+		policy_agg AS (
+			SELECT domain_id, GROUP_CONCAT(policy_id ORDER BY policy_id SEPARATOR '') AS policy_ids
+			FROM policy_closure
+			GROUP BY domain_id
+		)
+        SELECT
+			d.domain_id,
+			ca.cert_ids,
+			CASE
+				WHEN ca.cert_ids IS NULL THEN NULL
+				ELSE UNHEX(SHA2(ca.cert_ids, 256))
+			END AS cert_ids_id,
+			pa.policy_ids,
+			CASE
+				WHEN pa.policy_ids IS NULL THEN NULL
+				ELSE UNHEX(SHA2(pa.policy_ids, 256))
+			END AS policy_ids_id
+		FROM chunk_domains AS d
+		LEFT JOIN cert_agg AS ca ON ca.domain_id = d.domain_id
+		LEFT JOIN policy_agg AS pa ON pa.domain_id = d.domain_id
+    ");
+	PREPARE stmt FROM @replace_sql;
+	EXECUTE stmt;
+	DEALLOCATE PREPARE stmt;
+
+    SET @delete_payloads_sql = CONCAT("
+        DELETE dp
+        FROM domain_payloads PARTITION(p", partition_number, ") AS dp
+        INNER JOIN (
+            SELECT shard, domain_id
+            FROM dirty PARTITION(p", partition_number, ")
+			FORCE INDEX (dirty_coalesced)
+			WHERE coalesced = FALSE
+			ORDER BY coalesced,domain_id
+            LIMIT ", chunk_size, "
+        ) AS d
+        ON dp.shard = d.shard AND dp.domain_id = d.domain_id
+        WHERE dp.cert_ids IS NULL
+        AND dp.policy_ids IS NULL
+    ");
+    PREPARE stmt FROM @delete_payloads_sql;
+    EXECUTE stmt;
+    DEALLOCATE PREPARE stmt;
+
+    SET @delete_domains_sql = CONCAT("
+        DELETE dom
+        FROM domains PARTITION(p", partition_number, ") AS dom
+        INNER JOIN (
+            SELECT shard,domain_id
+            FROM dirty PARTITION(p", partition_number, ")
+			FORCE INDEX (dirty_coalesced)
+			WHERE coalesced = FALSE
+			ORDER BY coalesced,domain_id
+            LIMIT ", chunk_size, "
+        ) AS d
+        ON dom.shard = d.shard AND dom.domain_id = d.domain_id
+        LEFT JOIN domain_payloads PARTITION(p", partition_number, ") AS dp
+            ON dp.shard = dom.shard AND dp.domain_id = dom.domain_id
+        WHERE dp.domain_id IS NULL;
+    ");
+    PREPARE stmt FROM @delete_domains_sql;
+    EXECUTE stmt;
+    DEALLOCATE PREPARE stmt;
+
+    SET @mark_coalesced_sql = CONCAT("
+		UPDATE dirty PARTITION(p", partition_number, ") AS d
+		INNER JOIN (
+			SELECT shard, domain_id
+            FROM dirty PARTITION(p", partition_number, ")
+			FORCE INDEX (dirty_coalesced)
+			WHERE coalesced = FALSE
+			ORDER BY coalesced,domain_id
+            LIMIT ", chunk_size, "
+		) AS t
+        ON d.shard = t.shard AND d.domain_id = t.domain_id
+		SET d.coalesced = TRUE
+	");
+	PREPARE stmt FROM @mark_coalesced_sql;
+	EXECUTE stmt;
+	DEALLOCATE PREPARE stmt;
+
 
 END$$
 DELIMITER ;
@@ -355,8 +420,8 @@ BEGIN
 	) AS exp_certs;
 
 	-- Insert the domain IDs that had a certificate in the temporary table.
-	REPLACE INTO dirty(domain_id)
-	SELECT DISTINCT domain_id FROM domain_certs WHERE cert_id IN (SELECT cert_id FROM temp_cert_ids);
+	REPLACE INTO dirty(domain_id, coalesced)
+	SELECT DISTINCT domain_id, FALSE FROM domain_certs WHERE cert_id IN (SELECT cert_id FROM temp_cert_ids);
 
 	-- Remove expired certificates
 	DELETE FROM certs WHERE cert_id IN (SELECT cert_id FROM temp_cert_ids);

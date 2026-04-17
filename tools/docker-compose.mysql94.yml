@@ -1,0 +1,36 @@
+services:
+  mysql94:
+    image: mysql:9.4.0
+    container_name: mysql94-host-config
+    restart: "no"
+    network_mode: host
+    ulimits:
+      nofile:
+        soft: 10000
+        hard: 10000
+    # Keep the image's own /etc/my.cnf and inject only the repo's fpki.cnf into
+    # /etc/mysql/conf.d/. Stop the host mysql service before starting this container.
+    entrypoint: ["docker-entrypoint.sh"]
+    command:
+      - mysqld
+      - --user=mysql
+      - --datadir=/var/lib/mysql
+      - --socket=/var/run/mysqld/mysqld.sock
+      - --pid-file=/var/run/mysqld/mysqld.pid
+    volumes:
+      # The image's /etc/my.cnf already includes /etc/mysql/conf.d/.
+      - ./db_setup/fpki.cnf:/etc/mysql/conf.d/fpki.cnf:ro
+      # Use a container-managed datadir so MySQL 9.4 starts from a fresh volume instead of
+      # trying to upgrade the host's MySQL 8.x files in place.
+      - mysql94-data:/var/lib/mysql
+      # Share the socket directory so host-side mysql clients can keep using the local socket.
+      - /var/run/mysqld:/var/run/mysqld
+      # fpki.cnf points tmpdir and secure_file_priv here.
+      - /mnt/data/tmp:/mnt/data/tmp
+      # Keep timezone behavior aligned with the host.
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: "1"
+
+volumes:
+  mysql94-data:

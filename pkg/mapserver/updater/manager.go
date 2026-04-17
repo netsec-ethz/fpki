@@ -8,6 +8,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/db/mysql"
 	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
+	"github.com/netsec-ethz/fpki/pkg/statistics"
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
@@ -21,7 +22,7 @@ const domainIdCacheSize = 10000
 type Manager struct {
 	Conn            db.Conn                         // DB
 	MultiInsertSize int                             // amount of entries before calling the DB
-	Stats           *Stats                          // Statistics about the update
+	Stats           *statistics.Stats               // Statistics about the update
 	ShardFuncCert   func(*common.SHA256Output) uint // select cert worker index from ID
 	ShardFuncDomain func(*common.SHA256Output) uint // select the domain worker from domain ID
 
@@ -39,7 +40,7 @@ func NewManager(
 	workerCount int,
 	conn db.Conn,
 	multiInsertSize int,
-	statistics *Stats,
+	stats *statistics.Stats,
 ) (*Manager, error) {
 	// Compute how many bits we need to cover N partitions (i.e. log2(N).
 	nBits := int(util.Log2(uint(workerCount)))
@@ -52,7 +53,7 @@ func NewManager(
 	m := &Manager{
 		Conn:             conn,
 		MultiInsertSize:  multiInsertSize,
-		Stats:            statistics,
+		Stats:            stats,
 		ShardFuncCert:    selectPartition,
 		ShardFuncDomain:  selectPartition,
 		IncomingCertChan: make(chan Certificate),

@@ -200,7 +200,7 @@ func TestCoalesceForDirtyDomains(t *testing.T) {
 		gotCertIDsID, gotCertIDs, err := conn.RetrieveDomainCertificatesIDs(ctx, domainID)
 		require.NoError(t, err)
 		expectedSize := common.SHA256Size * len(certs) / len(leafCerts)
-		require.Len(t, gotCertIDs, expectedSize, "bad length, should be %d but it's %d",
+		require.Equal(t, expectedSize, len(gotCertIDs), "bad length, should be %d but it's %d",
 			expectedSize, len(gotCertIDs))
 		// From the certificate IDs, grab the IDs corresponding to this leaf:
 		N := len(certIDs) / len(leafCerts) // IDs per leaf = total / leaf_count
@@ -217,7 +217,7 @@ func TestCoalesceForDirtyDomains(t *testing.T) {
 		gotPolIDsID, gotPolIDs, err := conn.RetrieveDomainPoliciesIDs(ctx, domainID)
 		require.NoError(t, err)
 		expectedSize := common.SHA256Size * len(pols) / len(leafPols)
-		require.Len(t, gotPolIDs, expectedSize, "bad length, should be %d but it's %d",
+		require.Equal(t, expectedSize, len(gotPolIDs), "bad length, should be %d but it's %d",
 			expectedSize, len(gotPolIDs))
 		// From the policy IDs, grab the IDs corresponding to this leaf:
 		N := len(polIDs) / len(leafPols)
@@ -227,6 +227,252 @@ func TestCoalesceForDirtyDomains(t *testing.T) {
 		require.Equal(t, expectedPolIDs, gotPolIDs)
 		require.Equal(t, expectedPolIDsID, gotPolIDsID)
 	}
+}
+
+// TestCoalesceForDirtyDomains_MixedCertsAndPolicies is a regression test that covers the case
+// when a domain has both certificates and policies.
+func TestCoalesceForDirtyDomains_MixedCertsAndPolicies(t *testing.T) {
+	// Because we are using "random" bytes deterministically here, set a fixed seed.
+	rand.Seed(1)
+
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelF()
+
+	// Configure a test DB.
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	// Connect to the DB.
+	conn := testdb.Connect(t, config)
+	defer conn.Close()
+
+	leaf := "mixed.example.com"
+
+	// Prepare one mock leaf certificate hierarchy and one mock policy hierarchy for the same
+	// domain. This is the shape that currently triggers duplicated IDs in calc_dirty_domains.
+	certs, certIDs, parentCertIDs, certNames := testCertHierarchyForLeafs(t, []string{leaf})
+	pols, polIDs := testPolicyHierarchyForLeafs(t, []string{leaf})
+
+	// Update with both certificates and policies for the same domain.
+	err := updater.UpdateWithKeepExisting(ctx, conn, certNames, certIDs, parentCertIDs,
+		certs, util.ExtractExpirations(certs), pols)
+	require.NoError(t, err)
+
+	// Coalescing of payloads.
+	err = updater.CoalescePayloadsForDirtyDomains(ctx, conn)
+	require.NoError(t, err)
+
+	domainID := common.SHA256Hash32Bytes([]byte(leaf))
+
+	gotCertIDsID, gotCertIDs, err := conn.RetrieveDomainCertificatesIDs(ctx, domainID)
+	require.NoError(t, err)
+	require.Equal(t, len(certIDs), len(common.BytesToIDs(gotCertIDs)),
+		"expected %d but got %d certificates", len(certIDs), len(common.BytesToIDs(gotCertIDs)))
+	expectedCertIDs, expectedCertIDsID := glueSortedIDsAndComputeItsID(certIDs)
+	require.Equal(t, expectedCertIDs, gotCertIDs)
+	require.Equal(t, expectedCertIDsID, gotCertIDsID)
+
+	gotPolIDsID, gotPolIDs, err := conn.RetrieveDomainPoliciesIDs(ctx, domainID)
+	require.NoError(t, err)
+	require.Equal(t, len(polIDs), len(common.BytesToIDs(gotPolIDs)),
+		"expected %d but got %d certificates", len(polIDs), len(common.BytesToIDs(gotPolIDs)))
+	expectedPolIDs, expectedPolIDsID := glueSortedIDsAndComputeItsID(polIDs)
+	require.Equal(t, expectedPolIDs, gotPolIDs)
+	require.Equal(t, expectedPolIDsID, gotPolIDsID)
+}
+
+func TestCallCalcDirtyDomainsReturnsProcessedRows(t *testing.T) {
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelF()
+
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	conn := testdb.Connect(t, config)
+	defer conn.Close()
+
+	const partition = 7
+	domainIDs := []common.SHA256Output{
+		dirtyDomainIDForPartition(partition, 1),
+		dirtyDomainIDForPartition(partition, 2),
+		dirtyDomainIDForPartition(partition, 3),
+	}
+	insertIntoDirty(ctx, conn, "dirty", domainIDs)
+
+	processedRows, err := mysql.CallCalcDirtyDomainsForTests(ctx, conn, partition, 2)
+	require.NoError(t, err)
+	require.EqualValues(t, 2, processedRows)
+	requireDirtyCoalescedCounts(ctx, t, conn, partition, 2, 1)
+
+	processedRows, err = mysql.CallCalcDirtyDomainsForTests(ctx, conn, partition, 2)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, processedRows)
+	requireDirtyCoalescedCounts(ctx, t, conn, partition, 3, 0)
+
+	processedRows, err = mysql.CallCalcDirtyDomainsForTests(ctx, conn, partition, 2)
+	require.NoError(t, err)
+	require.Zero(t, processedRows)
+	requireDirtyCoalescedCounts(ctx, t, conn, partition, 3, 0)
+}
+
+// TestCoalesceForDirtyDomains_RemovesStaleDomainState checks that domains who no longer have
+// any certs or policies disappear from both domain_payloads and domains.
+func TestCoalesceForDirtyDomains_RemovesStaleDomainState(t *testing.T) {
+	// Because we are using "random" bytes deterministically here, set a fixed seed.
+	rand.Seed(1)
+
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelF()
+
+	// Configure a test DB.
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	// Connect to the DB.
+	conn := testdb.Connect(t, config)
+	defer conn.Close()
+
+	c := mysql.NewMysqlDBForTests(conn)
+	leaf := "stale.example.com"
+
+	// Create one domain with both certs and policies so rows exist in both tables first.
+	certs, certIDs, parentCertIDs, certNames := testCertHierarchyForLeafs(t, []string{leaf})
+	pols, _ := testPolicyHierarchyForLeafs(t, []string{leaf})
+	err := updater.UpdateWithKeepExisting(ctx, conn, certNames, certIDs, parentCertIDs,
+		certs, util.ExtractExpirations(certs), pols)
+	require.NoError(t, err)
+
+	err = updater.CoalescePayloadsForDirtyDomains(ctx, conn)
+	require.NoError(t, err)
+
+	domainID := common.SHA256Hash32Bytes([]byte(leaf))
+
+	var count int
+	err = c.DB().QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM domain_payloads WHERE domain_id = ?",
+		domainID[:],
+	).Scan(&count)
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+
+	err = c.DB().QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM domains WHERE domain_id = ?",
+		domainID[:],
+	).Scan(&count)
+	require.NoError(t, err)
+	require.Equal(t, 1, count)
+
+	// Remove every remaining link for that dirty domain, then mark it dirty again and re-run
+	// coalescing. Both the payload row and the domain row must disappear.
+	_, err = c.DB().ExecContext(ctx,
+		"DELETE FROM domain_certs WHERE domain_id = ?",
+		domainID[:],
+	)
+	require.NoError(t, err)
+	_, err = c.DB().ExecContext(ctx,
+		"DELETE FROM domain_policies WHERE domain_id = ?",
+		domainID[:],
+	)
+	require.NoError(t, err)
+
+	err = conn.CleanupDirty(ctx)
+	require.NoError(t, err)
+	err = conn.InsertDomainsIntoDirty(ctx, []common.SHA256Output{domainID})
+	require.NoError(t, err)
+
+	err = updater.CoalescePayloadsForDirtyDomains(ctx, conn)
+	require.NoError(t, err)
+
+	err = c.DB().QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM domain_payloads WHERE domain_id = ?",
+		domainID[:],
+	).Scan(&count)
+	require.NoError(t, err)
+	require.Equal(t, 0, count)
+
+	err = c.DB().QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM domains WHERE domain_id = ?",
+		domainID[:],
+	).Scan(&count)
+	require.NoError(t, err)
+	require.Equal(t, 0, count)
+}
+
+func TestCoalesceForDirtyDomains_MarksRowsCoalesced(t *testing.T) {
+	rand.Seed(1)
+
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelF()
+
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	conn := testdb.Connect(t, config)
+	defer conn.Close()
+
+	leafCerts := []string{
+		"coalesced-a.example.com",
+		"coalesced-b.example.com",
+	}
+	certs, certIDs, parentCertIDs, certNames := testCertHierarchyForLeafs(t, leafCerts)
+
+	err := updater.UpdateWithKeepExisting(ctx, conn, certNames, certIDs, parentCertIDs,
+		certs, util.ExtractExpirations(certs), nil)
+	require.NoError(t, err)
+
+	err = updater.CoalescePayloadsForDirtyDomains(ctx, conn)
+	require.NoError(t, err)
+
+	var totalRows, coalescedRows int
+	err = conn.DB().QueryRowContext(ctx,
+		"SELECT COUNT(*), COALESCE(SUM(coalesced), 0) FROM dirty",
+	).Scan(&totalRows, &coalescedRows)
+	require.NoError(t, err)
+	require.Greater(t, totalRows, 0)
+	require.Equal(t, totalRows, coalescedRows)
+}
+
+func TestInsertDomainsIntoDirty_ResetsCoalescedFlag(t *testing.T) {
+	rand.Seed(1)
+
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelF()
+
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	conn := testdb.Connect(t, config)
+	defer conn.Close()
+
+	leaf := "reset-coalesced.example.com"
+	certs, certIDs, parentCertIDs, certNames := testCertHierarchyForLeafs(t, []string{leaf})
+
+	err := updater.UpdateWithKeepExisting(ctx, conn, certNames, certIDs, parentCertIDs,
+		certs, util.ExtractExpirations(certs), nil)
+	require.NoError(t, err)
+
+	err = updater.CoalescePayloadsForDirtyDomains(ctx, conn)
+	require.NoError(t, err)
+
+	domainID := common.SHA256Hash32Bytes([]byte(leaf))
+
+	var coalesced bool
+	err = conn.DB().QueryRowContext(ctx,
+		"SELECT coalesced FROM dirty WHERE domain_id = ?",
+		domainID[:],
+	).Scan(&coalesced)
+	require.NoError(t, err)
+	require.True(t, coalesced)
+
+	err = conn.InsertDomainsIntoDirty(ctx, []common.SHA256Output{domainID})
+	require.NoError(t, err)
+
+	err = conn.DB().QueryRowContext(ctx,
+		"SELECT coalesced FROM dirty WHERE domain_id = ?",
+		domainID[:],
+	).Scan(&coalesced)
+	require.NoError(t, err)
+	require.False(t, coalesced)
 }
 
 func TestRetrieveCertificatePayloads(t *testing.T) {
@@ -839,6 +1085,44 @@ func mockDomainData(N int) (
 		binary.LittleEndian.PutUint64(polIDs[i][:], i+2_000_001)
 	}
 	return
+}
+
+func dirtyDomainIDForPartition(partition, suffix byte) common.SHA256Output {
+	var id common.SHA256Output
+	id[0] = partition << 3
+	id[len(id)-1] = suffix
+	return id
+}
+
+func requireDirtyCoalescedCounts(
+	ctx context.Context,
+	t *testing.T,
+	conn db.Conn,
+	partition int,
+	wantCoalesced int,
+	wantPending int,
+) {
+	t.Helper()
+
+	var gotCoalesced int
+	var gotPending int
+
+	coalescedQuery := fmt.Sprintf(
+		"SELECT COUNT(*) FROM dirty PARTITION(p%d) WHERE coalesced = TRUE",
+		partition,
+	)
+	err := conn.DB().QueryRowContext(ctx, coalescedQuery).Scan(&gotCoalesced)
+	require.NoError(t, err)
+
+	pendingQuery := fmt.Sprintf(
+		"SELECT COUNT(*) FROM dirty PARTITION(p%d) WHERE coalesced = FALSE",
+		partition,
+	)
+	err = conn.DB().QueryRowContext(ctx, pendingQuery).Scan(&gotPending)
+	require.NoError(t, err)
+
+	require.Equal(t, wantCoalesced, gotCoalesced)
+	require.Equal(t, wantPending, gotPending)
 }
 
 func insertIntoDomainPayloads(

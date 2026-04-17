@@ -1,0 +1,91 @@
+# Default Homebrew MySQL server config
+
+# Config Design
+# 1. Disable bin log: binary log is only used in "Replication in slave machine". So we can disable this for now
+# 2. Set innodb_log_file_size large enough.
+# 3. innodb_flush_log_at_trx_commit = 0:  Fastest choice but less secure.
+#              Any mysqld process crash can erase the last second of transactions.
+
+# general design: since we know which transactions are succeed, even if the mysql crashes, we can recover the data easily.
+# And the algorithm is deterministic, so we can re-collect already added certificates. So for the mysql config, we can sacrifice
+# the reliability. For better performance, we can even disable redo logs(not done yet).
+
+#[mysql]
+#mysql_native_password=ON
+
+
+[mysqld]
+# Set the temporary directory to the RAID-0 mount (bigger and faster):
+tmpdir=/mnt/data/tmp
+# Only allow connections from localhost:
+bind-address = 127.0.0.1
+mysqlx-bind-address = 127.0.0.1
+max_allowed_packet=1G
+
+
+# The CSV to table files live here (RAID-0):
+secure_file_priv = /mnt/data/tmp/
+
+# Raise the mysqld open-file ceiling so parallel coalescing can spill temporary tables/files
+# without hitting the lower container default of ~8k descriptors.
+open_files_limit = 10000
+
+# We rarely go above 100 connections, but to debug, many times we open new sessions in new connections.
+# Allow a huge number.
+max_connections = 1000
+
+
+# -------------------------------
+# Config for disk
+# -------------------------------
+innodb_page_size = 64KB
+
+
+# -------------------------------
+# config for memory and cpu
+# -------------------------------
+
+innodb_buffer_pool_size = 16GB
+
+#innodb_buffer_pool_instances = 16  # one per thread/connection
+innodb_buffer_pool_instances = 32  # one per thread/connection
+innodb_thread_concurrency = 0
+# IO:
+#innodb_write_io_threads = 8
+innodb_write_io_threads = 8
+#innodb_read_io_threads = 8
+innodb_read_io_threads = 8
+
+# -------------------------------
+# config for log
+# -------------------------------
+
+general-log = 0 # disable general log for updating
+
+skip-log-bin # skip binary log
+
+sync_binlog = 0  # disable syncing the binary log to disk (better performance). The kernel will flush it from time to time.
+
+innodb_flush_method = "O_DIRECT"
+
+innodb_use_fdatasync = "ON"
+
+innodb_stats_on_metadata = 0
+
+key_buffer_size=8388608 # Key cache
+
+#innodb_log_file_size = 2G # obsolete
+
+innodb_log_checksums = OFF
+#innodb_redo_log_enabled = NO # disable with ALTER INSTANCE DISABLE INNODB REDO_LOG
+
+#innodb_log_files_in_group = 2
+
+innodb_log_buffer_size = 1G # can be larger if we have larger memory
+
+# Flushing log after commit:
+# 0 is fastest choice but less secure. 1 is the safest. 2 is safe if OS or hardware do not fail.
+#innodb_flush_log_at_trx_commit=1
+innodb_flush_log_at_trx_commit=0
+
+innodb_table_locks = 0

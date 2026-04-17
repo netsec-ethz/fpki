@@ -1,11 +1,11 @@
-package updater
+package statistics
 
 import (
 	"sync/atomic"
 	"time"
 )
 
-// Stats keeps statistics for the update process.
+// Stats keeps statistics for long-running processes.
 type Stats struct {
 	CreateTime    time.Time
 	LastStartTime time.Time
@@ -19,10 +19,10 @@ type Stats struct {
 	TotalFiles     atomic.Int64
 	TotalFilesRead atomic.Int64
 
-	TotalRows atomic.Int64 // estimated from filenames.
-	ReadRows  atomic.Int64 // CSV rows processed.
+	TotalRows atomic.Int64
+	ReadRows  atomic.Int64
 
-	TotalCerts atomic.Int64 // certificate payloads expected/read, not CSV rows.
+	TotalCerts atomic.Int64
 
 	updateFreq  time.Duration
 	updateFunc  func(*Stats)
@@ -34,9 +34,8 @@ func NewStatistics(
 	updateFreq time.Duration,
 	updateFunc func(*Stats),
 ) *Stats {
-	// Ensure that we have a valid function to call.
 	if updateFunc == nil {
-		updateFunc = func(s *Stats) {} // do nothing update function
+		updateFunc = func(s *Stats) {}
 	}
 	stats := &Stats{
 		CreateTime:  time.Now(),

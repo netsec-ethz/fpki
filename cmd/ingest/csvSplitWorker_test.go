@@ -11,6 +11,7 @@ import (
 
 	"github.com/netsec-ethz/fpki/cmd/ingest/fastcsv"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
+	"github.com/netsec-ethz/fpki/pkg/statistics"
 	"github.com/netsec-ethz/fpki/pkg/util"
 	"github.com/stretchr/testify/require"
 )
@@ -28,7 +29,7 @@ func TestCsvSplitWorkerReturnsFilenameOnTruncatedGzip(t *testing.T) {
 	require.Greater(t, len(data), 8)
 	require.NoError(t, os.WriteFile(filename, data[:len(data)-8], 0o644))
 
-	stats := updater.NewStatistics(time.Hour, nil)
+	stats := statistics.NewStatistics(time.Hour, nil)
 	defer stats.Stop()
 
 	p := &Processor{
@@ -59,7 +60,7 @@ func TestCsvSplitWorkerReturnsFilenameOnTruncatedGzip(t *testing.T) {
 func TestCsvSplitWorkerSkipMissingFileWhenEnabled(t *testing.T) {
 	filename := filepath.Join(t.TempDir(), "0-9.gz")
 
-	stats := updater.NewStatistics(time.Hour, nil)
+	stats := statistics.NewStatistics(time.Hour, nil)
 	defer stats.Stop()
 
 	p := &Processor{
@@ -83,7 +84,7 @@ func TestCsvSplitWorkerSkipMissingFileWhenEnabled(t *testing.T) {
 func TestCsvSplitWorkerMissingFileStillFailsByDefault(t *testing.T) {
 	filename := filepath.Join(t.TempDir(), "0-9.gz")
 
-	stats := updater.NewStatistics(time.Hour, nil)
+	stats := statistics.NewStatistics(time.Hour, nil)
 	defer stats.Stop()
 
 	p := &Processor{
@@ -109,7 +110,7 @@ func TestCsvSplitWorkerHardErrorLogsToStderr(t *testing.T) {
 	restore := fastcsv.SetStderr(&stderr)
 	defer restore()
 
-	stats := updater.NewStatistics(time.Hour, nil)
+	stats := statistics.NewStatistics(time.Hour, nil)
 	defer stats.Stop()
 
 	p := &Processor{

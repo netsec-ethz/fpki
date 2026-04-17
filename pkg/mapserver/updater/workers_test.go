@@ -11,6 +11,7 @@ import (
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
+	"github.com/netsec-ethz/fpki/pkg/statistics"
 	"github.com/netsec-ethz/fpki/pkg/tests"
 	"github.com/netsec-ethz/fpki/pkg/tests/noopdb"
 	"github.com/netsec-ethz/fpki/pkg/tests/random"
@@ -35,7 +36,7 @@ func TestDomainBatcherNotBlocking(t *testing.T) {
 	t.Logf("# domains: %d", len(domains))
 
 	const batchSize = 2
-	manager, err := NewManager(1, conn, batchSize, NewStatistics(time.Hour, nil))
+	manager, err := NewManager(1, conn, batchSize, statistics.NewStatistics(time.Hour, nil))
 	require.NoError(t, err)
 
 	// Create a domain batcher stage.
@@ -150,7 +151,7 @@ func TestDomainBatcherAllocationOverhead(t *testing.T) {
 	certs := toCertificates(random.BuildTestRandomCertTree(t, random.RandomLeafNames(t, N)...))
 	domains := extractDomains(certs)
 
-	manager, err := NewManager(1, conn, 10, NewStatistics(time.Hour, nil))
+	manager, err := NewManager(1, conn, 10, statistics.NewStatistics(time.Hour, nil))
 	require.NoError(t, err)
 
 	// Create a domain batcher stage.

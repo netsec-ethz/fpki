@@ -8,6 +8,7 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/db"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/updater"
 	pip "github.com/netsec-ethz/fpki/pkg/pipeline"
+	"github.com/netsec-ethz/fpki/pkg/statistics"
 	"github.com/netsec-ethz/fpki/pkg/util"
 	"github.com/netsec-ethz/fpki/pkg/util/debug"
 )
@@ -39,7 +40,7 @@ func NewProcessor(
 	ctx context.Context,
 	conn db.Conn,
 	multiInsertSize int,
-	statistics *updater.Stats,
+	stats *statistics.Stats,
 	options ...ingestOptions,
 ) (*Processor, error) {
 	// Create the processor that will hold all the information and the pipeline.
@@ -64,7 +65,7 @@ func NewProcessor(
 		p.NumDBWriters,
 		conn,
 		multiInsertSize,
-		statistics,
+		stats,
 	)
 	if err != nil {
 		return nil, err

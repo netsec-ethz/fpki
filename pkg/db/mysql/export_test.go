@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
 	"github.com/netsec-ethz/fpki/pkg/db"
@@ -49,4 +50,19 @@ func (c *MysqlDBForTests) RetrieveDirtyDomainEntriesSequential(
 
 func RepeatStmt(elemCount int, dimensions int) string {
 	return repeatStmt(elemCount, dimensions)
+}
+
+func CallCalcDirtyDomainsForTests(
+	ctx context.Context,
+	conn db.Conn,
+	partition int,
+	chunkSize int,
+) (int64, error) {
+	sqlConn, err := conn.DB().Conn(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("creating SQL connection for test: %w", err)
+	}
+	defer sqlConn.Close()
+
+	return callCalcDirtyDomains(ctx, sqlConn, partition, chunkSize)
 }

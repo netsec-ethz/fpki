@@ -42,11 +42,10 @@ type dirty interface {
 	// InsertCsvIntoDirty inserts all the domain IDs in the CSV file into the dirty table.
 	InsertCsvIntoDirty(ctx context.Context, filename string) error
 
-	// RecomputeDirtyDomainsCertAndPolicyIDs retrieves dirty domains from the dirty list, starting
-	// at firstRow and finishing at lastRow (for a total of lastRow - firstRow + 1 domains),
-	// computes the aggregated payload for their certificates and policies, and stores it in the DB.
-	// The aggregated payload takes into account all policies and certificates needed for that
-	// domain, including e.g. the trust chain.
+	// RecomputeDirtyDomainsCertAndPolicyIDs recomputes the aggregated certificate and policy
+	// payload identifiers for all dirty domains and stores them in the DB. The aggregated payload
+	// takes into account all policies and certificates needed for that domain, including e.g. the
+	// trust chain.
 	RecomputeDirtyDomainsCertAndPolicyIDs(ctx context.Context) error
 
 	// CleanupDirty removes all entries from the dirty table.
