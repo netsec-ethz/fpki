@@ -309,6 +309,23 @@ func (mr *MockConnMockRecorder) RetrieveDomainEntriesDirtyOnes(arg0, arg1, arg2 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RetrieveDomainEntriesDirtyOnes", reflect.TypeOf((*MockConn)(nil).RetrieveDomainEntriesDirtyOnes), arg0, arg1, arg2)
 }
 
+// RetrieveDomainEntriesDirtyBundle mocks base method.
+func (m *MockConn) RetrieveDomainEntriesDirtyBundle(arg0 context.Context, arg1 *db.DirtyDomainEntriesCursor, arg2 uint64) ([]db.KeyValuePair, *db.DirtyDomainEntriesCursor, bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RetrieveDomainEntriesDirtyBundle", arg0, arg1, arg2)
+	ret0, _ := ret[0].([]db.KeyValuePair)
+	ret1, _ := ret[1].(*db.DirtyDomainEntriesCursor)
+	ret2, _ := ret[2].(bool)
+	ret3, _ := ret[3].(error)
+	return ret0, ret1, ret2, ret3
+}
+
+// RetrieveDomainEntriesDirtyBundle indicates an expected call of RetrieveDomainEntriesDirtyBundle.
+func (mr *MockConnMockRecorder) RetrieveDomainEntriesDirtyBundle(arg0, arg1, arg2 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RetrieveDomainEntriesDirtyBundle", reflect.TypeOf((*MockConn)(nil).RetrieveDomainEntriesDirtyBundle), arg0, arg1, arg2)
+}
+
 // RetrieveDomainPoliciesIDs mocks base method.
 func (m *MockConn) RetrieveDomainPoliciesIDs(arg0 context.Context, arg1 common.SHA256Output) (common.SHA256Output, []byte, error) {
 	m.ctrl.T.Helper()

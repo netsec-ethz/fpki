@@ -14,6 +14,14 @@ type KeyValuePair struct {
 	Value []byte
 }
 
+// DirtyDomainEntriesCursor tracks per-partition progress while retrieving dirty-domain
+// entries in bounded bundles.
+type DirtyDomainEntriesCursor struct {
+	PartitionOffsets   []uint64
+	PartitionExhausted []bool
+	NextPartition      int
+}
+
 type smt interface {
 	LoadRoot(ctx context.Context) (*common.SHA256Output, error)
 	SaveRoot(ctx context.Context, root *common.SHA256Output) error
@@ -162,4 +170,13 @@ type Conn interface {
 	// RetrieveDomainEntriesDirtyOnes returns a list of key-values whose domain IDs are specified
 	// by the dirty table entries starting from `start` and not including `end`.
 	RetrieveDomainEntriesDirtyOnes(ctx context.Context, start, end uint64) ([]KeyValuePair, error)
+
+	// RetrieveDomainEntriesDirtyBundle retrieves up to maxBundleSize dirty-domain entries using
+	// partition-local progress tracked in cursor. The returned cursor must be passed to the next
+	// call. done reports whether all partitions have been fully consumed.
+	RetrieveDomainEntriesDirtyBundle(
+		ctx context.Context,
+		cursor *DirtyDomainEntriesCursor,
+		maxBundleSize uint64,
+	) ([]KeyValuePair, *DirtyDomainEntriesCursor, bool, error)
 }

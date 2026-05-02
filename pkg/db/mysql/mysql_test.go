@@ -758,6 +758,114 @@ func TestRetrieveDomainEntries(t *testing.T) {
 	require.NotSame(t, expected, joined)
 }
 
+func TestRetrieveDomainEntriesDirtyBundle(t *testing.T) {
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelF()
+
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	conn := testdb.Connect(t, config)
+	defer conn.Close()
+
+	c := mysql.NewMysqlDBForTests(conn)
+
+	domainIDs := []common.SHA256Output{
+		dirtyDomainIDForPartition(0, 1),
+		dirtyDomainIDForPartition(0, 2),
+		dirtyDomainIDForPartition(0, 3),
+		dirtyDomainIDForPartition(0, 4),
+		dirtyDomainIDForPartition(5, 1),
+		dirtyDomainIDForPartition(9, 1),
+		dirtyDomainIDForPartition(17, 1),
+		dirtyDomainIDForPartition(17, 2),
+	}
+	certIDs, polIDs := mockPayloadIDsForDomains(domainIDs)
+	insertIntoDomainPayloads(ctx, t, conn, domainIDs, certIDs, polIDs)
+	insertIntoDirty(ctx, conn, "dirty", domainIDs)
+
+	expected := expectedDirtyEntries(domainIDs, certIDs, polIDs, nil)
+
+	var cursor *db.DirtyDomainEntriesCursor
+	allEntries := make([]db.KeyValuePair, 0, len(domainIDs))
+	bundleSize := uint64(3)
+
+	for bundleNum := 0; ; bundleNum++ {
+		entries, nextCursor, done, err := c.RetrieveDomainEntriesDirtyBundle(ctx, cursor, bundleSize)
+		require.NoError(t, err)
+		require.LessOrEqual(t, len(entries), int(bundleSize))
+		if len(entries) == 0 {
+			require.True(t, done)
+			break
+		}
+
+		allEntries = append(allEntries, entries...)
+		cursor = nextCursor
+		if done {
+			break
+		}
+		require.Less(t, bundleNum, len(domainIDs))
+	}
+
+	require.Len(t, allEntries, len(domainIDs))
+	kvElementsMatch(t, expected, allEntries)
+}
+
+func TestRetrieveDomainEntriesDirtyBundlePreservesMissingPayloads(t *testing.T) {
+	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancelF()
+
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	conn := testdb.Connect(t, config)
+	defer conn.Close()
+
+	c := mysql.NewMysqlDBForTests(conn)
+
+	domainIDs := []common.SHA256Output{
+		dirtyDomainIDForPartition(2, 1),
+		dirtyDomainIDForPartition(2, 2),
+		dirtyDomainIDForPartition(11, 1),
+		dirtyDomainIDForPartition(19, 1),
+	}
+	certIDs, polIDs := mockPayloadIDsForDomains(domainIDs)
+
+	withPayload := []common.SHA256Output{domainIDs[0], domainIDs[2]}
+	withPayloadCerts := []common.SHA256Output{certIDs[0], certIDs[2]}
+	withPayloadPolicies := []common.SHA256Output{polIDs[0], polIDs[2]}
+	insertIntoDomainPayloads(ctx, t, conn, withPayload, withPayloadCerts, withPayloadPolicies)
+	insertIntoDirty(ctx, conn, "dirty", domainIDs)
+
+	missing := map[common.SHA256Output]struct{}{
+		domainIDs[1]: {},
+		domainIDs[3]: {},
+	}
+	expected := expectedDirtyEntries(domainIDs, certIDs, polIDs, missing)
+
+	var cursor *db.DirtyDomainEntriesCursor
+	got := make([]db.KeyValuePair, 0, len(domainIDs))
+
+	for {
+		entries, nextCursor, done, err := c.RetrieveDomainEntriesDirtyBundle(ctx, cursor, 2)
+		require.NoError(t, err)
+		require.LessOrEqual(t, len(entries), 2)
+		if len(entries) == 0 {
+			require.True(t, done)
+			break
+		}
+
+		got = append(got, entries...)
+		cursor = nextCursor
+		if done {
+			break
+		}
+	}
+
+	require.Len(t, got, len(domainIDs))
+	kvElementsMatch(t, expected, got)
+}
+
 func TestInsertDomainsIntoDirty(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
@@ -1085,6 +1193,41 @@ func mockDomainData(N int) (
 		binary.LittleEndian.PutUint64(polIDs[i][:], i+2_000_001)
 	}
 	return
+}
+
+func mockPayloadIDsForDomains(domainIDs []common.SHA256Output) (
+	certIDs []common.SHA256Output,
+	polIDs []common.SHA256Output,
+) {
+	certIDs = make([]common.SHA256Output, len(domainIDs))
+	polIDs = make([]common.SHA256Output, len(domainIDs))
+	for i, domainID := range domainIDs {
+		certIDs[i] = domainID
+		polIDs[i] = domainID
+		certIDs[i][0] ^= 0x40
+		polIDs[i][0] ^= 0x80
+	}
+	return
+}
+
+func expectedDirtyEntries(
+	domainIDs []common.SHA256Output,
+	certIDs []common.SHA256Output,
+	polIDs []common.SHA256Output,
+	missing map[common.SHA256Output]struct{},
+) []db.KeyValuePair {
+	expected := make([]db.KeyValuePair, 0, len(domainIDs))
+	for i, domainID := range domainIDs {
+		var value []byte
+		if _, ok := missing[domainID]; !ok {
+			value = common.SortIDsAndGlue([]common.SHA256Output{certIDs[i], polIDs[i]})
+		}
+		expected = append(expected, db.KeyValuePair{
+			Key:   domainID,
+			Value: value,
+		})
+	}
+	return expected
 }
 
 func dirtyDomainIDForPartition(partition, suffix byte) common.SHA256Output {

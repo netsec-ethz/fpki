@@ -215,6 +215,92 @@ func (c *mysqlDB) RetrieveDomainEntriesDirtyOnes(
 	return extractDomainEntries(rows)
 }
 
+func (c *mysqlDB) RetrieveDomainEntriesDirtyBundle(
+	ctx context.Context,
+	cursor *db.DirtyDomainEntriesCursor,
+	maxBundleSize uint64,
+) ([]db.KeyValuePair, *db.DirtyDomainEntriesCursor, bool, error) {
+	if maxBundleSize == 0 {
+		return nil, cursor, true, fmt.Errorf("max bundle size must be > 0")
+	}
+
+	state := normalizeDirtyDomainEntriesCursor(cursor)
+	bundle := make([]db.KeyValuePair, 0, maxBundleSize)
+
+	for uint64(len(bundle)) < maxBundleSize {
+		activePartitions := activeDirtyPartitions(state)
+		if len(activePartitions) == 0 {
+			return bundle, state, true, nil
+		}
+
+		requests := distributeDirtyBundleRequests(activePartitions, maxBundleSize-uint64(len(bundle)))
+		partitionEntries := make([][]db.KeyValuePair, NumPartitions)
+		fetchedCounts := make([]uint64, NumPartitions)
+		errs := make([]error, NumPartitions)
+
+		var wg sync.WaitGroup
+		for _, partition := range activePartitions {
+			limit := requests[partition]
+			if limit == 0 {
+				continue
+			}
+
+			wg.Add(1)
+			go func(partition int, limit uint64) {
+				defer wg.Done()
+
+				ids, err := c.retrieveDirtyDomainIDsForPartition(
+					ctx,
+					partition,
+					state.PartitionOffsets[partition],
+					limit,
+				)
+				if err != nil {
+					errs[partition] = err
+					return
+				}
+
+				fetchedCounts[partition] = uint64(len(ids))
+				if len(ids) == 0 {
+					return
+				}
+
+				partitionEntries[partition], err = c.retrieveDirtyDomainEntriesPreserveMissing(ctx, ids)
+				if err != nil {
+					errs[partition] = err
+				}
+			}(partition, limit)
+		}
+		wg.Wait()
+
+		if err := util.ErrorsCoalesce(errs...); err != nil {
+			return nil, state, false, err
+		}
+
+		progressMade := false
+		for _, partition := range activePartitions {
+			fetched := fetchedCounts[partition]
+			if fetched > 0 {
+				progressMade = true
+				state.PartitionOffsets[partition] += fetched
+				bundle = append(bundle, partitionEntries[partition]...)
+			}
+			if fetched < requests[partition] {
+				state.PartitionExhausted[partition] = true
+			}
+		}
+		if len(activePartitions) > 0 {
+			state.NextPartition = (activePartitions[0] + 1) % NumPartitions
+		}
+
+		if !progressMade {
+			continue
+		}
+	}
+
+	return bundle, state, len(activeDirtyPartitions(state)) == 0, nil
+}
+
 // retrieveDirtyDomainEntriesParallel uses retrieveDomainEntriesSequential NumDBWorkers times to
 // query the (huge) table domain_payloads values that match the passed argument.
 //
@@ -300,7 +386,123 @@ func (c *mysqlDB) retrieveDirtyDomainEntriesSequential(
 	return extractDomainEntries(rows)
 }
 
+func (c *mysqlDB) retrieveDirtyDomainEntriesPreserveMissing(
+	ctx context.Context,
+	domainIDs []common.SHA256Output,
+) ([]db.KeyValuePair, error) {
+	if len(domainIDs) == 0 {
+		return nil, nil
+	}
+
+	pairs, err := c.retrieveDirtyDomainEntriesSequential(ctx, domainIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	valuesByKey := make(map[common.SHA256Output][]byte, len(pairs))
+	for _, pair := range pairs {
+		valuesByKey[pair.Key] = pair.Value
+	}
+
+	result := make([]db.KeyValuePair, 0, len(domainIDs))
+	for _, id := range domainIDs {
+		result = append(result, db.KeyValuePair{
+			Key:   id,
+			Value: valuesByKey[id],
+		})
+	}
+	return result, nil
+}
+
+func (c *mysqlDB) retrieveDirtyDomainIDsForPartition(
+	ctx context.Context,
+	partition int,
+	offset uint64,
+	limit uint64,
+) ([]common.SHA256Output, error) {
+	if limit == 0 {
+		return nil, nil
+	}
+
+	str := fmt.Sprintf(
+		"SELECT domain_id FROM dirty PARTITION(p%d) ORDER BY domain_id LIMIT ?,?",
+		partition,
+	)
+	rows, err := c.db.QueryContext(ctx, str, offset, limit)
+	if err != nil {
+		return nil, fmt.Errorf("retrieving dirty domain IDs from partition %d offset %d limit %d: %w",
+			partition, offset, limit, err)
+	}
+	defer rows.Close()
+
+	ids := make([]common.SHA256Output, 0, limit)
+	for rows.Next() {
+		var domainID []byte
+		if err := rows.Scan(&domainID); err != nil {
+			return nil, fmt.Errorf("scanning dirty domain ID from partition %d: %w", partition, err)
+		}
+		ids = append(ids, common.SHA256Output(domainID))
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating dirty domain IDs from partition %d: %w", partition, err)
+	}
+	return ids, nil
+}
+
+func normalizeDirtyDomainEntriesCursor(
+	cursor *db.DirtyDomainEntriesCursor,
+) *db.DirtyDomainEntriesCursor {
+	if cursor == nil {
+		return &db.DirtyDomainEntriesCursor{
+			PartitionOffsets:   make([]uint64, NumPartitions),
+			PartitionExhausted: make([]bool, NumPartitions),
+		}
+	}
+
+	state := &db.DirtyDomainEntriesCursor{
+		PartitionOffsets:   make([]uint64, NumPartitions),
+		PartitionExhausted: make([]bool, NumPartitions),
+	}
+	copy(state.PartitionOffsets, cursor.PartitionOffsets)
+	copy(state.PartitionExhausted, cursor.PartitionExhausted)
+	if NumPartitions > 0 {
+		state.NextPartition = cursor.NextPartition % NumPartitions
+	}
+	return state
+}
+
+func activeDirtyPartitions(cursor *db.DirtyDomainEntriesCursor) []int {
+	partitions := make([]int, 0, NumPartitions)
+	for i := 0; i < NumPartitions; i++ {
+		partition := (cursor.NextPartition + i) % NumPartitions
+		if cursor.PartitionExhausted[partition] {
+			continue
+		}
+		partitions = append(partitions, partition)
+	}
+	return partitions
+}
+
+func distributeDirtyBundleRequests(activePartitions []int, remaining uint64) []uint64 {
+	requests := make([]uint64, NumPartitions)
+	if remaining == 0 || len(activePartitions) == 0 {
+		return requests
+	}
+
+	base := remaining / uint64(len(activePartitions))
+	extra := remaining % uint64(len(activePartitions))
+	for i, partition := range activePartitions {
+		requests[partition] = base
+		if uint64(i) < extra {
+			requests[partition]++
+		}
+	}
+	return requests
+}
+
 func extractDomainEntries(rows *sql.Rows) ([]db.KeyValuePair, error) {
+	defer rows.Close()
+
 	pairs := make([]db.KeyValuePair, 0)
 	for rows.Next() {
 		var id, certIDs, policyIDs []byte
@@ -314,6 +516,9 @@ func extractDomainEntries(rows *sql.Rows) ([]db.KeyValuePair, error) {
 			Key:   *(*common.SHA256Output)(id),
 			Value: common.SortIDsAndGlue(allIDs),
 		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating domain entries: %w", err)
 	}
 	return pairs, nil
 }

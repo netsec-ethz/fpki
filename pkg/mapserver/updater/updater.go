@@ -451,29 +451,36 @@ func updateSMTfromDirty(
 	smtTrie *trie.Trie,
 	max_bundle_size uint64,
 ) error {
+	if max_bundle_size == 0 {
+		return fmt.Errorf("max bundle size must be > 0")
+	}
 
-	// We split the certificates into bundles.
-	count, err := conn.DirtyCount(ctx)
-	if err != nil {
-		return fmt.Errorf("obtaining dirty domains count: %w", err)
-	}
-	bundleCount := count / max_bundle_size
-	for i := uint64(0); i <= bundleCount; i++ {
-		// Read those certificates:
-		s := i * max_bundle_size
-		e := min(s+max_bundle_size, count)
-		fmt.Printf("smt.updateSMTfromDirty [%s]: retrieving certs from DB\n"+
-			"\t\t[%8d,%8d) %3d/%3d\n", time.Now().Format(time.Stamp), s, e, i+1, bundleCount+1)
-		entries, err := conn.RetrieveDomainEntriesDirtyOnes(ctx, s, e)
+	var cursor *db.DirtyDomainEntriesCursor
+	for bundleNum := 1; ; bundleNum++ {
+		fmt.Printf("smt.updateSMTfromDirty [%s]: retrieving bundle %d from DB (max %d domains)\n",
+			time.Now().Format(time.Stamp), bundleNum, max_bundle_size)
+		entries, nextCursor, done, err := conn.RetrieveDomainEntriesDirtyBundle(
+			ctx,
+			cursor,
+			max_bundle_size,
+		)
 		if err != nil {
 			return err
 		}
-		err = updateSMTfromKeyValues(ctx, smtTrie, entries)
-		if err != nil {
+		if len(entries) == 0 {
+			return nil
+		}
+		fmt.Printf("smt.updateSMTfromDirty [%s]: got %d entries for bundle %d\n",
+			time.Now().Format(time.Stamp), len(entries), bundleNum)
+
+		cursor = nextCursor
+		if err := updateSMTfromKeyValues(ctx, smtTrie, entries); err != nil {
 			return err
 		}
+		if done {
+			return nil
+		}
 	}
-	return nil
 }
 
 func updateSMTfromDomains(

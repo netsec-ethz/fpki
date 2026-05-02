@@ -53,6 +53,14 @@ func (*Conn) RetrieveDomainEntriesDirtyOnes(context.Context, uint64, uint64) ([]
 	return nil, nil
 }
 
+func (*Conn) RetrieveDomainEntriesDirtyBundle(
+	context.Context,
+	*db.DirtyDomainEntriesCursor,
+	uint64,
+) ([]db.KeyValuePair, *db.DirtyDomainEntriesCursor, bool, error) {
+	return nil, nil, true, nil
+}
+
 func (*Conn) LoadRoot(context.Context) (*common.SHA256Output, error) {
 	return nil, nil
 }
