@@ -9,8 +9,18 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"runtime"
 	"sync"
+	"sync/atomic"
 )
+
+const minParallelUpdateKeys = 4096
+
+var maxParallelUpdateGoroutines = func() int {
+	// 1<= n <= 128
+	n := min(128, 4*runtime.GOMAXPROCS(0))
+	return n
+}()
 
 // Trie is a modified sparse Merkle tree.
 // Instead of storing values at the leaves of the tree,
@@ -44,6 +54,14 @@ type Trie struct {
 	pastTries [][]byte
 	// atomicUpdate, commit all the changes made by intermediate update calls
 	atomicUpdate bool
+	// updateSem enforces the recursive parallelism cap. A branch only runs in
+	// its own goroutine if it can acquire one slot; otherwise it is processed
+	// synchronously by the caller.
+	updateSem chan struct{}
+	// These counters are test-only telemetry. They do not enforce the worker
+	// cap; they only record the peak number of active spawned workers.
+	activeUpdateWorkers int32
+	maxActiveWorkers    int32
 }
 
 // NewSMT creates a new SMT given a keySize and a hash function.
@@ -52,6 +70,7 @@ func NewTrie(root []byte, hash func(data ...[]byte) []byte, store DBConn) (*Trie
 		hash:       hash,
 		TrieHeight: len(hash([]byte("height"))) * 8, // hash any string to get output length
 		counterOn:  false,
+		updateSem:  make(chan struct{}, maxParallelUpdateGoroutines),
 	}
 	var err error
 	s.db, err = NewCacheDB(store)
@@ -278,8 +297,12 @@ func (s *Trie) updateLeft(ctx context.Context, lNode, rNode, root []byte, keys, 
 func (s *Trie) updateParallel(ctx context.Context, lNode, rNode, root []byte, lKeys, rKeys, lValues, rValues, batch [][]byte, iBatch, height int, ch chan<- (mResult)) {
 	lch := make(chan mResult, 1)
 	rch := make(chan mResult, 1)
-	go s.update(ctx, lNode, lKeys, lValues, batch, 2*iBatch+1, height-1, lch)
-	go s.update(ctx, rNode, rKeys, rValues, batch, 2*iBatch+2, height-1, rch)
+	if !s.trySpawnUpdateWorker(ctx, lNode, lKeys, lValues, batch, 2*iBatch+1, height-1, lch) {
+		s.update(ctx, lNode, lKeys, lValues, batch, 2*iBatch+1, height-1, lch)
+	}
+	if !s.trySpawnUpdateWorker(ctx, rNode, rKeys, rValues, batch, 2*iBatch+2, height-1, rch) {
+		s.update(ctx, rNode, rKeys, rValues, batch, 2*iBatch+2, height-1, rch)
+	}
 	lResult := <-lch
 	rResult := <-rch
 	if lResult.err != nil {
@@ -299,6 +322,46 @@ func (s *Trie) updateParallel(ctx context.Context, lNode, rNode, root []byte, lK
 	}
 	node := s.interiorHash(lResult.update, rResult.update, root, batch, iBatch, height)
 	ch <- mResult{node, false, nil}
+}
+
+func (s *Trie) trySpawnUpdateWorker(
+	ctx context.Context,
+	root []byte,
+	keys, values, batch [][]byte,
+	iBatch, height int,
+	ch chan<- mResult,
+) bool {
+	if len(keys) < minParallelUpdateKeys || s.updateSem == nil {
+		return false
+	}
+
+	select {
+	case s.updateSem <- struct{}{}:
+		current := atomic.AddInt32(&s.activeUpdateWorkers, 1)
+		s.recordMaxActiveWorkers(current)
+		go func() {
+			defer func() {
+				atomic.AddInt32(&s.activeUpdateWorkers, -1)
+				<-s.updateSem
+			}()
+			s.update(ctx, root, keys, values, batch, iBatch, height, ch)
+		}()
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *Trie) recordMaxActiveWorkers(current int32) {
+	for {
+		maxSeen := atomic.LoadInt32(&s.maxActiveWorkers)
+		if current <= maxSeen {
+			return
+		}
+		if atomic.CompareAndSwapInt32(&s.maxActiveWorkers, maxSeen, current) {
+			return
+		}
+	}
 }
 
 // deleteOldNode deletes an old node that has been updated
@@ -593,7 +656,9 @@ func (s *Trie) GetLiveCacheSize() int {
 }
 
 func (s *Trie) ResetLiveCache() {
+	s.db.liveMux.Lock()
 	s.db.liveCache = make(map[Hash][][]byte)
+	s.db.liveMux.Unlock()
 }
 
 // parseBatch decodes the byte data into a slice of nodes and bitmap

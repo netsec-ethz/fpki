@@ -45,12 +45,20 @@ func (*Conn) UpdateDomains(context.Context, []common.SHA256Output, []string) err
 	return nil
 }
 
-func (*Conn) RetrieveDomainEntries(context.Context, []common.SHA256Output) ([]db.KeyValuePair, error) {
+func (*Conn) RetrieveDomainEntries(context.Context, []common.SHA256Output) ([]db.DomainEntryRecord, error) {
 	return nil, nil
 }
 
-func (*Conn) RetrieveDomainEntriesDirtyOnes(context.Context, uint64, uint64) ([]db.KeyValuePair, error) {
+func (*Conn) RetrieveDomainEntriesDirtyOnes(context.Context, uint64, uint64) ([]db.DomainEntryRecord, error) {
 	return nil, nil
+}
+
+func (*Conn) RetrieveDomainEntriesDirtyBundle(
+	context.Context,
+	*db.DirtyDomainEntriesCursor,
+	uint64,
+) ([]db.DomainEntryRecord, *db.DirtyDomainEntriesCursor, bool, error) {
+	return nil, nil, true, nil
 }
 
 func (*Conn) LoadRoot(context.Context) (*common.SHA256Output, error) {
@@ -63,7 +71,7 @@ func (*Conn) SaveRoot(context.Context, *common.SHA256Output) error {
 func (*Conn) RetrieveTreeNode(context.Context, common.SHA256Output) ([]byte, error) {
 	return nil, nil
 }
-func (*Conn) UpdateTreeNodes(context.Context, []*db.KeyValuePair) (int, error) {
+func (*Conn) UpdateTreeNodes(context.Context, []*db.TreeNodeRecord) (int, error) {
 	return 0, nil
 }
 func (*Conn) DeleteTreeNodes(context.Context, []common.SHA256Output) (int, error) {

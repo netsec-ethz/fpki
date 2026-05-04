@@ -8,21 +8,38 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/common"
 )
 
-// KeyValuePair: key-value pair
-type KeyValuePair struct {
+// TreeNodeRecord stores one serialized SMT node as persisted in the tree table.
+// Key is the hash of the SMT node; Value is the serialized trie batch.
+type TreeNodeRecord struct {
 	Key   common.SHA256Output
 	Value []byte
+}
+
+// DomainEntryRecord stores one domain entry as consumed by the SMT updater.
+// DomainID is SHA256(domain name); Payload is the byte representation from
+// which the SMT leaf value is derived.
+type DomainEntryRecord struct {
+	DomainID common.SHA256Output
+	Payload  []byte
+}
+
+// DirtyDomainEntriesCursor tracks per-partition progress while retrieving dirty-domain
+// entries in bounded bundles.
+type DirtyDomainEntriesCursor struct {
+	PartitionOffsets   []uint64
+	PartitionExhausted []bool
+	NextPartition      int
 }
 
 type smt interface {
 	LoadRoot(ctx context.Context) (*common.SHA256Output, error)
 	SaveRoot(ctx context.Context, root *common.SHA256Output) error
 
-	// RetrieveTreeNode: Retrieve one key-value pair from Tree table.
+	// RetrieveTreeNode retrieves one serialized SMT node from the tree table.
 	RetrieveTreeNode(ctx context.Context, id common.SHA256Output) ([]byte, error)
-	// UpdateTreeNodes: Update a list of key-value pairs in Tree table
-	UpdateTreeNodes(ctx context.Context, keyValuePairs []*KeyValuePair) (int, error)
-	// DeleteTreeNodes: Delete a list of key-value pairs in Tree table
+	// UpdateTreeNodes updates a list of SMT node records in the tree table.
+	UpdateTreeNodes(ctx context.Context, keyValuePairs []*TreeNodeRecord) (int, error)
+	// DeleteTreeNodes deletes a list of SMT node rows from the tree table.
 	DeleteTreeNodes(ctx context.Context, keys []common.SHA256Output) (int, error)
 }
 
@@ -153,13 +170,22 @@ type Conn interface {
 		domainNames []string,
 	) error
 
-	// RetrieveDomainEntries: Retrieve a list of domain entries table
+	// RetrieveDomainEntries retrieves domain-entry payloads for the specified domain IDs.
 	RetrieveDomainEntries(
 		ctx context.Context,
 		ids []common.SHA256Output,
-	) ([]KeyValuePair, error)
+	) ([]DomainEntryRecord, error)
 
 	// RetrieveDomainEntriesDirtyOnes returns a list of key-values whose domain IDs are specified
 	// by the dirty table entries starting from `start` and not including `end`.
-	RetrieveDomainEntriesDirtyOnes(ctx context.Context, start, end uint64) ([]KeyValuePair, error)
+	RetrieveDomainEntriesDirtyOnes(ctx context.Context, start, end uint64) ([]DomainEntryRecord, error)
+
+	// RetrieveDomainEntriesDirtyBundle retrieves up to maxBundleSize dirty-domain entries using
+	// partition-local progress tracked in cursor. The returned cursor must be passed to the next
+	// call. done reports whether all partitions have been fully consumed.
+	RetrieveDomainEntriesDirtyBundle(
+		ctx context.Context,
+		cursor *DirtyDomainEntriesCursor,
+		maxBundleSize uint64,
+	) ([]DomainEntryRecord, *DirtyDomainEntriesCursor, bool, error)
 }
