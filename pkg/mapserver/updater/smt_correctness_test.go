@@ -108,46 +108,6 @@ func TestUpdateSMT_EmptyDirty_NoRootChange(t *testing.T) {
 	})
 }
 
-// TestUpdateSMT_FromDirtyAndFromDomains_ProduceSameRoot checks that the dirty-table function and
-// the explicit-domain function produce the same saved root and valid proofs for the same
-// logical dataset.
-func TestUpdateSMT_FromDirtyAndFromDomains_ProduceSameRoot(t *testing.T) {
-	specs := []smtDomainSpec{
-		{name: "cert-only.example.com", kind: smtCertOnly, seed: 101},
-		{name: "policy-only.example.com", kind: smtPolicyOnly, seed: 102},
-		{name: "mixed.example.com", kind: smtCertsAndPolicies, seed: 103},
-	}
-
-	ctxA, connA := newSMTTestConn(t, "domains-path")
-	expectedA := populateScenario(t, ctxA, connA, specs)
-	require.NoError(t, CoalescePayloadsForDirtyDomains(ctxA, connA))
-	rootA := runSMTPath(t, ctxA, connA, "domains", 2)
-
-	ctxB, connB := newSMTTestConn(t, "dirty-path")
-	expectedB := populateScenario(t, ctxB, connB, specs)
-	require.NoError(t, CoalescePayloadsForDirtyDomains(ctxB, connB))
-	rootB := runSMTPath(t, ctxB, connB, "dirty", 2)
-
-	require.Equal(t, rootA, rootB)
-	require.Equal(t, rootA, *loadSavedRoot(t, ctxA, connA))
-	require.Equal(t, rootB, *loadSavedRoot(t, ctxB, connB))
-
-	assertProofsValid(t, ctxA, connA,
-		smtProofCheck{domain: "cert-only.example.com", present: true},
-		smtProofCheck{domain: "policy-only.example.com", present: true},
-		smtProofCheck{domain: "mixed.example.com", present: true},
-		smtProofCheck{domain: "absent.example.com", present: false},
-	)
-	assertProofsValid(t, ctxB, connB,
-		smtProofCheck{domain: "cert-only.example.com", present: true},
-		smtProofCheck{domain: "policy-only.example.com", present: true},
-		smtProofCheck{domain: "mixed.example.com", present: true},
-		smtProofCheck{domain: "absent.example.com", present: false},
-	)
-	assertLeafEntryMatches(t, ctxA, connA, expectedA["mixed.example.com"])
-	assertLeafEntryMatches(t, ctxB, connB, expectedB["mixed.example.com"])
-}
-
 // TestUpdateSMT_BundleSizeDoesNotAffectRoot checks that splitting the same dirty workload into
 // different bundle sizes does not change the final SMT root or proof validity.
 func TestUpdateSMT_BundleSizeDoesNotAffectRoot(t *testing.T) {
@@ -164,7 +124,7 @@ func TestUpdateSMT_BundleSizeDoesNotAffectRoot(t *testing.T) {
 		populateScenario(t, ctx, conn, specs)
 		require.NoError(t, CoalescePayloadsForDirtyDomains(ctx, conn))
 
-		root := runSMTPath(t, ctx, conn, "dirty", bundleSize)
+		root := runDirtySMTPath(t, ctx, conn, bundleSize)
 		roots = append(roots, root)
 
 		assertProofsValid(t, ctx, conn,
@@ -384,13 +344,13 @@ func TestUpdateSMT_DirtyOrderingDoesNotAffectRoot(t *testing.T) {
 	populateScenario(t, ctxA, connA, specs)
 	reorderDirtyDomains(t, ctxA, connA, reversed)
 	require.NoError(t, CoalescePayloadsForDirtyDomains(ctxA, connA))
-	rootA := runSMTPath(t, ctxA, connA, "domains", len(specs)+2)
+	rootA := runDirtySMTPath(t, ctxA, connA, len(specs)+2)
 
 	ctxB, connB := newSMTTestConn(t, "order-shuffled")
 	populateScenario(t, ctxB, connB, specs)
 	reorderDirtyDomains(t, ctxB, connB, shuffled)
 	require.NoError(t, CoalescePayloadsForDirtyDomains(ctxB, connB))
-	rootB := runSMTPath(t, ctxB, connB, "domains", len(specs)+2)
+	rootB := runDirtySMTPath(t, ctxB, connB, len(specs)+2)
 
 	require.Equal(t, rootA, rootB)
 	require.Equal(t, rootA, *loadSavedRoot(t, ctxA, connA))
@@ -472,11 +432,10 @@ func populateScenario(
 	return expected
 }
 
-func runSMTPath(
+func runDirtySMTPath(
 	t *testing.T,
 	ctx context.Context,
 	conn dbpkg.Conn,
-	path string,
 	bundleSize int,
 ) common.SHA256Output {
 	t.Helper()
@@ -488,18 +447,8 @@ func runSMTPath(
 	require.NoError(t, err)
 	smtTrie.CacheHeightLimit = 32
 
-	switch path {
-	case "domains":
-		domains, err := conn.RetrieveDirtyDomains(ctx)
-		require.NoError(t, err)
-		err = updateSMTfromDomains(ctx, conn, smtTrie, domains, bundleSize)
-		require.NoError(t, err)
-	case "dirty":
-		err = updateSMTfromDirty(ctx, conn, smtTrie, uint64(bundleSize))
-		require.NoError(t, err)
-	default:
-		require.FailNow(t, fmt.Sprintf("unknown SMT path %q", path))
-	}
+	err = updateSMTfromDirty(ctx, conn, smtTrie, uint64(bundleSize))
+	require.NoError(t, err)
 
 	require.NotNil(t, smtTrie.Root)
 

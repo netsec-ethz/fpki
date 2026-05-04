@@ -483,37 +483,6 @@ func updateSMTfromDirty(
 	}
 }
 
-func updateSMTfromDomains(
-	ctx context.Context,
-	conn db.Conn,
-	smtTrie *trie.Trie,
-	domainIDs []common.SHA256Output,
-	max_bundle_size int,
-) error {
-
-	// We split the certificates into bundles.
-	bundleCount := len(domainIDs) / max_bundle_size
-	for i := 0; i <= bundleCount; i++ {
-		// Read those certificates:
-		s := i * max_bundle_size
-		e := min(s+max_bundle_size, len(domainIDs))
-		fmt.Printf("smt.updateSMTfromDomains [%s]: retrieving certs from DB\n"+
-			"\t\t[%8d,%8d) %3d/%3d\n", time.Now().Format(time.Stamp), s, e, i+1, bundleCount+1)
-		entries, err := conn.RetrieveDomainEntries(ctx, domainIDs[s:e])
-		if err != nil {
-			return err
-		}
-		fmt.Printf("smt.updateSMTfromDomains [%s]: got certs from DB\n", time.Now().Format(time.Stamp))
-
-		err = updateSMTfromKeyValues(ctx, smtTrie, entries)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 func updateSMTfromKeyValues(
 	ctx context.Context,
 	smtTrie *trie.Trie,
