@@ -541,6 +541,8 @@ func updateSMTfromKeyValues(
 	if err != nil {
 		return err
 	}
+	// Remove existing entries to avoid OOM issues.
+	smtTrie.ResetLiveCache()
 	fmt.Printf("\nsmt.updateSMTfromKeyValues [%s]: tree committed to DB\n", time.Now().Format(time.Stamp))
 	return nil
 }
@@ -714,10 +716,8 @@ func runWhenFalse(mask []bool, fcn func(to, from int)) int {
 	return to
 }
 
-// keyValuePairToSMTInput: key value pair -> SMT update input
-// deleteme TODO this function takes the payload and computes the hash of it. The hash is already
-// stored in the DB with the new design: change both the function RetrieveDomainEntries and
-// remove the hashing from this keyValuePairToSMTInput function.
+// keyValuePairToSMTInput converts DB results into SMT update input.
+// RetrieveDomainEntries already returns the final SMT leaf hash for non-empty values.
 func keyValuePairToSMTInput(keyValuePair []db.KeyValuePair) ([][]byte, [][]byte, error) {
 	type inputPair struct {
 		Key   [32]byte
@@ -728,8 +728,6 @@ func keyValuePairToSMTInput(keyValuePair []db.KeyValuePair) ([][]byte, [][]byte,
 		value := pair.Value
 		if len(value) == 0 {
 			value = trie.DefaultLeaf
-		} else {
-			value = common.SHA256Hash(value) // Compute SHA256 of the payload.
 		}
 		updateInput = append(updateInput, inputPair{
 			Key:   pair.Key,

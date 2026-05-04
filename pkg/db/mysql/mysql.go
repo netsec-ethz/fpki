@@ -510,11 +510,11 @@ func extractDomainEntries(rows *sql.Rows) ([]db.KeyValuePair, error) {
 		if err != nil {
 			return nil, fmt.Errorf("error scanning domain ID and its certs/policies")
 		}
-		// Unfold the byte streams into IDs, sort them, and fold again.
+		// The SMT only needs the final leaf hash, not the full glued payload bytes.
 		allIDs := append(common.BytesToIDs(certIDs), common.BytesToIDs(policyIDs)...)
 		pairs = append(pairs, db.KeyValuePair{
 			Key:   *(*common.SHA256Output)(id),
-			Value: common.SortIDsAndGlue(allIDs),
+			Value: common.SortIDsAndHash(allIDs),
 		})
 	}
 	if err := rows.Err(); err != nil {

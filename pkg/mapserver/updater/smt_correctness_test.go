@@ -178,6 +178,37 @@ func TestUpdateSMT_BundleSizeDoesNotAffectRoot(t *testing.T) {
 	}
 }
 
+// TestUpdateSMTFromKeyValues_ResetsLiveCacheAfterEachCommit checks that each
+// committed SMT bundle clears the trie live cache so memory does not accumulate
+// across successive bundles.
+func TestUpdateSMTFromKeyValues_ResetsLiveCacheAfterEachCommit(t *testing.T) {
+	ctx, conn := newSMTTestConn(t, "cache-reset")
+	populateScenario(t, ctx, conn, []smtDomainSpec{
+		{name: "cache-a.example.com", kind: smtCertsAndPolicies, seed: 601},
+		{name: "cache-b.example.com", kind: smtCertsAndPolicies, seed: 602},
+	})
+	require.NoError(t, CoalescePayloadsForDirtyDomains(ctx, conn))
+
+	rootBytes, err := loadRoot(ctx, conn)
+	require.NoError(t, err)
+
+	smtTrie, err := trie.NewTrie(rootBytes, common.SHA256Hash, conn)
+	require.NoError(t, err)
+	smtTrie.CacheHeightLimit = 32
+
+	var cursor *dbpkg.DirtyDomainEntriesCursor
+	for i := 0; i < 2; i++ {
+		entries, nextCursor, _, err := conn.RetrieveDomainEntriesDirtyBundle(ctx, cursor, 1)
+		require.NoError(t, err)
+		require.Len(t, entries, 1)
+
+		require.NoError(t, updateSMTfromKeyValues(ctx, smtTrie, entries))
+		require.Zero(t, smtTrie.GetLiveCacheSize())
+
+		cursor = nextCursor
+	}
+}
+
 // TestUpdateSMT_PersistsReloadableRoot checks that the root saved by UpdateSMT can be reloaded by
 // a fresh responder instance and still serves valid proofs without any further updates.
 func TestUpdateSMT_PersistsReloadableRoot(t *testing.T) {

@@ -38,3 +38,16 @@ func SortIDsAndGlue(IDs []SHA256Output) []byte {
 	})
 	return IDsToBytes(ids)
 }
+
+// SortIDsAndHash sorts the IDs alphabetically and returns the SHA256 of the glued bytes.
+func SortIDsAndHash(IDs []SHA256Output) []byte {
+	if len(IDs) == 0 {
+		return nil
+	}
+
+	ids := append(IDs[:0:0], IDs...)
+	sort.Slice(ids, func(i, j int) bool {
+		return bytes.Compare(ids[i][:], ids[j][:]) == -1
+	})
+	return SHA256Hash(IDsToBytes(ids))
+}

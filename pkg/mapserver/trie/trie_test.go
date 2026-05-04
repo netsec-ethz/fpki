@@ -8,6 +8,7 @@ package trie
 import (
 	"context"
 	"math/rand"
+	"runtime"
 	"sort"
 	"testing"
 	"time"
@@ -201,6 +202,33 @@ func TestTrieUpdateAndDelete(t *testing.T) {
 	require.True(t, isShortcut)
 	require.Equal(t, key1, k[:HashLength])
 	require.Equal(t, values[1], v[:HashLength])
+
+	err = smt.Close()
+	require.NoError(t, err)
+}
+
+// TestTrieUpdateParallelismIsBounded checks that large trie updates respect the
+// internal goroutine cap instead of recursively spawning unbounded workers.
+func TestTrieUpdateParallelismIsBounded(t *testing.T) {
+	rand.Seed(1)
+	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
+	defer cancelF()
+
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	conn := testdb.Connect(t, config)
+
+	smt, err := NewTrie(nil, common.SHA256Hash, conn)
+	require.NoError(t, err)
+
+	keys := getRandomData(t, 8192)
+	values := getRandomData(t, 8192)
+	_, err = smt.Update(ctx, keys, values)
+	require.NoError(t, err)
+
+	require.LessOrEqual(t, int(smt.maxActiveWorkers), maxParallelUpdateGoroutines)
+	require.LessOrEqual(t, runtime.NumGoroutine(), maxParallelUpdateGoroutines+32)
 
 	err = smt.Close()
 	require.NoError(t, err)
