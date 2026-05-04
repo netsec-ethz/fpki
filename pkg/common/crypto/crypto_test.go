@@ -4,7 +4,6 @@ import (
 	cryptolib "crypto"
 	"crypto/rsa"
 	"io/ioutil"
-	"math/rand"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -19,7 +18,7 @@ import (
 var update = tests.UpdateGoldenFiles()
 
 func TestUpdateGoldenFiles(t *testing.T) {
-	rand.Seed(0)
+	random.Seed(0)
 	if !*update {
 		t.Skip("Not updating golden files: flag not set")
 	}
@@ -90,7 +89,7 @@ func TestUpdateGoldenFiles(t *testing.T) {
 }
 
 func TestComputeHashAsOwner(t *testing.T) {
-	rand.Seed(1)
+	random.Seed(1)
 
 	// Get random policy certificate and check it contains SPCTs, owner, and issuer fields.
 	pc := random.RandomPolicyCertificate(t)
@@ -115,7 +114,7 @@ func TestComputeHashAsOwner(t *testing.T) {
 }
 
 func TestSignAsOwner(t *testing.T) {
-	rand.Seed(11)
+	random.Seed(11)
 
 	// Load owner policy cert and key.
 	ownerCert, err := util.PolicyCertificateFromFile("../../../tests/testdata/owner_cert.json")
@@ -172,7 +171,7 @@ func TestSignAsOwner(t *testing.T) {
 }
 
 func TestSignPolicyCertificateAsIssuer(t *testing.T) {
-	rand.Seed(12)
+	random.Seed(12)
 
 	// Load issuer policy cert and key.
 	issuerCert, err := util.PolicyCertificateFromFile("../../../tests/testdata/issuer_cert.json")
@@ -230,7 +229,7 @@ func TestSignPolicyCertificateAsIssuer(t *testing.T) {
 }
 
 func TestSignRequestAsIssuer(t *testing.T) {
-	rand.Seed(13)
+	random.Seed(13)
 
 	// Load issuer policy cert and key.
 	issuerCert, err := util.PolicyCertificateFromFile("../../../tests/testdata/issuer_cert.json")

@@ -5,7 +5,6 @@ import (
 	"crypto/rsa"
 	"encoding/hex"
 	"fmt"
-	"math/rand"
 	"path/filepath"
 	"testing"
 	"time"
@@ -395,7 +394,7 @@ func populateScenario(
 
 	expected := make(map[string]smtExpectedDomain, len(specs))
 	for _, spec := range specs {
-		rand.Seed(spec.seed)
+		random.Seed(spec.seed)
 
 		var certIDs []common.SHA256Output
 		var parentIDs []*common.SHA256Output

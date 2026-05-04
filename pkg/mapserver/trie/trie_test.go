@@ -7,13 +7,14 @@ package trie
 
 import (
 	"context"
-	"math/rand"
+	"io"
 	"runtime"
 	"sort"
 	"testing"
 	"time"
 
 	"github.com/netsec-ethz/fpki/pkg/common"
+	testrand "github.com/netsec-ethz/fpki/pkg/tests/random"
 	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
 	"github.com/stretchr/testify/require"
 )
@@ -36,7 +37,7 @@ func TestTrieEmpty(t *testing.T) {
 
 // TestTrieUpdateAndGet: Update leaves and get leaves
 func TestTrieUpdateAndGet(t *testing.T) {
-	rand.Seed(1)
+	testrand.Seed(1)
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
@@ -83,7 +84,7 @@ func TestTrieUpdateAndGet(t *testing.T) {
 
 // TestTrieAtomicUpdate: test AtomicUpdate()
 func TestTrieAtomicUpdate(t *testing.T) {
-	rand.Seed(1)
+	testrand.Seed(1)
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
@@ -120,7 +121,7 @@ func TestTrieAtomicUpdate(t *testing.T) {
 
 // TestTriePublicUpdateAndGet: test Update() and verify the memory
 func TestTriePublicUpdateAndGet(t *testing.T) {
-	rand.Seed(1)
+	testrand.Seed(1)
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
@@ -164,7 +165,7 @@ func TestTriePublicUpdateAndGet(t *testing.T) {
 
 // TestTrieUpdateAndDelete: test updating and deleting at the same time
 func TestTrieUpdateAndDelete(t *testing.T) {
-	rand.Seed(1)
+	testrand.Seed(1)
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
@@ -210,7 +211,7 @@ func TestTrieUpdateAndDelete(t *testing.T) {
 // TestTrieUpdateParallelismIsBounded checks that large trie updates respect the
 // internal goroutine cap instead of recursively spawning unbounded workers.
 func TestTrieUpdateParallelismIsBounded(t *testing.T) {
-	rand.Seed(1)
+	testrand.Seed(1)
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
@@ -236,7 +237,7 @@ func TestTrieUpdateParallelismIsBounded(t *testing.T) {
 
 // TestTrieMerkleProof: test if merkle proof is correct
 func TestTrieMerkleProof(t *testing.T) {
-	rand.Seed(1)
+	testrand.Seed(1)
 	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
 
@@ -275,7 +276,7 @@ func TestTrieMerkleProof(t *testing.T) {
 
 // TestTrieMerkleProofCompressed: compressed proofs test
 func TestTrieMerkleProofCompressed(t *testing.T) {
-	rand.Seed(1)
+	testrand.Seed(1)
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
@@ -311,7 +312,7 @@ func TestTrieMerkleProofCompressed(t *testing.T) {
 }
 
 func TestHeight0LeafShortcut(t *testing.T) {
-	rand.Seed(1)
+	testrand.Seed(1)
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
 
@@ -376,7 +377,7 @@ func getRandomData(t require.TestingT, count int) [][]byte {
 	data := make([][]byte, count)
 	for i := 0; i < count; i++ {
 		key := make([]byte, common.SHA256Size)
-		_, err := rand.Read(key)
+		_, err := io.ReadFull(testrand.NewRandReader(), key)
 		require.NoError(t, err)
 		data[i] = key
 	}

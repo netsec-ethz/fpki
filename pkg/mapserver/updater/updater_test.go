@@ -3,7 +3,6 @@ package updater
 import (
 	"context"
 	"encoding/hex"
-	"math/rand"
 	"testing"
 	"time"
 
@@ -23,7 +22,7 @@ import (
 func TestUpdateWithKeepExisting(t *testing.T) {
 	t0 := time.Now()
 	// Because we are using "random" bytes deterministically here, set a fixed seed.
-	rand.Seed(111)
+	random.Seed(111)
 
 	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()

@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rsa"
 	"encoding/hex"
-	"math/rand"
 	"testing"
 	"time"
 
@@ -14,6 +13,7 @@ import (
 	mapcommon "github.com/netsec-ethz/fpki/pkg/mapserver/common"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/prover"
 	"github.com/netsec-ethz/fpki/pkg/tests"
+	"github.com/netsec-ethz/fpki/pkg/tests/random"
 	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
 	tup "github.com/netsec-ethz/fpki/pkg/tests/updater"
 	"github.com/netsec-ethz/fpki/pkg/util"
@@ -62,7 +62,7 @@ func TestNewResponder(t *testing.T) {
 // creating a responder, and checking those domains.
 func TestProof(t *testing.T) {
 	// Because we are using "random" bytes deterministically here, set a fixed seed.
-	rand.Seed(1)
+	random.Seed(1)
 
 	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
