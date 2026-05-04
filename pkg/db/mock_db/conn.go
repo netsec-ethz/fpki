@@ -280,10 +280,10 @@ func (mr *MockConnMockRecorder) RetrieveDomainCertificatesIDs(arg0, arg1 any) *g
 }
 
 // RetrieveDomainEntries mocks base method.
-func (m *MockConn) RetrieveDomainEntries(arg0 context.Context, arg1 []common.SHA256Output) ([]db.KeyValuePair, error) {
+func (m *MockConn) RetrieveDomainEntries(arg0 context.Context, arg1 []common.SHA256Output) ([]db.DomainEntryRecord, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RetrieveDomainEntries", arg0, arg1)
-	ret0, _ := ret[0].([]db.KeyValuePair)
+	ret0, _ := ret[0].([]db.DomainEntryRecord)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -295,10 +295,10 @@ func (mr *MockConnMockRecorder) RetrieveDomainEntries(arg0, arg1 any) *gomock.Ca
 }
 
 // RetrieveDomainEntriesDirtyOnes mocks base method.
-func (m *MockConn) RetrieveDomainEntriesDirtyOnes(arg0 context.Context, arg1, arg2 uint64) ([]db.KeyValuePair, error) {
+func (m *MockConn) RetrieveDomainEntriesDirtyOnes(arg0 context.Context, arg1, arg2 uint64) ([]db.DomainEntryRecord, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RetrieveDomainEntriesDirtyOnes", arg0, arg1, arg2)
-	ret0, _ := ret[0].([]db.KeyValuePair)
+	ret0, _ := ret[0].([]db.DomainEntryRecord)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -310,10 +310,10 @@ func (mr *MockConnMockRecorder) RetrieveDomainEntriesDirtyOnes(arg0, arg1, arg2 
 }
 
 // RetrieveDomainEntriesDirtyBundle mocks base method.
-func (m *MockConn) RetrieveDomainEntriesDirtyBundle(arg0 context.Context, arg1 *db.DirtyDomainEntriesCursor, arg2 uint64) ([]db.KeyValuePair, *db.DirtyDomainEntriesCursor, bool, error) {
+func (m *MockConn) RetrieveDomainEntriesDirtyBundle(arg0 context.Context, arg1 *db.DirtyDomainEntriesCursor, arg2 uint64) ([]db.DomainEntryRecord, *db.DirtyDomainEntriesCursor, bool, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RetrieveDomainEntriesDirtyBundle", arg0, arg1, arg2)
-	ret0, _ := ret[0].([]db.KeyValuePair)
+	ret0, _ := ret[0].([]db.DomainEntryRecord)
 	ret1, _ := ret[1].(*db.DirtyDomainEntriesCursor)
 	ret2, _ := ret[2].(bool)
 	ret3, _ := ret[3].(error)
@@ -485,7 +485,7 @@ func (mr *MockConnMockRecorder) UpdatePolicies(arg0, arg1, arg2, arg3, arg4 any)
 }
 
 // UpdateTreeNodes mocks base method.
-func (m *MockConn) UpdateTreeNodes(arg0 context.Context, arg1 []*db.KeyValuePair) (int, error) {
+func (m *MockConn) UpdateTreeNodes(arg0 context.Context, arg1 []*db.TreeNodeRecord) (int, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateTreeNodes", arg0, arg1)
 	ret0, _ := ret[0].(int)

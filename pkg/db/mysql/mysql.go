@@ -181,10 +181,10 @@ func (c *mysqlDB) updateDomainsMemory(
 	return nil
 }
 
-// RetrieveDomainEntries: Retrieve a list of key-value pairs from domain entries table
-// No sql.ErrNoRows will be thrown, if some records does not exist. Check the length of result
+// RetrieveDomainEntries retrieves domain-entry payloads for the specified domain IDs.
+// Missing payload rows are omitted from the result; callers should check the result length.
 func (c *mysqlDB) RetrieveDomainEntries(ctx context.Context, domainIDs []common.SHA256Output,
-) ([]db.KeyValuePair, error) {
+) ([]db.DomainEntryRecord, error) {
 
 	if len(domainIDs) == 0 {
 		return nil, nil
@@ -198,7 +198,7 @@ func (c *mysqlDB) RetrieveDomainEntriesDirtyOnes(
 	ctx context.Context,
 	start uint64,
 	end uint64,
-) ([]db.KeyValuePair, error) {
+) ([]db.DomainEntryRecord, error) {
 
 	str := `SELECT d.domain_id,dp.cert_ids,dp.policy_ids
 		FROM
@@ -219,13 +219,13 @@ func (c *mysqlDB) RetrieveDomainEntriesDirtyBundle(
 	ctx context.Context,
 	cursor *db.DirtyDomainEntriesCursor,
 	maxBundleSize uint64,
-) ([]db.KeyValuePair, *db.DirtyDomainEntriesCursor, bool, error) {
+) ([]db.DomainEntryRecord, *db.DirtyDomainEntriesCursor, bool, error) {
 	if maxBundleSize == 0 {
 		return nil, cursor, true, fmt.Errorf("max bundle size must be > 0")
 	}
 
 	state := normalizeDirtyDomainEntriesCursor(cursor)
-	bundle := make([]db.KeyValuePair, 0, maxBundleSize)
+	bundle := make([]db.DomainEntryRecord, 0, maxBundleSize)
 
 	for uint64(len(bundle)) < maxBundleSize {
 		activePartitions := activeDirtyPartitions(state)
@@ -234,7 +234,7 @@ func (c *mysqlDB) RetrieveDomainEntriesDirtyBundle(
 		}
 
 		requests := distributeDirtyBundleRequests(activePartitions, maxBundleSize-uint64(len(bundle)))
-		partitionEntries := make([][]db.KeyValuePair, NumPartitions)
+		partitionEntries := make([][]db.DomainEntryRecord, NumPartitions)
 		fetchedCounts := make([]uint64, NumPartitions)
 		errs := make([]error, NumPartitions)
 
@@ -309,10 +309,10 @@ func (c *mysqlDB) RetrieveDomainEntriesDirtyBundle(
 func (c *mysqlDB) retrieveDirtyDomainEntriesParallel(
 	ctx context.Context,
 	domainIDs []common.SHA256Output,
-) ([]db.KeyValuePair, error) {
+) ([]db.DomainEntryRecord, error) {
 
 	// Function closure that concurrently asks to retrieve the domainsPerWorker given the IDs.
-	domainsPerWorker := make([][]db.KeyValuePair, NumDBWorkers)
+	domainsPerWorker := make([][]db.DomainEntryRecord, NumDBWorkers)
 	errs := make([]error, NumDBWorkers)
 	wg := sync.WaitGroup{}
 	bundler := func(offset, fromWorker, toWorker, blockSize int) {
@@ -356,7 +356,7 @@ func (c *mysqlDB) retrieveDirtyDomainEntriesParallel(
 	}
 
 	// Place each bundle in its place.
-	allDomains := make([]db.KeyValuePair, 0, len(domainIDs))
+	allDomains := make([]db.DomainEntryRecord, 0, len(domainIDs))
 	for _, ids := range domainsPerWorker {
 		allDomains = append(allDomains, ids...)
 	}
@@ -368,7 +368,7 @@ func (c *mysqlDB) retrieveDirtyDomainEntriesParallel(
 func (c *mysqlDB) retrieveDirtyDomainEntriesSequential(
 	ctx context.Context,
 	domainIDs []common.SHA256Output,
-) ([]db.KeyValuePair, error) {
+) ([]db.DomainEntryRecord, error) {
 
 	// Retrieve the certificate and policy IDs for each domain ID.
 	str := "SELECT domain_id,cert_ids,policy_ids FROM domain_payloads WHERE domain_id IN " +
@@ -389,7 +389,7 @@ func (c *mysqlDB) retrieveDirtyDomainEntriesSequential(
 func (c *mysqlDB) retrieveDirtyDomainEntriesPreserveMissing(
 	ctx context.Context,
 	domainIDs []common.SHA256Output,
-) ([]db.KeyValuePair, error) {
+) ([]db.DomainEntryRecord, error) {
 	if len(domainIDs) == 0 {
 		return nil, nil
 	}
@@ -401,14 +401,14 @@ func (c *mysqlDB) retrieveDirtyDomainEntriesPreserveMissing(
 
 	valuesByKey := make(map[common.SHA256Output][]byte, len(pairs))
 	for _, pair := range pairs {
-		valuesByKey[pair.Key] = pair.Value
+		valuesByKey[pair.DomainID] = pair.Payload
 	}
 
-	result := make([]db.KeyValuePair, 0, len(domainIDs))
+	result := make([]db.DomainEntryRecord, 0, len(domainIDs))
 	for _, id := range domainIDs {
-		result = append(result, db.KeyValuePair{
-			Key:   id,
-			Value: valuesByKey[id],
+		result = append(result, db.DomainEntryRecord{
+			DomainID: id,
+			Payload:  valuesByKey[id],
 		})
 	}
 	return result, nil
@@ -500,27 +500,39 @@ func distributeDirtyBundleRequests(activePartitions []int, remaining uint64) []u
 	return requests
 }
 
-func extractDomainEntries(rows *sql.Rows) ([]db.KeyValuePair, error) {
+// collectRows scans all rows with the provided row-mapper and closes the input rows.
+func collectRows[T any](rows *sql.Rows, scan func(*sql.Rows) (T, error)) ([]T, error) {
 	defer rows.Close()
 
-	pairs := make([]db.KeyValuePair, 0)
+	items := make([]T, 0)
 	for rows.Next() {
+		item, err := scan(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+// extractDomainEntries scans domain-entry payload rows while preserving the
+// original payload semantics expected by the SMT updater and DB tests.
+func extractDomainEntries(rows *sql.Rows) ([]db.DomainEntryRecord, error) {
+	return collectRows(rows, func(rows *sql.Rows) (db.DomainEntryRecord, error) {
 		var id, certIDs, policyIDs []byte
 		err := rows.Scan(&id, &certIDs, &policyIDs)
 		if err != nil {
-			return nil, fmt.Errorf("error scanning domain ID and its certs/policies")
+			return db.DomainEntryRecord{}, fmt.Errorf("error scanning domain ID and its certs/policies")
 		}
-		// The SMT only needs the final leaf hash, not the full glued payload bytes.
 		allIDs := append(common.BytesToIDs(certIDs), common.BytesToIDs(policyIDs)...)
-		pairs = append(pairs, db.KeyValuePair{
-			Key:   *(*common.SHA256Output)(id),
-			Value: common.SortIDsAndHash(allIDs),
-		})
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterating domain entries: %w", err)
-	}
-	return pairs, nil
+		return db.DomainEntryRecord{
+			DomainID: *(*common.SHA256Output)(id),
+			Payload:  common.SortIDsAndGlue(allIDs),
+		}, nil
+	})
 }
 
 func loadDomainsTableWithCSV(

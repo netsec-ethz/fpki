@@ -162,7 +162,7 @@ func TestUpdateSMTFromKeyValues_ResetsLiveCacheAfterEachCommit(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, entries, 1)
 
-		require.NoError(t, updateSMTfromKeyValues(ctx, smtTrie, entries))
+		require.NoError(t, updateSMTFromDomainEntries(ctx, smtTrie, entries))
 		require.Zero(t, smtTrie.GetLiveCacheSize())
 
 		cursor = nextCursor

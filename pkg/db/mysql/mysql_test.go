@@ -758,6 +758,8 @@ func TestRetrieveDomainEntries(t *testing.T) {
 	require.NotSame(t, expected, joined)
 }
 
+// TestRetrieveDomainEntriesDirtyBundle checks that bundle-based dirty-domain
+// retrieval returns every expected domain-entry payload exactly once.
 func TestRetrieveDomainEntriesDirtyBundle(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
@@ -787,7 +789,7 @@ func TestRetrieveDomainEntriesDirtyBundle(t *testing.T) {
 	expected := expectedDirtyEntries(domainIDs, certIDs, polIDs, nil)
 
 	var cursor *db.DirtyDomainEntriesCursor
-	allEntries := make([]db.KeyValuePair, 0, len(domainIDs))
+	allEntries := make([]db.DomainEntryRecord, 0, len(domainIDs))
 	bundleSize := uint64(3)
 
 	for bundleNum := 0; ; bundleNum++ {
@@ -811,6 +813,9 @@ func TestRetrieveDomainEntriesDirtyBundle(t *testing.T) {
 	kvElementsMatch(t, expected, allEntries)
 }
 
+// TestRetrieveDomainEntriesDirtyBundlePreservesMissingPayloads checks that
+// missing domain_payloads rows are preserved as empty payloads instead of
+// dropping dirty domains from the returned bundle stream.
 func TestRetrieveDomainEntriesDirtyBundlePreservesMissingPayloads(t *testing.T) {
 	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
@@ -844,7 +849,7 @@ func TestRetrieveDomainEntriesDirtyBundlePreservesMissingPayloads(t *testing.T) 
 	expected := expectedDirtyEntries(domainIDs, certIDs, polIDs, missing)
 
 	var cursor *db.DirtyDomainEntriesCursor
-	got := make([]db.KeyValuePair, 0, len(domainIDs))
+	got := make([]db.DomainEntryRecord, 0, len(domainIDs))
 
 	for {
 		entries, nextCursor, done, err := c.RetrieveDomainEntriesDirtyBundle(ctx, cursor, 2)
@@ -1001,21 +1006,21 @@ func BenchmarkRetrieveDomainEntries(b *testing.B) {
 	for i := 600_000; i <= 1_000_000; i += 100_000 {
 		str := fmt.Sprintf("querying-%d00K-", i/100_000)
 		b.Run(str+"parallel", func(b *testing.B) {
-			bdr.run(func(ctx context.Context) ([]db.KeyValuePair, error) {
+			bdr.run(func(ctx context.Context) ([]db.DomainEntryRecord, error) {
 				return c.RetrieveDirtyDomainEntriesParallel(ctx, domainIDs[:i])
 			})
 		})
 		require.Greater(b, bdr.count, 0)
 
 		b.Run(str+"sequential", func(b *testing.B) {
-			bdr.run(func(ctx context.Context) ([]db.KeyValuePair, error) {
+			bdr.run(func(ctx context.Context) ([]db.DomainEntryRecord, error) {
 				return c.RetrieveDirtyDomainEntriesSequential(ctx, domainIDs[:i])
 			})
 		})
 		require.Greater(b, bdr.count, 0)
 
 		b.Run(str+"dirty-join", func(b *testing.B) {
-			bdr.run(func(ctx context.Context) ([]db.KeyValuePair, error) {
+			bdr.run(func(ctx context.Context) ([]db.DomainEntryRecord, error) {
 				return c.RetrieveDomainEntriesDirtyOnes(ctx, 0, uint64(i))
 			})
 		})
@@ -1030,7 +1035,7 @@ type benchDomainRetrieval struct {
 }
 
 func (b *benchDomainRetrieval) run(
-	fcn func(context.Context) ([]db.KeyValuePair, error),
+	fcn func(context.Context) ([]db.DomainEntryRecord, error),
 ) {
 	b.b.ResetTimer()
 	count := 0
@@ -1040,7 +1045,7 @@ func (b *benchDomainRetrieval) run(
 		require.NotEmpty(b.b, kv)
 		// Do something with the key values to avoid compiler dead code optimization.
 		for _, kv := range kv {
-			count += len(kv.Value)
+			count += len(kv.Payload)
 		}
 	}
 	b.count = count
@@ -1148,16 +1153,17 @@ func getAllCertsTable(ctx context.Context, t tests.T, conn db.Conn) (
 	return
 }
 
-// kvElementsMatch acts as require.ElementsMatch, but faster (no reflection).
-func kvElementsMatch(t tests.T, expected, got []db.KeyValuePair, args ...any) {
+// kvElementsMatch compares domain-entry records without using reflection so the
+// large DB-backed tests stay cheap.
+func kvElementsMatch(t tests.T, expected, got []db.DomainEntryRecord, args ...any) {
 	t.Helper()
 	A := make(map[common.SHA256Output][]byte)
 	for _, x := range expected {
-		A[x.Key] = x.Value
+		A[x.DomainID] = x.Payload
 	}
 	B := make(map[common.SHA256Output][]byte)
 	for _, x := range got {
-		B[x.Key] = x.Value
+		B[x.DomainID] = x.Payload
 	}
 
 	if len(A) != len(B) {
@@ -1215,16 +1221,16 @@ func expectedDirtyEntries(
 	certIDs []common.SHA256Output,
 	polIDs []common.SHA256Output,
 	missing map[common.SHA256Output]struct{},
-) []db.KeyValuePair {
-	expected := make([]db.KeyValuePair, 0, len(domainIDs))
+) []db.DomainEntryRecord {
+	expected := make([]db.DomainEntryRecord, 0, len(domainIDs))
 	for i, domainID := range domainIDs {
 		var value []byte
 		if _, ok := missing[domainID]; !ok {
 			value = common.SortIDsAndGlue([]common.SHA256Output{certIDs[i], polIDs[i]})
 		}
-		expected = append(expected, db.KeyValuePair{
-			Key:   domainID,
-			Value: value,
+		expected = append(expected, db.DomainEntryRecord{
+			DomainID: domainID,
+			Payload:  value,
 		})
 	}
 	return expected

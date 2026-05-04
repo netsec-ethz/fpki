@@ -40,7 +40,7 @@ type CacheDB struct {
 type DBConn interface {
 	Close() error
 	RetrieveTreeNode(ctx context.Context, key common.SHA256Output) ([]byte, error)
-	UpdateTreeNodes(ctx context.Context, keyValuePairs []*db.KeyValuePair) (int, error)
+	UpdateTreeNodes(ctx context.Context, keyValuePairs []*db.TreeNodeRecord) (int, error)
 	DeleteTreeNodes(ctx context.Context, keys []common.SHA256Output) (int, error)
 }
 
@@ -58,13 +58,13 @@ func NewCacheDB(store DBConn) (*CacheDB, error) {
 // commitChangesToDB stores the updated nodes to disk.
 func (cacheDB *CacheDB) commitChangesToDB(ctx context.Context) error {
 	// prepare value to store
-	updatesToDB := []*db.KeyValuePair{}
+	updatesToDB := []*db.TreeNodeRecord{}
 	keysToDelete := []common.SHA256Output{}
 
 	// get nodes from update map
 	cacheDB.updatedMux.Lock()
 	for k, v := range cacheDB.updatedNodes {
-		updatesToDB = append(updatesToDB, &db.KeyValuePair{Key: k, Value: serializeBatch(v)})
+		updatesToDB = append(updatesToDB, &db.TreeNodeRecord{Key: k, Value: serializeBatch(v)})
 	}
 	cacheDB.updatedNodes = make(map[Hash][][]byte)
 	cacheDB.updatedMux.Unlock()

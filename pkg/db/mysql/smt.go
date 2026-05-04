@@ -59,7 +59,8 @@ func (c *mysqlDB) DeleteTreeNodes(ctx context.Context, keys []common.SHA256Outpu
 	return int(n), nil
 }
 
-func (c *mysqlDB) UpdateTreeNodes(ctx context.Context, keyValuePairs []*db.KeyValuePair) (int, error) {
+// UpdateTreeNodes persists SMT node records into the tree table.
+func (c *mysqlDB) UpdateTreeNodes(ctx context.Context, keyValuePairs []*db.TreeNodeRecord) (int, error) {
 	if len(keyValuePairs) == 0 {
 		return 0, nil
 	}

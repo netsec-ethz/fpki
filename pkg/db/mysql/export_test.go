@@ -12,6 +12,7 @@ type MysqlDBForTests struct {
 	*mysqlDB
 }
 
+// NewMysqlDBForTests exposes mysqlDB internals to package tests.
 func NewMysqlDBForTests(db db.Conn) *MysqlDBForTests {
 	return &MysqlDBForTests{
 		mysqlDB: db.(*mysqlDB),
@@ -27,7 +28,7 @@ func (c *MysqlDBForTests) DebugCheckCertsExist(ctx context.Context, ids []common
 func (c *MysqlDBForTests) RetrieveDirtyDomainEntriesParallel(
 	ctx context.Context,
 	domainIDs []common.SHA256Output,
-) ([]db.KeyValuePair, error) {
+) ([]db.DomainEntryRecord, error) {
 
 	return c.retrieveDirtyDomainEntriesParallel(ctx, domainIDs)
 }
@@ -35,7 +36,7 @@ func (c *MysqlDBForTests) RetrieveDirtyDomainEntriesParallel(
 func (c *MysqlDBForTests) RetrieveDirtyDomainEntriesSequential(
 	ctx context.Context,
 	domainIDs []common.SHA256Output,
-) ([]db.KeyValuePair, error) {
+) ([]db.DomainEntryRecord, error) {
 
 	return c.retrieveDirtyDomainEntriesSequential(ctx, domainIDs)
 }

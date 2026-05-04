@@ -474,7 +474,7 @@ func updateSMTfromDirty(
 			time.Now().Format(time.Stamp), len(entries), bundleNum)
 
 		cursor = nextCursor
-		if err := updateSMTfromKeyValues(ctx, smtTrie, entries); err != nil {
+		if err := updateSMTFromDomainEntries(ctx, smtTrie, entries); err != nil {
 			return err
 		}
 		if done {
@@ -483,18 +483,20 @@ func updateSMTfromDirty(
 	}
 }
 
-func updateSMTfromKeyValues(
+// updateSMTFromDomainEntries updates and commits the SMT using domain-entry
+// records retrieved from the database.
+func updateSMTFromDomainEntries(
 	ctx context.Context,
 	smtTrie *trie.Trie,
-	entries []db.KeyValuePair,
+	entries []db.DomainEntryRecord,
 ) error {
 
 	// Adapt data type.
-	keys, values, err := keyValuePairToSMTInput(entries)
+	keys, values, err := domainEntriesToSMTInput(entries)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("\nsmt.updateSMTfromKeyValues [%s]: keys and values obtained\n", time.Now().Format(time.Stamp))
+	fmt.Printf("\nsmt.updateSMTFromDomainEntries [%s]: keys and values obtained\n", time.Now().Format(time.Stamp))
 
 	// Update the tree.
 	_, err = smtTrie.Update(ctx, keys, values)
@@ -502,7 +504,7 @@ func updateSMTfromKeyValues(
 	if err != nil {
 		return err
 	}
-	fmt.Printf("\nsmt.updateSMTfromKeyValues [%s]: in-memory tree updated\n", time.Now().Format(time.Stamp))
+	fmt.Printf("\nsmt.updateSMTFromDomainEntries [%s]: in-memory tree updated\n", time.Now().Format(time.Stamp))
 
 	// And update the tree in the DB.
 	err = smtTrie.Commit(ctx)
@@ -512,7 +514,7 @@ func updateSMTfromKeyValues(
 	}
 	// Remove existing entries to avoid OOM issues.
 	smtTrie.ResetLiveCache()
-	fmt.Printf("\nsmt.updateSMTfromKeyValues [%s]: tree committed to DB\n", time.Now().Format(time.Stamp))
+	fmt.Printf("\nsmt.updateSMTFromDomainEntries [%s]: tree committed to DB\n", time.Now().Format(time.Stamp))
 	return nil
 }
 
@@ -685,21 +687,23 @@ func runWhenFalse(mask []bool, fcn func(to, from int)) int {
 	return to
 }
 
-// keyValuePairToSMTInput converts DB results into SMT update input.
-// RetrieveDomainEntries already returns the final SMT leaf hash for non-empty values.
-func keyValuePairToSMTInput(keyValuePair []db.KeyValuePair) ([][]byte, [][]byte, error) {
+// domainEntriesToSMTInput converts domain-entry DB results into SMT update
+// input by hashing non-empty domain-entry payloads.
+func domainEntriesToSMTInput(entries []db.DomainEntryRecord) ([][]byte, [][]byte, error) {
 	type inputPair struct {
 		Key   [32]byte
 		Value []byte
 	}
-	updateInput := make([]inputPair, 0, len(keyValuePair))
-	for _, pair := range keyValuePair {
-		value := pair.Value
+	updateInput := make([]inputPair, 0, len(entries))
+	for _, pair := range entries {
+		value := pair.Payload
 		if len(value) == 0 {
 			value = trie.DefaultLeaf
+		} else {
+			value = common.SHA256Hash(value)
 		}
 		updateInput = append(updateInput, inputPair{
-			Key:   pair.Key,
+			Key:   pair.DomainID,
 			Value: value,
 		})
 	}
