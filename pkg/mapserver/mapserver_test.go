@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"math/rand"
 	"net/http"
 	"sync"
 	"testing"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/netsec-ethz/fpki/pkg/mapserver"
 	"github.com/netsec-ethz/fpki/pkg/mapserver/config"
+	testrand "github.com/netsec-ethz/fpki/pkg/tests/random"
 	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
 	tup "github.com/netsec-ethz/fpki/pkg/tests/updater"
 	"github.com/netsec-ethz/fpki/pkg/util"
@@ -22,7 +22,7 @@ import (
 
 func TestServer(t *testing.T) {
 	// Because we are using "random" bytes deterministically here, set a fixed seed.
-	rand.Seed(1)
+	testrand.Seed(1)
 
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
@@ -92,13 +92,18 @@ func TestServer(t *testing.T) {
 
 	wgClients := sync.WaitGroup{}
 	wgClients.Add(N)
+	selectedDomains := make([]string, N)
+	for i := range selectedDomains {
+		selectedDomains[i] = domains[testrand.RandomInt(t, 0, len(domains)-1)]
+	}
 	t.Log("Starting clients")
 	for i := 0; i < N; i++ {
+		domain := selectedDomains[i]
 		go func() {
 			defer wgClients.Done()
 
 			resp, err := client.Get(fmt.Sprintf("https://localhost:%d/getproof?domain=%s",
-				server.HttpAPIPort, domains[rand.Intn(len(domains))]))
+				server.HttpAPIPort, domain))
 			require.NoError(t, err)
 			body, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
@@ -125,7 +130,7 @@ func BenchmarkAPIGetProof1K(b *testing.B) {
 
 func benchmarkAPIGetProof(b *testing.B, numDifferentDomains int) {
 	// Because we are using "random" bytes deterministically here, set a fixed seed.
-	rand.Seed(1)
+	testrand.Seed(1)
 
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
@@ -177,17 +182,22 @@ func benchmarkAPIGetProof(b *testing.B, numDifferentDomains int) {
 	client := &http.Client{
 		Transport: tr,
 	}
+	selectedDomains := make([]string, b.N)
+	for i := range selectedDomains {
+		selectedDomains[i] = domains[testrand.RandomInt(b, 0, len(domains)-1)]
+	}
 
 	// Benchmark with concurrent clients.
 	wg := sync.WaitGroup{}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		wg.Add(1)
+		domain := selectedDomains[i]
 		go func() {
 			defer wg.Done()
 
 			resp, err := client.Get(fmt.Sprintf("https://localhost:%d/getproof?domain=%s",
-				server.HttpAPIPort, domains[rand.Intn(len(domains))]))
+				server.HttpAPIPort, domain))
 			b.StopTimer()
 			require.NoError(b, err)
 			body, err := io.ReadAll(resp.Body)
@@ -206,7 +216,7 @@ func BenchmarkAPIGetPayloads1K(b *testing.B) {
 
 func benchmarkAPIGetPayloads(b *testing.B, numDifferentDomains int) {
 	// Because we are using "random" bytes deterministically here, set a fixed seed.
-	rand.Seed(1)
+	testrand.Seed(1)
 
 	ctx, cancelF := context.WithTimeout(context.Background(), time.Minute)
 	defer cancelF()
@@ -257,18 +267,22 @@ func benchmarkAPIGetPayloads(b *testing.B, numDifferentDomains int) {
 	client := &http.Client{
 		Transport: tr,
 	}
+	selectedIDs := make([]string, b.N)
+	for i := range selectedIDs {
+		selectedIDs[i] = hex.EncodeToString(certIDs[testrand.RandomInt(b, 0, len(certIDs)-1)][:])
+	}
 
 	// Benchmark with concurrent clients.
 	wg := sync.WaitGroup{}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		wg.Add(1)
+		id := selectedIDs[i]
 		go func() {
 			defer wg.Done()
 
-			ID := hex.EncodeToString(certIDs[rand.Intn(len(certIDs))][:])
 			resp, err := client.Get(fmt.Sprintf("https://localhost:%d/getcertpayloads?ids=%s",
-				server.HttpAPIPort, ID))
+				server.HttpAPIPort, id))
 			b.StopTimer()
 			require.NoError(b, err)
 			body, err := io.ReadAll(resp.Body)

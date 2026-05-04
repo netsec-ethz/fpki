@@ -1,7 +1,6 @@
 package logverifier
 
 import (
-	"math/rand"
 	"testing"
 
 	"github.com/google/trillian"
@@ -38,7 +37,7 @@ func TestVerifySPT(t *testing.T) {
 
 func TestVerifyInclusionByHash(t *testing.T) {
 	// Because we are using "random" bytes deterministically here, set a fixed seed.
-	rand.Seed(1)
+	random.Seed(1)
 
 	// Create a mock proof.
 	proof := &trillian.Proof{

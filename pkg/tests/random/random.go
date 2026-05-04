@@ -17,7 +17,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var keyCreatingRandomCerts = RandomRSAPrivateKey(tests.NewTestObject("test_RSA_key"))
+const defaultSeed int64 = 1
+
+var (
+	randomSource           *rand.Rand
+	keyCreatingRandomCerts *rsa.PrivateKey
+)
+
+func init() {
+	Seed(defaultSeed)
+}
+
+// Seed resets this package's deterministic RNG state.
+func Seed(seed int64) {
+	randomSource = rand.New(rand.NewSource(seed))
+	keyCreatingRandomCerts = RandomRSAPrivateKey(tests.NewTestObject("test_RSA_key"))
+	// Restore the RNG as if it was never advanced by the RSA generation:
+	randomSource = rand.New(rand.NewSource(seed))
+}
 
 // randReader is a type implementing io.Reader which _fools_ `rsa.GenerateKey` to always generate
 // reproducible keys if the random source is deterministic (reproducible).
@@ -25,28 +42,33 @@ var keyCreatingRandomCerts = RandomRSAPrivateKey(tests.NewTestObject("test_RSA_k
 type randReader struct{}
 
 func (randReader) Read(p []byte) (int, error) {
-	if len(p) == 1 {
-		return 1, nil
-	}
-	return rand.Read(p)
+	return readFromSource(randomSource, p)
 }
 
-// NewRandReader returns an io.Reader that forces rsa.GenerateKeys to generate reproducible keys,
-// iff the random source is deterministic. Make a prior call to `rand.Seed()` to obtain
-// deterministic results, otherwise the random source will be pseudorandom but
-// probably not reproducible.
+func readFromSource(source *rand.Rand, p []byte) (int, error) {
+	if len(p) == 1 {
+		// XXX(juagargi) crypto/rsa may do an optional one-byte read via randutil.MaybeReadByte.
+		// Pretend that read succeeded without advancing our deterministic stream.
+		return 1, nil
+	}
+	return source.Read(p)
+}
+
+// NewRandReader returns an io.Reader that forces rsa.GenerateKeys to generate reproducible keys
+// using this package's RNG state. Make a prior call to `random.Seed()` to obtain deterministic
+// results.
 func NewRandReader() io.Reader {
 	return randReader{}
 }
 
 // RandomInt returns a random integer in the interval [from,to], both included.
 func RandomInt(t tests.T, from, to int) int {
-	return rand.Intn(to-from+1) + from
+	return randomSource.Intn(to-from+1) + from
 }
 
 func RandomBytesForTest(t tests.T, size int) []byte {
 	buff := make([]byte, size)
-	n, err := rand.Read(buff)
+	n, err := randomSource.Read(buff)
 	require.NoError(t, err)
 	require.Equal(t, size, n)
 	return buff
@@ -86,7 +108,7 @@ func RandomLeafNames(t tests.T, N int) []string {
 // RandomX509Cert creates a random x509 certificate, with correct ASN.1 DER representation.
 func RandomX509Cert(t tests.T, domain string) ctx509.Certificate {
 	template := ctx509.Certificate{
-		SerialNumber: big.NewInt(rand.Int63()),
+		SerialNumber: big.NewInt(randomSource.Int63()),
 		Subject: pkix.Name{
 			CommonName: domain,
 		},
@@ -299,12 +321,12 @@ func BuildTestRandomUniqueCertsTree(t tests.T, domainNames ...string) (
 
 func RandomTimeWithoutMonotonicBounded(minYear, maxYear int) time.Time {
 	return time.Date(
-		minYear+rand.Intn(maxYear-minYear+1),
-		time.Month(1+rand.Intn(12)), // 1-12
-		1+rand.Intn(31),             // 1-31
-		rand.Intn(24),               // 0-23
-		rand.Intn(60),               // 0-59
-		rand.Intn(60),               // 0-59
+		minYear+randomSource.Intn(maxYear-minYear+1),
+		time.Month(1+randomSource.Intn(12)), // 1-12
+		1+randomSource.Intn(31),             // 1-31
+		randomSource.Intn(24),               // 0-23
+		randomSource.Intn(60),               // 0-59
+		randomSource.Intn(60),               // 0-59
 		0,
 		time.UTC,
 	)
@@ -316,7 +338,7 @@ func RandomTimeWithoutMonotonic() time.Time {
 
 func RandomSignedPolicyCertificateTimestamp(t tests.T) *common.SignedPolicyCertificateTimestamp {
 	return common.NewSignedPolicyCertificateTimestamp(
-		rand.Intn(10),                // version
+		randomSource.Intn(10),        // version
 		RandomBytesForTest(t, 10),    // log id
 		RandomTimeWithoutMonotonic(), // timestamp
 		RandomBytesForTest(t, 32),    // signature
@@ -328,7 +350,7 @@ func RandomSignedPolicyCertificateRevocationTimestamp(
 ) *common.SignedPolicyCertificateRevocationTimestamp {
 
 	return common.NewSignedPolicyCertificateRevocationTimestamp(
-		rand.Intn(10),                // version
+		randomSource.Intn(10),        // version
 		RandomBytesForTest(t, 10),    // log id
 		RandomTimeWithoutMonotonic(), // timestamp
 		RandomBytesForTest(t, 32),    // signature
@@ -337,9 +359,9 @@ func RandomSignedPolicyCertificateRevocationTimestamp(
 
 func RandomPolCertSignRequest(t tests.T) *common.PolicyCertificateSigningRequest {
 	return common.NewPolicyCertificateSigningRequest(
-		rand.Intn(10),
-		rand.Intn(1000), // serial number
-		"domain",        // domain
+		randomSource.Intn(10),
+		randomSource.Intn(1000), // serial number
+		"domain",                // domain
 		RandomTimeWithoutMonotonic(),
 		RandomTimeWithoutMonotonic(),
 		true,                      // can issue
@@ -356,8 +378,8 @@ func RandomPolCertSignRequest(t tests.T) *common.PolicyCertificateSigningRequest
 
 func RandomPolicyCertificate(t tests.T) *common.PolicyCertificate {
 	return common.NewPolicyCertificate(
-		rand.Intn(10),
-		rand.Intn(1000), // serial number
+		randomSource.Intn(10),
+		randomSource.Intn(1000), // serial number
 		"fpki.com",
 		RandomTimeWithoutMonotonic(),
 		RandomTimeWithoutMonotonic(),
@@ -387,8 +409,8 @@ func RandomPolicyCertificateRevocationSigningRequest(t tests.T) *common.PolicyCe
 
 func RandomPolicyCertificateRevocation(t tests.T) *common.PolicyCertificateRevocation {
 	return common.NewPolicyCertificateRevocation(
-		rand.Intn(10),                // version
-		rand.Intn(1000),              // serial number
+		randomSource.Intn(10),        // version
+		randomSource.Intn(1000),      // serial number
 		RandomTimeWithoutMonotonic(), // timestamp
 		RandomBytesForTest(t, 32),    // owner signature
 		RandomBytesForTest(t, 32),    // owner hash
@@ -401,7 +423,9 @@ func RandomPolicyCertificateRevocation(t tests.T) *common.PolicyCertificateRevoc
 	)
 }
 
-// RandomRSAPrivateKey generates a NON-cryptographically secure RSA private key.
+// RandomRSAPrivateKey generates a NON-cryptographically secure RSA private key,
+// using the local-kept RNG initialized with a deterministic seed,
+// thus creating a reproducible series of private keys.
 func RandomRSAPrivateKey(t tests.T) *rsa.PrivateKey {
 	privateKeyPair, err := rsa.GenerateKey(NewRandReader(), 2048)
 	require.NoError(t, err)

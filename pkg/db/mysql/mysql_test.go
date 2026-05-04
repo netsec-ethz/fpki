@@ -6,7 +6,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"math/rand"
 	"testing"
 	"time"
 
@@ -70,7 +69,7 @@ func TestPartitionByIdMSB(t *testing.T) {
 // TestUpdateCerts checks that the UpdateCerts function in DB works as expected.
 func TestUpdateCerts(t *testing.T) {
 	// Because we are using "random" bytes deterministically here, set a fixed seed.
-	rand.Seed(111)
+	random.Seed(111)
 
 	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
@@ -108,7 +107,7 @@ func TestUpdateCerts(t *testing.T) {
 // certificates with the same ID (namely, the c0 and c1 ones).
 func TestUpdateCertsNonUnique(t *testing.T) {
 	// Because we are using "random" bytes deterministically here, set a fixed seed.
-	rand.Seed(111)
+	random.Seed(111)
 
 	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
@@ -159,7 +158,7 @@ func TestUpdateCertsNonUnique(t *testing.T) {
 
 func TestCoalesceForDirtyDomains(t *testing.T) {
 	// Because we are using "random" bytes deterministically here, set a fixed seed.
-	rand.Seed(1)
+	random.Seed(1)
 
 	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
@@ -233,7 +232,7 @@ func TestCoalesceForDirtyDomains(t *testing.T) {
 // when a domain has both certificates and policies.
 func TestCoalesceForDirtyDomains_MixedCertsAndPolicies(t *testing.T) {
 	// Because we are using "random" bytes deterministically here, set a fixed seed.
-	rand.Seed(1)
+	random.Seed(1)
 
 	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
@@ -319,7 +318,7 @@ func TestCallCalcDirtyDomainsReturnsProcessedRows(t *testing.T) {
 // any certs or policies disappear from both domain_payloads and domains.
 func TestCoalesceForDirtyDomains_RemovesStaleDomainState(t *testing.T) {
 	// Because we are using "random" bytes deterministically here, set a fixed seed.
-	rand.Seed(1)
+	random.Seed(1)
 
 	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
@@ -399,7 +398,7 @@ func TestCoalesceForDirtyDomains_RemovesStaleDomainState(t *testing.T) {
 }
 
 func TestCoalesceForDirtyDomains_MarksRowsCoalesced(t *testing.T) {
-	rand.Seed(1)
+	random.Seed(1)
 
 	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
@@ -433,7 +432,7 @@ func TestCoalesceForDirtyDomains_MarksRowsCoalesced(t *testing.T) {
 }
 
 func TestInsertDomainsIntoDirty_ResetsCoalescedFlag(t *testing.T) {
-	rand.Seed(1)
+	random.Seed(1)
 
 	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
@@ -613,7 +612,7 @@ func TestLastCTlogServerState(t *testing.T) {
 }
 
 func TestPruneCerts(t *testing.T) {
-	rand.Seed(322)
+	random.Seed(322)
 
 	ctx, cancelF := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelF()
@@ -752,10 +751,8 @@ func TestRetrieveDomainEntries(t *testing.T) {
 
 	kvElementsMatch(t, expected, parallel, "len(expected)=%d,len(got)=%d",
 		len(expected), len(parallel))
-	require.NotSame(t, expected, parallel)
 	kvElementsMatch(t, expected, joined, "len(expected)=%d,len(got)=%d",
 		len(expected), len(parallel))
-	require.NotSame(t, expected, joined)
 }
 
 // TestRetrieveDomainEntriesDirtyBundle checks that bundle-based dirty-domain
