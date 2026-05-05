@@ -16,8 +16,9 @@ import (
 	"github.com/netsec-ethz/fpki/pkg/util"
 )
 
-// Journal persists ingest progress so future runs can skip files whose
-// certificate-index ranges are already fully covered.
+// Journal persists ingest progress and follow-up phase completion so future
+// runs can skip files whose certificate-index ranges are already fully
+// covered.
 type Journal struct {
 	mu          sync.Mutex
 	closed      bool
@@ -28,7 +29,7 @@ type Journal struct {
 }
 
 // JobConfiguration captures the ingest-mode settings that affect how one run
-// should be executed and resumed.
+// should execute and how its persisted state should be interpreted later.
 type JobConfiguration struct {
 	IngestFiles bool
 	Coalesce    bool
@@ -40,6 +41,12 @@ type JobConfiguration struct {
 }
 
 // Job records one invocation of the ingest command in the journal history.
+// CompletedIndices tracks which ingest bundles have finished successfully.
+// Coalesced reports whether the state represented by those completed indices
+// has already been brought at least through the coalescing stage. A successful
+// SMT update also implies this flag because SMT runs on coalesced state.
+// UpdatedSMT records the stronger fact that the SMT update phase finished for
+// the same completed-index snapshot.
 type Job struct {
 	Cwd              string           `json:"Cwd"`
 	Cmd              []string         `json:"Cmd"`
@@ -51,6 +58,8 @@ type Job struct {
 	CompletedIndices CompletedIndices `json:"CompletedIndices"`
 }
 
+// CompletedIndices groups completed certificate-index intervals by the
+// normalized ingest-directory key stored in the journal.
 type CompletedIndices map[string][]Interval
 
 // Interval represents an inclusive range of certificate indices.
@@ -123,8 +132,10 @@ func NewJobConfiguration(strategy string, fileBatch int, includePlainCSVs bool) 
 
 var completedIntervalRe = regexp.MustCompile(`^(\d+)-(\d+)$`)
 
-// CommitProgress updates the active job's completed-index snapshot, optional
-// phase flags, and end timestamp in one persisted journal write.
+// CommitProgress updates the active job's completed-index snapshot and phase
+// flags in one persisted journal write. The coalesced flag is stored as true
+// whenever the snapshot has either been explicitly coalesced or has already
+// successfully completed an SMT update.
 func (j *Journal) CommitProgress(files []string, coalesced bool, updatedSMT bool) error {
 	j.mu.Lock()
 	defer j.mu.Unlock()
@@ -145,15 +156,15 @@ func (j *Journal) CommitProgress(files []string, coalesced bool, updatedSMT bool
 		}
 		addCompletedInterval(job.CompletedIndices, ingestDirBase, interval)
 	}
-	job.Coalesced = coalesced
+	job.Coalesced = coalesced || updatedSMT
 	job.UpdatedSMT = updatedSMT
 	return j.writeLocked()
 }
 
-// PendingFiles returns the set subtraction LiveDirectoryListing - CompletedIndices.
-// CompletedIndices is expected to already contain normalized ingest-dir and
-// interval coverage, so live files are normalized on the fly before coverage
-// is checked.
+// PendingFiles returns LiveDirectoryListing - CompletedIndices for the current
+// job. CompletedIndices is expected to already contain normalized ingest-dir
+// and interval coverage, so live files are normalized on the fly before
+// coverage is checked.
 func (j *Journal) PendingFiles() ([]string, error) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
@@ -185,7 +196,8 @@ func (j *Journal) PendingFiles() ([]string, error) {
 	return pending, nil
 }
 
-// reset initializes a new journal instance with the current run configuration.
+// reset initializes a new journal instance with the current run configuration
+// and writes its first job entry to disk.
 func (j *Journal) reset(cfg JobConfiguration, ingestDir string) error {
 	// Update first to get the current CWD and os.Args.
 	err := j.appendJob(cfg)

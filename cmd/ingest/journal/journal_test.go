@@ -99,6 +99,56 @@ func TestNewJournal(t *testing.T) {
 	requireJSONDoesNotContainFiles(t, journalFile)
 }
 
+// TestCommitProgressPhaseFlags verifies that the journal marks a completed
+// snapshot as coalesced both after explicit coalescing and after a successful
+// SMT update.
+func TestCommitProgressPhaseFlags(t *testing.T) {
+	testCases := map[string]struct {
+		coalesced      bool
+		updatedSMT     bool
+		wantCoalesced  bool
+		wantUpdatedSMT bool
+	}{
+		"coalesce_only_marks_coalesced": {
+			coalesced:      true,
+			updatedSMT:     false,
+			wantCoalesced:  true,
+			wantUpdatedSMT: false,
+		},
+		"smt_update_also_marks_coalesced": {
+			coalesced:      false,
+			updatedSMT:     true,
+			wantCoalesced:  true,
+			wantUpdatedSMT: true,
+		},
+	}
+
+	for name, tc := range testCases {
+		name, tc := name, tc
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			journalFile := filepath.Join(
+				t.TempDir(),
+				fmt.Sprintf("%s.json", strings.ReplaceAll(t.Name(), "/", "-")),
+			)
+			j, err := NewJournal(journalFile, testJobConfig(t, false), csvPath)
+			require.NoError(t, err)
+
+			require.NoError(t, j.CommitProgress(csvFiles[:1], tc.coalesced, tc.updatedSMT))
+
+			job := latestJob(t, j)
+			require.True(t, containsCompletedInterval(
+				job.CompletedIndices,
+				"testdata",
+				Interval{Start: 0, End: 99999},
+			))
+			require.Equal(t, tc.wantCoalesced, job.Coalesced)
+			require.Equal(t, tc.wantUpdatedSMT, job.UpdatedSMT)
+		})
+	}
+}
+
 // TestAddCompletedFilesIntervalScenarios verifies that completed files are
 // merged into minimal intervals while preserving gaps when coverage is missing.
 func TestAddCompletedFilesIntervalScenarios(t *testing.T) {
