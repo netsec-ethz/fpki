@@ -102,16 +102,19 @@ func runIngest(ctx context.Context, cfg RunConfig, deps RunDependencies) error {
 		}
 		ctLogURL, err := deriveCTLogURLFromIngestDir(cfg.Directory)
 		if err != nil {
-			return err
+			return fmt.Errorf("recordctsize: deriving CT log URL from %q: %w", cfg.Directory, err)
 		}
 		size, err := completedCTLogSize(j, cfg.Directory)
 		if err != nil {
-			return err
+			return fmt.Errorf("recordctsize: computing CT log size from journal for %q: %w", cfg.Directory, err)
 		}
 		if err := deps.RecordCTSize(ctx, ctLogURL, size); err != nil {
-			return err
+			return fmt.Errorf("recordctsize: recording CT log size %d for URL %q: %w", size, ctLogURL, err)
 		}
-		return j.CommitCTLogSize(size)
+		if err := j.CommitCTLogSize(size); err != nil {
+			return fmt.Errorf("recordctsize: persisting recorded CT log size %d to journal: %w", size, err)
+		}
+		return nil
 	}
 
 	if !jobCfg.IngestFiles {

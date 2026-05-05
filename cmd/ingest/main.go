@@ -203,7 +203,10 @@ func mainFunction() error {
 			return cleanupDirty(ctx, conn)
 		},
 		RecordCTSize: func(ctx context.Context, ctLogURL string, size int64) error {
-			return conn.UpdateLastCTlogServerState(ctx, ctLogURL, size, nil)
+			if err := conn.UpdateLastCTlogServerState(ctx, ctLogURL, size, nil); err != nil {
+				return fmt.Errorf("updating ctlog_server_last_status with url=%q size=%d: %w", ctLogURL, size, err)
+			}
+			return nil
 		},
 	})
 	if interrupted.Load() && errors.Is(err, context.Canceled) {
