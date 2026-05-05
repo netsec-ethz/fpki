@@ -49,15 +49,15 @@ type JobConfiguration struct {
 // UpdatedSMT records the stronger fact that the SMT update phase finished for
 // the same completed-index snapshot.
 type Job struct {
-	Cwd              string           `json:"Cwd"`
-	Cmd              []string         `json:"Cmd"`
-	JobConfiguration JobConfiguration `json:"JobConfiguration"`
-	StartTime        string           `json:"StartTime"`
-	EndTime          string           `json:"EndTime"`
-	Coalesced        bool             `json:"Coalesced"`
-	UpdatedSMT       bool             `json:"UpdatedSMT"`
-	UpdatedCTIndex   int64            `json:"UpdatedCTIndex"`
-	CompletedIndices CompletedIndices `json:"CompletedIndices"`
+	Cwd               string           `json:"Cwd"`
+	Cmd               []string         `json:"Cmd"`
+	JobConfiguration  JobConfiguration `json:"JobConfiguration"`
+	StartTime         string           `json:"StartTime"`
+	EndTime           string           `json:"EndTime"`
+	Coalesced         bool             `json:"Coalesced"`
+	UpdatedSMT        bool             `json:"UpdatedSMT"`
+	RecordedCTLogSize int64            `json:"RecordedCTLogSize"`
+	CompletedIndices  CompletedIndices `json:"CompletedIndices"`
 }
 
 // CompletedIndices groups completed certificate-index intervals by the
@@ -165,21 +165,21 @@ func (j *Journal) CommitProgress(files []string, coalesced bool, updatedSMT bool
 	return j.writeLocked()
 }
 
-// CommitCTIndex records the latest CT index size written to the DB for the
+// CommitCTLogSize records the latest CT log size written to the DB for the
 // current completed-index snapshot.
-func (j *Journal) CommitCTIndex(size int64) error {
+func (j *Journal) CommitCTLogSize(size int64) error {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 
 	if j.closed {
-		return fmt.Errorf("cannot commit CT index to closed journal")
+		return fmt.Errorf("cannot commit CT log size to closed journal")
 	}
 
 	job, err := j.currentJob()
 	if err != nil {
 		return err
 	}
-	job.UpdatedCTIndex = size
+	job.RecordedCTLogSize = size
 	return j.writeLocked()
 }
 
@@ -277,14 +277,14 @@ func (j *Journal) appendJob(cfg JobConfiguration) error {
 	}
 
 	j.Jobs = append(j.Jobs, Job{
-		Cwd:              cwd,
-		Cmd:              slices.Clone(os.Args),
-		JobConfiguration: cfg,
-		StartTime:        time.Now().UTC().Format(time.RFC3339),
-		Coalesced:        j.latestCoalesced(),
-		UpdatedSMT:       j.latestUpdatedSMT(),
-		UpdatedCTIndex:   j.latestUpdatedCTIndex(),
-		CompletedIndices: cloneCompletedIndices(j.latestCompletedIndices()),
+		Cwd:               cwd,
+		Cmd:               slices.Clone(os.Args),
+		JobConfiguration:  cfg,
+		StartTime:         time.Now().UTC().Format(time.RFC3339),
+		Coalesced:         j.latestCoalesced(),
+		UpdatedSMT:        j.latestUpdatedSMT(),
+		RecordedCTLogSize: j.latestRecordedCTLogSize(),
+		CompletedIndices:  cloneCompletedIndices(j.latestCompletedIndices()),
 	})
 
 	return nil
@@ -439,11 +439,11 @@ func (j *Journal) latestUpdatedSMT() bool {
 	return j.Jobs[len(j.Jobs)-1].UpdatedSMT
 }
 
-func (j *Journal) latestUpdatedCTIndex() int64 {
+func (j *Journal) latestRecordedCTLogSize() int64 {
 	if len(j.Jobs) == 0 {
 		return -1
 	}
-	return j.Jobs[len(j.Jobs)-1].UpdatedCTIndex
+	return j.Jobs[len(j.Jobs)-1].RecordedCTLogSize
 }
 
 func (j *Journal) currentJob() (*Job, error) {

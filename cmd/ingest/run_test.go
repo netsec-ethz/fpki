@@ -454,7 +454,7 @@ func TestRunIngestUpdateCTIndexUpdatesDB(t *testing.T) {
 	require.Nil(t, gotSTH)
 	reopenedJournal, err := journal.NewJournal(cfg.JournalFile, jobCfg, cfg.Directory)
 	require.NoError(t, err)
-	require.Equal(t, int64(10), latestJobForTest(t, reopenedJournal).UpdatedCTIndex)
+	require.Equal(t, int64(10), latestJobForTest(t, reopenedJournal).RecordedCTLogSize)
 	require.NoError(t, reopenedJournal.Close())
 
 	// Extend the completed coverage and rerun so the same DB row is advanced.
@@ -476,7 +476,7 @@ func TestRunIngestUpdateCTIndexUpdatesDB(t *testing.T) {
 	require.Nil(t, gotSTH)
 	finalJournal, err := journal.NewJournal(cfg.JournalFile, jobCfg, cfg.Directory)
 	require.NoError(t, err)
-	require.Equal(t, int64(20), latestJobForTest(t, finalJournal).UpdatedCTIndex)
+	require.Equal(t, int64(20), latestJobForTest(t, finalJournal).RecordedCTLogSize)
 	require.NoError(t, finalJournal.Close())
 }
 

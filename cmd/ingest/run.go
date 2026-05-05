@@ -111,7 +111,7 @@ func runIngest(ctx context.Context, cfg RunConfig, deps RunDependencies) error {
 		if err := deps.UpdateCTIndex(ctx, ctLogURL, size); err != nil {
 			return err
 		}
-		return j.CommitCTIndex(size)
+		return j.CommitCTLogSize(size)
 	}
 
 	if !jobCfg.IngestFiles {
