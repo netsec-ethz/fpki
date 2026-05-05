@@ -68,7 +68,7 @@ func TestNewJournal(t *testing.T) {
 	require.NotEmpty(t, latestJob(t, j).EndTime)
 	require.False(t, latestJob(t, j).Coalesced)
 	require.False(t, latestJob(t, j).UpdatedSMT)
-	require.Equal(t, int64(-1), latestJob(t, j).RecordedCTLogSize)
+	require.Equal(t, int64(0), latestJob(t, j).RecordedCTLogSize)
 	requireJSONDoesNotContainFiles(t, journalFile)
 
 	j, err = NewJournal(journalFile, testJobConfig(t, false), "")

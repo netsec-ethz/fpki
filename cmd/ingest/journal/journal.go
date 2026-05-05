@@ -441,7 +441,7 @@ func (j *Journal) latestUpdatedSMT() bool {
 
 func (j *Journal) latestRecordedCTLogSize() int64 {
 	if len(j.Jobs) == 0 {
-		return -1
+		return 0
 	}
 	return j.Jobs[len(j.Jobs)-1].RecordedCTLogSize
 }
