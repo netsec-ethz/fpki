@@ -202,6 +202,9 @@ func mainFunction() error {
 			}
 			return cleanupDirty(ctx, conn)
 		},
+		UpdateCTIndex: func(ctx context.Context, ctLogURL string, size int64) error {
+			return conn.UpdateLastCTlogServerState(ctx, ctLogURL, size, nil)
+		},
 	})
 	if interrupted.Load() && errors.Is(err, context.Canceled) {
 		return fmt.Errorf("ingest interrupted")

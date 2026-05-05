@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -41,6 +42,7 @@ type RunDependencies struct {
 	RunBatch          func(*statistics.Stats, []string) error
 	Coalesce          func() error
 	UpdateSMT         func() error
+	UpdateCTIndex     func(context.Context, string, int64) error
 }
 
 func (cfg RunConfig) JobConfiguration() (journal.JobConfiguration, error) {
@@ -54,6 +56,9 @@ func (cfg RunConfig) validate() error {
 	}
 	if jobCfg.IngestFiles && cfg.Directory == "" {
 		return fmt.Errorf("ingest requires a directory")
+	}
+	if jobCfg.UpdateCTIndex && cfg.Directory == "" {
+		return fmt.Errorf("updatectindex requires a directory")
 	}
 	return nil
 }
@@ -86,6 +91,24 @@ func runIngest(ctx context.Context, cfg RunConfig, deps RunDependencies) error {
 	updateSMT := deps.UpdateSMT
 	if updateSMT == nil {
 		updateSMT = func() error { return nil }
+	}
+
+	if jobCfg.UpdateCTIndex {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if deps.UpdateCTIndex == nil {
+			panic("missing CT index updater dependency")
+		}
+		ctLogURL, err := deriveCTLogURLFromIngestDir(cfg.Directory)
+		if err != nil {
+			return err
+		}
+		size, err := completedCTLogSize(j, cfg.Directory)
+		if err != nil {
+			return err
+		}
+		return deps.UpdateCTIndex(ctx, ctLogURL, size)
 	}
 
 	if !jobCfg.IngestFiles {
@@ -239,4 +262,35 @@ func gcBeforeBatch(batchNum, batchCount int) error {
 	fmt.Printf("\nGC: freed %d MB\n", (memBefore.Alloc-memAfter.Alloc)/(1024*1024))
 	fmt.Printf("\nProcessing File Batch %d / %d\n", batchNum, batchCount)
 	return nil
+}
+
+func deriveCTLogURLFromIngestDir(ingestDir string) (string, error) {
+	if ingestDir == "" {
+		return "", fmt.Errorf("cannot derive CT log URL without ingest directory")
+	}
+	candidate := strings.ReplaceAll(filepath.Base(filepath.Clean(ingestDir)), "_", "/")
+	parsed, err := url.Parse(candidate)
+	if err != nil {
+		return "", fmt.Errorf("invalid derived CT log URL %q: %w", candidate, err)
+	}
+	if parsed.Scheme == "" || parsed.Host == "" {
+		return "", fmt.Errorf("invalid derived CT log URL %q", candidate)
+	}
+	return parsed.String(), nil
+}
+
+func completedCTLogSize(j *journal.Journal, ingestDir string) (int64, error) {
+	if j == nil {
+		return 0, fmt.Errorf("cannot compute CT log size without journal")
+	}
+	if len(j.Jobs) == 0 {
+		return 0, fmt.Errorf("journal has no jobs")
+	}
+	ingestDirBase := filepath.Base(filepath.Clean(ingestDir))
+	intervals := j.Jobs[len(j.Jobs)-1].CompletedIndices[ingestDirBase]
+	if len(intervals) == 0 {
+		return 0, fmt.Errorf("no completed indices recorded for ingest directory %q", ingestDirBase)
+	}
+	// Set the size of the ingested set from this CT log server to be END+1 of the interval [0,END].
+	return int64(intervals[0].End) + 1, nil
 }
