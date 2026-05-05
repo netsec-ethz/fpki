@@ -328,12 +328,12 @@ func TestRunIngestScenarios(t *testing.T) {
 	}
 }
 
-// TestCompletedCTLogSize verifies that updatectindex derives the next safe CT
+// TestCompletedCTLogSize verifies that recordctsize derives the next safe CT
 // index from the first canonical completed interval for the current ingest dir.
 func TestCompletedCTLogSize(t *testing.T) {
 	t.Run("uses_first_canonical_completed_interval_end_plus_one", func(t *testing.T) {
 		dir := filepath.Join(t.TempDir(), "https:__ct.googleapis.com_logs_eu1_xenon2026h1")
-		cfg := newTestRunConfig(dir, filepath.Join(t.TempDir(), "journal.json"), 0, "updatectindex")
+		cfg := newTestRunConfig(dir, filepath.Join(t.TempDir(), "journal.json"), 0, "recordctsize")
 
 		j := loadJournalForTest(t, cfg)
 		latestJobForTest(t, j).CompletedIndices = journal.CompletedIndices{
@@ -350,7 +350,7 @@ func TestCompletedCTLogSize(t *testing.T) {
 
 	t.Run("fails_when_current_ingest_dir_has_no_completed_intervals", func(t *testing.T) {
 		dir := filepath.Join(t.TempDir(), "https:__ct.googleapis.com_logs_eu1_xenon2026h1")
-		cfg := newTestRunConfig(dir, filepath.Join(t.TempDir(), "journal.json"), 0, "updatectindex")
+		cfg := newTestRunConfig(dir, filepath.Join(t.TempDir(), "journal.json"), 0, "recordctsize")
 
 		j := loadJournalForTest(t, cfg)
 		latestJobForTest(t, j).CompletedIndices = journal.CompletedIndices{
@@ -403,9 +403,9 @@ func TestDeriveCTLogURLFromIngestDir(t *testing.T) {
 	}
 }
 
-// TestRunIngestUpdateCTIndexUpdatesDB checks that the updatectindex strategy
+// TestRunIngestRecordCTSizeUpdatesDB checks that the recordctsize strategy
 // creates and later advances the persisted CT log progress row in MySQL.
-func TestRunIngestUpdateCTIndexUpdatesDB(t *testing.T) {
+func TestRunIngestRecordCTSizeUpdatesDB(t *testing.T) {
 	// Prepare an isolated test DB and a cancellable context for the strategy run.
 	config, removeF := testdb.ConfigureTestDB(t)
 	defer removeF()
@@ -418,9 +418,9 @@ func TestRunIngestUpdateCTIndexUpdatesDB(t *testing.T) {
 
 	dirBase := "https:__ct.googleapis.com_logs_eu1_xenon2026h1"
 	dir := filepath.Join(t.TempDir(), dirBase)
-	cfg := newTestRunConfig(dir, filepath.Join(t.TempDir(), "journal.json"), 0, "updatectindex")
+	cfg := newTestRunConfig(dir, filepath.Join(t.TempDir(), "journal.json"), 0, "recordctsize")
 
-	// Seed the journal with one completed interval so updatectindex has progress
+	// Seed the journal with one completed interval so recordctsize has progress
 	// to translate into a persisted CT log size.
 	jobCfg, err := cfg.JobConfiguration()
 	require.NoError(t, err)
@@ -437,7 +437,7 @@ func TestRunIngestUpdateCTIndexUpdatesDB(t *testing.T) {
 		NewJournal: func(cfg RunConfig, jobCfg journal.JobConfiguration) (*journal.Journal, error) {
 			return journal.NewJournal(cfg.JournalFile, jobCfg, cfg.Directory)
 		},
-		UpdateCTIndex: func(ctx context.Context, ctLogURL string, size int64) error {
+		RecordCTSize: func(ctx context.Context, ctLogURL string, size int64) error {
 			return conn.UpdateLastCTlogServerState(ctx, ctLogURL, size, nil)
 		},
 	}

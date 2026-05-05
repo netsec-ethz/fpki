@@ -42,7 +42,7 @@ type RunDependencies struct {
 	RunBatch          func(*statistics.Stats, []string) error
 	Coalesce          func() error
 	UpdateSMT         func() error
-	UpdateCTIndex     func(context.Context, string, int64) error
+	RecordCTSize      func(context.Context, string, int64) error
 }
 
 func (cfg RunConfig) JobConfiguration() (journal.JobConfiguration, error) {
@@ -57,8 +57,8 @@ func (cfg RunConfig) validate() error {
 	if jobCfg.IngestFiles && cfg.Directory == "" {
 		return fmt.Errorf("ingest requires a directory")
 	}
-	if jobCfg.UpdateCTIndex && cfg.Directory == "" {
-		return fmt.Errorf("updatectindex requires a directory")
+	if jobCfg.RecordCTSize && cfg.Directory == "" {
+		return fmt.Errorf("recordctsize requires a directory")
 	}
 	return nil
 }
@@ -93,12 +93,12 @@ func runIngest(ctx context.Context, cfg RunConfig, deps RunDependencies) error {
 		updateSMT = func() error { return nil }
 	}
 
-	if jobCfg.UpdateCTIndex {
+	if jobCfg.RecordCTSize {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if deps.UpdateCTIndex == nil {
-			panic("missing CT index updater dependency")
+		if deps.RecordCTSize == nil {
+			panic("missing CT log size recorder dependency")
 		}
 		ctLogURL, err := deriveCTLogURLFromIngestDir(cfg.Directory)
 		if err != nil {
@@ -108,7 +108,7 @@ func runIngest(ctx context.Context, cfg RunConfig, deps RunDependencies) error {
 		if err != nil {
 			return err
 		}
-		if err := deps.UpdateCTIndex(ctx, ctLogURL, size); err != nil {
+		if err := deps.RecordCTSize(ctx, ctLogURL, size); err != nil {
 			return err
 		}
 		return j.CommitCTLogSize(size)

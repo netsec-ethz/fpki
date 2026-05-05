@@ -202,7 +202,7 @@ func mainFunction() error {
 			}
 			return cleanupDirty(ctx, conn)
 		},
-		UpdateCTIndex: func(ctx context.Context, ctLogURL string, size int64) error {
+		RecordCTSize: func(ctx context.Context, ctLogURL string, size int64) error {
 			return conn.UpdateLastCTlogServerState(ctx, ctLogURL, size, nil)
 		},
 	})

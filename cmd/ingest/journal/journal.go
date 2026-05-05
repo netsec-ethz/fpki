@@ -31,11 +31,11 @@ type Journal struct {
 // JobConfiguration captures the ingest-mode settings that affect how one run
 // should execute and how its persisted state should be interpreted later.
 type JobConfiguration struct {
-	IngestFiles   bool
-	Coalesce      bool
-	UpdateSMT     bool
-	UpdateCTIndex bool
-	FileBatch     int
+	IngestFiles  bool
+	Coalesce     bool
+	UpdateSMT    bool
+	RecordCTSize bool
+	FileBatch    int
 	// IncludePlainCSVs opts the run into also listing uncompressed `.csv`
 	// bundles. When false, ingest only discovers `.gz` inputs.
 	IncludePlainCSVs bool
@@ -126,8 +126,8 @@ func NewJobConfiguration(strategy string, fileBatch int, includePlainCSVs bool) 
 		fallthrough
 	case "onlysmtupdate":
 		jc.UpdateSMT = true
-	case "updatectindex":
-		jc.UpdateCTIndex = true
+	case "recordctsize":
+		jc.RecordCTSize = true
 	default:
 		return JobConfiguration{}, fmt.Errorf("strategy value not understood by journal: %s", strategy)
 	}

@@ -62,7 +62,7 @@ func _configureFlags() {
 		"\"onlyingest\": do not coalesce or update SMT after ingesting files.\n"+
 		"\"skipingest\": only coalesce payloads of domains in the dirty table and update SMT.\n"+
 		"\"onlysmtupdate\": only update the SMT.\n"+
-		"\"updatectindex\": update ctlog_server_last_status from completed journal ranges.\n")
+		"\"recordctsize\": update ctlog_server_last_status from completed journal ranges.\n")
 	FileBatch = flag.Int("filebatch", 0, "process files in batches of this size. If zero, then "+
 		"all files are processed in one batch")
 	JournalFile = flag.String("journal", DefJournalFile,
