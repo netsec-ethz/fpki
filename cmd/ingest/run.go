@@ -114,6 +114,7 @@ func runIngest(ctx context.Context, cfg RunConfig, deps RunDependencies) error {
 		if err := j.CommitCTLogSize(size); err != nil {
 			return fmt.Errorf("recordctsize: persisting recorded CT log size %d to journal: %w", size, err)
 		}
+		fmt.Printf("recordctsize: recorded CT log size %d for URL %q\n", size, ctLogURL)
 		return nil
 	}
 

@@ -169,7 +169,7 @@ USE $DBNAME;
 -- Stores the last valid status that was ingested, per CT log server URL
 CREATE TABLE ctlog_server_last_status (
   url_hash VARBINARY(32) NOT NULL,
-  size INTEGER,
+  size BIGINT,
   sth BLOB,
 
   PRIMARY KEY (url_hash)
