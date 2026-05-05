@@ -3,7 +3,7 @@ module github.com/netsec-ethz/fpki
 go 1.25.0
 
 require (
-	github.com/go-sql-driver/mysql v1.8.1
+	github.com/go-sql-driver/mysql v1.10.0
 	github.com/golang/glog v1.2.5
 	github.com/google/certificate-transparency-go v1.1.8
 	github.com/google/trillian v1.6.0
@@ -35,7 +35,7 @@ require (
 	cloud.google.com/go/spanner v1.57.0 // indirect
 	cloud.google.com/go/trace v1.10.5 // indirect
 	contrib.go.opencensus.io/exporter/stackdriver v0.13.14 // indirect
-	filippo.io/edwards25519 v1.1.0 // indirect
+	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/aws/aws-sdk-go v1.46.4 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/census-instrumentation/opencensus-proto v0.4.1 // indirect
