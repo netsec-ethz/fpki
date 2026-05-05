@@ -68,6 +68,7 @@ func TestNewJournal(t *testing.T) {
 	require.NotEmpty(t, latestJob(t, j).EndTime)
 	require.False(t, latestJob(t, j).Coalesced)
 	require.False(t, latestJob(t, j).UpdatedSMT)
+	require.Equal(t, int64(-1), latestJob(t, j).UpdatedCTIndex)
 	requireJSONDoesNotContainFiles(t, journalFile)
 
 	j, err = NewJournal(journalFile, testJobConfig(t, false), "")
@@ -147,6 +148,49 @@ func TestCommitProgressPhaseFlags(t *testing.T) {
 			require.Equal(t, tc.wantUpdatedSMT, job.UpdatedSMT)
 		})
 	}
+}
+
+// TestJournalCarriesForwardState verifies that reopening the journal preserves
+// the previous snapshot metadata when the completed indices are unchanged, and
+// that extending the snapshot preserves the last CT-index update while
+// invalidating coalesce and SMT state until those phases run again.
+func TestJournalCarriesForwardState(t *testing.T) {
+	journalFile := filepath.Join(t.TempDir(), "journal.json")
+
+	// Seed a journal snapshot that has completed work plus all derived follow-up
+	// metadata already recorded.
+	j, err := NewJournal(journalFile, testJobConfig(t, false), csvPath)
+	require.NoError(t, err)
+	require.NoError(t, j.CommitProgress(csvFiles[:1], true, true))
+	require.NoError(t, j.CommitCTIndex(100000))
+	require.NoError(t, j.Close())
+
+	// Reopening without changing the completed snapshot should carry all derived
+	// metadata into the new active job.
+	reopened, err := NewJournal(journalFile, testJobConfig(t, false), csvPath)
+	require.NoError(t, err)
+	job := latestJob(t, reopened)
+	require.Equal(t, completedIntervals(Interval{Start: 0, End: 99999}), job.CompletedIndices)
+	require.True(t, job.Coalesced)
+	require.True(t, job.UpdatedSMT)
+	require.Equal(t, int64(100000), job.UpdatedCTIndex)
+
+	// Extending the completed snapshot invalidates coalescing and SMT state,
+	// while preserving the last CT-index update value until a new DB update
+	// runs.
+	require.NoError(t, reopened.CommitProgress(csvFiles[1:2], false, false))
+
+	job = latestJob(t, reopened)
+	require.Equal(
+		t,
+		completedIntervals(
+			Interval{Start: 0, End: 199999},
+		),
+		job.CompletedIndices,
+	)
+	require.False(t, job.Coalesced)
+	require.False(t, job.UpdatedSMT)
+	require.Equal(t, int64(100000), job.UpdatedCTIndex)
 }
 
 // TestAddCompletedFilesIntervalScenarios verifies that completed files are

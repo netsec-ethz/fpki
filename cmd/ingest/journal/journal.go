@@ -56,6 +56,7 @@ type Job struct {
 	EndTime          string           `json:"EndTime"`
 	Coalesced        bool             `json:"Coalesced"`
 	UpdatedSMT       bool             `json:"UpdatedSMT"`
+	UpdatedCTIndex   int64            `json:"UpdatedCTIndex"`
 	CompletedIndices CompletedIndices `json:"CompletedIndices"`
 }
 
@@ -164,6 +165,24 @@ func (j *Journal) CommitProgress(files []string, coalesced bool, updatedSMT bool
 	return j.writeLocked()
 }
 
+// CommitCTIndex records the latest CT index size written to the DB for the
+// current completed-index snapshot.
+func (j *Journal) CommitCTIndex(size int64) error {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+
+	if j.closed {
+		return fmt.Errorf("cannot commit CT index to closed journal")
+	}
+
+	job, err := j.currentJob()
+	if err != nil {
+		return err
+	}
+	job.UpdatedCTIndex = size
+	return j.writeLocked()
+}
+
 // PendingFiles returns LiveDirectoryListing - CompletedIndices for the current
 // job. CompletedIndices is expected to already contain normalized ingest-dir
 // and interval coverage, so live files are normalized on the fly before
@@ -262,6 +281,9 @@ func (j *Journal) appendJob(cfg JobConfiguration) error {
 		Cmd:              slices.Clone(os.Args),
 		JobConfiguration: cfg,
 		StartTime:        time.Now().UTC().Format(time.RFC3339),
+		Coalesced:        j.latestCoalesced(),
+		UpdatedSMT:       j.latestUpdatedSMT(),
+		UpdatedCTIndex:   j.latestUpdatedCTIndex(),
 		CompletedIndices: cloneCompletedIndices(j.latestCompletedIndices()),
 	})
 
@@ -401,6 +423,27 @@ func (j *Journal) latestCompletedIndices() CompletedIndices {
 		return CompletedIndices{}
 	}
 	return j.Jobs[len(j.Jobs)-1].CompletedIndices
+}
+
+func (j *Journal) latestCoalesced() bool {
+	if len(j.Jobs) == 0 {
+		return false
+	}
+	return j.Jobs[len(j.Jobs)-1].Coalesced
+}
+
+func (j *Journal) latestUpdatedSMT() bool {
+	if len(j.Jobs) == 0 {
+		return false
+	}
+	return j.Jobs[len(j.Jobs)-1].UpdatedSMT
+}
+
+func (j *Journal) latestUpdatedCTIndex() int64 {
+	if len(j.Jobs) == 0 {
+		return -1
+	}
+	return j.Jobs[len(j.Jobs)-1].UpdatedCTIndex
 }
 
 func (j *Journal) currentJob() (*Job, error) {

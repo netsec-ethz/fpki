@@ -452,6 +452,10 @@ func TestRunIngestUpdateCTIndexUpdatesDB(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(10), gotSize)
 	require.Nil(t, gotSTH)
+	reopenedJournal, err := journal.NewJournal(cfg.JournalFile, jobCfg, cfg.Directory)
+	require.NoError(t, err)
+	require.Equal(t, int64(10), latestJobForTest(t, reopenedJournal).UpdatedCTIndex)
+	require.NoError(t, reopenedJournal.Close())
 
 	// Extend the completed coverage and rerun so the same DB row is advanced.
 	reopened, err := journal.NewJournal(cfg.JournalFile, jobCfg, cfg.Directory)
@@ -470,6 +474,10 @@ func TestRunIngestUpdateCTIndexUpdatesDB(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(20), gotSize)
 	require.Nil(t, gotSTH)
+	finalJournal, err := journal.NewJournal(cfg.JournalFile, jobCfg, cfg.Directory)
+	require.NoError(t, err)
+	require.Equal(t, int64(20), latestJobForTest(t, finalJournal).UpdatedCTIndex)
+	require.NoError(t, finalJournal.Close())
 }
 
 // makeIngestTestFiles creates a minimal bundled ingest tree with three
