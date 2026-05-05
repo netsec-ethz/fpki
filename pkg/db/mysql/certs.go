@@ -304,7 +304,10 @@ func (c *mysqlDB) UpdateLastCTlogServerState(ctx context.Context, url string,
 
 	str := "REPLACE INTO ctlog_server_last_status (url_hash, size, sth) VALUES (?,?,?)"
 	_, err := c.db.ExecContext(ctx, str, common.SHA256Hash([]byte(url)), size, sth)
-	return err
+	if err != nil {
+		return fmt.Errorf("updating ctlog_server_last_status for url=%q size=%d: %w", url, size, err)
+	}
+	return nil
 }
 
 // PruneCerts removes all certificates that are no longer valid according to the paramter.

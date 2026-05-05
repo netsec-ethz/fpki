@@ -10,11 +10,14 @@ import (
 
 	"github.com/netsec-ethz/fpki/cmd/ingest/journal"
 	"github.com/netsec-ethz/fpki/pkg/statistics"
+	"github.com/netsec-ethz/fpki/pkg/tests/testdb"
 	"github.com/stretchr/testify/require"
 )
 
 const ingestTestBase = "fpki-ingest-test"
 
+// TestRunIngestScenarios exercises the main ingest control-flow variants,
+// including resume behavior, batching, follow-up phases, and cancellation.
 func TestRunIngestScenarios(t *testing.T) {
 	runIngestCases := map[string]struct {
 		// fileBatch controls the configured ingest batch size for the scenario.
@@ -325,6 +328,160 @@ func TestRunIngestScenarios(t *testing.T) {
 	}
 }
 
+// TestCompletedCTLogSize verifies that recordctsize derives the next safe CT
+// index from the first canonical completed interval for the current ingest dir.
+func TestCompletedCTLogSize(t *testing.T) {
+	t.Run("uses_first_canonical_completed_interval_end_plus_one", func(t *testing.T) {
+		dir := filepath.Join(t.TempDir(), "https:__ct.googleapis.com_logs_eu1_xenon2026h1")
+		cfg := newTestRunConfig(dir, filepath.Join(t.TempDir(), "journal.json"), 0, "recordctsize")
+
+		j := loadJournalForTest(t, cfg)
+		latestJobForTest(t, j).CompletedIndices = journal.CompletedIndices{
+			filepath.Base(dir): {
+				{Start: 0, End: 9},
+				{Start: 20, End: 29},
+			},
+		}
+
+		size, err := completedCTLogSize(j, dir)
+		require.NoError(t, err)
+		require.Equal(t, int64(10), size)
+	})
+
+	t.Run("fails_when_current_ingest_dir_has_no_completed_intervals", func(t *testing.T) {
+		dir := filepath.Join(t.TempDir(), "https:__ct.googleapis.com_logs_eu1_xenon2026h1")
+		cfg := newTestRunConfig(dir, filepath.Join(t.TempDir(), "journal.json"), 0, "recordctsize")
+
+		j := loadJournalForTest(t, cfg)
+		latestJobForTest(t, j).CompletedIndices = journal.CompletedIndices{
+			"other-log": {
+				{Start: 0, End: 9},
+			},
+		}
+
+		_, err := completedCTLogSize(j, dir)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), filepath.Base(dir))
+	})
+}
+
+// TestDeriveCTLogURLFromIngestDir verifies that encoded ingest-directory
+// basenames are converted into canonical CT log URLs and that malformed inputs
+// are rejected.
+func TestDeriveCTLogURLFromIngestDir(t *testing.T) {
+	testCases := map[string]struct {
+		dir     string
+		wantURL string
+		wantErr bool
+	}{
+		"derives canonical url from encoded basename": {
+			dir:     filepath.Join(t.TempDir(), "https:__ct.googleapis.com_logs_eu1_xenon2026h1"),
+			wantURL: "https://ct.googleapis.com/logs/eu1/xenon2026h1",
+		},
+		"fails when derived value is not a valid url": {
+			dir:     filepath.Join(t.TempDir(), "not-a-url"),
+			wantErr: true,
+		},
+		"fails when ingest directory is empty": {
+			wantErr: true,
+		},
+	}
+
+	for name, tc := range testCases {
+		name, tc := name, tc
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := deriveCTLogURLFromIngestDir(tc.dir)
+			if tc.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tc.wantURL, got)
+		})
+	}
+}
+
+// TestRunIngestRecordCTSizeUpdatesDB checks that the recordctsize strategy
+// creates and later advances the persisted CT log progress row in MySQL.
+func TestRunIngestRecordCTSizeUpdatesDB(t *testing.T) {
+	// Prepare an isolated test DB and a cancellable context for the strategy run.
+	config, removeF := testdb.ConfigureTestDB(t)
+	defer removeF()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	conn := testdb.Connect(t, config)
+	defer conn.Close()
+
+	dirBase := "https:__ct.googleapis.com_logs_eu1_xenon2026h1"
+	dir := filepath.Join(t.TempDir(), dirBase)
+	cfg := newTestRunConfig(dir, filepath.Join(t.TempDir(), "journal.json"), 0, "recordctsize")
+
+	// Seed the journal with one completed interval so recordctsize has progress
+	// to translate into a persisted CT log size.
+	jobCfg, err := cfg.JobConfiguration()
+	require.NoError(t, err)
+	j, err := journal.NewJournal(cfg.JournalFile, jobCfg, cfg.Directory)
+	require.NoError(t, err)
+	latestJobForTest(t, j).CompletedIndices = journal.CompletedIndices{
+		dirBase: {
+			{Start: 0, End: 9},
+		},
+	}
+	require.NoError(t, j.Close())
+
+	deps := RunDependencies{
+		NewJournal: func(cfg RunConfig, jobCfg journal.JobConfiguration) (*journal.Journal, error) {
+			return journal.NewJournal(cfg.JournalFile, jobCfg, cfg.Directory)
+		},
+		RecordCTSize: func(ctx context.Context, ctLogURL string, size int64) error {
+			return conn.UpdateLastCTlogServerState(ctx, ctLogURL, size, nil)
+		},
+	}
+
+	// First run should create the DB row from the initial completed interval.
+	err = runIngest(ctx, cfg, deps)
+	require.NoError(t, err)
+
+	wantURL, err := deriveCTLogURLFromIngestDir(dir)
+	require.NoError(t, err)
+	gotSize, gotSTH, err := conn.LastCTlogServerState(ctx, wantURL)
+	require.NoError(t, err)
+	require.Equal(t, int64(10), gotSize)
+	require.Nil(t, gotSTH)
+	reopenedJournal, err := journal.NewJournal(cfg.JournalFile, jobCfg, cfg.Directory)
+	require.NoError(t, err)
+	require.Equal(t, int64(10), latestJobForTest(t, reopenedJournal).RecordedCTLogSize)
+	require.NoError(t, reopenedJournal.Close())
+
+	// Extend the completed coverage and rerun so the same DB row is advanced.
+	reopened, err := journal.NewJournal(cfg.JournalFile, jobCfg, cfg.Directory)
+	require.NoError(t, err)
+	latestJobForTest(t, reopened).CompletedIndices = journal.CompletedIndices{
+		dirBase: {
+			{Start: 0, End: 19},
+		},
+	}
+	require.NoError(t, reopened.Close())
+
+	err = runIngest(ctx, cfg, deps)
+	require.NoError(t, err)
+
+	gotSize, gotSTH, err = conn.LastCTlogServerState(ctx, wantURL)
+	require.NoError(t, err)
+	require.Equal(t, int64(20), gotSize)
+	require.Nil(t, gotSTH)
+	finalJournal, err := journal.NewJournal(cfg.JournalFile, jobCfg, cfg.Directory)
+	require.NoError(t, err)
+	require.Equal(t, int64(20), latestJobForTest(t, finalJournal).RecordedCTLogSize)
+	require.NoError(t, finalJournal.Close())
+}
+
+// makeIngestTestFiles creates a minimal bundled ingest tree with three
+// sequential gzip files and returns the ingest root plus file paths in order.
 func makeIngestTestFiles(t *testing.T) (string, []string) {
 	t.Helper()
 
@@ -344,6 +501,8 @@ func makeIngestTestFiles(t *testing.T) (string, []string) {
 	return root, files
 }
 
+// newTestRunConfig builds a compact RunConfig for unit tests, overriding only
+// the fields that matter to the scenario under test.
 func newTestRunConfig(dir string, journalFile string, fileBatch int, strategy string) RunConfig {
 	return RunConfig{
 		Directory:    dir,
@@ -356,6 +515,8 @@ func newTestRunConfig(dir string, journalFile string, fileBatch int, strategy st
 	}
 }
 
+// newTestDeps returns a dependency set that records batch execution order and
+// follow-up phase counts, with optional forced failure on a chosen batch.
 func newTestDeps(
 	t *testing.T,
 	runOrder *[][]string,
@@ -390,10 +551,13 @@ func newTestDeps(
 	}
 }
 
+// assertErr is a sentinel error used to force controlled batch failures.
 type assertErr struct{}
 
 func (assertErr) Error() string { return "forced batch failure" }
 
+// loadJournalForTest reopens the journal using the config's current strategy so
+// tests can inspect the persisted completed-index snapshot.
 func loadJournalForTest(t *testing.T, cfg RunConfig) *journal.Journal {
 	t.Helper()
 	jobCfg, err := cfg.JobConfiguration()
@@ -403,20 +567,26 @@ func loadJournalForTest(t *testing.T, cfg RunConfig) *journal.Journal {
 	return j
 }
 
+// completedIngestTestIntervals builds the expected completed-index map for the
+// synthetic ingest root created by makeIngestTestFiles.
 func completedIngestTestIntervals(intervals ...journal.Interval) journal.CompletedIndices {
 	return journal.CompletedIndices{
 		ingestTestBase: intervals,
 	}
 }
 
-func latestJobForTest(t *testing.T, j *journal.Journal) journal.Job {
+// latestJobForTest returns the most recent journal job entry for in-place
+// inspection or mutation within a test.
+func latestJobForTest(t *testing.T, j *journal.Journal) *journal.Job {
 	t.Helper()
 	require.NotEmpty(t, j.Jobs)
-	return j.Jobs[len(j.Jobs)-1]
+	return &j.Jobs[len(j.Jobs)-1]
 }
 
-func previousJobForTest(t *testing.T, j *journal.Journal) journal.Job {
+// previousJobForTest returns the journal entry immediately before the latest
+// one, which is useful when assertions need the carried-forward prior snapshot.
+func previousJobForTest(t *testing.T, j *journal.Journal) *journal.Job {
 	t.Helper()
 	require.GreaterOrEqual(t, len(j.Jobs), 2)
-	return j.Jobs[len(j.Jobs)-2]
+	return &j.Jobs[len(j.Jobs)-2]
 }

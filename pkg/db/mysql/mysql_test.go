@@ -604,6 +604,15 @@ func TestLastCTlogServerState(t *testing.T) {
 	require.Equal(t, int64(222), n)
 	require.Equal(t, sth, []byte{2, 2, 2})
 
+	// Large CT log sizes should also round-trip without overflowing the schema.
+	const largeCTLogSize = int64(1 << 60)
+	err = conn.UpdateLastCTlogServerState(ctx, url2, largeCTLogSize, []byte{6, 0})
+	require.NoError(t, err)
+	n, sth, err = conn.LastCTlogServerState(ctx, url2)
+	require.NoError(t, err)
+	require.Equal(t, largeCTLogSize, n)
+	require.Equal(t, sth, []byte{6, 0})
+
 	// Unknown urls still give out -1:
 	n, sth, err = conn.LastCTlogServerState(ctx, "doesnt exist")
 	require.NoError(t, err)

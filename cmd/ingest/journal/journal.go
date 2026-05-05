@@ -31,10 +31,11 @@ type Journal struct {
 // JobConfiguration captures the ingest-mode settings that affect how one run
 // should execute and how its persisted state should be interpreted later.
 type JobConfiguration struct {
-	IngestFiles bool
-	Coalesce    bool
-	UpdateSMT   bool
-	FileBatch   int
+	IngestFiles  bool
+	Coalesce     bool
+	UpdateSMT    bool
+	RecordCTSize bool
+	FileBatch    int
 	// IncludePlainCSVs opts the run into also listing uncompressed `.csv`
 	// bundles. When false, ingest only discovers `.gz` inputs.
 	IncludePlainCSVs bool
@@ -48,14 +49,15 @@ type JobConfiguration struct {
 // UpdatedSMT records the stronger fact that the SMT update phase finished for
 // the same completed-index snapshot.
 type Job struct {
-	Cwd              string           `json:"Cwd"`
-	Cmd              []string         `json:"Cmd"`
-	JobConfiguration JobConfiguration `json:"JobConfiguration"`
-	StartTime        string           `json:"StartTime"`
-	EndTime          string           `json:"EndTime"`
-	Coalesced        bool             `json:"Coalesced"`
-	UpdatedSMT       bool             `json:"UpdatedSMT"`
-	CompletedIndices CompletedIndices `json:"CompletedIndices"`
+	Cwd               string           `json:"Cwd"`
+	Cmd               []string         `json:"Cmd"`
+	JobConfiguration  JobConfiguration `json:"JobConfiguration"`
+	StartTime         string           `json:"StartTime"`
+	EndTime           string           `json:"EndTime"`
+	Coalesced         bool             `json:"Coalesced"`
+	UpdatedSMT        bool             `json:"UpdatedSMT"`
+	RecordedCTLogSize int64            `json:"RecordedCTLogSize"`
+	CompletedIndices  CompletedIndices `json:"CompletedIndices"`
 }
 
 // CompletedIndices groups completed certificate-index intervals by the
@@ -124,6 +126,8 @@ func NewJobConfiguration(strategy string, fileBatch int, includePlainCSVs bool) 
 		fallthrough
 	case "onlysmtupdate":
 		jc.UpdateSMT = true
+	case "recordctsize":
+		jc.RecordCTSize = true
 	default:
 		return JobConfiguration{}, fmt.Errorf("strategy value not understood by journal: %s", strategy)
 	}
@@ -158,6 +162,24 @@ func (j *Journal) CommitProgress(files []string, coalesced bool, updatedSMT bool
 	}
 	job.Coalesced = coalesced || updatedSMT
 	job.UpdatedSMT = updatedSMT
+	return j.writeLocked()
+}
+
+// CommitCTLogSize records the latest CT log size written to the DB for the
+// current completed-index snapshot.
+func (j *Journal) CommitCTLogSize(size int64) error {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+
+	if j.closed {
+		return fmt.Errorf("cannot commit CT log size to closed journal")
+	}
+
+	job, err := j.currentJob()
+	if err != nil {
+		return err
+	}
+	job.RecordedCTLogSize = size
 	return j.writeLocked()
 }
 
@@ -255,11 +277,14 @@ func (j *Journal) appendJob(cfg JobConfiguration) error {
 	}
 
 	j.Jobs = append(j.Jobs, Job{
-		Cwd:              cwd,
-		Cmd:              slices.Clone(os.Args),
-		JobConfiguration: cfg,
-		StartTime:        time.Now().UTC().Format(time.RFC3339),
-		CompletedIndices: cloneCompletedIndices(j.latestCompletedIndices()),
+		Cwd:               cwd,
+		Cmd:               slices.Clone(os.Args),
+		JobConfiguration:  cfg,
+		StartTime:         time.Now().UTC().Format(time.RFC3339),
+		Coalesced:         j.latestCoalesced(),
+		UpdatedSMT:        j.latestUpdatedSMT(),
+		RecordedCTLogSize: j.latestRecordedCTLogSize(),
+		CompletedIndices:  cloneCompletedIndices(j.latestCompletedIndices()),
 	})
 
 	return nil
@@ -398,6 +423,27 @@ func (j *Journal) latestCompletedIndices() CompletedIndices {
 		return CompletedIndices{}
 	}
 	return j.Jobs[len(j.Jobs)-1].CompletedIndices
+}
+
+func (j *Journal) latestCoalesced() bool {
+	if len(j.Jobs) == 0 {
+		return false
+	}
+	return j.Jobs[len(j.Jobs)-1].Coalesced
+}
+
+func (j *Journal) latestUpdatedSMT() bool {
+	if len(j.Jobs) == 0 {
+		return false
+	}
+	return j.Jobs[len(j.Jobs)-1].UpdatedSMT
+}
+
+func (j *Journal) latestRecordedCTLogSize() int64 {
+	if len(j.Jobs) == 0 {
+		return 0
+	}
+	return j.Jobs[len(j.Jobs)-1].RecordedCTLogSize
 }
 
 func (j *Journal) currentJob() (*Job, error) {
