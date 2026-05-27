@@ -1,0 +1,15 @@
+[Unit]
+Description=FPKI Mapserver (user)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/fpki-config
+ExecStart=%h/bin/mapserver %h/fpki-config/config.json
+Restart=on-failure
+RestartSec=5
+Environment=GOMAXPROCS=2
+
+[Install]
+WantedBy=default.target
