@@ -184,30 +184,52 @@ func (s *MapServer) listen(ctx context.Context, useTLS bool) error {
 		ReadTimeout:  s.ReadTimeout,
 		WriteTimeout: s.WriteTimeout,
 	}
-	// chanErr will hold the error from the Listen call.
-	chanErr := make(chan error)
+
+	listeners := make([]net.Listener, 0, 2)
+	listenErrs := make([]error, 0, 2)
+
+	l6, err6 := net.Listen("tcp6", fmt.Sprintf("[::]:%d", s.HttpAPIPort))
+	if err6 == nil {
+		listeners = append(listeners, l6)
+	} else {
+		listenErrs = append(listenErrs, fmt.Errorf("tcp6: %w", err6))
+	}
+
+	l4, err4 := net.Listen("tcp4", fmt.Sprintf("0.0.0.0:%d", s.HttpAPIPort))
+	if err4 == nil {
+		listeners = append(listeners, l4)
+	} else {
+		listenErrs = append(listenErrs, fmt.Errorf("tcp4: %w", err4))
+	}
+
+	if len(listeners) == 0 {
+		return fmt.Errorf("error serving API: no listeners available (%v)", listenErrs)
+	}
+
+	// Spawn a goroutine to shutdown all listeners through the server.
 	go func() {
-		// Spawn a goroutine to shutdown the HTTP server.
-		go func() {
-			<-s.apiStopServerChan
-			server.Shutdown(ctx)
-		}()
-		listener, err := net.Listen("tcp", server.Addr)
-		if err != nil {
-			chanErr <- err
-			return
-		}
-		scheme := "http"
-		if useTLS {
-			scheme = "https"
-		}
-		fmt.Printf("Listening on %s://%s\n", scheme, listener.Addr().String())
-		if useTLS {
-			chanErr <- server.ServeTLS(listener, "", "")
-		} else {
-			chanErr <- server.Serve(listener)
-		}
+		<-s.apiStopServerChan
+		server.Shutdown(ctx)
 	}()
+
+	scheme := "http"
+	if useTLS {
+		scheme = "https"
+	}
+
+	// chanErr will hold Serve/ServeTLS errors from active listeners.
+	chanErr := make(chan error, len(listeners))
+	for _, listener := range listeners {
+		fmt.Printf("Listening on %s://%s\n", scheme, listener.Addr().String())
+		go func(listener net.Listener) {
+			if useTLS {
+				chanErr <- server.ServeTLS(listener, "", "")
+			} else {
+				chanErr <- server.Serve(listener)
+			}
+		}(listener)
+	}
+
 	err := <-chanErr
 	// If the error happened because we stopped the server, ignore it.
 	if err == http.ErrServerClosed {
