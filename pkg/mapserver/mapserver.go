@@ -7,8 +7,10 @@ import (
 	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"time"
 
@@ -36,17 +38,20 @@ type MapServer struct {
 	Responder *responder.MapResponder
 	Conn      db.Conn
 	// Crypto material of this map server.
-	Cert         *ctx509.Certificate
-	Key          *rsa.PrivateKey
-	TLS          *tls.Certificate
-	ReadTimeout  time.Duration
-	WriteTimeout time.Duration
-	HttpAPIPort  int
+	Cert           *ctx509.Certificate
+	Key            *rsa.PrivateKey
+	TLS            *tls.Certificate
+	ReadTimeout    time.Duration
+	WriteTimeout   time.Duration
+	HttpAPIPort    int
+	DisableUpdater bool
 
 	apiStopServerChan chan struct{}
 	updateChan        chan context.Context
 	updateErrChan     chan error
 }
+
+var ErrUpdaterDisabled = errors.New("updater is disabled")
 
 func NewMapServer(ctx context.Context, conf *config.Config) (*MapServer, error) {
 	// Load cert and key.
@@ -89,11 +94,14 @@ func NewMapServer(ctx context.Context, conf *config.Config) (*MapServer, error) 
 		return nil, fmt.Errorf("error connecting to the DB: %w", err)
 	}
 
-	// Create map updater.
-	updater, err := updater.NewMapUpdater(conf.DBConfig, conf.CTLogServerURLs,
-		conf.CertificateFolders, conf.CsvIngestionMaxRows)
-	if err != nil {
-		return nil, fmt.Errorf("error creating new map updater: %w", err)
+	var mapUpdater *updater.MapUpdater
+	if !conf.DisableUpdater {
+		// Create map updater.
+		mapUpdater, err = updater.NewMapUpdater(conf.DBConfig, conf.CTLogServerURLs,
+			conf.CertificateFolders, conf.CsvIngestionMaxRows)
+		if err != nil {
+			return nil, fmt.Errorf("error creating new map updater: %w", err)
+		}
 	}
 
 	// Create map responder.
@@ -104,19 +112,24 @@ func NewMapServer(ctx context.Context, conf *config.Config) (*MapServer, error) 
 
 	// Compose MapServer.
 	s := &MapServer{
-		Updater:      updater,
-		Responder:    resp,
-		Conn:         conn,
-		Cert:         cert,
-		Key:          key,
-		TLS:          &tlsCert,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 5 * time.Second,
-		HttpAPIPort:  conf.HttpAPIPort,
+		Updater:        mapUpdater,
+		DisableUpdater: conf.DisableUpdater,
+		Responder:      resp,
+		Conn:           conn,
+		Cert:           cert,
+		Key:            key,
+		TLS:            &tlsCert,
+		ReadTimeout:    5 * time.Second,
+		WriteTimeout:   5 * time.Second,
+		HttpAPIPort:    conf.HttpAPIPort,
 
 		apiStopServerChan: make(chan struct{}, 1),
 		updateChan:        make(chan context.Context),
 		updateErrChan:     make(chan error),
+	}
+
+	if conf.DisableUpdater {
+		return s, nil
 	}
 
 	// Start listening for update requests.
@@ -171,22 +184,52 @@ func (s *MapServer) listen(ctx context.Context, useTLS bool) error {
 		ReadTimeout:  s.ReadTimeout,
 		WriteTimeout: s.WriteTimeout,
 	}
-	// chanErr will hold the error from the Listen call.
-	chanErr := make(chan error)
+
+	listeners := make([]net.Listener, 0, 2)
+	listenErrs := make([]error, 0, 2)
+
+	l6, err6 := net.Listen("tcp6", fmt.Sprintf("[::]:%d", s.HttpAPIPort))
+	if err6 == nil {
+		listeners = append(listeners, l6)
+	} else {
+		listenErrs = append(listenErrs, fmt.Errorf("tcp6: %w", err6))
+	}
+
+	l4, err4 := net.Listen("tcp4", fmt.Sprintf("0.0.0.0:%d", s.HttpAPIPort))
+	if err4 == nil {
+		listeners = append(listeners, l4)
+	} else {
+		listenErrs = append(listenErrs, fmt.Errorf("tcp4: %w", err4))
+	}
+
+	if len(listeners) == 0 {
+		return fmt.Errorf("error serving API: no listeners available (%v)", listenErrs)
+	}
+
+	// Spawn a goroutine to shutdown all listeners through the server.
 	go func() {
-		// Spawn a goroutine to shutdown the HTTP server.
-		go func() {
-			<-s.apiStopServerChan
-			server.Shutdown(ctx)
-		}()
-		// This call blocks
-		fmt.Printf("Listening on %d\n", s.HttpAPIPort)
-		if useTLS {
-			chanErr <- server.ListenAndServeTLS("", "")
-		} else {
-			chanErr <- server.ListenAndServe()
-		}
+		<-s.apiStopServerChan
+		server.Shutdown(ctx)
 	}()
+
+	scheme := "http"
+	if useTLS {
+		scheme = "https"
+	}
+
+	// chanErr will hold Serve/ServeTLS errors from active listeners.
+	chanErr := make(chan error, len(listeners))
+	for _, listener := range listeners {
+		fmt.Printf("Listening on %s://%s\n", scheme, listener.Addr().String())
+		go func(listener net.Listener) {
+			if useTLS {
+				chanErr <- server.ServeTLS(listener, "", "")
+			} else {
+				chanErr <- server.Serve(listener)
+			}
+		}(listener)
+	}
+
 	err := <-chanErr
 	// If the error happened because we stopped the server, ignore it.
 	if err == http.ErrServerClosed {
@@ -207,6 +250,9 @@ func (s *MapServer) Shutdown(ctx context.Context) {
 // If an ongoing update is still in process, it returns false. Returns true if a new update was
 // triggered.
 func (s *MapServer) PruneAndUpdateIfPossible(ctx context.Context) (bool, error) {
+	if s.DisableUpdater {
+		return false, ErrUpdaterDisabled
+	}
 	select {
 	// Signal we want an update.
 	case s.updateChan <- ctx:
@@ -220,6 +266,9 @@ func (s *MapServer) PruneAndUpdateIfPossible(ctx context.Context) (bool, error) 
 
 // PruneAndUpdate triggers an update. If an ongoing update is still in process, it blocks.
 func (s *MapServer) PruneAndUpdate(ctx context.Context) error {
+	if s.DisableUpdater {
+		return ErrUpdaterDisabled
+	}
 	// Signal we want an update.
 	s.updateChan <- ctx
 

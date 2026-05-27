@@ -87,6 +87,9 @@ func insertPolicyFromFile(policyFile string) error {
 	if err != nil {
 		return err
 	}
+	if conf.DisableUpdater || server.Updater == nil {
+		return fmt.Errorf("cannot ingest policy with mapserver updater disabled")
+	}
 	root, err := server.Conn.LoadRoot(ctx)
 	if err != nil {
 		return err
@@ -194,26 +197,40 @@ func runWithConfig(
 	} else {
 		fmt.Printf("Running map server (%s) with root: %x and public key: %s\n", VERSION, *root, base64PublicKey)
 	}
+	if conf.DisableUpdater {
+		fmt.Println("Mode: responder-only (updater disabled)")
+	} else {
+		fmt.Println("Mode: full (updater enabled)")
+	}
 
 	// Should update now?
 	if updateNow {
+		if conf.DisableUpdater {
+			return fmt.Errorf("--updateNow cannot be used when updater is disabled")
+		}
 		err := server.PruneAndUpdate(ctx)
 		if err != nil {
 			return fmt.Errorf("performing initial update: %w", err)
 		}
 	}
 
-	// Set update cycle timer.
-	util.RunWhen(ctx, conf.UpdateAt.NextTimeOfDay(), conf.UpdateTimer.Duration,
-		func(ctx context.Context) {
-			updatePossible, err := server.PruneAndUpdateIfPossible(ctx)
-			if err != nil {
-				fmt.Printf("ERROR: update returned %s\n", err)
-			}
-			if !updatePossible {
-				fmt.Printf("WARNING: Unable to schedule update due to currently running update (CT log fetching and map server ingestion speed may be too low) at %s\n", time.Now().UTC().Format(time.RFC3339))
-			}
-		})
+	if !conf.DisableUpdater {
+		// Set update cycle timer.
+		util.RunWhen(ctx, conf.UpdateAt.NextTimeOfDay(), conf.UpdateTimer.Duration,
+			func(ctx context.Context) {
+				updatePossible, err := server.PruneAndUpdateIfPossible(ctx)
+				if err != nil {
+					fmt.Printf("ERROR: update returned %s\n", err)
+				}
+				if !updatePossible {
+					fmt.Printf("WARNING: Unable to schedule update due to currently running "+
+						"update (CT log fetching and map server ingestion speed"+
+						" may be too low) at %s\n", time.Now().UTC().Format(time.RFC3339))
+				}
+			})
+	} else {
+		fmt.Println("Updater scheduler is disabled")
+	}
 
 	// Listen in responder.
 	err = server.ListenWithoutTLS(ctx)
