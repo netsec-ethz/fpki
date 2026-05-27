@@ -7,8 +7,10 @@ import (
 	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"time"
 
@@ -36,17 +38,20 @@ type MapServer struct {
 	Responder *responder.MapResponder
 	Conn      db.Conn
 	// Crypto material of this map server.
-	Cert         *ctx509.Certificate
-	Key          *rsa.PrivateKey
-	TLS          *tls.Certificate
-	ReadTimeout  time.Duration
-	WriteTimeout time.Duration
-	HttpAPIPort  int
+	Cert           *ctx509.Certificate
+	Key            *rsa.PrivateKey
+	TLS            *tls.Certificate
+	ReadTimeout    time.Duration
+	WriteTimeout   time.Duration
+	HttpAPIPort    int
+	DisableUpdater bool
 
 	apiStopServerChan chan struct{}
 	updateChan        chan context.Context
 	updateErrChan     chan error
 }
+
+var ErrUpdaterDisabled = errors.New("updater is disabled")
 
 func NewMapServer(ctx context.Context, conf *config.Config) (*MapServer, error) {
 	// Load cert and key.
@@ -89,11 +94,14 @@ func NewMapServer(ctx context.Context, conf *config.Config) (*MapServer, error) 
 		return nil, fmt.Errorf("error connecting to the DB: %w", err)
 	}
 
-	// Create map updater.
-	updater, err := updater.NewMapUpdater(conf.DBConfig, conf.CTLogServerURLs,
-		conf.CertificateFolders, conf.CsvIngestionMaxRows)
-	if err != nil {
-		return nil, fmt.Errorf("error creating new map updater: %w", err)
+	var mapUpdater *updater.MapUpdater
+	if !conf.DisableUpdater {
+		// Create map updater.
+		mapUpdater, err = updater.NewMapUpdater(conf.DBConfig, conf.CTLogServerURLs,
+			conf.CertificateFolders, conf.CsvIngestionMaxRows)
+		if err != nil {
+			return nil, fmt.Errorf("error creating new map updater: %w", err)
+		}
 	}
 
 	// Create map responder.
@@ -104,19 +112,24 @@ func NewMapServer(ctx context.Context, conf *config.Config) (*MapServer, error) 
 
 	// Compose MapServer.
 	s := &MapServer{
-		Updater:      updater,
-		Responder:    resp,
-		Conn:         conn,
-		Cert:         cert,
-		Key:          key,
-		TLS:          &tlsCert,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 5 * time.Second,
-		HttpAPIPort:  conf.HttpAPIPort,
+		Updater:        mapUpdater,
+		DisableUpdater: conf.DisableUpdater,
+		Responder:      resp,
+		Conn:           conn,
+		Cert:           cert,
+		Key:            key,
+		TLS:            &tlsCert,
+		ReadTimeout:    5 * time.Second,
+		WriteTimeout:   5 * time.Second,
+		HttpAPIPort:    conf.HttpAPIPort,
 
 		apiStopServerChan: make(chan struct{}, 1),
 		updateChan:        make(chan context.Context),
 		updateErrChan:     make(chan error),
+	}
+
+	if conf.DisableUpdater {
+		return s, nil
 	}
 
 	// Start listening for update requests.
@@ -179,12 +192,20 @@ func (s *MapServer) listen(ctx context.Context, useTLS bool) error {
 			<-s.apiStopServerChan
 			server.Shutdown(ctx)
 		}()
-		// This call blocks
-		fmt.Printf("Listening on %d\n", s.HttpAPIPort)
+		listener, err := net.Listen("tcp", server.Addr)
+		if err != nil {
+			chanErr <- err
+			return
+		}
+		scheme := "http"
 		if useTLS {
-			chanErr <- server.ListenAndServeTLS("", "")
+			scheme = "https"
+		}
+		fmt.Printf("Listening on %s://%s\n", scheme, listener.Addr().String())
+		if useTLS {
+			chanErr <- server.ServeTLS(listener, "", "")
 		} else {
-			chanErr <- server.ListenAndServe()
+			chanErr <- server.Serve(listener)
 		}
 	}()
 	err := <-chanErr
@@ -207,6 +228,9 @@ func (s *MapServer) Shutdown(ctx context.Context) {
 // If an ongoing update is still in process, it returns false. Returns true if a new update was
 // triggered.
 func (s *MapServer) PruneAndUpdateIfPossible(ctx context.Context) (bool, error) {
+	if s.DisableUpdater {
+		return false, ErrUpdaterDisabled
+	}
 	select {
 	// Signal we want an update.
 	case s.updateChan <- ctx:
@@ -220,6 +244,9 @@ func (s *MapServer) PruneAndUpdateIfPossible(ctx context.Context) (bool, error) 
 
 // PruneAndUpdate triggers an update. If an ongoing update is still in process, it blocks.
 func (s *MapServer) PruneAndUpdate(ctx context.Context) error {
+	if s.DisableUpdater {
+		return ErrUpdaterDisabled
+	}
 	// Signal we want an update.
 	s.updateChan <- ctx
 

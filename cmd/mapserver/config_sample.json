@@ -21,6 +21,8 @@
     },
     "CertificatePemFile": "tests/testdata/servercert.pem",
     "PrivateKeyPemFile": "tests/testdata/serverkey.pem",
+    "DisableUpdater": true,
+    "HttpAPIPort": 8000,
     "UpdateAt": "03:00:00",
     "UpdateTimer": "1d"
 }
