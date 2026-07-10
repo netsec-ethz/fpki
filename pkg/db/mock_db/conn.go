@@ -145,6 +145,76 @@ func (mr *MockConnMockRecorder) DirtyCount(arg0 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DirtyCount", reflect.TypeOf((*MockConn)(nil).DirtyCount), arg0)
 }
 
+// InsertCRLURLs mocks base method.
+func (m *MockConn) InsertCRLURLs(arg0 context.Context, arg1 []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InsertCRLURLs", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// InsertCRLURLs indicates an expected call of InsertCRLURLs.
+func (mr *MockConnMockRecorder) InsertCRLURLs(arg0, arg1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertCRLURLs", reflect.TypeOf((*MockConn)(nil).InsertCRLURLs), arg0, arg1)
+}
+
+// InsertCsvIntoCerts mocks base method.
+func (m *MockConn) InsertCsvIntoCerts(arg0 context.Context, arg1 string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InsertCsvIntoCerts", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// InsertCsvIntoCerts indicates an expected call of InsertCsvIntoCerts.
+func (mr *MockConnMockRecorder) InsertCsvIntoCerts(arg0, arg1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertCsvIntoCerts", reflect.TypeOf((*MockConn)(nil).InsertCsvIntoCerts), arg0, arg1)
+}
+
+// InsertCsvIntoDirty mocks base method.
+func (m *MockConn) InsertCsvIntoDirty(arg0 context.Context, arg1 string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InsertCsvIntoDirty", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// InsertCsvIntoDirty indicates an expected call of InsertCsvIntoDirty.
+func (mr *MockConnMockRecorder) InsertCsvIntoDirty(arg0, arg1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertCsvIntoDirty", reflect.TypeOf((*MockConn)(nil).InsertCsvIntoDirty), arg0, arg1)
+}
+
+// InsertCsvIntoDomainCerts mocks base method.
+func (m *MockConn) InsertCsvIntoDomainCerts(arg0 context.Context, arg1 string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InsertCsvIntoDomainCerts", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// InsertCsvIntoDomainCerts indicates an expected call of InsertCsvIntoDomainCerts.
+func (mr *MockConnMockRecorder) InsertCsvIntoDomainCerts(arg0, arg1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertCsvIntoDomainCerts", reflect.TypeOf((*MockConn)(nil).InsertCsvIntoDomainCerts), arg0, arg1)
+}
+
+// InsertCsvIntoDomains mocks base method.
+func (m *MockConn) InsertCsvIntoDomains(arg0 context.Context, arg1 string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InsertCsvIntoDomains", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// InsertCsvIntoDomains indicates an expected call of InsertCsvIntoDomains.
+func (mr *MockConnMockRecorder) InsertCsvIntoDomains(arg0, arg1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertCsvIntoDomains", reflect.TypeOf((*MockConn)(nil).InsertCsvIntoDomains), arg0, arg1)
+}
+
 // InsertDomainsIntoDirty mocks base method.
 func (m *MockConn) InsertDomainsIntoDirty(arg0 context.Context, arg1 []common.SHA256Output) error {
 	m.ctrl.T.Helper()
@@ -294,21 +364,6 @@ func (mr *MockConnMockRecorder) RetrieveDomainEntries(arg0, arg1 any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RetrieveDomainEntries", reflect.TypeOf((*MockConn)(nil).RetrieveDomainEntries), arg0, arg1)
 }
 
-// RetrieveDomainEntriesDirtyOnes mocks base method.
-func (m *MockConn) RetrieveDomainEntriesDirtyOnes(arg0 context.Context, arg1, arg2 uint64) ([]db.DomainEntryRecord, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RetrieveDomainEntriesDirtyOnes", arg0, arg1, arg2)
-	ret0, _ := ret[0].([]db.DomainEntryRecord)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// RetrieveDomainEntriesDirtyOnes indicates an expected call of RetrieveDomainEntriesDirtyOnes.
-func (mr *MockConnMockRecorder) RetrieveDomainEntriesDirtyOnes(arg0, arg1, arg2 any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RetrieveDomainEntriesDirtyOnes", reflect.TypeOf((*MockConn)(nil).RetrieveDomainEntriesDirtyOnes), arg0, arg1, arg2)
-}
-
 // RetrieveDomainEntriesDirtyBundle mocks base method.
 func (m *MockConn) RetrieveDomainEntriesDirtyBundle(arg0 context.Context, arg1 *db.DirtyDomainEntriesCursor, arg2 uint64) ([]db.DomainEntryRecord, *db.DirtyDomainEntriesCursor, bool, error) {
 	m.ctrl.T.Helper()
@@ -324,6 +379,21 @@ func (m *MockConn) RetrieveDomainEntriesDirtyBundle(arg0 context.Context, arg1 *
 func (mr *MockConnMockRecorder) RetrieveDomainEntriesDirtyBundle(arg0, arg1, arg2 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RetrieveDomainEntriesDirtyBundle", reflect.TypeOf((*MockConn)(nil).RetrieveDomainEntriesDirtyBundle), arg0, arg1, arg2)
+}
+
+// RetrieveDomainEntriesDirtyOnes mocks base method.
+func (m *MockConn) RetrieveDomainEntriesDirtyOnes(arg0 context.Context, arg1, arg2 uint64) ([]db.DomainEntryRecord, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RetrieveDomainEntriesDirtyOnes", arg0, arg1, arg2)
+	ret0, _ := ret[0].([]db.DomainEntryRecord)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RetrieveDomainEntriesDirtyOnes indicates an expected call of RetrieveDomainEntriesDirtyOnes.
+func (mr *MockConnMockRecorder) RetrieveDomainEntriesDirtyOnes(arg0, arg1, arg2 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RetrieveDomainEntriesDirtyOnes", reflect.TypeOf((*MockConn)(nil).RetrieveDomainEntriesDirtyOnes), arg0, arg1, arg2)
 }
 
 // RetrieveDomainPoliciesIDs mocks base method.

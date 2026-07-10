@@ -34,6 +34,7 @@ type Processor struct {
 	SkipMissing    bool
 	Pipeline       *pip.Pipeline
 	Manager        *updater.Manager
+	toChainWorkers []*lineToChainWorker // Retained to merge their CRL URL sets after Wait().
 }
 
 func NewProcessor(
@@ -143,6 +144,26 @@ func (p *Processor) Wait() error {
 	return p.Pipeline.Wait(p.Ctx)
 }
 
+// FlushCRLURLs merges the CRL distribution point URLs collected by every toChain worker and
+// persists the deduplicated set to the DB. It must only be called after Wait has returned, since
+// it reads worker state without any locking, relying on all parsing goroutines having terminated.
+func (p *Processor) FlushCRLURLs(ctx context.Context) error {
+	set := make(map[string]struct{})
+	for _, w := range p.toChainWorkers {
+		for u := range w.crlURLs {
+			set[u] = struct{}{}
+		}
+	}
+	if len(set) == 0 {
+		return nil
+	}
+	urls := make([]string, 0, len(set))
+	for u := range set {
+		urls = append(urls, u)
+	}
+	return p.Manager.Conn.InsertCRLURLs(ctx, urls)
+}
+
 // AddCsvFiles adds the files to the processor to be read when Resume is called.
 func (p *Processor) AddCsvFiles(files []util.CsvFile) {
 	p.CsvFiles = append(p.CsvFiles, files...)
@@ -196,6 +217,7 @@ func (p *Processor) createFilesToCertsPipeline() (*pip.Pipeline, error) {
 	for i := range lineToChainWorkers {
 		lineToChainWorkers[i] = NewLineToChainWorker(p, i)
 	}
+	p.toChainWorkers = lineToChainWorkers
 
 	// Create chain to certificates worker.
 	chainToCertWorkers := make([]*chainToCertWorker, p.NumToCerts)

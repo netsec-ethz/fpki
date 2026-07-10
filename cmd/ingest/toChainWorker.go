@@ -30,15 +30,17 @@ func (c certChain) String() string {
 type lineToChainWorker struct {
 	*pip.Stage[line, certChain]
 
-	now   time.Time
-	cache cache.Cache // IDs of certificates already seen
+	now     time.Time
+	cache   cache.Cache         // IDs of certificates already seen
+	crlURLs map[string]struct{} // CRL distribution point URLs seen by this worker; merged after Wait().
 }
 
 // NewLineToChainWorker creates a stage that turns compact CSV rows into parsed certificate chains.
 func NewLineToChainWorker(p *Processor, numWorker int) *lineToChainWorker {
 	w := &lineToChainWorker{
-		now:   time.Now(),
-		cache: cache.NewLruCache(LruCacheSize),
+		now:     time.Now(),
+		cache:   cache.NewLruCache(LruCacheSize),
+		crlURLs: make(map[string]struct{}),
 	}
 
 	// Prepare stage.
@@ -105,6 +107,7 @@ func (w *lineToChainWorker) parseLine(p *Processor, line *line) (*certChain, err
 	if err != nil {
 		return nil, err
 	}
+	w.recordCRLURLs(cert)
 
 	// Although we checked right at the beginning with getExpiration, now use the payload.
 	if w.now.After(cert.NotAfter) {
@@ -135,6 +138,7 @@ func (w *lineToChainWorker) parseLine(p *Processor, line *line) (*certChain, err
 				return nil, fmt.Errorf("at line %d: %s\n%s",
 					line.number, err, string(line.chainField))
 			}
+			w.recordCRLURLs(chain[i])
 			w.cache.AddIDs(&id)
 			p.Manager.Stats.UncachedCerts.Add(1)
 		}
@@ -147,6 +151,13 @@ func (w *lineToChainWorker) parseLine(p *Processor, line *line) (*certChain, err
 		ChainPayloads: chain,
 		ChainIDs:      chainIDs,
 	}, nil
+}
+
+// recordCRLURLs adds cert's CRL distribution point URLs to this worker's private URL set.
+func (w *lineToChainWorker) recordCRLURLs(cert *ctx509.Certificate) {
+	for _, u := range cert.CRLDistributionPoints {
+		w.crlURLs[u] = struct{}{}
+	}
 }
 
 // getExpiration returns the expiration time in seconds. It is stored already in seconds on the

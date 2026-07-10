@@ -163,6 +163,10 @@ type Conn interface {
 	// InsertCsvIntoDomains inserts all the domains in the CSV into the domains table.
 	InsertCsvIntoDomains(ctx context.Context, filename string) error
 
+	// InsertCRLURLs adds the given CRL distribution point URLs to the deduplicated CRL URL set.
+	// Existing URLs (and any mapserver-tracked state such as last_checked_at) are left untouched.
+	InsertCRLURLs(ctx context.Context, urls []string) error
+
 	// UpdateDomains updates the domains table.
 	UpdateDomains(
 		ctx context.Context,

@@ -187,7 +187,10 @@ func mainFunction() error {
 			proc.AddCsvFiles(csvFiles)
 			logBatchStart(files)
 			proc.Resume()
-			return proc.Wait()
+			if err := proc.Wait(); err != nil {
+				return err
+			}
+			return proc.FlushCRLURLs(ctx)
 		},
 		Coalesce: func() error {
 			ctx, span := tr.MT().Start(ctx, "coalesce")

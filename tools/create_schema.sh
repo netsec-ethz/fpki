@@ -181,6 +181,23 @@ EOF
 
 CMD=$(cat <<EOF
 USE $DBNAME;
+-- Stores the deduplicated set of CRL Distribution Point URLs observed during ingestion.
+CREATE TABLE crl_urls (
+  url_hash VARBINARY(32) NOT NULL,
+  url VARCHAR(2048) COLLATE ascii_bin NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_checked_at DATETIME DEFAULT NULL,
+
+  PRIMARY KEY (url_hash)
+) ENGINE=InnoDB CHARSET=binary COLLATE=binary;
+EOF
+  )
+  echo "$CMD" | $MYSQLCMD
+
+
+CMD=$(cat <<EOF
+USE $DBNAME;
 CREATE TABLE tree (
   key32 VARBINARY(32) NOT NULL,
   value longblob NOT NULL,

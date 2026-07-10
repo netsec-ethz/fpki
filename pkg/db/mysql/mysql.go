@@ -88,6 +88,7 @@ func (c *mysqlDB) TruncateAllTables(ctx context.Context) error {
 		"domain_certs",
 		"domain_payloads",
 		"dirty",
+		"crl_urls",
 	}
 	for _, t := range tables {
 		if _, err := c.db.ExecContext(ctx, fmt.Sprintf("TRUNCATE %s", t)); err != nil {

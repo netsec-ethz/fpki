@@ -37,6 +37,10 @@ func (*Conn) InsertCsvIntoDomains(context.Context, string) error {
 	return nil
 }
 
+func (*Conn) InsertCRLURLs(context.Context, []string) error {
+	return nil
+}
+
 func (*Conn) InsertCsvIntoDomainCerts(context.Context, string) error {
 	return nil
 }
